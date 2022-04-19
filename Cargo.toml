@@ -1,0 +1,12 @@
+[package]
+name = "sscover"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cosmian_bls12_381 = "0.4.1"
+eyre = "0.6.8"
+rand = "0.8.5"
+ecies = {path = "../ecies"}
