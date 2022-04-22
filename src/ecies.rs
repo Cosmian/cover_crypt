@@ -16,11 +16,11 @@ impl traits::Kem for Ecies {
         ecies::setup()
     }
 
-    fn encrypt(pk: &Self::PublicKey, m: &[u8]) -> Result<Self::CipherText, Self::Error> {
+    fn encaps(pk: &Self::PublicKey, m: &[u8]) -> Result<Self::CipherText, Self::Error> {
         ecies::encrypt(pk, m)
     }
 
-    fn decrypt(
+    fn decaps(
         pk: &Self::PublicKey,
         sk: &Self::PrivateKey,
         c: &Self::CipherText,

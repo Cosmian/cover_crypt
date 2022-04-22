@@ -6,8 +6,8 @@ pub trait Kem {
     type CipherText;
     type Error;
     fn setup() -> (Self::PrivateKey, Self::PublicKey);
-    fn encrypt(pk: &Self::PublicKey, m: &[u8]) -> Result<Self::CipherText, Self::Error>;
-    fn decrypt(
+    fn encaps(pk: &Self::PublicKey, m: &[u8]) -> Result<Self::CipherText, Self::Error>;
+    fn decaps(
         pk: &Self::PublicKey,
         sk: &Self::PrivateKey,
         c: &Self::CipherText,
