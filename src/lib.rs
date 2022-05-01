@@ -1,5 +1,4 @@
-#![feature(associated_type_defaults)]
+#![allow(non_snake_case)]
 
-pub mod traits;
-pub mod ecies;
-pub mod sscover;
+mod utils;
+pub mod cover_crypt;
