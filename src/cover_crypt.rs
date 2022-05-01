@@ -26,10 +26,13 @@ pub type SecretKey = Vec<u8>;
 
 /// Generate the master private key and master public key of the CoverCrypt scheme.
 ///
-/// - `n`   : number of users
-pub fn setup<R: CryptoRng + RngCore>(rng: &Mutex<R>, n: usize) -> (PrivateKey, PublicKey) {
-    let (mut msk, mut mpk) = (Vec::with_capacity(n), Vec::with_capacity(n));
-    for _ in 0..n {
+/// - `S`   : list of all user groups
+pub fn setup<R: CryptoRng + RngCore>(
+    rng: &Mutex<R>,
+    S: &[HashSet<usize>],
+) -> (PrivateKey, PublicKey) {
+    let (mut msk, mut mpk) = (Vec::with_capacity(S.len()), Vec::with_capacity(S.len()));
+    for _ in S.iter() {
         let keypair = X25519Crypto::key_gen(rng);
         msk.push(keypair.private_key().to_owned());
         mpk.push(keypair.public_key().to_owned());
@@ -123,5 +126,38 @@ pub fn decaps(
         Ok(Some(K))
     } else {
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_crypto_base::entropy::CsRng;
+    use eyre::Result;
+    use super::*;
+
+    #[test]
+    fn test_cover_crypt() -> Result<()> {
+        // user groups
+        let S = vec![HashSet::from([1, 2]), HashSet::from([3, 4])];
+        // target set
+        let T = HashSet::from([1, 2]);
+        // user IDs
+        let uid1 = 1;
+        let uid3 = 3;
+        // secure random number generator
+        let rng = Mutex::new(CsRng::new());
+        // setup scheme
+        let (msk, mpk) = setup(&rng, &S);
+        // generate user private keys
+        let sk1 = join(&msk, uid1, &S);
+        let sk3 = join(&msk, uid3, &S);
+        // ecapsulate for the target set
+        let (K, E) = encaps(&rng, &mpk, &T, &S)?;
+        // decapsulate for users 1 and 3
+        let res1 = decaps(1, &sk1, &E, &T, &S)?;
+        let res3 = decaps(3, &sk3, &E, &T, &S)?;
+        eyre::ensure!(res3.is_none(), "User 3 shouldn't be able to decapsulate!");
+        eyre::ensure!(Some(K) == res1, "Wrong decapsulation for user 1!");
+        Ok(())
     }
 }
