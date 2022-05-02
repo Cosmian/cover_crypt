@@ -1,3 +1,3 @@
-# SS-Cover
+# CovCrypt
 
-Implementation of the SubSet Cover algorithm.
+Implementation of the CovCrypt algorithm.
