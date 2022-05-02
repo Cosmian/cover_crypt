@@ -22,7 +22,7 @@ pub(crate) fn generate_random_bytes<R: CryptoRng + RngCore>(rng: &Mutex<R>, len:
 ///
 /// - `uid` : the uiser ID
 /// - `T`   : target set
-/// - `S`   : user groups
+/// - `S`   : list of all user groups
 pub(crate) fn get_matching_indexes(
     uid: usize,
     T: &HashSet<usize>,
