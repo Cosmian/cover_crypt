@@ -1,8 +1,7 @@
-use crate::utils;
+use crate::{error::Error, utils};
 use cosmian_crypto_base::{
     asymmetric::{AsymmetricCrypto, KeyPair},
     hybrid_crypto::Kem,
-    Error as CryptoError,
 };
 use rand_core::{CryptoRng, RngCore};
 use std::{
@@ -10,15 +9,6 @@ use std::{
     fmt::Debug,
     hash::Hash,
 };
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum Error<A: Debug> {
-    #[error("Unknown authorisation {auth:?}")]
-    UnknownAuthorisation { auth: A },
-    #[error("{err:?}")]
-    CryptoError { err: CryptoError },
-}
 
 /// CovCrypt private keys are a set of KEM private keys.
 pub type PrivateKey<A, KEM> =
@@ -73,10 +63,7 @@ where
 ///
 /// - `msk` : master secret key
 /// - `U`   : user authorisations
-pub fn join<A, KEM>(
-    msk: &PrivateKey<A, KEM>,
-    U: &HashSet<A>,
-) -> Result<PrivateKey<A, KEM>, Error<A>>
+pub fn join<A, KEM>(msk: &PrivateKey<A, KEM>, U: &HashSet<A>) -> Result<PrivateKey<A, KEM>, Error>
 where
     A: Clone + Eq + Hash + Debug,
     KEM: Kem,
@@ -85,9 +72,7 @@ where
     for authorisation in U.iter() {
         match msk.get(authorisation) {
             Some(key) => Ok(sk_u.insert(authorisation.to_owned(), key.to_owned())),
-            None => Err(Error::UnknownAuthorisation {
-                auth: authorisation.to_owned(),
-            }),
+            None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
         }?;
     }
     Ok(sk_u)
@@ -103,7 +88,7 @@ pub fn encaps<A, R, KEM>(
     rng: &mut R,
     mpk: &PublicKey<A, KEM>,
     T: &HashSet<A>,
-) -> Result<(SecretKey, Encapsulation<A>), Error<A>>
+) -> Result<(SecretKey, Encapsulation<A>), Error>
 where
     A: Clone + Eq + Hash + Debug,
     R: CryptoRng + RngCore,
@@ -117,7 +102,7 @@ where
     for authorisation in T.iter() {
         match mpk.get(authorisation) {
             Some(pk) => {
-                let (K_i, E_i) = KEM::encaps(rng, pk).map_err(|err| Error::CryptoError { err })?;
+                let (K_i, E_i) = KEM::encaps(rng, pk).map_err(Error::CryptoError)?;
                 E.insert(
                     authorisation.to_owned(),
                     (
@@ -127,9 +112,7 @@ where
                 );
                 Ok(())
             }
-            None => Err(Error::UnknownAuthorisation {
-                auth: authorisation.to_owned(),
-            }),
+            None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
         }?;
     }
 
@@ -146,14 +129,14 @@ where
 pub fn decaps<A, KEM>(
     sk_u: &PrivateKey<A, KEM>,
     E: &Encapsulation<A>,
-) -> Result<Option<SecretKey>, Error<A>>
+) -> Result<Option<SecretKey>, Error>
 where
     A: Clone + Eq + Hash + Debug,
     KEM: Kem,
 {
     for (authorisation, (Ki_1, E_i)) in E.iter() {
         if let Some(sk) = sk_u.get(authorisation) {
-            let Ki_2 = KEM::decaps(sk, E_i).map_err(|err| Error::CryptoError { err })?;
+            let Ki_2 = KEM::decaps(sk, E_i).map_err(Error::CryptoError)?;
 
             // XOR the two `K_i`
             let K = Ki_1
