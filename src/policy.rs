@@ -1,15 +1,13 @@
 #![allow(clippy::module_name_repetitions)]
-#![allow(dead_code)]
+// #![allow(dead_code)]
+use crate::error::Error;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     collections::{BinaryHeap, HashMap},
     convert::TryFrom,
     fmt::{Debug, Display},
     ops::{BitAnd, BitOr},
 };
-
-use serde::{Deserialize, Deserializer, Serialize};
-
-use crate::error::Error;
 
 const OPERATOR_SIZE: usize = 2;
 
@@ -362,7 +360,7 @@ impl AccessPolicy {
     ///
     /// ```rust
     /// let boolean_expression = "(Department::HR || Department::RnD) && Level::level_2";
-    /// let access_policy = abe_gpsw::core::policy::AccessPolicy::from_boolean_expression(boolean_expression);
+    /// let access_policy = cover_crypt::policy::AccessPolicy::from_boolean_expression(boolean_expression);
     /// ```
     /// # Errors
     ///
@@ -483,7 +481,7 @@ impl AccessPolicy {
     ///
     /// ```rust
     /// let access_policy_str = "(Department::HR || Department::R&D) && Level::level 2";
-    /// let access_policy = abe_gpsw::core::policy::AccessPolicy::from_boolean_expression(access_policy_str).unwrap();
+    /// let access_policy = cover_crypt::policy::AccessPolicy::from_boolean_expression(access_policy_str).unwrap();
 
     pub fn attributes(&self) -> Vec<Attribute> {
         let mut attributes = AccessPolicy::_attributes(self);
