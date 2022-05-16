@@ -53,11 +53,19 @@ pub enum Error {
     InvalidBooleanExpression(String),
     #[error("invalid attribute: {0}")]
     InvalidAttribute(String),
+    #[error("json parsing error: {0}")]
+    JsonParsing(String),
 }
 
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
         Error::ConversionFailed
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::JsonParsing(e.to_string())
     }
 }
 

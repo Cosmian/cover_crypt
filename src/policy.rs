@@ -580,8 +580,8 @@ impl PolicyAxis {
 // addition of attributes is allowed
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Policy {
-    pub(crate) last_attribute: usize,
-    pub(crate) max_attribute: usize,
+    pub(crate) last_attribute_value: u32,
+    pub(crate) max_attribute_value: u32,
     // store the policies by name
     pub(crate) store: HashMap<String, (Vec<String>, bool)>,
     // mapping between (policy_name, policy_attribute) -> integer
@@ -600,22 +600,22 @@ impl Display for Policy {
 
 impl Policy {
     #[must_use]
-    pub fn new(nb_revocation: usize) -> Self {
+    pub fn new(nb_revocation: u32) -> Self {
         Self {
-            last_attribute: 0,
-            max_attribute: nb_revocation,
+            last_attribute_value: 0,
+            max_attribute_value: nb_revocation,
             store: HashMap::new(),
             attribute_to_int: HashMap::new(),
         }
     }
 
-    pub fn store(&self) -> HashMap<String, (Vec<String>, bool)> {
-        self.store.clone()
+    pub fn store(&self) -> &HashMap<String, (Vec<String>, bool)> {
+        &self.store
     }
 
     #[must_use]
-    pub fn max_attr(&self) -> usize {
-        self.max_attribute
+    pub fn max_attr(&self) -> u32 {
+        self.max_attribute_value
     }
 
     /// Add a policy axis, mapping each attribute to a unique number in this
@@ -630,7 +630,10 @@ impl Policy {
         hierarchical: bool,
     ) -> Result<Self, Error> {
         let axis = PolicyAxis::new(name, attributes, hierarchical);
-        if axis.len() + self.last_attribute > self.max_attribute {
+        if axis.len() > u32::MAX as usize {
+            return Err(Error::CapacityOverflow);
+        }
+        if (axis.len() as u32) + self.last_attribute_value > self.max_attribute_value {
             return Err(Error::CapacityOverflow);
         }
         // insert new policy
@@ -643,12 +646,12 @@ impl Policy {
             return Err(Error::ExistingPolicy(axis.name));
         } else {
             for attr in &axis.attributes {
-                self.last_attribute += 1;
+                self.last_attribute_value += 1;
                 if self
                     .attribute_to_int
                     .insert(
                         (axis.name.clone(), attr.clone()).into(),
-                        vec![u32::try_from(self.last_attribute)?].into(),
+                        vec![self.last_attribute_value].into(),
                     )
                     .is_some()
                 {
@@ -656,8 +659,6 @@ impl Policy {
                     return Err(Error::ExistingPolicy(axis.name));
                 }
             }
-            // add attribute is not a revocation
-            self.max_attribute += axis.attributes.len();
         }
         Ok(self)
     }
@@ -665,20 +666,38 @@ impl Policy {
     /// Rotate an attribute, changing its underlying value with that of an
     /// unused slot
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if self.last_attribute + 1 > self.max_attribute {
+        if self.last_attribute_value + 1 > self.max_attribute_value {
             return Err(Error::CapacityOverflow);
         }
         if let Some(uint) = self.attribute_to_int.get_mut(attr) {
-            self.last_attribute += 1;
-            uint.push(u32::try_from(self.last_attribute)?);
+            self.last_attribute_value += 1;
+            uint.push(self.last_attribute_value);
         } else {
             return Err(Error::AttributeNotFound(format!("{:?}", attr)));
         }
         Ok(())
     }
 
+    /// Returns the list of Attributes of this Policy
+    pub fn attributes(&self) -> Vec<Attribute> {
+        self.attribute_to_int.keys().cloned().collect()
+    }
+
+    /// Returns the list of all attributes values given to this Attribute
+    /// over the time after rotations. The current value is returned first
+    pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
+        let mut v = self
+            .attribute_to_int
+            .get(attribute)
+            .cloned()
+            .ok_or_else(|| Error::AttributeNotFound(attribute.to_string()))?
+            .into_sorted_vec();
+        v.reverse();
+        Ok(v)
+    }
+
     /// Retrieve the current attributes values for the `Attribute` list
-    pub fn attributes_values(&self, attributes: &[Attribute]) -> Result<Vec<u32>, Error> {
+    pub fn current_values(&self, attributes: &[Attribute]) -> Result<Vec<u32>, Error> {
         let mut values: Vec<u32> = Vec::with_capacity(attributes.len());
         for att in attributes {
             let v = self
@@ -689,5 +708,51 @@ impl Policy {
             values.push(*v);
         }
         Ok(values)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{error::Error, policy::attr};
+
+    use super::Policy;
+
+    #[test]
+    fn test_policy_attributes() -> Result<(), Error> {
+        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
+        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
+        let mut policy = Policy::new(100)
+            .add_axis("Security Level", &sec_level_attributes, true)?
+            .add_axis("Department", &dept_attributes, false)?;
+        let attributes = policy.attributes();
+        assert_eq!(
+            sec_level_attributes.len() + dept_attributes.len(),
+            attributes.len()
+        );
+        for att in sec_level_attributes {
+            assert!(attributes.contains(&attr("Security Level", att)))
+        }
+        for att in dept_attributes {
+            assert!(attributes.contains(&attr("Department", att)))
+        }
+        for attribute in &attributes {
+            assert_eq!(
+                policy.attribute_values(attribute)?[0],
+                policy.current_values(&[attribute.to_owned()])?[0]
+            )
+        }
+        // rotate few attributes
+        policy.rotate(&attributes[0])?;
+        assert_eq!(2, policy.attribute_values(&attributes[0])?.len());
+        policy.rotate(&attributes[2])?;
+        assert_eq!(2, policy.attribute_values(&attributes[2])?.len());
+        println!("policy: {:?}", policy);
+        for attribute in &attributes {
+            assert_eq!(
+                policy.attribute_values(attribute)?[0],
+                policy.current_values(&[attribute.to_owned()])?[0]
+            )
+        }
+        Ok(())
     }
 }
