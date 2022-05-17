@@ -3,16 +3,12 @@ use crate::{
     error::Error,
     policy::{self, AccessPolicy, Policy},
 };
-use cosmian_crypto_base::{
-    asymmetric::{AsymmetricCrypto, KeyPair},
-    entropy::CsRng,
-    hybrid_crypto::Kem,
-};
+use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
 use std::{collections::HashSet, marker::PhantomData, ops::DerefMut, sync::Mutex};
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
 
-pub type PlainText<KEM> = <<KEM as AsymmetricCrypto>::KeyPair as KeyPair>::PublicKey;
+pub type PlainText<KEM> = <<KEM as Kem>::KeyPair as KeyPair>::PublicKey;
 pub type CipherText = cover_crypt_core::Encapsulation<Vec<u8>>;
 pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Vec<u8>, KEM>;
 pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Vec<u8>, KEM>;
