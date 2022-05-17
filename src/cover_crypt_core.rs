@@ -68,14 +68,22 @@ where
     A: Clone + Eq + Hash + Debug,
     KEM: Kem,
 {
-    let mut sk_u = HashMap::with_capacity(U.len());
-    for authorisation in U.iter() {
-        match msk.get(authorisation) {
-            Some(key) => Ok(sk_u.insert(authorisation.to_owned(), key.to_owned())),
-            None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
-        }?;
-    }
-    Ok(sk_u)
+    U.iter()
+        .map(
+            |authorisation| -> Result<
+                (
+                    A,
+                    <<KEM as AsymmetricCrypto>::KeyPair as KeyPair>::PrivateKey,
+                ),
+                Error,
+            > {
+                match msk.get(authorisation) {
+                    Some(key) => Ok((authorisation.to_owned(), key.to_owned())),
+                    None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
+                }
+            },
+        )
+        .collect::<Result<PrivateKey<A, KEM>, Error>>()
 }
 
 /// Generate the secret key and its encapsulation.

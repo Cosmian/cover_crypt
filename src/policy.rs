@@ -1,7 +1,8 @@
 #![allow(clippy::module_name_repetitions)]
-// #![allow(dead_code)]
+
 use crate::error::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+use sha3::{Digest, Sha3_256};
 use std::{
     collections::{BinaryHeap, HashMap},
     convert::TryFrom,
@@ -20,30 +21,33 @@ pub struct Attribute {
 }
 
 impl Attribute {
+    /// Create a Policy Attribute.
+    ///
+    /// Shortcut for
+    /// ```ignore
+    /// Attribute {
+    ///     axis: axis.to_owned(),
+    ///     name: name.to_owned(),
+    /// }
+    /// ```
+    pub fn new(axis: &str, name: &str) -> Self {
+        Self {
+            axis: axis.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+    pub fn axis(&self) -> String {
+        self.axis.to_owned()
+    }
+
     pub fn name(&self) -> String {
-        self.name.clone()
+        self.name.to_owned()
     }
 }
 
 impl Debug for Attribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}::{}", &self.axis, &self.name))
-    }
-}
-
-/// Create a Policy Attribute.
-///
-/// Shortcut for
-/// ```ignore
-/// Attribute {
-///     axis: axis.to_owned(),
-///     name: name.to_owned(),
-/// }
-/// ```
-pub fn attr(axis: &str, name: &str) -> Attribute {
-    Attribute {
-        axis: axis.to_owned(),
-        name: name.to_owned(),
     }
 }
 
@@ -151,12 +155,81 @@ impl PartialEq for AccessPolicy {
 }
 
 impl AccessPolicy {
-    /// Create an access policy from a single attribute
-    pub fn from(axis_name: &str, attribute_name: &str) -> AccessPolicy {
-        AccessPolicy::Attr(Attribute {
-            axis: axis_name.to_owned(),
-            name: attribute_name.to_owned(),
+    /// Create an Access Policy
+    /// based on a single Policy Attribute.
+    ///
+    /// Shortcut for
+    /// ```ignore
+    /// AccessPolicy::Attr(Attribute {
+    ///     axis: axis.to_owned(),
+    ///     name: name.to_owned(),
+    /// })
+    /// ```
+    ///
+    /// Access Policies can easily be created using it
+    /// ```ignore
+    /// let access_policy =
+    ///     ap("Security Level", "level 4") & (ap("Department", "MKG") | ap("Department", "FIN"));
+    /// ```
+    pub fn new(axis: &str, attribute: &str) -> Self {
+        Self::Attr(Attribute {
+            axis: axis.to_owned(),
+            name: attribute.to_owned(),
         })
+    }
+
+    /// Returns the list of combinations that can be built using the values of
+    /// each attribute in the given access policy. This corresponds to an OR
+    /// expression of AND expressions.
+    pub(crate) fn to_attribute_combinations(
+        &self,
+        policy: &Policy,
+    ) -> Result<Vec<Vec<u32>>, Error> {
+        match self {
+            AccessPolicy::Attr(attr) => {
+                let mut res = vec![];
+                if let Some((attribute_names, is_hierarchical)) = &policy.store().get(&attr.axis())
+                {
+                    if *is_hierarchical {
+                        // add attribute values for all attributes below the given one
+                        for name in attribute_names.iter() {
+                            res.extend(
+                                policy
+                                    .attribute_values(&Attribute::new(&attr.axis(), name))?
+                                    .iter()
+                                    .map(|&value| vec![value])
+                                    .collect::<Vec<Vec<u32>>>(),
+                            );
+                            if *name == attr.name() {
+                                break;
+                            }
+                        }
+                    } else {
+                        res.push(policy.attribute_values(attr)?);
+                    }
+                } else {
+                    return Err(Error::UnknownAuthorisation(attr.axis()));
+                }
+                Ok(res)
+            }
+            AccessPolicy::And(attr1, attr2) => {
+                let mut res = vec![];
+                for value1 in attr1.to_attribute_combinations(policy)? {
+                    for value2 in attr2.to_attribute_combinations(policy)? {
+                        let mut combined = value1.to_vec();
+                        combined.extend(value2.to_vec());
+                        res.push(combined)
+                    }
+                }
+                Ok(res)
+            }
+            AccessPolicy::Or(attr1, attr2) => {
+                let mut res = attr1.to_attribute_combinations(policy)?;
+                res.extend(attr2.to_attribute_combinations(policy)?);
+                Ok(res)
+            }
+            AccessPolicy::All => Ok(vec![vec![]]),
+        }
     }
 
     /// Convert policy to integer value (for comparison).
@@ -211,7 +284,7 @@ impl AccessPolicy {
             access_policies.push(
                 attributes
                     .iter()
-                    .map(|x| attr(axis, x).into())
+                    .map(|x| Attribute::new(axis, x).into())
                     .reduce(BitOr::bitor)
                     .ok_or_else(|| Error::MissingAttribute {
                         item: None,
@@ -439,7 +512,7 @@ impl AccessPolicy {
                          Example: {boolean_expression_example}"
                     )));
                 }
-                return Ok(ap(attribute_vec[0], attribute_vec[1]));
+                return Ok(AccessPolicy::new(attribute_vec[0], attribute_vec[1]));
             }
 
             // Remove operator from input string
@@ -463,40 +536,21 @@ impl AccessPolicy {
         }
     }
 
-    /// Verify if an access policy is compliant with the ABE policy.
-    /// Function will verify if axis and attributes given in the boolean
-    /// expression are declared in the ABE policy
-    ///
-    /// # Arguments
-    ///
-    /// * `boolean_expression`: access policy expressed with operators && and ||
-    /// * `policy`: the ABE policy
-    ///
-    /// # Returns
-    ///
-    /// Nothing if access policy is valid. A `MissingAxis` or `MissingAttribute`
-    /// error otherwise
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let access_policy_str = "(Department::HR || Department::R&D) && Level::level 2";
-    /// let access_policy = cover_crypt::policy::AccessPolicy::from_boolean_expression(access_policy_str).unwrap();
-
     pub fn attributes(&self) -> Vec<Attribute> {
-        let mut attributes = AccessPolicy::_attributes(self);
+        let mut attributes = self._attributes();
         attributes.sort();
         attributes
     }
 
-    fn _attributes(access_policy: &AccessPolicy) -> Vec<Attribute> {
-        match access_policy {
+    fn _attributes(&self) -> Vec<Attribute> {
+        match self {
             AccessPolicy::Attr(att) => vec![att.clone()],
             AccessPolicy::And(a1, a2) | AccessPolicy::Or(a1, a2) => {
                 let mut v = AccessPolicy::_attributes(a1);
                 v.extend(AccessPolicy::_attributes(a2));
                 v
             }
+
             AccessPolicy::All => vec![],
         }
     }
@@ -526,29 +580,6 @@ impl From<Attribute> for AccessPolicy {
     }
 }
 
-/// Create an Access Policy
-/// based on a single Policy Attribute.
-///
-/// Shortcut for
-/// ```ignore
-/// AccessPolicy::Attr(Attribute {
-///     axis: axis.to_owned(),
-///     name: name.to_owned(),
-/// })
-/// ```
-///
-/// Access Policies can easily be created using it
-/// ```ignore
-/// let access_policy =
-///     ap("Security Level", "level 4") & (ap("Department", "MKG") | ap("Department", "FIN"));
-/// ```
-pub fn ap(axis: &str, name: &str) -> AccessPolicy {
-    AccessPolicy::Attr(Attribute {
-        axis: axis.to_owned(),
-        name: name.to_owned(),
-    })
-}
-
 // Define a policy axis by its name and its underlying attribute names
 // If `hierarchical` is `true`, we assume a lexicographical order based on the
 // attribute name
@@ -564,7 +595,7 @@ impl PolicyAxis {
     pub fn new(name: &str, attributes: &[&str], hierarchical: bool) -> Self {
         Self {
             name: name.to_owned(),
-            attributes: attributes.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            attributes: attributes.iter().map(|s| s.to_string()).collect(),
             hierarchical,
         }
     }
@@ -711,11 +742,75 @@ impl Policy {
     }
 }
 
+/// Compute the key hash of a given attribute combination. This key hash is
+/// used to select a KEM key.
+///
+/// - `combination` : attribute combination
+pub(crate) fn get_key_hash(combination: &[u32]) -> Vec<u8> {
+    let mut combination = combination.to_owned();
+    combination.sort_unstable();
+    let mut bytes: Vec<u8> = vec![];
+    for value in combination {
+        bytes.extend(value.to_be_bytes())
+    }
+    Sha3_256::digest(bytes).to_vec()
+}
+
+/// For all attributes in the given axis, return the combination of its values
+/// with the values of all other remaining axes. The combination is made by
+/// concatenating the Big Endian bytes of the attributes values.
+///
+/// - `current_axis`    : index of the axis being processed in the list of axes
+/// - `axes`            : list of axes
+/// - `policy`          : global policy
+pub(crate) fn walk_hypercube(
+    current_axis: usize,
+    axes: &[&String],
+    policy: &Policy,
+) -> Result<Vec<Vec<u32>>, Error> {
+    if current_axis == axes.len() {
+        // stop if we past the last axis
+        Ok(vec![])
+    } else {
+        // extract all attribute values from this axis
+        let axis_name = axes[current_axis];
+        let mut res: Vec<Vec<u32>> = vec![];
+        if let Some((attribute_names, _)) = &policy.store().get(axis_name) {
+            for name in attribute_names.iter() {
+                res.extend(
+                    policy
+                        .attribute_values(&Attribute::new(axis_name, name))?
+                        .iter()
+                        .map(|&u| vec![u])
+                        .collect::<Vec<Vec<u32>>>(),
+                );
+            }
+        } else {
+            return Err(Error::UnknownAuthorisation(format!("{:?}", axis_name)));
+        }
+
+        // combine these values with all attribute values from the next axis
+        let mut combinations: Vec<Vec<u32>> = vec![];
+        for v in &res {
+            let other_values = walk_hypercube(current_axis + 1, axes, policy)?;
+            if !other_values.is_empty() {
+                for ov in other_values {
+                    let mut combined = v.to_vec();
+                    combined.extend(ov);
+                    combinations.push(combined);
+                }
+            } else {
+                combinations.push(v.to_vec());
+            }
+        }
+        Ok(combinations)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{error::Error, policy::attr};
-
-    use super::Policy;
+    use super::*;
+    use crate::error::Error;
 
     #[test]
     fn test_policy_attributes() -> Result<(), Error> {
@@ -730,10 +825,10 @@ mod tests {
             attributes.len()
         );
         for att in sec_level_attributes {
-            assert!(attributes.contains(&attr("Security Level", att)))
+            assert!(attributes.contains(&Attribute::new("Security Level", att)))
         }
         for att in dept_attributes {
-            assert!(attributes.contains(&attr("Department", att)))
+            assert!(attributes.contains(&Attribute::new("Department", att)))
         }
         for attribute in &attributes {
             assert_eq!(
@@ -753,6 +848,85 @@ mod tests {
                 policy.current_values(&[attribute.to_owned()])?[0]
             )
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_hypercube() -> Result<(), Error> {
+        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
+        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
+        let mut policy = Policy::new(100)
+            .add_axis("Security Level", &sec_level_attributes, true)?
+            .add_axis("Department", &dept_attributes, false)?;
+        // rotate an attributes
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let axes: Vec<&String> = policy.store().keys().collect();
+        let walk = walk_hypercube(0, &axes, &policy)?;
+        assert!(
+            walk == [
+                // Protected && R&D
+                [1, 4],
+                // Protected && HR
+                [1, 5],
+                // Protected && MKG
+                [1, 6],
+                // Protected && FIN after rotation
+                [1, 8],
+                // Protected && FIN before rotation
+                [1, 7],
+                // Confidential && R&D
+                [2, 4],
+                // Confidential && HR
+                [2, 5],
+                // Confidential && MKG
+                [2, 6],
+                // Confidential && FIN after rotation
+                [2, 8],
+                // Confidential && FIN before rotation
+                [2, 7],
+                // Top Secret && R&D
+                [3, 4],
+                // Top Secret && HR
+                [3, 5],
+                // Top Secret && MKG
+                [3, 6],
+                // Top Secret && FIN after rotation
+                [3, 8],
+                // Top Secret && FIN before rotation
+                [3, 7]
+            ] || walk
+                == [
+                    [4, 1],
+                    [4, 2],
+                    [4, 3],
+                    [5, 1],
+                    [5, 2],
+                    [5, 3],
+                    [6, 1],
+                    [6, 2],
+                    [6, 3],
+                    [8, 1],
+                    [8, 2],
+                    [8, 3],
+                    [7, 1],
+                    [7, 2],
+                    [7, 3],
+                ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_to_attribute_combinations() -> Result<(), Error> {
+        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
+        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
+        let policy = Policy::new(100)
+            .add_axis("Security Level", &sec_level_attributes, true)?
+            .add_axis("Department", &dept_attributes, false)?;
+        let access_policy = AccessPolicy::new("Department", "HR")
+            & AccessPolicy::new("Security Level", "Confidential");
+        let combinations = access_policy.to_attribute_combinations(&policy)?;
+        println!("{combinations:?}");
         Ok(())
     }
 }
