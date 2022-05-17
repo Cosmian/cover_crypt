@@ -3,6 +3,6 @@
 pub mod api;
 mod cover_crypt_core;
 pub mod error;
-pub mod policy;
 pub mod interfaces;
+pub mod policy;
 mod utils;

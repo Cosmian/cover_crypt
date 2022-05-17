@@ -13,6 +13,22 @@ pub type CipherText = cover_crypt_core::Encapsulation<Vec<u8>>;
 pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Vec<u8>, KEM>;
 pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Vec<u8>, KEM>;
 
+#[derive(Clone, PartialEq)]
+pub struct CCKeyPair<KEM: Kem> {
+    pub(crate) pk: PublicKey<KEM>,
+    pub(crate) sk: PrivateKey<KEM>,
+}
+
+impl<KEM: Kem> CCKeyPair<KEM> {
+    pub fn public_key(&self) -> &PublicKey<KEM> {
+        &self.pk
+    }
+
+    pub fn private_key(&self) -> &PrivateKey<KEM> {
+        &self.sk
+    }
+}
+
 /// The engine is the main entry point for the core functionalities.
 ///
 /// It supplies a simple API that lets generate keys, encrypt and decrypt
@@ -59,7 +75,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - `msk`             : master secret key
     /// - `access_policy`   : user access policy
     /// - `policy`          : global policy
-    pub fn generate_user_key(
+    pub fn generate_user_private_key(
         &self,
         msk: &PrivateKey<KEM>,
         access_policy: &AccessPolicy,
@@ -75,14 +91,35 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         cover_crypt_core::join::<_, KEM>(msk, &keys)
     }
 
-    /// Generate a random public message.
-    /// TODO: this method is strange and may deserve to be removed
-    pub fn random_message(&self) -> Result<PlainText<KEM>, Error> {
-        Ok(
-            <KEM as Kem>::key_gen(&mut self.rng.lock().expect("Mutex lock failed!").deref_mut())
-                .public_key()
-                .to_owned(),
-        )
+    /// Generate a user public key.
+    ///
+    /// - `mpk`             : master public key
+    /// - `access_policy`   : user access policy
+    /// - `policy`          : global policy
+    pub fn generate_user_public_key(
+        &self,
+        mpk: &PublicKey<KEM>,
+        access_policy: &AccessPolicy,
+        policy: &Policy,
+    ) -> Result<PublicKey<KEM>, Error> {
+        // get the key hash associated with the given access policy
+        let keys = access_policy
+            .to_attribute_combinations(policy)?
+            .iter()
+            .map(|comb| policy::get_key_hash(comb))
+            .collect::<HashSet<Vec<u8>>>();
+        // generate the corresponding user key
+
+        keys.iter()
+            .map(
+                |authorisation| -> Result<(Vec<u8>, <KEM::KeyPair as KeyPair>::PublicKey), Error> {
+                    match mpk.get(authorisation) {
+                        Some(key) => Ok((authorisation.to_owned(), key.to_owned())),
+                        None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
+                    }
+                },
+            )
+            .collect::<Result<PublicKey<KEM>, Error>>()
     }
 
     /// Generate a random symmetric key of `symmetric_key_len` to be used in an
@@ -170,7 +207,7 @@ mod tests {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let sk_u = cc.generate_user_key(&msk, &access_policy, &policy)?;
+        let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
         print!("there");
         let (key, encrypted_key) =
             cc.generate_symmetric_key(&policy, &mpk, &access_policy, KEY_LENGTH)?;

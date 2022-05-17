@@ -66,7 +66,7 @@ where
 {
     U.iter()
         .map(
-            |authorisation| -> Result<(A, KEM::KeyPair::PrivateKey), Error> {
+            |authorisation| -> Result<(A, <KEM::KeyPair as KeyPair>::PrivateKey), Error> {
                 match msk.get(authorisation) {
                     Some(key) => Ok((authorisation.to_owned(), key.to_owned())),
                     None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
