@@ -4,14 +4,25 @@ use crate::{
     policy::{self, AccessPolicy, Policy},
 };
 use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
-use std::{collections::HashSet, marker::PhantomData, ops::DerefMut, sync::Mutex};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, fmt::Display, marker::PhantomData, ops::DerefMut, sync::Mutex};
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
 
+/// Authorisation associated to a KEM keypair
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
+pub struct Authorisation(Vec<u8>);
+
+impl Display for Authorisation {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 pub type PlainText<KEM> = <<KEM as Kem>::KeyPair as KeyPair>::PublicKey;
-pub type CipherText = cover_crypt_core::Encapsulation<Vec<u8>>;
-pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Vec<u8>, KEM>;
-pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Vec<u8>, KEM>;
+pub type CipherText = cover_crypt_core::Encapsulation<Authorisation>;
+pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Authorisation, KEM>;
+pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Authorisation, KEM>;
 
 #[derive(Clone, PartialEq)]
 pub struct CCKeyPair<KEM: Kem> {
@@ -38,7 +49,7 @@ impl<KEM: Kem> CCKeyPair<KEM> {
 /// their corresponding cipher texts which are suitable for use in a hybrid
 /// encryption scheme.
 pub struct CoverCrypt<KEM> {
-    rng: Mutex<CsRng>,
+    pub(crate) rng: Mutex<CsRng>,
     phantom_kem: PhantomData<KEM>,
 }
 
@@ -60,10 +71,10 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     ) -> Result<(PrivateKey<KEM>, PublicKey<KEM>), Error> {
         // walk the hypercube to recover all the combinations and hash them
         let axes: Vec<&String> = policy.store().keys().collect();
-        let keys: HashSet<Vec<u8>> = policy::walk_hypercube(0, axes.as_slice(), policy)?
+        let keys: HashSet<Authorisation> = policy::walk_hypercube(0, axes.as_slice(), policy)?
             .iter()
-            .map(|combination| policy::get_key_hash(combination))
-            .collect::<HashSet<Vec<u8>>>();
+            .map(|combination| Authorisation(policy::get_key_hash(combination)))
+            .collect::<HashSet<Authorisation>>();
         Ok(cover_crypt_core::setup::<_, CsRng, KEM>(
             &mut self.rng.lock().expect("a mutex lock failed"),
             &keys,
@@ -85,8 +96,8 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         let keys = access_policy
             .to_attribute_combinations(policy)?
             .iter()
-            .map(|comb| policy::get_key_hash(comb))
-            .collect::<HashSet<Vec<u8>>>();
+            .map(|comb| Authorisation(policy::get_key_hash(comb)))
+            .collect::<HashSet<Authorisation>>();
         // generate the corresponding user key
         cover_crypt_core::join::<_, KEM>(msk, &keys)
     }
@@ -103,16 +114,16 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         policy: &Policy,
     ) -> Result<PublicKey<KEM>, Error> {
         // get the key hash associated with the given access policy
-        let keys = access_policy
+        let authorisations = access_policy
             .to_attribute_combinations(policy)?
             .iter()
-            .map(|comb| policy::get_key_hash(comb))
-            .collect::<HashSet<Vec<u8>>>();
+            .map(|comb| Authorisation(policy::get_key_hash(comb)))
+            .collect::<HashSet<Authorisation>>();
         // generate the corresponding user key
 
-        keys.iter()
+        authorisations.iter()
             .map(
-                |authorisation| -> Result<(Vec<u8>, <KEM::KeyPair as KeyPair>::PublicKey), Error> {
+                |authorisation| -> Result<(Authorisation, <KEM::KeyPair as KeyPair>::PublicKey), Error> {
                     match mpk.get(authorisation) {
                         Some(key) => Ok((authorisation.to_owned(), key.to_owned())),
                         None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
@@ -137,22 +148,23 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         sym_key_len: usize,
     ) -> Result<(Vec<u8>, CipherText), Error> {
-        // get the key hash associated with the given access policy
-        let keys = access_policy
+        // get the authorisations associated to the given access policy
+        let authorisations = access_policy
             .to_attribute_combinations(policy)?
             .iter()
-            .map(|comb| policy::get_key_hash(comb))
-            .collect::<HashSet<Vec<u8>>>();
-        let (mut key, encaps) = cover_crypt_core::encaps::<_, _, KEM>(
+            .map(|comb| Authorisation(policy::get_key_hash(comb)))
+            .collect::<HashSet<Authorisation>>();
+        let (mut K, E) = cover_crypt_core::encaps::<_, _, KEM>(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
-            &keys,
+            &authorisations,
         )?;
+        // expend keying data if needed
         if sym_key_len > KEM::SECRET_KEY_LENGTH {
-            key = cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
+            K = cosmian_crypto_base::kdf::hkdf_256(&K, sym_key_len, KDF_INFO)
                 .map_err(Error::CryptoError)?;
         }
-        Ok((key, encaps))
+        Ok((K, E))
     }
 
     /// Decrypt a symmetric key generated with `generate_symmetric_key()`

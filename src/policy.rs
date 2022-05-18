@@ -300,6 +300,29 @@ impl AccessPolicy {
         Ok(access_policy)
     }
 
+    /// Convert a list of attributes into an AccessPolicy. For example,
+    ///
+    /// `[Security::Confidentiality, Department::HR, Department::FIN]`
+    ///
+    /// would give:
+    ///
+    /// `Security::Confidentiality && (Department::HR || Department::FIN)`
+    ///
+    /// - `attributes`  : list of attributes
+    pub fn from_attribute_list(attributes: &[Attribute]) -> Result<Self, Error> {
+        let mut map = HashMap::<String, Vec<String>>::new();
+        for attribute in attributes.iter() {
+            if let Some(names) = map.get(&attribute.axis()) {
+                let mut names = names.to_owned();
+                names.push(attribute.name());
+                map.insert(attribute.axis(), names.to_owned());
+            } else {
+                map.insert(attribute.axis(), vec![attribute.name()]);
+            }
+        }
+        Self::from_axes(&map)
+    }
+
     /// This function is finding the right closing parenthesis in the boolean
     /// expression given as a string
     fn find_next_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
