@@ -178,8 +178,9 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let len = symmetric_key_bytes.len();
     if (allocated as usize) < len {
         ffi_bail!(
-            "The pre-allocated symmetric key buffer is too small; need {} bytes",
-            len
+            "The pre-allocated symmetric key buffer is too small; need {} bytes, allocated {}",
+            len,
+            allocated
         );
     }
     std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, len)
@@ -190,8 +191,9 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let len = encrypted_header.header_bytes.len();
     if (allocated as usize) < len {
         ffi_bail!(
-            "The pre-allocated symmetric key buffer is too small; need {} bytes",
-            len
+            "The pre-allocated encrypted header buffer is too small; need {} bytes, allocated {}",
+            len,
+            allocated
         );
     }
     std::slice::from_raw_parts_mut(header_bytes_ptr as *mut u8, len)

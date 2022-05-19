@@ -19,49 +19,24 @@ pub struct Authorisation(Vec<u8>);
 
 impl Display for Authorisation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
+        write!(f, "{}", hex::encode(&self.0))
     }
 }
 
 impl From<Authorisation> for String {
     fn from(a: Authorisation) -> Self {
-        format!("{a:?}")
+        format!("{a}")
     }
 }
 
 impl TryFrom<String> for Authorisation {
     type Error = Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let mut iterator = value.chars().skip(1);
-        let mut res = Vec::<u8>::new();
-        while let Some(c) = iterator.next() {
-            if c.is_numeric() {
-                let mut tmp = vec![c.to_digit(10).expect("should not fail")];
-                for c in iterator.by_ref() {
-                    if c.is_numeric() {
-                        tmp.push(c.to_digit(10).expect("should not fail"))
-                    } else {
-                        break;
-                    }
-                }
-                let n: u32 = tmp
-                    .iter()
-                    .rev()
-                    .enumerate()
-                    .map(|(i, n)| n * 10u32.pow(i as u32))
-                    .sum();
-                if n > 255 {
-                    return Err(Error::ConversionFailed);
-                } else {
-                    res.push(n as u8);
-                }
-            }
-        }
+        let res = hex::decode(&value).map_err(|_e| Error::ConversionFailed)?;
         Ok(Authorisation(res))
     }
 }
 
-pub type PlainText<KEM> = <<KEM as Kem>::KeyPair as KeyPair>::PublicKey;
 pub type CipherText = cover_crypt_core::Encapsulation<Authorisation>;
 pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Authorisation, KEM>;
 pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Authorisation, KEM>;
@@ -268,18 +243,6 @@ mod tests {
             cc.generate_symmetric_key(&policy, &mpk, &access_policy, KEY_LENGTH)?;
         let recovered_key = cc.decrypt_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
         eyre::ensure!(key == recovered_key, "Wrong decryption of the key!");
-        Ok(())
-    }
-
-    #[test]
-    fn test_from_string() -> Result<(), Error> {
-        let auth = Authorisation(vec![
-            169, 67, 53, 110, 173, 4, 225, 240, 8, 219, 96, 107, 68, 33, 175, 151, 235, 19, 100,
-            226, 138, 20, 29, 121, 33, 255, 124, 35, 22, 240, 183, 80,
-        ]);
-        let my_string = auth.to_string();
-        let res = Authorisation::try_from(my_string)?;
-        assert_eq!(auth, res);
         Ok(())
     }
 }

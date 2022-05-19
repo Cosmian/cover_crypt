@@ -55,6 +55,8 @@ pub enum Error {
     InvalidAttribute(String),
     #[error("json parsing error: {0}")]
     JsonParsing(String),
+    #[error("{0}")]
+    Other(String),
 }
 
 impl From<TryFromIntError> for Error {
