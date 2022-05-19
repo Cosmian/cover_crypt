@@ -1,5 +1,5 @@
 use crate::{
-    api::{CoverCrypt, PrivateKey, PublicKey},
+    api::{self, CoverCrypt, PrivateKey, PublicKey},
     error::Error,
     policy::{AccessPolicy, Attribute, Policy},
 };
@@ -83,8 +83,10 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     })
 }
 
-/// Decrypt with a user decryption key an encrypted header
-/// of a resource encrypted using an hybrid crypto scheme.
+/// Decrypt the gven header bytes using a user decryption key.
+///
+/// - `user_decryption_key` : private key to use for decryption
+/// - `header_bytes`        : encrypted header bytes
 pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     user_decryption_key: &PrivateKey<KEM>,
     header_bytes: &[u8],
@@ -99,11 +101,12 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
 
     // decrypt the symmetric key
     let cover_crypt = CoverCrypt::<KEM>::default();
-    let K = cover_crypt.decrypt_symmetric_key(
-        user_decryption_key,
-        &serde_json::from_slice(&E).map_err(|e| Error::JsonParsing(e.to_string()))?,
-        DEM::Key::LENGTH,
-    )?;
+    let E: api::CipherText =
+        serde_json::from_slice(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
+    for autorisation in E.keys() {
+        println!("required: {autorisation}");
+    }
+    let K = cover_crypt.decrypt_symmetric_key(user_decryption_key, &E, DEM::Key::LENGTH)?;
 
     // decrypt the metadata
     let metadata = DEM::decaps(&K, b"", &header_bytes[index..]).map_err(Error::CryptoError)?;
@@ -178,4 +181,81 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
     )
     .map_err(Error::CryptoError)?;
     Ok(block.clear_text_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmian_crypto_base::{
+        asymmetric::ristretto::X25519Crypto, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
+    };
+
+    #[test]
+    fn test_hybrid_encryption_decryption() -> Result<(), Error> {
+        //
+        // Policy settings
+        //
+        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
+        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
+        let mut policy = Policy::new(100)
+            .add_axis("Security Level", &sec_level_attributes, true)?
+            .add_axis("Department", &dept_attributes, false)?;
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let attributes = [
+            Attribute::new("Security Level", "Confidential"),
+            Attribute::new("Department", "HR"),
+            Attribute::new("Department", "FIN"),
+        ];
+        let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
+
+        //
+        // CoverCrypt setup
+        //
+        let cc = CoverCrypt::<X25519Crypto>::default();
+        let (msk, mpk) = cc.generate_master_keys(&policy)?;
+        let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
+        for autorisation in sk_u.keys() {
+            println!("{autorisation}");
+        }
+
+        //
+        // Encrypt/decrypt header
+        //
+        let metadata = Metadata {
+            uid: 1u32.to_be_bytes().to_vec(),
+            additional_data: None,
+        };
+        let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &policy,
+            &mpk,
+            &attributes,
+            Some(&metadata),
+        )?;
+        let res = decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &sk_u,
+            &encrypted_header.header_bytes,
+        )?;
+
+        assert_eq!(metadata, res.meta_data);
+
+        let message = b"My secret message";
+        let uid = b"user";
+        const MAX_CLEARTEXT_SIZE: usize = 256;
+        let encrypted_block = encrypt_hybrid_block::<
+            X25519Crypto,
+            Aes256GcmCrypto,
+            MAX_CLEARTEXT_SIZE,
+        >(&encrypted_header.symmetric_key, uid, 0, message)?;
+
+        let res = decrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEARTEXT_SIZE>(
+            &encrypted_header.symmetric_key,
+            uid,
+            0,
+            &encrypted_block,
+        )?;
+
+        assert_eq!(message.to_vec(), res);
+
+        Ok(())
+    }
 }

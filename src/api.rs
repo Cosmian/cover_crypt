@@ -5,17 +5,59 @@ use crate::{
 };
 use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, fmt::Display, marker::PhantomData, ops::DerefMut, sync::Mutex};
+use std::{
+    collections::HashSet, convert::TryFrom, fmt::Display, marker::PhantomData, ops::DerefMut,
+    sync::Mutex,
+};
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
 
 /// Authorisation associated to a KEM keypair
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
+#[serde(try_from = "String", into = "String")]
 pub struct Authorisation(Vec<u8>);
 
 impl Display for Authorisation {
-    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+impl From<Authorisation> for String {
+    fn from(a: Authorisation) -> Self {
+        format!("{a:?}")
+    }
+}
+
+impl TryFrom<String> for Authorisation {
+    type Error = Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let mut iterator = value.chars().skip(1);
+        let mut res = Vec::<u8>::new();
+        while let Some(c) = iterator.next() {
+            if c.is_numeric() {
+                let mut tmp = vec![c.to_digit(10).expect("should not fail")];
+                for c in iterator.by_ref() {
+                    if c.is_numeric() {
+                        tmp.push(c.to_digit(10).expect("should not fail"))
+                    } else {
+                        break;
+                    }
+                }
+                let n: u32 = tmp
+                    .iter()
+                    .rev()
+                    .enumerate()
+                    .map(|(i, n)| n * 10u32.pow(i as u32))
+                    .sum();
+                if n > 255 {
+                    return Err(Error::ConversionFailed);
+                } else {
+                    res.push(n as u8);
+                }
+            }
+        }
+        Ok(Authorisation(res))
     }
 }
 
@@ -160,9 +202,11 @@ impl<KEM: Kem> CoverCrypt<KEM> {
             &authorisations,
         )?;
         // expend keying data if needed
-        if sym_key_len > KEM::SECRET_KEY_LENGTH {
+        if sym_key_len > K.len() {
             K = cosmian_crypto_base::kdf::hkdf_256(&K, sym_key_len, KDF_INFO)
                 .map_err(Error::CryptoError)?;
+        } else {
+            K = K[..sym_key_len].to_owned();
         }
         Ok((K, E))
     }
@@ -181,11 +225,11 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         match cover_crypt_core::decaps::<_, KEM>(sk_u, c)? {
             None => Err(Error::InsufficientAccessPolicy),
             Some(key) => {
-                if sym_key_len > KEM::SECRET_KEY_LENGTH {
+                if sym_key_len > key.len() {
                     cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
                         .map_err(Error::CryptoError)
                 } else {
-                    Ok(key)
+                    Ok(key[..sym_key_len].to_owned())
                 }
             }
         }
@@ -213,18 +257,29 @@ mod tests {
         let mut policy = Policy::new(100)
             .add_axis("Security Level", &sec_level_attributes, true)?
             .add_axis("Department", &dept_attributes, false)?;
-        let access_policy = AccessPolicy::new("Department", "R&D")
-            & AccessPolicy::new("Security Level", "Top Secret");
-        // rotate an attributes
         policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let access_policy = (AccessPolicy::new("Department", "R&D")
+            | AccessPolicy::new("Department", "FIN"))
+            & AccessPolicy::new("Security Level", "Top Secret");
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        print!("there");
         let (key, encrypted_key) =
             cc.generate_symmetric_key(&policy, &mpk, &access_policy, KEY_LENGTH)?;
         let recovered_key = cc.decrypt_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
         eyre::ensure!(key == recovered_key, "Wrong decryption of the key!");
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_string() -> Result<(), Error> {
+        let auth = Authorisation(vec![
+            169, 67, 53, 110, 173, 4, 225, 240, 8, 219, 96, 107, 68, 33, 175, 151, 235, 19, 100,
+            226, 138, 20, 29, 121, 33, 255, 124, 35, 22, 240, 183, 80,
+        ]);
+        let my_string = auth.to_string();
+        let res = Authorisation::try_from(my_string)?;
+        assert_eq!(auth, res);
         Ok(())
     }
 }

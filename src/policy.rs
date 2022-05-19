@@ -205,7 +205,13 @@ impl AccessPolicy {
                             }
                         }
                     } else {
-                        res.push(policy.attribute_values(attr)?);
+                        res.extend(
+                            policy
+                                .attribute_values(attr)?
+                                .iter()
+                                .map(|&value| vec![value])
+                                .collect::<Vec<Vec<u32>>>(),
+                        );
                     }
                 } else {
                     return Err(Error::UnknownAuthorisation(attr.axis()));
@@ -943,13 +949,18 @@ mod tests {
     fn test_to_attribute_combinations() -> Result<(), Error> {
         let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
         let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-        let policy = Policy::new(100)
+        let mut policy = Policy::new(100)
             .add_axis("Security Level", &sec_level_attributes, true)?
             .add_axis("Department", &dept_attributes, false)?;
-        let access_policy = AccessPolicy::new("Department", "HR")
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let access_policy = (AccessPolicy::new("Department", "HR")
+            | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Confidential");
         let combinations = access_policy.to_attribute_combinations(&policy)?;
+        let axes: Vec<&String> = policy.store().keys().collect();
+        let world = walk_hypercube(0, &axes, &policy)?;
         println!("{combinations:?}");
+        println!("{world:?}");
         Ok(())
     }
 }
