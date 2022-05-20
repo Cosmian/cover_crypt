@@ -612,14 +612,13 @@ impl From<Attribute> for AccessPolicy {
 // If `hierarchical` is `true`, we assume a lexicographical order based on the
 // attribute name
 #[derive(Clone)]
-pub(crate) struct PolicyAxis {
+pub struct PolicyAxis {
     name: String,
     attributes: Vec<String>,
     hierarchical: bool,
 }
 
 impl PolicyAxis {
-    #[must_use]
     pub fn new(name: &str, attributes: &[&str], hierarchical: bool) -> Self {
         Self {
             name: name.to_owned(),
@@ -628,7 +627,11 @@ impl PolicyAxis {
         }
     }
 
-    #[must_use]
+    pub fn attributes(&self) -> &[String] {
+        &self.attributes
+    }
+
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.attributes.len()
     }
@@ -658,7 +661,6 @@ impl Display for Policy {
 }
 
 impl Policy {
-    #[must_use]
     pub fn new(nb_revocation: u32) -> Self {
         Self {
             last_attribute_value: 0,
@@ -672,7 +674,6 @@ impl Policy {
         &self.store
     }
 
-    #[must_use]
     pub fn max_attr(&self) -> u32 {
         self.max_attribute_value
     }
@@ -682,13 +683,7 @@ impl Policy {
     ///
     /// When the axis is hierarchical, attributes must be provided in descending
     /// order
-    pub fn add_axis(
-        mut self,
-        name: &str,
-        attributes: &[&str],
-        hierarchical: bool,
-    ) -> Result<Self, Error> {
-        let axis = PolicyAxis::new(name, attributes, hierarchical);
+    pub fn add_axis(&mut self, axis: &PolicyAxis) -> Result<(), Error> {
         if axis.len() > u32::MAX as usize {
             return Err(Error::CapacityOverflow);
         }
@@ -702,7 +697,7 @@ impl Policy {
         ) {
             // already exists, reinsert previous one
             self.store.insert(axis.name.clone(), attr);
-            return Err(Error::ExistingPolicy(axis.name));
+            return Err(Error::ExistingPolicy(axis.name.to_owned()));
         } else {
             for attr in &axis.attributes {
                 self.last_attribute_value += 1;
@@ -715,11 +710,11 @@ impl Policy {
                     .is_some()
                 {
                     // must never occurs as policy is a new one
-                    return Err(Error::ExistingPolicy(axis.name));
+                    return Err(Error::ExistingPolicy(axis.name.to_owned()));
                 }
             }
         }
-        Ok(self)
+        Ok(())
     }
 
     /// Rotate an attribute, changing its underlying value with that of an
@@ -800,44 +795,37 @@ pub(crate) fn walk_hypercube(
     axes: &[&String],
     policy: &Policy,
 ) -> Result<Vec<Vec<u32>>, Error> {
-    if current_axis == axes.len() {
-        // stop if we past the last axis
-        Ok(vec![])
-    } else {
-        // extract all attribute values from this axis
-        let axis_name = axes[current_axis];
-        let mut res: Vec<Vec<u32>> = vec![];
-        if let Some((attribute_names, _)) = &policy.store().get(axis_name) {
-            for name in attribute_names.iter() {
-                res.extend(
-                    policy
-                        .attribute_values(&Attribute::new(axis_name, name))?
-                        .iter()
-                        .map(|&u| vec![u])
-                        .collect::<Vec<Vec<u32>>>(),
-                );
-            }
-        } else {
-            return Err(Error::UnknownAuthorisation(format!("{:?}", axis_name)));
-        }
-
-        // combine these values with all attribute values from the next axis
-        let mut combinations: Vec<Vec<u32>> = vec![];
-        for v in res {
-            let other_values = walk_hypercube(current_axis + 1, axes, policy)?;
-            if !other_values.is_empty() {
-                for ov in other_values {
-                    let mut combined = Vec::with_capacity(ov.len() + v.len());
-                    combined.extend_from_slice(&v);
-                    combined.extend_from_slice(&ov);
-                    combinations.push(combined);
-                }
-            } else {
-                combinations.push(v);
-            }
-        }
-        Ok(combinations)
+    // get the current axis or return if there is no more axis
+    let axis = match axes.get(current_axis) {
+        None => return Ok(vec![]),
+        Some(axis) => *axis,
+    };
+    // extract all attribute values from this axis
+    let (attribute_names, _) = policy
+        .store()
+        .get(axis)
+        .ok_or_else(|| Error::UnknownAuthorisation(format!("{:?}", axis)))?;
+    // there will be at least one value per attribute name
+    let mut res = Vec::with_capacity(attribute_names.len());
+    for name in attribute_names.iter() {
+        res.extend(policy.attribute_values(&Attribute::new(axis, name))?);
     }
+    // combine these values with all attribute values from the next axis
+    let mut combinations: Vec<Vec<u32>> = vec![];
+    for value in res {
+        let other_values = walk_hypercube(current_axis + 1, axes, policy)?;
+        if other_values.is_empty() {
+            combinations.push(vec![value]);
+        } else {
+            for ov in other_values {
+                let mut combined = Vec::with_capacity(1 + ov.len());
+                combined.push(value);
+                combined.extend_from_slice(&ov);
+                combinations.push(combined);
+            }
+        }
+    }
+    Ok(combinations)
 }
 
 #[cfg(test)]
@@ -847,20 +835,21 @@ mod tests {
 
     #[test]
     fn test_policy_attributes() -> Result<(), Error> {
-        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
-        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-        let mut policy = Policy::new(100)
-            .add_axis("Security Level", &sec_level_attributes, true)?
-            .add_axis("Department", &dept_attributes, false)?;
-        let attributes = policy.attributes();
-        assert_eq!(
-            sec_level_attributes.len() + dept_attributes.len(),
-            attributes.len()
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
         );
-        for att in sec_level_attributes {
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
+        let attributes = policy.attributes();
+        assert_eq!(sec_level.len() + department.len(), attributes.len());
+        for att in sec_level.attributes() {
             assert!(attributes.contains(&Attribute::new("Security Level", att)))
         }
-        for att in dept_attributes {
+        for att in department.attributes() {
             assert!(attributes.contains(&Attribute::new("Department", att)))
         }
         for attribute in &attributes {
@@ -886,11 +875,15 @@ mod tests {
 
     #[test]
     fn test_hypercube() -> Result<(), Error> {
-        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
-        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-        let mut policy = Policy::new(100)
-            .add_axis("Security Level", &sec_level_attributes, true)?
-            .add_axis("Department", &dept_attributes, false)?;
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
+        );
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
         // rotate an attributes
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         let axes: Vec<&String> = policy.store().keys().collect();
@@ -951,11 +944,15 @@ mod tests {
 
     #[test]
     fn test_to_attribute_combinations() -> Result<(), Error> {
-        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
-        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-        let mut policy = Policy::new(100)
-            .add_axis("Security Level", &sec_level_attributes, true)?
-            .add_axis("Department", &dept_attributes, false)?;
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
+        );
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         let access_policy = (AccessPolicy::new("Department", "HR")
             | AccessPolicy::new("Department", "FIN"))

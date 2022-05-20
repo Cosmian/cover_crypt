@@ -5,7 +5,7 @@ use crate::{
         statics::{ClearTextHeader, EncryptedHeader},
         wasm_bindgen::hybrid_gpsw_aes::*,
     },
-    policy::{AccessPolicy, Attribute, Policy},
+    policy::{AccessPolicy, Attribute, Policy, PolicyAxis},
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
@@ -51,13 +51,15 @@ pub fn test_non_reg_decrypt_hybrid_header() {
     //
     // Policy settings
     //
-    let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
-    let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-    let mut policy = Policy::new(100)
-        .add_axis("Security Level", &sec_level_attributes, true)
-        .unwrap()
-        .add_axis("Department", &dept_attributes, false)
-        .unwrap();
+    let sec_level = PolicyAxis::new(
+        "Security Level",
+        &["Protected", "Confidential", "Top Secret"],
+        true,
+    );
+    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+    let mut policy = Policy::new(100);
+    policy.add_axis(&sec_level).unwrap();
+    policy.add_axis(&department).unwrap();
     policy.rotate(&Attribute::new("Department", "FIN")).unwrap();
     let attributes = [
         Attribute::new("Security Level", "Confidential"),

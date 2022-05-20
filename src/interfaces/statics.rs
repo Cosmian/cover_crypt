@@ -188,6 +188,8 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
 
 #[cfg(test)]
 mod tests {
+    use crate::policy::PolicyAxis;
+
     use super::*;
     use cosmian_crypto_base::{
         asymmetric::ristretto::X25519Crypto, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
@@ -198,11 +200,15 @@ mod tests {
         //
         // Policy settings
         //
-        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
-        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-        let mut policy = Policy::new(100)
-            .add_axis("Security Level", &sec_level_attributes, true)?
-            .add_axis("Department", &dept_attributes, false)?;
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
+        );
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         let attributes = [
             Attribute::new("Security Level", "Confidential"),

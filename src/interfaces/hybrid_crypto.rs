@@ -84,7 +84,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy::Attribute;
+    use crate::policy::{Attribute, PolicyAxis};
     use cosmian_crypto_base::{asymmetric::ristretto::X25519Crypto, entropy::CsRng};
 
     #[test]
@@ -92,11 +92,15 @@ mod tests {
         //
         // Setup policy
         //
-        let sec_level_attributes = vec!["Protected", "Confidential", "Top Secret"];
-        let dept_attributes = vec!["R&D", "HR", "MKG", "FIN"];
-        let mut policy = Policy::new(100)
-            .add_axis("Security Level", &sec_level_attributes, true)?
-            .add_axis("Department", &dept_attributes, false)?;
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
+        );
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
         let access_policy = AccessPolicy::new("Department", "R&D")
             & AccessPolicy::new("Security Level", "Top Secret");
         policy.rotate(&Attribute::new("Department", "FIN"))?;
