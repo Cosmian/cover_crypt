@@ -90,11 +90,11 @@ unsafe fn decrypt_header(
     let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-    let mut uid = vec![0u8; 4096];
+    let mut uid = vec![0u8; 8128];
     let uid_ptr = uid.as_mut_ptr() as *mut c_char;
     let mut uid_len = uid.len() as c_int;
 
-    let mut additional_data = vec![0u8; 4096];
+    let mut additional_data = vec![0u8; 8128];
     let additional_data_ptr = additional_data.as_mut_ptr() as *mut c_char;
     let mut additional_data_len = additional_data.len() as c_int;
 
@@ -140,7 +140,7 @@ unsafe fn decrypt_header(
 
 unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
     if val != 0 {
-        let mut message_bytes_key = vec![0u8; 4096];
+        let mut message_bytes_key = vec![0u8; 8128];
         let message_bytes_ptr = message_bytes_key.as_mut_ptr() as *mut c_char;
         let mut message_bytes_len = message_bytes_key.len() as c_int;
         get_last_error(message_bytes_ptr, &mut message_bytes_len);
@@ -212,177 +212,196 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
     Ok(())
 }
 
-//unsafe fn encrypt_header_using_cache(
-//meta_data: &Metadata,
-//) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
-//let public_key_json: Value = serde_json::from_str(include_str!(
-//"../hybrid_crypto/tests/public_master_key.json"
-//))?;
-//let key_value = &public_key_json["value"][0]["value"][1]["value"];
+unsafe fn encrypt_header_using_cache(
+    public_key: &PublicKey,
+    policy: &Policy,
+    meta_data: &Metadata,
+) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
+    let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let policy_ptr = policy_cs.as_ptr();
 
-//// Public Key bytes
-//let hex_key = &key_value[0]["value"].as_str().unwrap();
-//let public_key = PublicKey::from_bytes(&hex::decode(hex_key)?)?;
+    let public_key_bytes = serde_json::to_vec(public_key)?;
+    let public_key_ptr = public_key_bytes.as_ptr() as *const c_char;
+    let public_key_len = public_key_bytes.len() as i32;
 
-//// Policy
-//let policy_hex = key_value[1]["value"][4]["value"][0]["value"][2]["value"]
-//.as_str()
-//.unwrap();
-//let policy: Policy = serde_json::from_slice(&hex::decode(policy_hex)?)?;
+    let mut cache_handle: i32 = 0;
 
-//let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())?;
-//let policy_ptr = policy_cs.as_ptr();
+    unwrap_ffi_error(h_aes_create_encryption_cache(
+        &mut cache_handle,
+        policy_ptr,
+        public_key_ptr,
+        public_key_len,
+    ))?;
 
-//let public_key_bytes = public_key.as_bytes()?;
-//let public_key_ptr = public_key_bytes.as_ptr() as *const c_char;
-//let public_key_len = public_key_bytes.len() as i32;
+    let attributes = Attributes::from(vec![
+        Attribute::new("Department", "FIN"),
+        Attribute::new("Security Level", "Confidential"),
+    ]);
 
-//let mut cache_handle: i32 = 0;
+    let mut symmetric_key = vec![0u8; 32];
+    let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
+    let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-//unwrap_ffi_error(h_aes_create_encryption_cache(
-//&mut cache_handle,
-//policy_ptr,
-//public_key_ptr,
-//public_key_len,
-//))?;
+    let mut encrypted_header_bytes = vec![0u8; 8128];
+    let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr() as *mut c_char;
+    let mut encrypted_header_len = encrypted_header_bytes.len() as c_int;
 
-//let policy_attributes = vec![
-//attr("Department", "FIN"),
-//attr("Security Level", "Confidential"),
-//];
+    let attributes_json = CString::new(serde_json::to_string(&attributes)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let attributes_ptr = attributes_json.as_ptr();
 
-//let mut symmetric_key = vec![0u8; 32];
-//let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
-//let mut symmetric_key_len = symmetric_key.len() as c_int;
+    unwrap_ffi_error(h_aes_encrypt_header_using_cache(
+        symmetric_key_ptr,
+        &mut symmetric_key_len,
+        encrypted_header_ptr,
+        &mut encrypted_header_len,
+        cache_handle,
+        attributes_ptr,
+        meta_data.uid.as_ptr() as *const c_char,
+        meta_data.uid.len() as i32,
+        meta_data.additional_data.as_ref().unwrap().as_ptr() as *const c_char,
+        meta_data.additional_data.as_ref().unwrap().len() as i32,
+    ))?;
 
-//let mut encrypted_header_bytes = vec![0u8; 4096];
-//let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr() as *mut c_char;
-//let mut encrypted_header_len = encrypted_header_bytes.len() as c_int;
+    let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
+        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
+            .to_vec(),
+    )
+    .map_err(|e| Error::Other(e.to_string()))?;
 
-//let attributes_json = CString::new(serde_json::to_string(&policy_attributes)?.as_str())?;
-//let attributes_ptr = attributes_json.as_ptr();
+    let encrypted_header_bytes_ = std::slice::from_raw_parts(
+        encrypted_header_ptr as *const u8,
+        encrypted_header_len as usize,
+    )
+    .to_vec();
 
-//unwrap_ffi_error(h_aes_encrypt_header_using_cache(
-//symmetric_key_ptr,
-//&mut symmetric_key_len,
-//encrypted_header_ptr,
-//&mut encrypted_header_len,
-//cache_handle,
-//attributes_ptr,
-//meta_data.uid.as_ptr() as *const c_char,
-//meta_data.uid.len() as i32,
-//meta_data.additional_data.as_ref().unwrap().as_ptr() as *const c_char,
-//meta_data.additional_data.as_ref().unwrap().len() as i32,
-//))?;
+    unwrap_ffi_error(h_aes_destroy_encryption_cache(cache_handle))?;
 
-//let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
-//std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-//.to_vec(),
-//)?;
+    Ok(EncryptedHeader {
+        symmetric_key: symmetric_key_,
+        header_bytes: encrypted_header_bytes_,
+    })
+}
 
-//let encrypted_header_bytes_ = std::slice::from_raw_parts(
-//encrypted_header_ptr as *const u8,
-//encrypted_header_len as usize,
-//)
-//.to_vec();
+unsafe fn decrypt_header_using_cache(
+    user_decryption_key: &UserDecryptionKey,
+    header: &EncryptedHeader<Aes256GcmCrypto>,
+) -> Result<DecryptedHeader, Error> {
+    let user_decryption_key_bytes =
+        serde_json::to_vec(user_decryption_key).map_err(|e| Error::Other(e.to_string()))?;
+    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;
+    let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
-//unwrap_ffi_error(h_aes_destroy_encryption_cache(cache_handle))?;
+    let mut cache_handle: i32 = 0;
 
-//Ok(EncryptedHeader {
-//symmetric_key: symmetric_key_,
-//encrypted_header_bytes: encrypted_header_bytes_,
-//})
-//}
+    unwrap_ffi_error(h_aes_create_decryption_cache(
+        &mut cache_handle,
+        user_decryption_key_ptr,
+        user_decryption_key_len,
+    ))?;
 
-//unsafe fn decrypt_header_using_cache(
-//header: &EncryptedHeader<Aes256GcmCrypto>,
-//) -> Result<DecryptedHeader, Error> {
-//let user_decryption_key_json: Value = serde_json::from_str(include_str!(
-//"../hybrid_crypto/tests/fin_confidential_user_key.json"
-//))?;
-//let key_value = &user_decryption_key_json["value"][0]["value"][1]["value"];
-//let hex_key = &key_value[0]["value"].as_str().unwrap();
-//let user_decryption_key = UserDecryptionKey::from_bytes(&hex::decode(hex_key)?)?;
+    let mut symmetric_key = vec![0u8; 32];
+    let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
+    let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-//let user_decryption_key_bytes = user_decryption_key.as_bytes()?;
-//let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;
-//let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
+    let mut uid = vec![0u8; 8128];
+    let uid_ptr = uid.as_mut_ptr() as *mut c_char;
+    let mut uid_len = uid.len() as c_int;
 
-//let mut cache_handle: i32 = 0;
+    let mut additional_data = vec![0u8; 8128];
+    let additional_data_ptr = additional_data.as_mut_ptr() as *mut c_char;
+    let mut additional_data_len = additional_data.len() as c_int;
 
-//unwrap_ffi_error(h_aes_create_decryption_cache(
-//&mut cache_handle,
-//user_decryption_key_ptr,
-//user_decryption_key_len,
-//))?;
+    unwrap_ffi_error(h_aes_decrypt_header_using_cache(
+        symmetric_key_ptr,
+        &mut symmetric_key_len,
+        uid_ptr,
+        &mut uid_len,
+        additional_data_ptr,
+        &mut additional_data_len,
+        header.header_bytes.as_ptr() as *const c_char,
+        header.header_bytes.len() as c_int,
+        cache_handle,
+    ))?;
 
-//let mut symmetric_key = vec![0u8; 32];
-//let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
-//let mut symmetric_key_len = symmetric_key.len() as c_int;
+    let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
+        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
+            .to_vec(),
+    )
+    .map_err(|e| Error::Other(e.to_string()))?;
 
-//let mut uid = vec![0u8; 4096];
-//let uid_ptr = uid.as_mut_ptr() as *mut c_char;
-//let mut uid_len = uid.len() as c_int;
+    let uid_bytes_ = std::slice::from_raw_parts(uid_ptr as *const u8, uid_len as usize).to_vec();
 
-//let mut additional_data = vec![0u8; 4096];
-//let additional_data_ptr = additional_data.as_mut_ptr() as *mut c_char;
-//let mut additional_data_len = additional_data.len() as c_int;
+    let additional_data_bytes_ = std::slice::from_raw_parts(
+        additional_data_ptr as *const u8,
+        additional_data_len as usize,
+    )
+    .to_vec();
 
-//unwrap_ffi_error(h_aes_decrypt_header_using_cache(
-//symmetric_key_ptr,
-//&mut symmetric_key_len,
-//uid_ptr,
-//&mut uid_len,
-//additional_data_ptr,
-//&mut additional_data_len,
-//header.encrypted_header_bytes.as_ptr() as *const c_char,
-//header.encrypted_header_bytes.len() as c_int,
-//cache_handle,
-//))?;
+    unwrap_ffi_error(h_aes_destroy_decryption_cache(cache_handle))?;
 
-//let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
-//std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-//.to_vec(),
-//)?;
+    Ok(DecryptedHeader {
+        symmetric_key: symmetric_key_,
+        meta_data: Metadata {
+            uid: uid_bytes_,
+            additional_data: Some(additional_data_bytes_),
+        },
+    })
+}
 
-//let uid_bytes_ = std::slice::from_raw_parts(uid_ptr as *const u8, uid_len as usize).to_vec();
+#[test]
+fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
+    unsafe {
+        //
+        // Policy settings
+        //
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
+        );
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let attributes = Attributes::from(vec![
+            Attribute::new("Security Level", "Confidential"),
+            Attribute::new("Department", "HR"),
+            Attribute::new("Department", "FIN"),
+        ]);
+        let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
-//let additional_data_bytes_ = std::slice::from_raw_parts(
-//additional_data_ptr as *const u8,
-//additional_data_len as usize,
-//)
-//.to_vec();
+        //
+        // CoverCrypt setup
+        //
+        let cc = CoverCrypt::<X25519Crypto>::default();
+        let (msk, mpk) = cc.generate_master_keys(&policy)?;
+        let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
+        for autorisation in sk_u.keys() {
+            println!("{autorisation}");
+        }
 
-//unwrap_ffi_error(h_aes_destroy_decryption_cache(cache_handle))?;
+        //
+        // Encrypt / decrypt
+        //
+        let meta_data = Metadata {
+            uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+            additional_data: Some(vec![10, 11, 12, 13, 14]),
+        };
+        let encrypted_header = encrypt_header_using_cache(&mpk, &policy, &meta_data)?;
+        let decrypted_header = decrypt_header_using_cache(&sk_u, &encrypted_header)?;
 
-//Ok(DecryptedHeader {
-//symmetric_key: symmetric_key_,
-//meta_data: Metadata {
-//uid: uid_bytes_,
-//additional_data: Some(additional_data_bytes_),
-//},
-//})
-//}
-
-//#[test]
-//fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
-//unsafe {
-//let meta_data = Metadata {
-//uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-//additional_data: Some(vec![10, 11, 12, 13, 14]),
-//};
-//let encrypted_header = encrypt_header_using_cache(&meta_data)?;
-//let decrypted_header = decrypt_header_using_cache(&encrypted_header)?;
-
-//assert_eq!(
-//encrypted_header.symmetric_key,
-//decrypted_header.symmetric_key
-//);
-//assert_eq!(&meta_data.uid, &decrypted_header.meta_data.uid);
-//assert_eq!(
-//&meta_data.additional_data,
-//&decrypted_header.meta_data.additional_data
-//);
-//}
-//Ok(())
-//}
+        assert_eq!(
+            encrypted_header.symmetric_key,
+            decrypted_header.symmetric_key
+        );
+        assert_eq!(&meta_data.uid, &decrypted_header.meta_data.uid);
+        assert_eq!(
+            &meta_data.additional_data,
+            &decrypted_header.meta_data.additional_data
+        );
+    }
+    Ok(())
+}
