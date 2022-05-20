@@ -3,16 +3,14 @@ use crate::{
     error::Error,
     policy::{self, AccessPolicy, Policy},
 };
-use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
+use cosmian_crypto_base::{entropy::CsRng, hybrid_crypto::Kem};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashSet, convert::TryFrom, fmt::Display, marker::PhantomData, ops::DerefMut,
-    sync::Mutex,
-};
+use std::{convert::TryFrom, fmt::Display, marker::PhantomData, ops::DerefMut, sync::Mutex};
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
 
-/// Authorisation associated to a KEM keypair
+/// Authorisation associated to a KEM keypair. It corresponds to a combination
+/// of attributes.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
 #[serde(try_from = "String", into = "String")]
 pub struct Authorisation(Vec<u8>);
@@ -37,10 +35,19 @@ impl TryFrom<String> for Authorisation {
     }
 }
 
+/// Ciphertext of the CoverCrypt algorithm. This is a `HashMap` of the KEM
+/// encapsulations for some authorisations.
 pub type CipherText = cover_crypt_core::Encapsulation<Authorisation>;
+
+/// Private key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
+/// private keys for some authorisations.
 pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Authorisation, KEM>;
+
+/// Public key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
+/// public keys for some authorisations.
 pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Authorisation, KEM>;
 
+/// CoverCrypt public and private key pair.
 #[derive(Clone, PartialEq)]
 pub struct CCKeyPair<KEM: Kem> {
     pub(crate) pk: PublicKey<KEM>,
@@ -71,7 +78,7 @@ pub struct CoverCrypt<KEM> {
 }
 
 impl<KEM: Kem> CoverCrypt<KEM> {
-    /// Instantiate a new ABE engine for the given Policy
+    /// Instantiate a new CoverCrypt object.
     pub fn new() -> Self {
         Self {
             rng: Mutex::new(CsRng::new()),
@@ -88,10 +95,10 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     ) -> Result<(PrivateKey<KEM>, PublicKey<KEM>), Error> {
         // walk the hypercube to recover all the combinations and hash them
         let axes: Vec<&String> = policy.store().keys().collect();
-        let keys: HashSet<Authorisation> = policy::walk_hypercube(0, axes.as_slice(), policy)?
+        let keys = policy::walk_hypercube(0, axes.as_slice(), policy)?
             .iter()
             .map(|combination| Authorisation(policy::get_key_hash(combination)))
-            .collect::<HashSet<Authorisation>>();
+            .collect();
         Ok(cover_crypt_core::setup::<_, CsRng, KEM>(
             &mut self.rng.lock().expect("a mutex lock failed"),
             &keys,
@@ -114,7 +121,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
             .to_attribute_combinations(policy)?
             .iter()
             .map(|comb| Authorisation(policy::get_key_hash(comb)))
-            .collect::<HashSet<Authorisation>>();
+            .collect();
         // generate the corresponding user key
         cover_crypt_core::join::<_, KEM>(msk, &keys)
     }
@@ -130,24 +137,20 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PublicKey<KEM>, Error> {
-        // get the key hash associated with the given access policy
-        let authorisations = access_policy
+        access_policy
             .to_attribute_combinations(policy)?
             .iter()
-            .map(|comb| Authorisation(policy::get_key_hash(comb)))
-            .collect::<HashSet<Authorisation>>();
-        // generate the corresponding user key
-
-        authorisations.iter()
-            .map(
-                |authorisation| -> Result<(Authorisation, <KEM::KeyPair as KeyPair>::PublicKey), Error> {
-                    match mpk.get(authorisation) {
-                        Some(key) => Ok((authorisation.to_owned(), key.to_owned())),
-                        None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
-                    }
-                },
-            )
-            .collect::<Result<PublicKey<KEM>, Error>>()
+            .map(|comb| {
+                let authorisation = Authorisation(policy::get_key_hash(comb));
+                // authorisation should be contained in the master key in
+                // order to generate a valid user key
+                let kem_public_key = mpk
+                    .get(&authorisation)
+                    .ok_or_else(|| Error::UnknownAuthorisation(format!("{:?}", authorisation)))?;
+                Ok((authorisation.to_owned(), kem_public_key.to_owned()))
+            })
+            // `PublicKey` is an alias to a `HashMap` which is collected here
+            .collect()
     }
 
     /// Generate a random symmetric key of `symmetric_key_len` to be used in an
@@ -170,7 +173,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
             .to_attribute_combinations(policy)?
             .iter()
             .map(|comb| Authorisation(policy::get_key_hash(comb)))
-            .collect::<HashSet<Authorisation>>();
+            .collect();
         let (mut K, E) = cover_crypt_core::encaps::<_, _, KEM>(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
@@ -197,16 +200,13 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         c: &CipherText,
         sym_key_len: usize,
     ) -> Result<Vec<u8>, Error> {
-        match cover_crypt_core::decaps::<_, KEM>(sk_u, c)? {
-            None => Err(Error::InsufficientAccessPolicy),
-            Some(key) => {
-                if sym_key_len > key.len() {
-                    cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
-                        .map_err(Error::CryptoError)
-                } else {
-                    Ok(key[..sym_key_len].to_owned())
-                }
-            }
+        let key =
+            cover_crypt_core::decaps::<_, KEM>(sk_u, c)?.ok_or(Error::InsufficientAccessPolicy)?;
+        if sym_key_len > key.len() {
+            cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
+                .map_err(Error::CryptoError)
+        } else {
+            Ok(key[..sym_key_len].to_owned())
         }
     }
 }

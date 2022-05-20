@@ -8,15 +8,18 @@ use cosmian_crypto_base::{
     hybrid_crypto::{Block, Dem, Kem, Metadata},
     KeyTrait,
 };
+use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 
 /// An EncryptedHeader returned by the `encrypt_hybrid_header` function
+#[derive(Serialize, Deserialize)]
 pub struct EncryptedHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub header_bytes: Vec<u8>,
 }
 
 /// A ClearTextHeader returned by the `decrypt_hybrid_header` function
+#[derive(Serialize, Deserialize)]
 pub struct ClearTextHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub meta_data: Metadata,

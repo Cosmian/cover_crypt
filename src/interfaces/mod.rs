@@ -6,6 +6,6 @@ pub mod statics;
 pub mod ffi;
 
 //#[cfg(feature = "wasm_bindgen")]
-//pub mod wasm_bindgen;
+pub mod wasm_bindgen;
 
 //pub mod wasi;

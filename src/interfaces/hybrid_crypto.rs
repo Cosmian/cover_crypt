@@ -35,9 +35,6 @@ impl<KEM: Kem> CoverCrypt<KEM> {
 
     /// Encrypt the given message using the use public key.
     ///
-    /// TODO: the problem with using a complex ciphertext is that it cannot be
-    /// serialised easily
-    ///
     /// - `rng` : secure random number generator
     /// - `pk`  : user public key used for encryption
     /// - `L`   : label to use for encryption
@@ -60,14 +57,6 @@ impl<KEM: Kem> CoverCrypt<KEM> {
             <Aes256GcmCrypto as SymmetricCrypto>::Key::LENGTH,
         )?;
         let E2 = Aes256GcmCrypto::encaps(rng, &K, l, m).map_err(Error::CryptoError)?;
-        // allocate the correct number of bytes for the ciphertext
-        //let mut res = Vec::with_capacity(
-        //<KEM as cosmian_crypto_base::hybrid_crypto::Kem>::ENCAPSULATION_SIZE
-        //+ <Aes256GcmCrypto as cosmian_crypto_base::hybrid_crypto::Dem>::ENCRYPTION_OVERHEAD
-        //+ m.len(),
-        //);
-        //res.append(&mut E1);
-        //res.append(&mut E2);
         Ok((E1, E2))
     }
 

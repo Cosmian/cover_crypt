@@ -181,6 +181,8 @@ impl AccessPolicy {
     /// Returns the list of combinations that can be built using the values of
     /// each attribute in the given access policy. This corresponds to an OR
     /// expression of AND expressions.
+    ///
+    /// - `policy`  : global policy
     pub(crate) fn to_attribute_combinations(
         &self,
         policy: &Policy,
@@ -188,42 +190,43 @@ impl AccessPolicy {
         match self {
             AccessPolicy::Attr(attr) => {
                 let mut res = vec![];
-                if let Some((attribute_names, is_hierarchical)) = &policy.store().get(&attr.axis())
-                {
-                    if *is_hierarchical {
-                        // add attribute values for all attributes below the given one
-                        for name in attribute_names.iter() {
-                            res.extend(
-                                policy
-                                    .attribute_values(&Attribute::new(&attr.axis(), name))?
-                                    .iter()
-                                    .map(|&value| vec![value])
-                                    .collect::<Vec<Vec<u32>>>(),
-                            );
-                            if *name == attr.name() {
-                                break;
-                            }
+                let (attribute_names, is_hierarchical) = policy
+                    .store()
+                    .get(&attr.axis())
+                    .ok_or_else(|| Error::UnknownAuthorisation(attr.axis()))?;
+                res.extend(
+                    policy
+                        .attribute_values(attr)?
+                        .iter()
+                        .map(|&value| vec![value])
+                        .collect::<Vec<Vec<u32>>>(),
+                );
+                if *is_hierarchical {
+                    // add attribute values for all attributes below the given one
+                    for name in attribute_names.iter() {
+                        if *name == attr.name() {
+                            break;
                         }
-                    } else {
                         res.extend(
                             policy
-                                .attribute_values(attr)?
+                                .attribute_values(&Attribute::new(&attr.axis(), name))?
                                 .iter()
                                 .map(|&value| vec![value])
                                 .collect::<Vec<Vec<u32>>>(),
                         );
                     }
-                } else {
-                    return Err(Error::UnknownAuthorisation(attr.axis()));
                 }
                 Ok(res)
             }
             AccessPolicy::And(attr1, attr2) => {
                 let mut res = vec![];
+                // avoid computing this many times
+                let attribut_list_2 = attr2.to_attribute_combinations(policy)?;
                 for value1 in attr1.to_attribute_combinations(policy)? {
-                    for value2 in attr2.to_attribute_combinations(policy)? {
-                        let mut combined = value1.to_vec();
-                        combined.extend(value2.to_vec());
+                    for value2 in attribut_list_2.iter() {
+                        let mut combined = Vec::with_capacity(value1.len() + value2.len());
+                        combined.extend_from_slice(&value1);
+                        combined.extend_from_slice(value2);
                         res.push(combined)
                     }
                 }
@@ -234,6 +237,7 @@ impl AccessPolicy {
                 res.extend(attr2.to_attribute_combinations(policy)?);
                 Ok(res)
             }
+            // TODO: check if this is correct
             AccessPolicy::All => Ok(vec![vec![]]),
         }
     }
@@ -300,9 +304,9 @@ impl AccessPolicy {
         }
         let access_policy = access_policies
             .iter()
-            .map(|ap| ap.to_owned())
+            .cloned()
             .reduce(BitAnd::bitand)
-            .ok_or_else(|| Error::MissingAxis("axis".to_string()))?;
+            .ok_or_else(|| Error::MissingAxis("Empty input!".to_string()))?;
         Ok(access_policy)
     }
 
@@ -318,13 +322,8 @@ impl AccessPolicy {
     pub fn from_attribute_list(attributes: &[Attribute]) -> Result<Self, Error> {
         let mut map = HashMap::<String, Vec<String>>::new();
         for attribute in attributes.iter() {
-            if let Some(names) = map.get(&attribute.axis()) {
-                let mut names = names.to_owned();
-                names.push(attribute.name());
-                map.insert(attribute.axis(), names.to_owned());
-            } else {
-                map.insert(attribute.axis(), vec![attribute.name()]);
-            }
+            let entry = map.entry(attribute.axis()).or_insert(Vec::new());
+            entry.push(attribute.name());
         }
         Self::from_axes(&map)
     }
@@ -777,8 +776,12 @@ impl Policy {
 /// - `combination` : attribute combination
 pub(crate) fn get_key_hash(combination: &[u32]) -> Vec<u8> {
     let mut combination = combination.to_owned();
+    // the sort operation allows to get the same hash for :
+    // `Department::HR || Department::FIN`
+    // and
+    // `Department::FIN || Department::HR`
     combination.sort_unstable();
-    let mut bytes: Vec<u8> = vec![];
+    let mut bytes = Vec::with_capacity(combination.len() * 4);
     for value in combination {
         bytes.extend(value.to_be_bytes())
     }
@@ -820,16 +823,17 @@ pub(crate) fn walk_hypercube(
 
         // combine these values with all attribute values from the next axis
         let mut combinations: Vec<Vec<u32>> = vec![];
-        for v in &res {
+        for v in res {
             let other_values = walk_hypercube(current_axis + 1, axes, policy)?;
             if !other_values.is_empty() {
                 for ov in other_values {
-                    let mut combined = v.to_vec();
-                    combined.extend(ov);
+                    let mut combined = Vec::with_capacity(ov.len() + v.len());
+                    combined.extend_from_slice(&v);
+                    combined.extend_from_slice(&ov);
                     combinations.push(combined);
                 }
             } else {
-                combinations.push(v.to_vec());
+                combinations.push(v);
             }
         }
         Ok(combinations)
