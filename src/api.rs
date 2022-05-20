@@ -85,10 +85,12 @@ pub struct CCKeyPair<KEM: Kem> {
 }
 
 impl<KEM: Kem> CCKeyPair<KEM> {
+    /// Return the public key.
     pub fn public_key(&self) -> &PublicKey<KEM> {
         &self.pk
     }
 
+    /// Return the private key.
     pub fn private_key(&self) -> &PrivateKey<KEM> {
         &self.sk
     }

@@ -70,14 +70,12 @@ where
     KEM: Kem,
 {
     U.iter()
-        .map(
-            |partition| -> Result<(A, <KEM::KeyPair as KeyPair>::PrivateKey), Error> {
-                let kem_private_ley = msk
-                    .get(partition)
-                    .ok_or_else(|| Error::UnknownPartition(format!("{:?}", partition)))?;
-                Ok((partition.to_owned(), kem_private_ley.to_owned()))
-            },
-        )
+        .map(|partition| {
+            let kem_private_ley = msk
+                .get(partition)
+                .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
+            Ok((partition.to_owned(), kem_private_ley.to_owned()))
+        })
         .collect::<Result<PrivateKey<A, KEM>, Error>>()
 }
 
@@ -108,23 +106,22 @@ where
     let K = utils::generate_random_bytes(rng, KEM::SECRET_KEY_LENGTH);
 
     // construct secret key encapsulation
-    let mut E = HashMap::with_capacity(T.len());
-    for partition in T.iter() {
-        match mpk.get(partition) {
-            Some(pk) => {
-                let (K_i, E_i) = KEM::encaps(rng, pk).map_err(Error::CryptoError)?;
-                E.insert(
-                    partition.to_owned(),
-                    (
-                        K_i.iter().zip(K.iter()).map(|(e1, e2)| e1 ^ e2).collect(),
-                        E_i,
-                    ),
-                );
-                Ok(())
-            }
-            None => Err(Error::UnknownPartition(format!("{:?}", partition))),
-        }?;
-    }
+    let E = T
+        .iter()
+        .map(|partition| {
+            let kem_public_key = mpk
+                .get(partition)
+                .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
+            let (K_i, E_i) = KEM::encaps(rng, kem_public_key).map_err(Error::CryptoError)?;
+            Ok((
+                partition.to_owned(),
+                (
+                    K_i.iter().zip(K.iter()).map(|(e1, e2)| e1 ^ e2).collect(),
+                    E_i,
+                ),
+            ))
+        })
+        .collect::<Result<Encapsulation<A>, Error>>()?;
 
     Ok((K, E))
 }
