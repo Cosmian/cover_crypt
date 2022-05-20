@@ -3,7 +3,7 @@ use crate::{
     api::{self, CoverCrypt},
     error::Error,
     interfaces::{ffi::error::get_last_error, statics::EncryptedHeader},
-    policy::{AccessPolicy, Attribute, Policy, PolicyAxis},
+    policy::{AccessPolicy, Attribute, Attributes, Policy, PolicyAxis},
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
@@ -22,7 +22,7 @@ type UserDecryptionKey = api::PrivateKey<X25519Crypto>;
 unsafe fn encrypt_header(
     meta_data: &Metadata,
     policy: &Policy,
-    attributes: &[Attribute],
+    attributes: &Attributes,
     public_key: &PublicKey,
 ) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
     let mut symmetric_key = vec![0u8; 32];
@@ -171,11 +171,11 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = [
+        let attributes = Attributes::from(vec![
             Attribute::new("Security Level", "Confidential"),
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
-        ];
+        ]);
         let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
         //

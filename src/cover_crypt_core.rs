@@ -59,6 +59,11 @@ where
 ///
 /// - `msk` : master secret key
 /// - `U`   : user authorisations
+///
+/// Join : `(msk, U) → skU`
+///
+/// For a user U, define skU as the set of secret keys ski for each i such that
+/// U ∈ Si (meaning U has rights associated to set Si).
 pub fn join<A, KEM>(msk: &PrivateKey<A, KEM>, U: &HashSet<A>) -> Result<PrivateKey<A, KEM>, Error>
 where
     A: Clone + Eq + Hash + Debug,
@@ -82,6 +87,13 @@ where
 /// - `mpk` : master public key
 /// - `T`   : target groups
 /// - `S`   : user groups
+///
+/// Encaps : `(mpk, T) → C = (K, Ci = (Ki ⊕ K, Ei)i∈A)`
+///
+/// Takes as input mpk and target set T. It first samples a random key K and
+/// express T as set of covering subsets, i.e T = ∪i∈ASi.
+/// Then for each i ∈ A, it invokes KEM.Encaps which Ci = (Ki, Ei)i∈A. It
+/// finally returns (K, C = (Ki ⊕ K, Ei)i∈A).
 pub fn encaps<A, R, KEM>(
     rng: &mut R,
     mpk: &PublicKey<A, KEM>,
@@ -124,6 +136,14 @@ where
 /// - `E`       : encapsulation
 /// - `T`       : target set
 /// - `S`       : list of all user groups
+///
+/// • Decaps: (skU, C) → K
+///
+/// Let T = ∪i∈BSi for some integers set B and A the indices of sets associated
+/// to C.
+/// If user U is in T, and there exists an index i ∈ A such that U is in
+/// Si ⊆ T, it invokes KEM.Decaps(ski, Ei) which gives Ki. Then using the
+/// corresponding Ci parsed as Ki', Ei, it obtains K = Ki' ⊕ Ki.
 pub fn decaps<A, KEM>(
     sk_u: &PrivateKey<A, KEM>,
     E: &Encapsulation<A>,

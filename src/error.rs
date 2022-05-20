@@ -24,8 +24,8 @@ pub enum Error {
         item: Option<String>,
         axis_name: Option<String>,
     },
-    #[error("{0} is missing")]
-    MissingAxis(String),
+    #[error("No axis given")]
+    MissingAxis,
     #[error("attribute {0} expected in {1:?}")]
     ExpectedAttribute(String, Vec<String>),
     #[error("unsupported operand {0}")]

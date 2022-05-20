@@ -1,7 +1,7 @@
 use crate::{
     api::{self, CoverCrypt, PrivateKey, PublicKey},
     error::Error,
-    policy::{AccessPolicy, Attribute, Policy},
+    policy::{AccessPolicy, Attributes, Policy},
 };
 use cosmian_crypto_base::{
     entropy::CsRng,
@@ -40,7 +40,7 @@ pub struct ClearTextHeader<DEM: Dem> {
 pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     policy: &Policy,
     public_key: &PublicKey<KEM>,
-    attributes: &[Attribute],
+    attributes: &Attributes,
     meta_data: Option<&Metadata>,
 ) -> Result<EncryptedHeader<DEM>, Error> {
     // generate symmetric key and its encapsulation
@@ -188,7 +188,7 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
 
 #[cfg(test)]
 mod tests {
-    use crate::policy::PolicyAxis;
+    use crate::policy::{Attribute, PolicyAxis};
 
     use super::*;
     use cosmian_crypto_base::{
@@ -210,11 +210,11 @@ mod tests {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = [
+        let attributes = Attributes::from(vec![
             Attribute::new("Security Level", "Confidential"),
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
-        ];
+        ]);
         let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
         //

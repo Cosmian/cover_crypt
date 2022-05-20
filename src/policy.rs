@@ -1,20 +1,21 @@
 #![allow(clippy::module_name_repetitions)]
 
 use crate::error::Error;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::{
     collections::{BinaryHeap, HashMap},
     convert::TryFrom,
     fmt::{Debug, Display},
-    ops::{BitAnd, BitOr},
+    ops::{BitAnd, BitOr, Deref},
 };
 
 const OPERATOR_SIZE: usize = 2;
 
 // An attribute in a policy group is characterized by the policy name (axis)
 // and its own particular name
-#[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "&str", into = "String")]
 pub struct Attribute {
     axis: String,
     name: String,
@@ -73,29 +74,17 @@ impl TryFrom<&str> for Attribute {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if s.is_empty() {
-            return Err(Error::InvalidAttribute(s.to_string()));
-        }
-        if s.matches("::").count() != 1 {
+        let (axis, name) = s.trim().split_once("::").ok_or_else(|| {
+            Error::InvalidAttribute(format!("at least one separator '::' expected in {s}"))
+        })?;
+
+        if name.contains("::") {
             return Err(Error::InvalidAttribute(format!(
-                "separator '::' expected once in {s}"
+                "separator '::' expected only once in {s}"
             )));
         }
 
-        let attribute_str = s.trim();
-        let split = attribute_str
-            .split("::")
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<_>>();
-        if split[0].is_empty() || split[1].is_empty() {
-            return Err(Error::InvalidAttribute(format!(
-                "empty axis or empty name in {s}"
-            )));
-        }
-        Ok(Self {
-            axis: split[0].to_owned(),
-            name: split[1].to_owned(),
-        })
+        Ok(Self::new(axis, name))
     }
 }
 
@@ -105,28 +94,57 @@ impl std::fmt::Display for Attribute {
     }
 }
 
-impl serde::Serialize for Attribute {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        Serialize::serialize(&format!("{}::{}", self.axis, self.name), serializer)
+impl From<Attribute> for String {
+    fn from(attr: Attribute) -> Self {
+        attr.to_string()
     }
 }
 
-impl<'de> Deserialize<'de> for Attribute {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let helper = String::deserialize(deserializer)?;
-        let split = helper
-            .split("::")
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<_>>();
-        Ok(Attribute {
-            axis: split[0].clone(),
-            name: split[1].clone(),
+/// Attributes struct is used to simplify the parsing of a list of Attribute
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Attributes {
+    attributes: Vec<Attribute>,
+}
+
+impl Attributes {
+    /// Get a reference to the attributes's attributes.
+    #[must_use]
+    pub fn attributes(&self) -> &[Attribute] {
+        self.attributes.as_ref()
+    }
+}
+
+impl Deref for Attributes {
+    type Target = [Attribute];
+
+    fn deref(&self) -> &Self::Target {
+        self.attributes.as_slice()
+    }
+}
+
+impl From<Vec<Attribute>> for Attributes {
+    fn from(attributes: Vec<Attribute>) -> Self {
+        Self { attributes }
+    }
+}
+
+impl TryFrom<&str> for Attributes {
+    type Error = Error;
+
+    fn try_from(attributes_str: &str) -> Result<Self, Self::Error> {
+        if attributes_str.is_empty() {
+            return Err(Error::InvalidAttribute(attributes_str.to_string()));
+        }
+
+        // Convert a Vec<Result<Attribute,FormatErr>> into a Result<Vec<Attribute>>
+        let attributes: Result<Vec<_>, _> = attributes_str
+            .trim()
+            .split(',')
+            .map(Attribute::try_from)
+            .collect();
+
+        Ok(Self {
+            attributes: attributes?,
         })
     }
 }
@@ -254,14 +272,7 @@ impl AccessPolicy {
                 if let Some(integer_value) = attribute_mapping.get(attr) {
                     *integer_value
                 } else {
-                    // To assign an integer value to a new attribute, we take the current max
-                    // integer value + 1.
-                    // Initial value starts at 1.
-                    let max = attribute_mapping
-                        .values()
-                        .max()
-                        .map(|max| *max + 1)
-                        .unwrap_or(1);
+                    let max = (attribute_mapping.len() + 1) as u32;
                     attribute_mapping.insert(attr.clone(), max);
                     max
                 }
@@ -306,7 +317,7 @@ impl AccessPolicy {
             .iter()
             .cloned()
             .reduce(BitAnd::bitand)
-            .ok_or_else(|| Error::MissingAxis("Empty input!".to_string()))?;
+            .ok_or(Error::MissingAxis)?;
         Ok(access_policy)
     }
 
@@ -319,9 +330,9 @@ impl AccessPolicy {
     /// `Security::Confidentiality && (Department::HR || Department::FIN)`
     ///
     /// - `attributes`  : list of attributes
-    pub fn from_attribute_list(attributes: &[Attribute]) -> Result<Self, Error> {
+    pub fn from_attribute_list(attributes: &Attributes) -> Result<Self, Error> {
         let mut map = HashMap::<String, Vec<String>>::new();
-        for attribute in attributes.iter() {
+        for attribute in attributes.attributes().iter() {
             let entry = map.entry(attribute.axis()).or_insert(Vec::new());
             entry.push(attribute.name());
         }
@@ -332,7 +343,7 @@ impl AccessPolicy {
     /// expression given as a string
     fn find_next_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
         let mut count = 0;
-        let mut right_closing_parenthesis = 0;
+        let mut right_closing_parenthesis = None;
         // Skip first parenthesis
         for (index, c) in boolean_expression.chars().enumerate() {
             match c {
@@ -341,16 +352,16 @@ impl AccessPolicy {
                 _ => {}
             };
             if count < 0 {
-                right_closing_parenthesis = index;
+                right_closing_parenthesis = Some(index);
                 break;
             }
         }
-        if right_closing_parenthesis == 0 {
-            return Err(Error::InvalidBooleanExpression(format!(
+
+        right_closing_parenthesis.ok_or_else(|| {
+            Error::InvalidBooleanExpression(format!(
                 "Missing closing parenthesis in boolean expression {boolean_expression}"
-            )));
-        }
-        Ok(right_closing_parenthesis)
+            ))
+        })
     }
 
     /// Sanitize spaces in boolean expression around parenthesis and operators
@@ -619,6 +630,7 @@ pub struct PolicyAxis {
 }
 
 impl PolicyAxis {
+    #[must_use]
     pub fn new(name: &str, attributes: &[&str], hierarchical: bool) -> Self {
         Self {
             name: name.to_owned(),
@@ -632,6 +644,7 @@ impl PolicyAxis {
     }
 
     #[allow(clippy::len_without_is_empty)]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.attributes.len()
     }
@@ -661,6 +674,7 @@ impl Display for Policy {
 }
 
 impl Policy {
+    #[must_use]
     pub fn new(nb_revocation: u32) -> Self {
         Self {
             last_attribute_value: 0,
@@ -674,6 +688,7 @@ impl Policy {
         &self.store
     }
 
+    #[must_use]
     pub fn max_attr(&self) -> u32 {
         self.max_attribute_value
     }
@@ -691,27 +706,27 @@ impl Policy {
             return Err(Error::CapacityOverflow);
         }
         // insert new policy
-        if let Some(attr) = self.store.insert(
-            axis.name.clone(),
-            (axis.attributes.clone(), axis.hierarchical),
-        ) {
-            // already exists, reinsert previous one
-            self.store.insert(axis.name.clone(), attr);
+        if self.store.contains_key(&axis.name) {
             return Err(Error::ExistingPolicy(axis.name.to_owned()));
         } else {
-            for attr in &axis.attributes {
-                self.last_attribute_value += 1;
-                if self
-                    .attribute_to_int
-                    .insert(
-                        (axis.name.clone(), attr.clone()).into(),
-                        vec![self.last_attribute_value].into(),
-                    )
-                    .is_some()
-                {
-                    // must never occurs as policy is a new one
-                    return Err(Error::ExistingPolicy(axis.name.to_owned()));
-                }
+            self.store.insert(
+                axis.name.clone(),
+                (axis.attributes.clone(), axis.hierarchical),
+            );
+        }
+
+        for attr in &axis.attributes {
+            self.last_attribute_value += 1;
+            if self
+                .attribute_to_int
+                .insert(
+                    (axis.name.clone(), attr.clone()).into(),
+                    vec![self.last_attribute_value].into(),
+                )
+                .is_some()
+            {
+                // must never occurs as policy is a new one
+                return Err(Error::ExistingPolicy(axis.name.to_owned()));
             }
         }
         Ok(())
@@ -733,8 +748,12 @@ impl Policy {
     }
 
     /// Returns the list of Attributes of this Policy
-    pub fn attributes(&self) -> Vec<Attribute> {
-        self.attribute_to_int.keys().cloned().collect()
+    pub fn attributes(&self) -> Attributes {
+        self.attribute_to_int
+            .keys()
+            .cloned()
+            .collect::<Vec<Attribute>>()
+            .into()
     }
 
     /// Returns the list of all attributes values given to this Attribute
@@ -852,7 +871,7 @@ mod tests {
         for att in department.attributes() {
             assert!(attributes.contains(&Attribute::new("Department", att)))
         }
-        for attribute in &attributes {
+        for attribute in attributes.attributes() {
             assert_eq!(
                 policy.attribute_values(attribute)?[0],
                 policy.current_values(&[attribute.to_owned()])?[0]
@@ -864,7 +883,7 @@ mod tests {
         policy.rotate(&attributes[2])?;
         assert_eq!(2, policy.attribute_values(&attributes[2])?.len());
         println!("policy: {:?}", policy);
-        for attribute in &attributes {
+        for attribute in attributes.attributes() {
             assert_eq!(
                 policy.attribute_values(attribute)?[0],
                 policy.current_values(&[attribute.to_owned()])?[0]
