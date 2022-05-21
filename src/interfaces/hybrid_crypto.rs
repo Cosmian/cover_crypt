@@ -3,7 +3,7 @@
 use crate::{
     api::{self, CoverCrypt},
     error::Error,
-    policy::{AccessPolicy, Policy},
+    policies::{AccessPolicy, Policy},
 };
 use cosmian_crypto_base::{
     hybrid_crypto::{Dem, Kem},
@@ -84,7 +84,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy::{Attribute, PolicyAxis};
+    use crate::policies::{Attribute, PolicyAxis};
     use cosmian_crypto_base::{asymmetric::ristretto::X25519Crypto, entropy::CsRng};
 
     #[test]

@@ -7,7 +7,7 @@ use crate::{
     interfaces::statics::{
         decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_header, ClearTextHeader,
     },
-    policy::Attributes,
+    policies::Attribute,
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
@@ -58,8 +58,9 @@ pub fn webassembly_encrypt_hybrid_header(
         .map_err(|e| JsValue::from_str(&format!("Error deserializing metadata: {e}")))?;
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
-    let attributes: Attributes = serde_json::from_slice(attributes_bytes.to_vec().as_slice())
-        .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
+    let attributes: Vec<Attribute> =
+        serde_json::from_slice(attributes_bytes.to_vec().as_slice())
+            .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
     let public_key = serde_json::from_slice(public_key_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
     let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(

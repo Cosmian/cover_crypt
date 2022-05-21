@@ -3,7 +3,7 @@ use crate::{
     api::{self, CoverCrypt},
     error::Error,
     interfaces::{ffi::error::get_last_error, statics::EncryptedHeader},
-    policy::{AccessPolicy, Attribute, Attributes, Policy, PolicyAxis},
+    policies::{AccessPolicy, Attribute, Policy, PolicyAxis},
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
@@ -22,7 +22,7 @@ type UserDecryptionKey = api::PrivateKey<X25519Crypto>;
 unsafe fn encrypt_header(
     meta_data: &Metadata,
     policy: &Policy,
-    attributes: &Attributes,
+    attributes: &[Attribute],
     public_key: &PublicKey,
 ) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
     let mut symmetric_key = vec![0u8; 32];
@@ -171,11 +171,11 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = Attributes::from(vec![
+        let attributes = vec![
             Attribute::new("Security Level", "Confidential"),
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
-        ]);
+        ];
         let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
         //
@@ -234,10 +234,10 @@ unsafe fn encrypt_header_using_cache(
         public_key_len,
     ))?;
 
-    let attributes = Attributes::from(vec![
+    let attributes = vec![
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Confidential"),
-    ]);
+    ];
 
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
@@ -366,11 +366,11 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = Attributes::from(vec![
+        let attributes = vec![
             Attribute::new("Security Level", "Confidential"),
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
-        ]);
+        ];
         let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
         //

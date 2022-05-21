@@ -1,3 +1,3 @@
-# CovCrypt
+# CoverCrypt
 
-Implementation of the CovCrypt algorithm.
+Implementation of the ![CoverCrypt](bib/CoverCrypt.pdf) algorithm.

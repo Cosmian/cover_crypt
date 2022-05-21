@@ -10,7 +10,7 @@ use crate::{
             encrypt_hybrid_header, ClearTextHeader,
         },
     },
-    policy::{Attributes, Policy},
+    policies::{Attribute, Policy},
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
             return 1;
         }
     };
-    let attributes: Attributes = ffi_unwrap!(serde_json::from_str(&attributes));
+    let attributes: Vec<Attribute> = ffi_unwrap!(serde_json::from_str(&attributes));
 
     // UID
     let uid = if uid_ptr.is_null() || uid_len == 0 {
@@ -300,7 +300,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
             return 1;
         }
     };
-    let attributes: Attributes = ffi_unwrap!(serde_json::from_str(&attributes));
+    let attributes: Vec<Attribute> = ffi_unwrap!(serde_json::from_str(&attributes));
 
     // UID
     let uid = if uid_ptr.is_null() || uid_len == 0 {

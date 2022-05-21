@@ -23,7 +23,7 @@ pub type SecretKey = Vec<u8>;
 
 /// Generate the master private key and master public key of the CoverCrypt scheme.
 ///
-/// - `n`   : number of authorisation groups
+/// - `n`   : number of partition groups
 ///
 /// Setup : `λ → (msk,mpk)`
 ///  - takes the security parameter (number of security bits we would like to
@@ -45,10 +45,10 @@ where
         HashMap::with_capacity(S.len()),
         HashMap::with_capacity(S.len()),
     );
-    for authorisation in S.iter() {
+    for partition in S.iter() {
         let keypair = KEM::key_gen(rng);
-        msk.insert(authorisation.to_owned(), keypair.private_key().to_owned());
-        mpk.insert(authorisation.to_owned(), keypair.public_key().to_owned());
+        msk.insert(partition.to_owned(), keypair.private_key().to_owned());
+        mpk.insert(partition.to_owned(), keypair.public_key().to_owned());
     }
     (msk, mpk)
 }
@@ -58,7 +58,7 @@ where
 /// containing the given user ID.
 ///
 /// - `msk` : master secret key
-/// - `U`   : user authorisations
+/// - `U`   : user partitions
 ///
 /// Join : `(msk, U) → skU`
 ///
@@ -71,11 +71,11 @@ where
 {
     U.iter()
         .map(
-            |authorisation| -> Result<(A, <KEM::KeyPair as KeyPair>::PrivateKey), Error> {
+            |partition| -> Result<(A, <KEM::KeyPair as KeyPair>::PrivateKey), Error> {
                 let kem_private_ley = msk
-                    .get(authorisation)
-                    .ok_or_else(|| Error::UnknownAuthorisation(format!("{:?}", authorisation)))?;
-                Ok((authorisation.to_owned(), kem_private_ley.to_owned()))
+                    .get(partition)
+                    .ok_or_else(|| Error::UnknownPartition(format!("{:?}", partition)))?;
+                Ok((partition.to_owned(), kem_private_ley.to_owned()))
             },
         )
         .collect::<Result<PrivateKey<A, KEM>, Error>>()
@@ -109,12 +109,12 @@ where
 
     // construct secret key encapsulation
     let mut E = HashMap::with_capacity(T.len());
-    for authorisation in T.iter() {
-        match mpk.get(authorisation) {
+    for partition in T.iter() {
+        match mpk.get(partition) {
             Some(pk) => {
                 let (K_i, E_i) = KEM::encaps(rng, pk).map_err(Error::CryptoError)?;
                 E.insert(
-                    authorisation.to_owned(),
+                    partition.to_owned(),
                     (
                         K_i.iter().zip(K.iter()).map(|(e1, e2)| e1 ^ e2).collect(),
                         E_i,
@@ -122,7 +122,7 @@ where
                 );
                 Ok(())
             }
-            None => Err(Error::UnknownAuthorisation(format!("{:?}", authorisation))),
+            None => Err(Error::UnknownPartition(format!("{:?}", partition))),
         }?;
     }
 
@@ -152,8 +152,8 @@ where
     A: Clone + Eq + Hash + Debug,
     KEM: Kem,
 {
-    for (authorisation, (Ki_1, E_i)) in E.iter() {
-        if let Some(sk) = sk_u.get(authorisation) {
+    for (partition, (Ki_1, E_i)) in E.iter() {
+        if let Some(sk) = sk_u.get(partition) {
             let Ki_2 = KEM::decaps(sk, E_i).map_err(Error::CryptoError)?;
 
             // XOR the two `K_i`
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_cover_crypt() -> Result<()> {
-        // authorisation list
+        // partition list
         let S = HashSet::from(["admin", "dev"]);
         // user list
         let U = vec![HashSet::from(["dev"]), HashSet::from(["admin", "dev"])];
