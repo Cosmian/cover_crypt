@@ -3,7 +3,7 @@ use crate::{
     error::Error,
     interfaces::{
         statics::{ClearTextHeader, EncryptedHeader},
-        wasm_bindgen::hybrid_gpsw_aes::*,
+        wasm_bindgen::hybrid_cc_aes::*,
     },
     policies::{AccessPolicy, Attribute, Policy, PolicyAxis},
 };

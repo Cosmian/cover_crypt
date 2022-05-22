@@ -67,7 +67,7 @@ impl AccessPolicy {
             AccessPolicy::Attr(attr) => {
                 let mut res = vec![];
                 let (attribute_names, is_hierarchical) = policy
-                    .store()
+                    .as_map()
                     .get(&attr.axis())
                     .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
                 res.extend(
@@ -97,9 +97,9 @@ impl AccessPolicy {
             AccessPolicy::And(attr1, attr2) => {
                 let mut res = vec![];
                 // avoid computing this many times
-                let attribut_list_2 = attr2.to_attribute_combinations(policy)?;
+                let attribute_list_2 = attr2.to_attribute_combinations(policy)?;
                 for value1 in attr1.to_attribute_combinations(policy)? {
-                    for value2 in attribut_list_2.iter() {
+                    for value2 in attribute_list_2.iter() {
                         let mut combined = Vec::with_capacity(value1.len() + value2.len());
                         combined.extend_from_slice(&value1);
                         combined.extend_from_slice(value2);
@@ -328,9 +328,9 @@ impl AccessPolicy {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let boolean_expression = "(Department::HR || Department::RnD) && Level::level_2";
-    /// let access_policy = cover_crypt::policy::AccessPolicy::from_boolean_expression(boolean_expression);
+    /// let access_policy = crate::policy::AccessPolicy::from_boolean_expression(boolean_expression);
     /// ```
     /// # Errors
     ///
@@ -475,4 +475,20 @@ impl From<Attribute> for AccessPolicy {
     fn from(attribute: Attribute) -> Self {
         AccessPolicy::Attr(attribute)
     }
+}
+
+/// Create an axis policy from a simple attribute
+///
+/// Shorthand for
+/// ```ignore
+/// AccessPolicy::new(axis, attribute_name)
+/// ```
+///
+/// Used to easily build access policies programmatically
+/// ```ignore
+/// let access_policy =
+///     ap("Security Level", "level 4") & (ap("Department", "MKG") | ap("Department", "FIN"));
+/// ```
+pub fn ap(axis: &str, attribute_name: &str) -> AccessPolicy {
+    AccessPolicy::new(axis, attribute_name)
 }

@@ -1,3 +1,3 @@
 # CoverCrypt
 
-Implementation of the ![CoverCrypt](bib/CoverCrypt.pdf) algorithm.
+Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm.

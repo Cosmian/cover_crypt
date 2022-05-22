@@ -1,4 +1,4 @@
-use super::hybrid_gpsw_aes::*;
+use super::hybrid_cc_aes::*;
 use crate::{
     api::{self, CoverCrypt},
     error::Error,

@@ -3,7 +3,7 @@
 use crate::{
     api::{self, CoverCrypt},
     error::Error,
-    policies::{AccessPolicy, Policy},
+    policies::{AccessPolicy, Attribute, Policy},
 };
 use cosmian_crypto_base::{
     hybrid_crypto::{Dem, Kem},
@@ -48,12 +48,12 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         l: &[u8],
         m: &[u8],
         policy: &Policy,
-        access_policy: &AccessPolicy,
+        attributes: &[Attribute],
     ) -> Result<(api::CipherText, Vec<u8>), Error> {
         let (K, E1) = self.generate_symmetric_key(
             policy,
             pk,
-            access_policy,
+            attributes,
             <Aes256GcmCrypto as SymmetricCrypto>::Key::LENGTH,
         )?;
         let E2 = Aes256GcmCrypto::encaps(rng, &K, l, m).map_err(Error::CryptoError)?;
@@ -84,7 +84,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policies::{Attribute, PolicyAxis};
+    use crate::policies::{ap, Attribute, PolicyAxis};
     use cosmian_crypto_base::{asymmetric::ristretto::X25519Crypto, entropy::CsRng};
 
     #[test]
@@ -101,8 +101,7 @@ mod tests {
         let mut policy = Policy::new(100);
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
-        let access_policy = AccessPolicy::new("Department", "R&D")
-            & AccessPolicy::new("Security Level", "Top Secret");
+        let access_policy = ap("Department", "R&D") & ap("Security Level", "Top Secret");
         policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
@@ -124,7 +123,10 @@ mod tests {
             l,
             m,
             &policy,
-            &access_policy,
+            &[
+                Attribute::new("Department", "R&D"),
+                Attribute::new("Security Level", "Top Secret"),
+            ],
         )?;
         assert_eq!(m.to_vec(), cc.decrypt(key_pair.private_key(), l, &c)?);
         Ok(())

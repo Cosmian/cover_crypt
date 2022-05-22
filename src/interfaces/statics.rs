@@ -1,7 +1,7 @@
 use crate::{
     api::{self, CoverCrypt, PrivateKey, PublicKey},
     error::Error,
-    policies::{AccessPolicy, Attribute, Policy},
+    policies::{Attribute, Policy},
 };
 use cosmian_crypto_base::{
     entropy::CsRng,
@@ -45,12 +45,8 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
 ) -> Result<EncryptedHeader<DEM>, Error> {
     // generate symmetric key and its encapsulation
     let cover_crypt = CoverCrypt::<KEM>::new();
-    let (K, E) = cover_crypt.generate_symmetric_key(
-        policy,
-        public_key,
-        &AccessPolicy::from_attribute_list(attributes)?,
-        DEM::Key::LENGTH,
-    )?;
+    let (K, E) =
+        cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
     let encapsulation = serde_json::to_vec(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
 
     // create header
@@ -188,7 +184,7 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
 
 #[cfg(test)]
 mod tests {
-    use crate::policies::{Attribute, PolicyAxis};
+    use crate::policies::{ap, Attribute, PolicyAxis};
 
     use super::*;
     use cosmian_crypto_base::{
@@ -215,7 +211,7 @@ mod tests {
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
         ];
-        let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
+        let access_policy = ap("Security Level", "Top Secret") & ap("Department", "FIN");
 
         //
         // CoverCrypt setup

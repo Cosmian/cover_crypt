@@ -74,7 +74,12 @@ impl Policy {
         }
     }
 
-    pub fn store(&self) -> &HashMap<String, (Vec<String>, bool)> {
+    /// Returns the policy in the for of a Map where
+    ///  - the keys are the axis names
+    ///  - the values are a tuple of
+    ///     - list of attribute names for that axis
+    ///     - whether the axis hierarchical
+    pub fn as_map(&self) -> &HashMap<String, (Vec<String>, bool)> {
         &self.store
     }
 
@@ -158,17 +163,28 @@ impl Policy {
         Ok(v)
     }
 
-    /// Retrieve the current attributes values for the `Attribute` list
-    pub fn current_values(&self, attributes: &[Attribute]) -> Result<Vec<u32>, Error> {
-        let mut values: Vec<u32> = Vec::with_capacity(attributes.len());
-        for att in attributes {
-            let v = self
-                .attribute_to_int
-                .get(att)
-                .and_then(std::collections::BinaryHeap::peek)
-                .ok_or_else(|| Error::AttributeNotFound(format!("{:?}", att)))?;
-            values.push(*v);
-        }
-        Ok(values)
+    /// Retrieves the current value of an attribute
+    pub fn attribute_current_value(&self, attribute: &Attribute) -> Result<u32, Error> {
+        let values = self.attribute_values(attribute)?;
+        values.get(0).cloned().ok_or_else(|| {
+            Error::InvalidAttribute(format!(
+                "the attribute {} does not have any value!",
+                attribute
+            ))
+        })
     }
+
+    // /// Retrieve the current attributes values for the `Attribute` list
+    // pub fn current_values(&self, attributes: &[Attribute]) -> Result<Vec<u32>, Error> {
+    //     let mut values: Vec<u32> = Vec::with_capacity(attributes.len());
+    //     for att in attributes {
+    //         let v = self
+    //             .attribute_to_int
+    //             .get(att)
+    //             .and_then(std::collections::BinaryHeap::peek)
+    //             .ok_or_else(|| Error::AttributeNotFound(format!("{:?}", att)))?;
+    //         values.push(*v);
+    //     }
+    //     Ok(values)
+    // }
 }
