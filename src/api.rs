@@ -138,14 +138,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PrivateKey<KEM>, Error> {
-        // get the key hash associated with the given access policy
-        let partitions = access_policy
-            .to_attribute_combinations(policy)?
-            .iter()
-            .map(|comb| Partition::new(comb.to_owned()))
-            .collect();
-        // generate the corresponding user key
-        cover_crypt_core::join::<_, KEM>(msk, &partitions)
+        cover_crypt_core::join::<_, KEM>(msk, &ap_to_partitions(access_policy, policy)?)
     }
 
     /// Generate a user public key.
@@ -159,16 +152,14 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PublicKey<KEM>, Error> {
-        access_policy
-            .to_attribute_combinations(policy)?
-            .iter()
-            .map(|comb| {
-                let partition = Partition::new(comb.to_owned());
+        ap_to_partitions(access_policy, policy)?
+        .iter()
+        .map(|partition| {
                 // partition should be contained in the master key in
                 // order to generate a valid user key
                 let kem_public_key = mpk
-                    .get(&partition)
-                    .ok_or_else(|| Error::UnknownPartition(format!("{:?}", partition)))?;
+                    .get(partition)
+                    .ok_or_else(|| Error::UnknownPartition(format!("generate user public key: the master public key does not have partition {:?}", partition))) ?;
                 Ok((partition.to_owned(), kem_public_key.to_owned()))
             })
             // `PublicKey` is an alias to a `HashMap` which is collected here
@@ -333,6 +324,82 @@ fn combine_attribute_values(
     Ok(combinations)
 }
 
+/// Convert an access policy used to decrypt ciphertexts into the corresponding
+/// list of CoverCrypt partitions that can be decrypted by that access policy
+fn ap_to_partitions(
+    access_policy: &AccessPolicy,
+    policy: &Policy,
+) -> Result<HashSet<Partition>, Error> {
+    Ok(to_attribute_combinations(access_policy, policy)?
+        .iter()
+        .map(|comb| Partition::new(comb.to_owned()))
+        .collect())
+}
+
+/// Returns the list of partitions that can be built using the values of
+/// each attribute in the given access policy. This corresponds to an OR
+/// expression of AND expressions.
+///
+/// - `policy`  : global policy
+fn to_attribute_combinations(
+    access_policy: &AccessPolicy,
+    policy: &Policy,
+) -> Result<Vec<Vec<u32>>, Error> {
+    match access_policy {
+        AccessPolicy::Attr(attr) => {
+            let mut res = vec![];
+            let (attribute_names, is_hierarchical) = policy
+                .as_map()
+                .get(&attr.axis())
+                .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
+            res.extend(
+                policy
+                    .attribute_values(attr)?
+                    .iter()
+                    .map(|&value| vec![value])
+                    .collect::<Vec<Vec<u32>>>(),
+            );
+            if *is_hierarchical {
+                // add attribute values for all attributes below the given one
+                for name in attribute_names.iter() {
+                    if *name == attr.name() {
+                        break;
+                    }
+                    res.extend(
+                        policy
+                            .attribute_values(&Attribute::new(&attr.axis(), name))?
+                            .iter()
+                            .map(|&value| vec![value])
+                            .collect::<Vec<Vec<u32>>>(),
+                    );
+                }
+            }
+            Ok(res)
+        }
+        AccessPolicy::And(ap_left, ap_right) => {
+            let mut res = vec![];
+            // avoid computing this many times
+            let combinations_right = to_attribute_combinations(ap_right, policy)?;
+            for value_left in to_attribute_combinations(ap_left, policy)? {
+                for value_right in combinations_right.iter() {
+                    let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
+                    combined.extend_from_slice(&value_left);
+                    combined.extend_from_slice(value_right);
+                    res.push(combined)
+                }
+            }
+            Ok(res)
+        }
+        AccessPolicy::Or(ap_left, ap_right) => {
+            let mut res = to_attribute_combinations(ap_left, policy)?;
+            res.extend(to_attribute_combinations(ap_right, policy)?);
+            Ok(res)
+        }
+        // TODO: check if this is correct
+        AccessPolicy::All => Ok(vec![vec![]]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +528,40 @@ mod tests {
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
         let recovered_key = cc.decrypt_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
         assert!(key == recovered_key, "Wrong decryption of the key!");
+        Ok(())
+    }
+
+    #[test]
+    fn test_to_attribute_combinations() -> Result<(), Error> {
+        let mut policy = policy()?;
+
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let access_policy = (AccessPolicy::new("Department", "HR")
+            | AccessPolicy::new("Department", "FIN"))
+            & AccessPolicy::new("Security Level", "Confidential");
+        let combinations = to_attribute_combinations(&access_policy, &policy)?;
+        let partitions_: HashSet<Partition> =
+            combinations.into_iter().map(Partition::new).collect();
+
+        // combine attribute values to verify
+        let mut map: HashMap<String, Vec<u32>> = HashMap::new();
+        let mut dpt_axis_attributes =
+            policy.attribute_values(&Attribute::new("Department", "FIN"))?;
+        dpt_axis_attributes.extend(policy.attribute_values(&Attribute::new("Department", "HR"))?);
+        map.insert("Department".to_owned(), dpt_axis_attributes);
+        let mut lvl_axis_attributes =
+            policy.attribute_values(&Attribute::new("Security Level", "Confidential"))?;
+        lvl_axis_attributes
+            .extend(policy.attribute_values(&Attribute::new("Security Level", "Protected"))?);
+        map.insert("Security Level".to_owned(), lvl_axis_attributes);
+
+        let axes: Vec<String> = policy.as_map().keys().cloned().collect();
+        let partitions: HashSet<Partition> = combine_attribute_values(0, axes.as_slice(), &map)?
+            .into_iter()
+            .map(Partition::new)
+            .collect();
+
+        assert_eq!(partitions, partitions_);
         Ok(())
     }
 }

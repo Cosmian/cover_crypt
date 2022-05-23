@@ -82,7 +82,7 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     })
 }
 
-/// Decrypt the gven header bytes using a user decryption key.
+/// Decrypt the given header bytes using a user decryption key.
 ///
 /// - `user_decryption_key` : private key to use for decryption
 /// - `header_bytes`        : encrypted header bytes
@@ -102,9 +102,6 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     let cover_crypt = CoverCrypt::<KEM>::default();
     let E: api::CipherText =
         serde_json::from_slice(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
-    for autorisation in E.keys() {
-        println!("required: {autorisation}");
-    }
     let K = cover_crypt.decrypt_symmetric_key(user_decryption_key, &E, DEM::Key::LENGTH)?;
 
     // decrypt the metadata
@@ -219,8 +216,8 @@ mod tests {
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        for autorisation in sk_u.keys() {
-            println!("{autorisation}");
+        for partition in sk_u.keys() {
+            println!("{partition}");
         }
 
         //

@@ -1,6 +1,6 @@
 #![allow(clippy::module_name_repetitions)]
 
-use super::{attribute::Attribute, policy::Policy};
+use super::attribute::Attribute;
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -52,70 +52,6 @@ impl AccessPolicy {
     /// ```
     pub fn new(axis: &str, attribute: &str) -> Self {
         Self::Attr(Attribute::new(axis, attribute))
-    }
-
-    /// Returns the list of combinations that can be built using the values of
-    /// each attribute in the given access policy. This corresponds to an OR
-    /// expression of AND expressions.
-    ///
-    /// - `policy`  : global policy
-    pub(crate) fn to_attribute_combinations(
-        &self,
-        policy: &Policy,
-    ) -> Result<Vec<Vec<u32>>, Error> {
-        match self {
-            AccessPolicy::Attr(attr) => {
-                let mut res = vec![];
-                let (attribute_names, is_hierarchical) = policy
-                    .as_map()
-                    .get(&attr.axis())
-                    .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
-                res.extend(
-                    policy
-                        .attribute_values(attr)?
-                        .iter()
-                        .map(|&value| vec![value])
-                        .collect::<Vec<Vec<u32>>>(),
-                );
-                if *is_hierarchical {
-                    // add attribute values for all attributes below the given one
-                    for name in attribute_names.iter() {
-                        if *name == attr.name() {
-                            break;
-                        }
-                        res.extend(
-                            policy
-                                .attribute_values(&Attribute::new(&attr.axis(), name))?
-                                .iter()
-                                .map(|&value| vec![value])
-                                .collect::<Vec<Vec<u32>>>(),
-                        );
-                    }
-                }
-                Ok(res)
-            }
-            AccessPolicy::And(attr1, attr2) => {
-                let mut res = vec![];
-                // avoid computing this many times
-                let attribute_list_2 = attr2.to_attribute_combinations(policy)?;
-                for value1 in attr1.to_attribute_combinations(policy)? {
-                    for value2 in attribute_list_2.iter() {
-                        let mut combined = Vec::with_capacity(value1.len() + value2.len());
-                        combined.extend_from_slice(&value1);
-                        combined.extend_from_slice(value2);
-                        res.push(combined)
-                    }
-                }
-                Ok(res)
-            }
-            AccessPolicy::Or(attr1, attr2) => {
-                let mut res = attr1.to_attribute_combinations(policy)?;
-                res.extend(attr2.to_attribute_combinations(policy)?);
-                Ok(res)
-            }
-            // TODO: check if this is correct
-            AccessPolicy::All => Ok(vec![vec![]]),
-        }
     }
 
     /// Convert policy to integer value (for comparison).
@@ -177,24 +113,6 @@ impl AccessPolicy {
             .reduce(BitAnd::bitand)
             .ok_or(Error::MissingAxis)?;
         Ok(access_policy)
-    }
-
-    /// Convert a list of attributes into an AccessPolicy. For example,
-    ///
-    /// `[Security::Confidentiality, Department::HR, Department::FIN]`
-    ///
-    /// would give:
-    ///
-    /// `Security::Confidentiality && (Department::HR || Department::FIN)`
-    ///
-    /// - `attributes`  : list of attributes
-    pub fn from_attribute_list(attributes: &[Attribute]) -> Result<Self, Error> {
-        let mut map = HashMap::<String, Vec<String>>::new();
-        for attribute in attributes.iter() {
-            let entry = map.entry(attribute.axis()).or_insert(Vec::new());
-            entry.push(attribute.name());
-        }
-        Self::from_axes(&map)
     }
 
     /// This function is finding the right closing parenthesis in the boolean
@@ -328,9 +246,9 @@ impl AccessPolicy {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```rust
     /// let boolean_expression = "(Department::HR || Department::RnD) && Level::level_2";
-    /// let access_policy = crate::policy::AccessPolicy::from_boolean_expression(boolean_expression);
+    /// let access_policy = cover_crypt::policies::AccessPolicy::from_boolean_expression(boolean_expression);
     /// ```
     /// # Errors
     ///
@@ -433,6 +351,7 @@ impl AccessPolicy {
         }
     }
 
+    /// Retrieve all the Attributes present in this access policy
     pub fn attributes(&self) -> Vec<Attribute> {
         let mut attributes = self._attributes();
         attributes.sort();
@@ -480,12 +399,15 @@ impl From<Attribute> for AccessPolicy {
 /// Create an axis policy from a simple attribute
 ///
 /// Shorthand for
-/// ```ignore
-/// AccessPolicy::new(axis, attribute_name)
+/// ```rust
+/// let axis="axis_name";
+/// let attribute_name="attribute_name";
+/// let access_policy = cover_crypt::policies::AccessPolicy::new(axis, attribute_name);
 /// ```
 ///
 /// Used to easily build access policies programmatically
-/// ```ignore
+/// ```rust
+/// use cover_crypt::policies::ap;
 /// let access_policy =
 ///     ap("Security Level", "level 4") & (ap("Department", "MKG") | ap("Department", "FIN"));
 /// ```

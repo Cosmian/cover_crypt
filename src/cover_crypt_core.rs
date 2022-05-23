@@ -173,10 +173,9 @@ mod tests {
     use super::*;
     use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
     use cosmian_crypto_base::entropy::CsRng;
-    use eyre::Result;
 
     #[test]
-    fn test_cover_crypt() -> Result<()> {
+    fn test_cover_crypt() -> Result<(), Error> {
         // partition list
         let S = HashSet::from(["admin", "dev"]);
         // user list
@@ -195,8 +194,8 @@ mod tests {
         // decapsulate for users 1 and 3
         let res0 = decaps::<_, X25519Crypto>(&sk0, &E)?;
         let res1 = decaps::<_, X25519Crypto>(&sk1, &E)?;
-        eyre::ensure!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
-        eyre::ensure!(Some(K) == res1, "Wrong decapsulation for user 1!");
+        assert!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
+        assert!(Some(K) == res1, "Wrong decapsulation for user 1!");
         Ok(())
     }
 }

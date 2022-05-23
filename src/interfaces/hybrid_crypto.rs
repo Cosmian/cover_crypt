@@ -17,7 +17,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// Generate a user key pair.
     ///
     /// - `policy`          : global policy
-    /// - `access_policy`   : user accesspolicy
+    /// - `access_policy`   : user access policy
     /// - `msk`             : master secret key
     /// - `mpk`             : master public key
     pub(crate) fn key_gen<R: rand_core::RngCore + rand_core::CryptoRng>(
@@ -40,7 +40,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - `L`   : label to use for encryption
     /// - `m`   : message to encrypt
     /// - `policy`          : global policy
-    /// - `access_policy`   : user accesspolicy
+    /// - `access_policy`   : user access policy
     pub(crate) fn encrypt<R: rand_core::RngCore + rand_core::CryptoRng>(
         &self,
         rng: &mut R,

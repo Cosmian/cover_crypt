@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    policies::{ap, AccessPolicy, Attribute, Policy, PolicyAxis},
+    policies::{Attribute, Policy, PolicyAxis},
 };
 
 fn policy() -> Result<Policy, Error> {
@@ -47,21 +47,5 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
             policy.attribute_current_value(attribute)?
         )
     }
-    Ok(())
-}
-
-#[test]
-fn test_to_attribute_combinations() -> Result<(), Error> {
-    let mut policy = policy()?;
-
-    policy.rotate(&Attribute::new("Department", "FIN"))?;
-    let access_policy = (AccessPolicy::new("Department", "HR")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Security Level", "Confidential");
-    let combinations = access_policy.to_attribute_combinations(&policy)?;
-    let axes: Vec<&String> = policy.as_map().keys().collect();
-    // let world = walk_hypercube(0, &axes, &policy)?;
-    println!("{combinations:?}");
-    // println!("{world:?}");
     Ok(())
 }

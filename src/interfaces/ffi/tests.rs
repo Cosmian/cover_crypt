@@ -3,7 +3,7 @@ use crate::{
     api::{self, CoverCrypt},
     error::Error,
     interfaces::{ffi::error::get_last_error, statics::EncryptedHeader},
-    policies::{AccessPolicy, Attribute, Policy, PolicyAxis},
+    policies::{ap, Attribute, Policy, PolicyAxis},
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
@@ -176,17 +176,14 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
         ];
-        let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
         //
         // CoverCrypt setup
         //
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
+        let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        for autorisation in sk_u.keys() {
-            println!("{autorisation}");
-        }
 
         //
         // Encrypt / decrypt
@@ -366,22 +363,14 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = vec![
-            Attribute::new("Security Level", "Confidential"),
-            Attribute::new("Department", "HR"),
-            Attribute::new("Department", "FIN"),
-        ];
-        let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
 
         //
         // CoverCrypt setup
         //
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
+        let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        for autorisation in sk_u.keys() {
-            println!("{autorisation}");
-        }
 
         //
         // Encrypt / decrypt
