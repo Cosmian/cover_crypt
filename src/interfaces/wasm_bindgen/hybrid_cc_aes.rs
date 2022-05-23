@@ -147,7 +147,7 @@ pub fn webassembly_decrypt_hybrid_block(
 
     //
     // Parse symmetric key
-    let symmetric_key = <Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
+    let symmetric_key = <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
         symmetric_key_bytes.to_vec(),
     )
     .map_err(|e| {

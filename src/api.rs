@@ -78,7 +78,7 @@ pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Partition, KEM>;
 pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Partition, KEM>;
 
 /// CoverCrypt public and private key pair.
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct CCKeyPair<KEM: Kem> {
     pub(crate) pk: PublicKey<KEM>,
     pub(crate) sk: PrivateKey<KEM>,

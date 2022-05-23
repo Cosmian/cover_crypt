@@ -748,7 +748,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     }
     let data = std::slice::from_raw_parts(data_ptr as *const u8, data_len as usize).to_vec();
 
-    let symmetric_key = ffi_unwrap!(<Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
+    let symmetric_key = ffi_unwrap!(<Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
         symmetric_key
     ));
     let encrypted_block = ffi_unwrap!(encrypt_hybrid_block::<
@@ -823,7 +823,7 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     )
     .to_vec();
 
-    let symmetric_key = ffi_unwrap!(<Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
+    let symmetric_key = ffi_unwrap!(<Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
         symmetric_key
     ));
     let encrypted_block = ffi_unwrap!(decrypt_hybrid_block::<
