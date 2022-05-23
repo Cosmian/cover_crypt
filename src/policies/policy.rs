@@ -173,18 +173,4 @@ impl Policy {
             ))
         })
     }
-
-    // /// Retrieve the current attributes values for the `Attribute` list
-    // pub fn current_values(&self, attributes: &[Attribute]) -> Result<Vec<u32>, Error> {
-    //     let mut values: Vec<u32> = Vec::with_capacity(attributes.len());
-    //     for att in attributes {
-    //         let v = self
-    //             .attribute_to_int
-    //             .get(att)
-    //             .and_then(std::collections::BinaryHeap::peek)
-    //             .ok_or_else(|| Error::AttributeNotFound(format!("{:?}", att)))?;
-    //         values.push(*v);
-    //     }
-    //     Ok(values)
-    // }
 }

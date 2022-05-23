@@ -147,15 +147,14 @@ pub fn webassembly_decrypt_hybrid_block(
 
     //
     // Parse symmetric key
-    let symmetric_key = <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
-        symmetric_key_bytes.to_vec(),
-    )
-    .map_err(|e| {
-        return JsValue::from_str(&format!(
-            "Error parsing
+    let symmetric_key =
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes.to_vec())
+            .map_err(|e| {
+                return JsValue::from_str(&format!(
+                    "Error parsing
     symmetric key: {e}"
-        ));
-    })?;
+                ));
+            })?;
 
     let uid = uid_bytes.map_or(vec![], |v| v.to_vec());
     let block_number_value = block_number.unwrap_or(0);
