@@ -2,6 +2,21 @@
 name = "cover_crypt"
 version = "0.1.0"
 edition = "2021"
+authors = [
+  "Théophile Brezot <theophile.brezot@cosmian.com>",
+  "Bruno Grieder <bruno.grieder@cosmian.com>",
+]
+description = "Key Policy attribute encryption based on subset cover"
+documentation = "https://docs.rs/cover_crypt/"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/Cosmian/cover_crypt"
+
+
+[lib]
+name = "cover_crypt"
+crate-type = ["lib", "cdylib", "staticlib"]
+# The cdylib is only interesting if the `--features ffi` flag is set on build
+# This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
 [features]
 ffi = ["lazy_static"]
