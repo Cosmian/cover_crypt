@@ -117,9 +117,11 @@ pub fn webassembly_decrypt_hybrid_header(
         .map_err(|e| return JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
 
     Ok(js_sys::Uint8Array::from(
-        serde_json::to_vec(&cleartext_header).map_err(|e| {
-            return JsValue::from_str(&format!("Error serializing decrypted header: {e}"));
-        })?.as_slice(),
+        serde_json::to_vec(&cleartext_header)
+            .map_err(|e| {
+                return JsValue::from_str(&format!("Error serializing decrypted header: {e}"));
+            })?
+            .as_slice(),
     ))
 }
 

@@ -1,10 +1,3 @@
-use crate::{
-    cover_crypt_core,
-    error::Error,
-    policies::{AccessPolicy, Attribute, Policy},
-};
-use cosmian_crypto_base::{entropy::CsRng, hybrid_crypto::Kem};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
@@ -12,6 +5,15 @@ use std::{
     marker::PhantomData,
     ops::DerefMut,
     sync::Mutex,
+};
+
+use cosmian_crypto_base::{entropy::CsRng, hybrid_crypto::Kem};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    cover_crypt_core,
+    error::Error,
+    policies::{AccessPolicy, Attribute, Policy},
 };
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
@@ -39,7 +41,6 @@ impl Partition {
             bytes.extend(value.to_be_bytes())
         }
         Partition(bytes)
-        // Partition(Sha3_256::digest(bytes).to_vec())
     }
 }
 
@@ -57,6 +58,7 @@ impl From<Partition> for String {
 
 impl TryFrom<String> for Partition {
     type Error = Error;
+
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let res = hex::decode(&value).map_err(|_e| Error::ConversionFailed)?;
         Ok(Partition(res))
@@ -153,13 +155,17 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         policy: &Policy,
     ) -> Result<PublicKey<KEM>, Error> {
         ap_to_partitions(access_policy, policy)?
-        .iter()
-        .map(|partition| {
+            .iter()
+            .map(|partition| {
                 // partition should be contained in the master key in
                 // order to generate a valid user key
-                let kem_public_key = mpk
-                    .get(partition)
-                    .ok_or_else(|| Error::UnknownPartition(format!("generate user public key: the master public key does not have partition {:?}", partition))) ?;
+                let kem_public_key = mpk.get(partition).ok_or_else(|| {
+                    Error::UnknownPartition(format!(
+                        "generate user public key: the master public key does not have partition \
+                         {:?}",
+                        partition
+                    ))
+                })?;
                 Ok((partition.to_owned(), kem_public_key.to_owned()))
             })
             // `PublicKey` is an alias to a `HashMap` which is collected here
@@ -167,8 +173,8 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     }
 
     /// Generate a random symmetric key of `symmetric_key_len` to be used in an
-    /// hybrid encryption scheme and generate its CoverCrypt encrypted version with the
-    /// supplied policy `attributes`.
+    /// hybrid encryption scheme and generate its CoverCrypt encrypted version
+    /// with the supplied policy `attributes`.
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
@@ -228,9 +234,9 @@ impl<KEM: Kem> Default for CoverCrypt<KEM> {
 
 pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // Build a map of all attribute value for all axis
-    let mut map = HashMap::<String, Vec<u32>>::new();
+    let mut map = HashMap::with_capacity(policy.as_map().len());
     // We also a collect a Vec of axes which is used later
-    let mut axes: Vec<String> = vec![];
+    let mut axes = Vec::with_capacity(policy.as_map().len());
     for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
         axes.push(axis.to_owned());
         let mut values: Vec<u32> = vec![];
@@ -249,11 +255,12 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
         .collect())
 }
 
-/// Convert a list of attributes used to encrypt ciphertexts into the corresponding
-/// list of CoverCrypt partitions
+/// Convert a list of attributes used to encrypt ciphertexts into the
+/// corresponding list of CoverCrypt partitions
 fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Partition>, Error> {
-    // First split the attributes per axis using their latest value and check that they exist
-    let mut map = HashMap::<String, Vec<u32>>::new();
+    // First split the attributes per axis using their latest value and check that
+    // they exist
+    let mut map = HashMap::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
         let entry = map.entry(attribute.axis()).or_insert(Vec::new());
@@ -264,17 +271,15 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     // assume that the user wants to cover all the attribute names
     // in this axis
     // We also a collect a Vec of axes which is used later
-    let mut axes: Vec<String> = vec![];
+    let mut axes = Vec::with_capacity(policy.as_map().len());
     for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
         axes.push(axis.to_owned());
         if !map.contains_key(axis) {
             // gather all the latest value for that axis
-            let mut values: Vec<u32> = Vec::with_capacity(attribute_names.len());
-            for name in attribute_names {
-                let attribute = Attribute::new(axis, name);
-                let value = policy.attribute_current_value(&attribute)?;
-                values.push(value);
-            }
+            let values = attribute_names
+                .iter()
+                .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
+                .collect::<Result<Vec<u32>, Error>>()?;
             map.insert(axis.to_owned(), values);
         }
     }
@@ -307,21 +312,19 @@ fn combine_attribute_values(
     // combine these values with all attribute values from the next axes
     let other_values = combine_attribute_values(current_axis + 1, axes, map)?;
     if other_values.is_empty() {
-        // no combination: return the axis values wrapped in vec
-        return Ok(axis_values.iter().map(|v| vec![*v]).collect());
-    }
-
-    let mut combinations = Vec::with_capacity(axis_values.len() * other_values.len());
-
-    for av in axis_values {
-        for ov in &other_values {
-            let mut combined = Vec::with_capacity(1 + ov.len());
-            combined.push(*av);
-            combined.extend_from_slice(ov);
-            combinations.push(combined);
+        Ok(axis_values.iter().map(|v| vec![*v]).collect())
+    } else {
+        let mut combinations = Vec::with_capacity(axis_values.len() * other_values.len());
+        for av in axis_values {
+            for ov in &other_values {
+                let mut combined = Vec::with_capacity(1 + ov.len());
+                combined.push(*av);
+                combined.extend_from_slice(ov);
+                combinations.push(combined);
+            }
         }
+        Ok(combinations)
     }
-    Ok(combinations)
 }
 
 /// Convert an access policy used to decrypt ciphertexts into the corresponding
@@ -347,18 +350,15 @@ fn to_attribute_combinations(
 ) -> Result<Vec<Vec<u32>>, Error> {
     match access_policy {
         AccessPolicy::Attr(attr) => {
-            let mut res = vec![];
             let (attribute_names, is_hierarchical) = policy
                 .as_map()
                 .get(&attr.axis())
                 .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
-            res.extend(
-                policy
-                    .attribute_values(attr)?
-                    .iter()
-                    .map(|&value| vec![value])
-                    .collect::<Vec<Vec<u32>>>(),
-            );
+            let mut res = policy
+                .attribute_values(attr)?
+                .iter()
+                .map(|&value| vec![value])
+                .collect::<Vec<Vec<u32>>>();
             if *is_hierarchical {
                 // add attribute values for all attributes below the given one
                 for name in attribute_names.iter() {
@@ -377,10 +377,10 @@ fn to_attribute_combinations(
             Ok(res)
         }
         AccessPolicy::And(ap_left, ap_right) => {
-            let mut res = vec![];
-            // avoid computing this many times
+            let combinations_left = to_attribute_combinations(ap_left, policy)?;
             let combinations_right = to_attribute_combinations(ap_right, policy)?;
-            for value_left in to_attribute_combinations(ap_left, policy)? {
+            let mut res = Vec::with_capacity(combinations_left.len() * combinations_right.len());
+            for value_left in combinations_left {
                 for value_right in combinations_right.iter() {
                     let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
                     combined.extend_from_slice(&value_left);
@@ -391,8 +391,11 @@ fn to_attribute_combinations(
             Ok(res)
         }
         AccessPolicy::Or(ap_left, ap_right) => {
-            let mut res = to_attribute_combinations(ap_left, policy)?;
-            res.extend(to_attribute_combinations(ap_right, policy)?);
+            let combinations_left = to_attribute_combinations(ap_left, policy)?;
+            let combinations_right = to_attribute_combinations(ap_right, policy)?;
+            let mut res = Vec::with_capacity(combinations_left.len() + combinations_right.len());
+            res.extend(combinations_left);
+            res.extend(combinations_right);
             Ok(res)
         }
         // TODO: check if this is correct
@@ -402,9 +405,10 @@ fn to_attribute_combinations(
 
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
+
     use super::*;
     use crate::policies::{Attribute, PolicyAxis};
-    use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
 
     fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
