@@ -322,8 +322,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_base"
-version = "1.1.0"
-source = "git+https://github.com/Cosmian/crypto_base.git?branch=implement_hybrid_crypto#cfac5510962aabb8d1e175ae11a15bdd6ce4405b"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ec6c45a4335b8ffc5aa82cbb36af0340784d23adb2cd808e7aa37abf9898e25"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -364,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "cover_crypt"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cosmian-wit-bindgen-rust",
  "cosmian_crypto_base",
