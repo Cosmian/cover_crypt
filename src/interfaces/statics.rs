@@ -104,12 +104,19 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
         serde_json::from_slice(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
     let K = cover_crypt.decrypt_symmetric_key(user_decryption_key, &E, DEM::Key::LENGTH)?;
 
-    // decrypt the metadata
-    let metadata = DEM::decaps(&K, b"", &header_bytes[index..]).map_err(Error::CryptoError)?;
+    // decrypt the metadata if any
+    let meta_data = if index >= header_bytes.len() {
+        Metadata::default()
+    } else {
+        Metadata::from_bytes(
+            &DEM::decaps(&K, b"", &header_bytes[index..]).map_err(Error::CryptoError)?,
+        )
+        .map_err(|_| Error::ConversionFailed)?
+    };
 
     Ok(ClearTextHeader {
         symmetric_key: DEM::Key::try_from_bytes(K).map_err(Error::CryptoError)?,
-        meta_data: Metadata::from_bytes(&metadata).map_err(|_| Error::ConversionFailed)?,
+        meta_data,
     })
 }
 

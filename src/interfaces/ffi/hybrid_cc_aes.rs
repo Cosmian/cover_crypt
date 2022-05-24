@@ -14,7 +14,7 @@ use crate::{
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
-    hybrid_crypto::Metadata,
+    hybrid_crypto::{Block, Metadata},
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
     KeyTrait,
 };
@@ -696,8 +696,7 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
-    //hybrid_crypto::symmetric_encryption_overhead::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>() as c_int
-    todo!()
+    Block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>::ENCRYPTION_OVERHEAD as c_int
 }
 
 #[no_mangle]
