@@ -7,7 +7,7 @@ use crate::{
     interfaces::statics::{
         decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_header, ClearTextHeader,
     },
-    policy::Attributes,
+    policies::Attribute,
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
@@ -58,8 +58,9 @@ pub fn webassembly_encrypt_hybrid_header(
         .map_err(|e| JsValue::from_str(&format!("Error deserializing metadata: {e}")))?;
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
-    let attributes: Attributes = serde_json::from_slice(attributes_bytes.to_vec().as_slice())
-        .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
+    let attributes: Vec<Attribute> =
+        serde_json::from_slice(attributes_bytes.to_vec().as_slice())
+            .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
     let public_key = serde_json::from_slice(public_key_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
     let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
@@ -116,7 +117,11 @@ pub fn webassembly_decrypt_hybrid_header(
         .map_err(|e| return JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
 
     Ok(js_sys::Uint8Array::from(
-        &cleartext_header.symmetric_key.to_bytes()[..],
+        serde_json::to_vec(&cleartext_header)
+            .map_err(|e| {
+                return JsValue::from_str(&format!("Error serializing decrypted header: {e}"));
+            })?
+            .as_slice(),
     ))
 }
 
@@ -142,15 +147,14 @@ pub fn webassembly_decrypt_hybrid_block(
 
     //
     // Parse symmetric key
-    let symmetric_key = <Aes256GcmCrypto as SymmetricCrypto>::Key::parse(
-        symmetric_key_bytes.to_vec(),
-    )
-    .map_err(|e| {
-        return JsValue::from_str(&format!(
-            "Error parsing
+    let symmetric_key =
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes.to_vec())
+            .map_err(|e| {
+                return JsValue::from_str(&format!(
+                    "Error parsing
     symmetric key: {e}"
-        ));
-    })?;
+                ));
+            })?;
 
     let uid = uid_bytes.map_or(vec![], |v| v.to_vec());
     let block_number_value = block_number.unwrap_or(0);

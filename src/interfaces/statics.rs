@@ -1,7 +1,7 @@
 use crate::{
     api::{self, CoverCrypt, PrivateKey, PublicKey},
     error::Error,
-    policy::{AccessPolicy, Attributes, Policy},
+    policies::{Attribute, Policy},
 };
 use cosmian_crypto_base::{
     entropy::CsRng,
@@ -40,28 +40,24 @@ pub struct ClearTextHeader<DEM: Dem> {
 pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     policy: &Policy,
     public_key: &PublicKey<KEM>,
-    attributes: &Attributes,
+    attributes: &[Attribute],
     meta_data: Option<&Metadata>,
 ) -> Result<EncryptedHeader<DEM>, Error> {
     // generate symmetric key and its encapsulation
     let cover_crypt = CoverCrypt::<KEM>::new();
-    let (K, E) = cover_crypt.generate_symmetric_key(
-        policy,
-        public_key,
-        &AccessPolicy::from_attribute_list(attributes)?,
-        DEM::Key::LENGTH,
-    )?;
-    let encapulation = serde_json::to_vec(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
+    let (K, E) =
+        cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
+    let encapsulation = serde_json::to_vec(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
 
     // create header
     let mut header_bytes = Vec::new();
 
     header_bytes.extend(
-        u32::try_from(encapulation.len())
+        u32::try_from(encapsulation.len())
             .map_err(|e| Error::InvalidSize(e.to_string()))?
             .to_be_bytes(),
     );
-    header_bytes.extend(encapulation);
+    header_bytes.extend(encapsulation);
 
     // encrypt metadata if it is given
     if let Some(meta_data) = meta_data {
@@ -81,12 +77,12 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     }
 
     Ok(EncryptedHeader {
-        symmetric_key: DEM::Key::try_from(K).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(K).map_err(Error::CryptoError)?,
         header_bytes,
     })
 }
 
-/// Decrypt the gven header bytes using a user decryption key.
+/// Decrypt the given header bytes using a user decryption key.
 ///
 /// - `user_decryption_key` : private key to use for decryption
 /// - `header_bytes`        : encrypted header bytes
@@ -106,16 +102,13 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     let cover_crypt = CoverCrypt::<KEM>::default();
     let E: api::CipherText =
         serde_json::from_slice(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
-    for autorisation in E.keys() {
-        println!("required: {autorisation}");
-    }
     let K = cover_crypt.decrypt_symmetric_key(user_decryption_key, &E, DEM::Key::LENGTH)?;
 
     // decrypt the metadata
     let metadata = DEM::decaps(&K, b"", &header_bytes[index..]).map_err(Error::CryptoError)?;
 
     Ok(ClearTextHeader {
-        symmetric_key: DEM::Key::try_from(K).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(K).map_err(Error::CryptoError)?,
         meta_data: Metadata::from_bytes(&metadata).map_err(|_| Error::ConversionFailed)?,
     })
 }
@@ -188,7 +181,7 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
 
 #[cfg(test)]
 mod tests {
-    use crate::policy::{Attribute, PolicyAxis};
+    use crate::policies::{ap, Attribute, PolicyAxis};
 
     use super::*;
     use cosmian_crypto_base::{
@@ -210,12 +203,12 @@ mod tests {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = Attributes::from(vec![
+        let attributes = vec![
             Attribute::new("Security Level", "Confidential"),
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
-        ]);
-        let access_policy = AccessPolicy::from_attribute_list(&attributes)?;
+        ];
+        let access_policy = ap("Security Level", "Top Secret") & ap("Department", "FIN");
 
         //
         // CoverCrypt setup
@@ -223,8 +216,8 @@ mod tests {
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        for autorisation in sk_u.keys() {
-            println!("{autorisation}");
+        for partition in sk_u.keys() {
+            println!("{partition}");
         }
 
         //

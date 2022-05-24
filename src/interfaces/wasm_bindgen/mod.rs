@@ -1,4 +1,4 @@
-pub mod hybrid_gpsw_aes;
+pub mod hybrid_cc_aes;
 
 #[cfg(test)]
 mod tests;

@@ -8,8 +8,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Unknown authorisation {0}")]
-    UnknownAuthorisation(String),
+    #[error("Unknown partition {0}")]
+    UnknownPartition(String),
     #[error("{0}")]
     CryptoError(CryptoError),
     #[error("attribute not found: {0}")]
