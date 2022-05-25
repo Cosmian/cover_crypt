@@ -1,17 +1,19 @@
-use crate::{
-    api::{self, CoverCrypt},
-    error::Error,
-    interfaces::{
-        statics::{ClearTextHeader, EncryptedHeader},
-        wasm_bindgen::hybrid_cc_aes::*,
-    },
-    policies::{ap, Attribute, Policy, PolicyAxis},
-};
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
     symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
 };
+use serde_json::Value;
 use wasm_bindgen_test::*;
+
+use crate::{
+    api::{self, CoverCrypt},
+    error::Error,
+    interfaces::{
+        statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
+        wasm_bindgen::hybrid_cc_aes::*,
+    },
+    policies::{ap, Attribute, Policy, PolicyAxis},
+};
 
 fn encrypt_header(
     metadata: &Metadata,
@@ -47,7 +49,7 @@ fn decrypt_header(
 }
 
 #[wasm_bindgen_test]
-pub fn test_non_reg_decrypt_hybrid_header() {
+pub fn test_decrypt_hybrid_header() {
     //
     // Policy settings
     //
@@ -98,4 +100,21 @@ pub fn test_non_reg_decrypt_hybrid_header() {
         &meta_data.additional_data,
         &decrypted_header.meta_data.additional_data
     );
+}
+
+#[wasm_bindgen_test]
+fn test_non_reg_decrypt_hybrid_header() {
+    let reg_vector_json: Value =
+        serde_json::from_str(include_str!("../regression_vector.json")).unwrap();
+
+    let user_decryption_key =
+        hex::decode(reg_vector_json["user_decryption_key"].as_str().unwrap()).unwrap();
+    let header_bytes = hex::decode(reg_vector_json["header_bytes"].as_str().unwrap()).unwrap();
+
+    let user_decryption_key_from_file = serde_json::from_slice(&user_decryption_key).unwrap();
+    decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+        &user_decryption_key_from_file,
+        &header_bytes,
+    )
+    .unwrap();
 }

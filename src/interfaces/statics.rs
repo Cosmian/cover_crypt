@@ -1,15 +1,17 @@
-use crate::{
-    api::{self, CoverCrypt, PrivateKey, PublicKey},
-    error::Error,
-    policies::{Attribute, Policy},
-};
+use std::ops::DerefMut;
+
 use cosmian_crypto_base::{
     entropy::CsRng,
     hybrid_crypto::{Block, Dem, Kem, Metadata},
     KeyTrait,
 };
 use serde::{Deserialize, Serialize};
-use std::ops::DerefMut;
+
+use crate::{
+    api::{self, CoverCrypt, PrivateKey, PublicKey},
+    error::Error,
+    policies::{Attribute, Policy},
+};
 
 /// An EncryptedHeader returned by the `encrypt_hybrid_header` function
 #[derive(Serialize, Deserialize)]
@@ -93,7 +95,13 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     // get the encapsulation size (u32)
     let mut index = 4;
     let encapsulation_size = u32::from_be_bytes(header_bytes[..index].try_into()?) as usize;
-
+    let header_size = header_bytes.len();
+    if encapsulation_size > header_size - 4 {
+        return Err(Error::InvalidSize(format!(
+            "Invalid Header bytes: the 4 first bytes (big endian encoded) give an u32 value \
+             greater than the header size ({encapsulation_size} against {header_size})"
+        )));
+    }
     // get the encapsulation
     let E = header_bytes[index..index + encapsulation_size].to_owned();
     index += encapsulation_size;
@@ -105,7 +113,7 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     let K = cover_crypt.decrypt_symmetric_key(user_decryption_key, &E, DEM::Key::LENGTH)?;
 
     // decrypt the metadata if any
-    let meta_data = if index >= header_bytes.len() {
+    let meta_data = if index >= header_size {
         Metadata::default()
     } else {
         Metadata::from_bytes(
@@ -188,13 +196,21 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
 
 #[cfg(test)]
 mod tests {
-    use crate::policies::{ap, Attribute, PolicyAxis};
-
-    use super::*;
     use cosmian_crypto_base::{
         asymmetric::ristretto::X25519Crypto, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
     };
+    use serde_json::Value;
 
+    use super::*;
+    use crate::policies::{ap, Attribute, PolicyAxis};
+
+    #[derive(Serialize, Deserialize)]
+    struct RegressionVector {
+        user_decryption_key: String,
+        header_bytes: String,
+        encrypted_bytes: String,
+        uid: String,
+    }
     #[test]
     fn test_hybrid_encryption_decryption() -> Result<(), Error> {
         //
@@ -265,6 +281,42 @@ mod tests {
 
         assert_eq!(message.to_vec(), res);
 
+        // Generate regression vectors
+        let mut encrypted_bytes = (encrypted_header.header_bytes.len() as u32)
+            .to_be_bytes()
+            .to_vec();
+        encrypted_bytes.extend_from_slice(&encrypted_header.header_bytes);
+        encrypted_bytes.extend_from_slice(&encrypted_block);
+
+        let reg_vectors = RegressionVector {
+            user_decryption_key: hex::encode(serde_json::to_vec(&sk_u)?),
+            header_bytes: hex::encode(encrypted_header.header_bytes.clone()),
+            encrypted_bytes: hex::encode(encrypted_bytes),
+            uid: hex::encode(uid),
+        };
+        std::fs::write(
+            "regression_vector.json",
+            serde_json::to_string(&reg_vectors).unwrap(),
+        )
+        .unwrap();
+
         Ok(())
+    }
+
+    #[test]
+    fn test_non_reg_decrypt_hybrid_header() {
+        let reg_vector_json: Value =
+            serde_json::from_str(include_str!("regression_vector.json")).unwrap();
+
+        let user_decryption_key =
+            hex::decode(reg_vector_json["user_decryption_key"].as_str().unwrap()).unwrap();
+        let header_bytes = hex::decode(reg_vector_json["header_bytes"].as_str().unwrap()).unwrap();
+
+        let user_decryption_key_from_file = serde_json::from_slice(&user_decryption_key).unwrap();
+        assert!(decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &user_decryption_key_from_file,
+            &header_bytes[4..], // provoke InvalidSize error
+        )
+        .is_err());
     }
 }
