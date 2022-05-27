@@ -78,24 +78,17 @@ impl AccessPolicy {
     }
 
     /// Generate an access policy from a map of policy access names to policy
-    /// attributes e.g.
-    /// ```json
-    /// {
-    ///     "Department": ["HR","FIN"],
-    ///     "Level": ["level_2"],
-    /// }
-    /// ```
-    /// The axes are ORed between each others while the attributes
+    /// attributes. The axes are ORed between each others while the attributes
     /// of each axis are ANDed.
     ///
     /// ```
     /// use std::collections::HashMap;
     /// use cover_crypt::policies::{AccessPolicy, ap};
     ///
-    /// let axes = HashMap::from([
-    ///     ("Department".to_owned(), vec!["HR".to_owned(),"FIN".to_owned()]),
-    ///     ("Level".to_owned(), vec!["level_2".to_owned()]),
-    /// ]);
+    /// let axes = serde_json::from_str(r#"{
+    ///     "Department": ["HR","FIN"],
+    ///     "Level": ["level_2"]
+    /// }"#).unwrap();
     ///
     /// let access_policy = AccessPolicy::from_axes(&axes);
     /// assert_eq!(
@@ -252,7 +245,7 @@ impl AccessPolicy {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```
     /// use cover_crypt::policies::{AccessPolicy, ap};
     ///
     /// let boolean_expression = "(Department::HR || Department::RnD) && Level::level_2";
@@ -411,14 +404,14 @@ impl From<Attribute> for AccessPolicy {
 /// Create an axis policy from a simple attribute
 ///
 /// Shorthand for
-/// ```rust
+/// ```
 /// let axis="axis_name";
 /// let attribute_name="attribute_name";
 /// let access_policy = cover_crypt::policies::AccessPolicy::new(axis, attribute_name);
 /// ```
 ///
 /// Used to easily build access policies programmatically
-/// ```rust
+/// ```
 /// use cover_crypt::policies::ap;
 /// let access_policy =
 ///     ap("Security Level", "level 4") & (ap("Department", "MKG") | ap("Department", "FIN"));
