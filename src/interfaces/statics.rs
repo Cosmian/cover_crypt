@@ -206,7 +206,11 @@ mod tests {
 
     #[derive(Serialize, Deserialize)]
     struct RegressionVector {
+        public_key: String,
+        private_key: String,
+        policy: String,
         user_decryption_key: String,
+        user_decryption_key_2: String,
         header_bytes: String,
         encrypted_bytes: String,
         uid: String,
@@ -218,7 +222,13 @@ mod tests {
         //
         let sec_level = PolicyAxis::new(
             "Security Level",
-            &["Protected", "Confidential", "Top Secret"],
+            &[
+                "Protected",
+                "Low Secret",
+                "Medium Secret",
+                "High Secret",
+                "Top Secret",
+            ],
             true,
         );
         let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
@@ -227,21 +237,23 @@ mod tests {
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         let attributes = vec![
-            Attribute::new("Security Level", "Confidential"),
+            Attribute::new("Security Level", "Low Secret"),
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
         ];
-        let access_policy = ap("Security Level", "Top Secret") & ap("Department", "FIN");
+        let access_policy = ap("Security Level", "Top Secret")
+            & (ap("Department", "FIN") | ap("Department", "MKG"));
+        let access_policy_2 = ap("Security Level", "Medium Secret") & ap("Department", "MKG");
 
         //
         // CoverCrypt setup
         //
         let cc = CoverCrypt::<X25519Crypto>::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        for partition in sk_u.keys() {
-            println!("{partition}");
-        }
+        let top_secret_mkg_fin_user =
+            cc.generate_user_private_key(&msk, &access_policy, &policy)?;
+        let medium_secret_mkg_user =
+            cc.generate_user_private_key(&msk, &access_policy_2, &policy)?;
 
         //
         // Encrypt/decrypt header
@@ -257,24 +269,23 @@ mod tests {
             Some(&metadata),
         )?;
         let res = decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-            &sk_u,
+            &top_secret_mkg_fin_user,
             &encrypted_header.header_bytes,
         )?;
 
         assert_eq!(metadata, res.meta_data);
 
         let message = b"My secret message";
-        let uid = b"user";
         const MAX_CLEARTEXT_SIZE: usize = 256;
         let encrypted_block = encrypt_hybrid_block::<
             X25519Crypto,
             Aes256GcmCrypto,
             MAX_CLEARTEXT_SIZE,
-        >(&encrypted_header.symmetric_key, uid, 0, message)?;
+        >(&encrypted_header.symmetric_key, &metadata.uid, 0, message)?;
 
         let res = decrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEARTEXT_SIZE>(
             &encrypted_header.symmetric_key,
-            uid,
+            &metadata.uid,
             0,
             &encrypted_block,
         )?;
@@ -289,10 +300,14 @@ mod tests {
         encrypted_bytes.extend_from_slice(&encrypted_block);
 
         let reg_vectors = RegressionVector {
-            user_decryption_key: hex::encode(serde_json::to_vec(&sk_u)?),
+            public_key: hex::encode(serde_json::to_vec(&mpk)?),
+            private_key: hex::encode(serde_json::to_vec(&msk)?),
+            policy: hex::encode(serde_json::to_vec(&policy)?),
+            user_decryption_key: hex::encode(serde_json::to_vec(&top_secret_mkg_fin_user)?),
+            user_decryption_key_2: hex::encode(serde_json::to_vec(&medium_secret_mkg_user)?),
             header_bytes: hex::encode(encrypted_header.header_bytes.clone()),
             encrypted_bytes: hex::encode(encrypted_bytes),
-            uid: hex::encode(uid),
+            uid: hex::encode(metadata.uid),
         };
         std::fs::write(
             "regression_vector.json",

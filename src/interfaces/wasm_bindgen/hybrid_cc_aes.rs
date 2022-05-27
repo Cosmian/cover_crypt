@@ -3,18 +3,20 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
-use crate::{
-    interfaces::statics::{
-        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_header, ClearTextHeader,
-    },
-    policies::Attribute,
-};
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto,
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
     KeyTrait,
 };
 use wasm_bindgen::prelude::*;
+
+use crate::{
+    interfaces::statics::{
+        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
+        ClearTextHeader,
+    },
+    policies::Attribute,
+};
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 
@@ -123,6 +125,51 @@ pub fn webassembly_decrypt_hybrid_header(
             })?
             .as_slice(),
     ))
+}
+
+/// Symmetrically Encrypt plaintext data in a block.
+#[wasm_bindgen]
+pub fn webassembly_encrypt_hybrid_block(
+    symmetric_key_bytes: js_sys::Uint8Array,
+    uid_bytes: Option<js_sys::Uint8Array>,
+    block_number: Option<usize>,
+    plaintext_bytes: js_sys::Uint8Array,
+) -> Result<js_sys::Uint8Array, JsValue> {
+    //
+    // Check `plaintext_bytes` input param
+    if plaintext_bytes.length() == 0 {
+        return Err(JsValue::from_str("Plaintext value is empty"));
+    }
+
+    //
+    // Parse symmetric key
+    let symmetric_key =
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes.to_vec())
+            .map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Error parsing
+    symmetric key: {e}"
+                ))
+            })?;
+
+    let uid = uid_bytes.map_or_else(Vec::new, |v| v.to_vec());
+    let block_number_value = block_number.unwrap_or(0);
+    //
+    // Encrypt block
+    let ciphertext = encrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+        &symmetric_key,
+        &uid,
+        block_number_value,
+        &plaintext_bytes.to_vec(),
+    )
+    .map_err(|e| {
+        JsValue::from_str(&format!(
+            "Error encrypting block:
+    {e}"
+        ))
+    })?;
+
+    Ok(js_sys::Uint8Array::from(&ciphertext[..]))
 }
 
 /// Symmetrically Decrypt encrypted data in a block.
