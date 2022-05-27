@@ -88,9 +88,21 @@ impl AccessPolicy {
     /// The axes are ORed between each others while the attributes
     /// of each axis are ANDed.
     ///
-    /// The example above would generate the access policy
+    /// ```
+    /// use std::collections::HashMap;
+    /// use cover_crypt::policies::{AccessPolicy, ap};
     ///
-    /// `Department("HR" OR "FIN") AND Level("level_2")`
+    /// let axes = HashMap::from([
+    ///     ("Department".to_owned(), vec!["HR".to_owned(),"FIN".to_owned()]),
+    ///     ("Level".to_owned(), vec!["level_2".to_owned()]),
+    /// ]);
+    ///
+    /// let access_policy = AccessPolicy::from_axes(&axes);
+    /// assert_eq!(
+    ///     access_policy.unwrap(),
+    ///     (ap("Department", "HR") | ap("Department", "FIN")) & ap("Level", "level_2"),
+    /// );
+    /// ```
     pub fn from_axes(
         axes_attributes: &HashMap<String, Vec<String>>,
     ) -> Result<AccessPolicy, Error> {
@@ -229,12 +241,6 @@ impl AccessPolicy {
     }
 
     /// Convert a boolean expression into `AccessPolicy`.
-    /// Example:
-    ///     input boolean expression: (Department::HR || Department::RnD) &&
-    /// Level::level_2
-    ///     output: corresponding access policy:
-    /// And(Attr(Level::level2), Or(Attr(Department::HR),
-    /// Attr(Department::RnD)))
     ///
     /// # Arguments
     ///
@@ -247,8 +253,14 @@ impl AccessPolicy {
     /// # Examples
     ///
     /// ```rust
+    /// use cover_crypt::policies::{AccessPolicy, ap};
+    ///
     /// let boolean_expression = "(Department::HR || Department::RnD) && Level::level_2";
-    /// let access_policy = cover_crypt::policies::AccessPolicy::from_boolean_expression(boolean_expression);
+    /// let access_policy = AccessPolicy::from_boolean_expression(boolean_expression);
+    /// assert_eq!(
+    ///     access_policy.unwrap(),
+    ///     (ap("Department", "HR") | ap("Department", "RnD")) & ap("Level", "level_2"),
+    /// );
     /// ```
     /// # Errors
     ///
