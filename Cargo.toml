@@ -1,6 +1,6 @@
 [package]
 name = "cover_crypt"
-version = "1.0.3"
+version = "2.0.0"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -25,7 +25,8 @@ wasi_impl = ["cosmian-wit-bindgen-rust", "witgen"]
 wit = ["witgen"]
 
 [dependencies]
-cosmian_crypto_base = { version = "1.2.2" }
+# cosmian_crypto_base = { version = "1.2.2" }
+cosmian_crypto_base = { path = "../crypto_base" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rand_core = { version = "0.5", features = ["getrandom"] }

@@ -3,20 +3,20 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use wasm_bindgen::prelude::*;
-
 use crate::{
+    api::{PrivateKey, PublicKey},
     interfaces::statics::{
         decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
         ClearTextHeader,
     },
     policies::Attribute,
 };
+use cosmian_crypto_base::{
+    asymmetric::ristretto::X25519Crypto,
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use wasm_bindgen::prelude::*;
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 
@@ -63,7 +63,7 @@ pub fn webassembly_encrypt_hybrid_header(
     let attributes: Vec<Attribute> =
         serde_json::from_slice(attributes_bytes.to_vec().as_slice())
             .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
-    let public_key = serde_json::from_slice(public_key_bytes.to_vec().as_slice())
+    let public_key = PublicKey::try_from_bytes(&public_key_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
     let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
         &policy,
@@ -104,8 +104,8 @@ pub fn webassembly_decrypt_hybrid_header(
 
     //
     // Parse user decryption key
-    let user_decryption_key = serde_json::from_slice(user_decryption_key_bytes.to_vec().as_slice())
-        .map_err(|e| {
+    let user_decryption_key =
+        PrivateKey::try_from_bytes(user_decryption_key_bytes.to_vec().as_slice()).map_err(|e| {
             return JsValue::from_str(&format!("Error deserializing user decryption key: {e}"));
         })?;
 

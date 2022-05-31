@@ -1,81 +1,27 @@
 use std::{
     collections::{HashMap, HashSet},
-    convert::TryFrom,
-    fmt::Display,
     marker::PhantomData,
     ops::DerefMut,
     sync::Mutex,
 };
 
-use cosmian_crypto_base::{entropy::CsRng, hybrid_crypto::Kem};
-use serde::{Deserialize, Serialize};
+use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
 
 use crate::{
-    cover_crypt_core,
+    cover_crypt_core::{self, Encapsulation, Partition, SecretKey},
     error::Error,
     policies::{AccessPolicy, Attribute, Policy},
 };
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
 
-/// Partition associated to a KEM keypair. It corresponds to a combination
-/// of attributes across all axes.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
-#[serde(try_from = "String", into = "String")]
-pub struct Partition(Vec<u8>);
-
-impl Partition {
-    /// Create a Partition from the list of the attribute values
-    /// which constitutes the "coordinates" of the partitions
-    /// across all axes of the policy
-    ///
-    /// The attribute values MUST be unique across all axes
-    pub fn new(mut attribute_values: Vec<u32>) -> Partition {
-        // the sort operation allows to get the same hash for :
-        // `Department::HR || Level::Secret`
-        // and
-        // `Level::Secret || Department::HR`
-        attribute_values.sort_unstable();
-        let mut bytes = Vec::with_capacity(attribute_values.len() * 4);
-        for value in attribute_values {
-            bytes.extend(value.to_be_bytes())
-        }
-        Partition(bytes)
-    }
-}
-
-impl Display for Partition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", hex::encode(&self.0))
-    }
-}
-
-impl From<Partition> for String {
-    fn from(a: Partition) -> Self {
-        format!("{a}")
-    }
-}
-
-impl TryFrom<String> for Partition {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let res = hex::decode(&value).map_err(|_e| Error::ConversionFailed)?;
-        Ok(Partition(res))
-    }
-}
-
-/// Ciphertext of the CoverCrypt algorithm. This is a `HashMap` of the KEM
-/// encapsulations for some authorisations.
-pub type CipherText = cover_crypt_core::Encapsulation<Partition>;
-
 /// Private key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
 /// private keys for some authorisations.
-pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Partition, KEM>;
+pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<KEM>;
 
 /// Public key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
 /// public keys for some authorisations.
-pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Partition, KEM>;
+pub type PublicKey<KEM> = cover_crypt_core::PublicKey<KEM>;
 
 /// CoverCrypt public and private key pair.
 #[derive(Clone)]
@@ -125,7 +71,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         &self,
         policy: &Policy,
     ) -> Result<(PrivateKey<KEM>, PublicKey<KEM>), Error> {
-        Ok(cover_crypt_core::setup::<_, CsRng, KEM>(
+        Ok(cover_crypt_core::setup::<CsRng, KEM>(
             &mut self.rng.lock().expect("a mutex lock failed"),
             &all_partitions(policy)?,
         ))
@@ -142,7 +88,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PrivateKey<KEM>, Error> {
-        cover_crypt_core::join::<_, KEM>(msk, &ap_to_partitions(access_policy, policy)?)
+        cover_crypt_core::join::<KEM>(msk, &ap_to_partitions(access_policy, policy)?)
     }
 
     /// Generate a user public key.
@@ -171,7 +117,8 @@ impl<KEM: Kem> CoverCrypt<KEM> {
                 Ok((partition.to_owned(), kem_public_key.to_owned()))
             })
             // `PublicKey` is an alias to a `HashMap` which is collected here
-            .collect()
+            .collect::<Result<HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey>, Error>>()
+            .map(|m| cover_crypt_core::PublicKey(m))
     }
 
     /// Generate a random symmetric key of `symmetric_key_len` to be used in an
@@ -188,22 +135,25 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         pk: &PublicKey<KEM>,
         attributes: &[Attribute],
         sym_key_len: usize,
-    ) -> Result<(Vec<u8>, CipherText), Error> {
+    ) -> Result<(SecretKey, Encapsulation), Error> {
         // get the authorisations associated to the given access policy
         let partitions = to_partitions(attributes, policy)?;
-        let (mut K, E) = cover_crypt_core::encaps::<_, _, KEM>(
+        let (mut secret_key, encapsulation) = cover_crypt_core::encaps::<_, KEM>(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &partitions,
+            sym_key_len,
         )?;
         // expend keying data if needed
-        if sym_key_len > K.len() {
-            K = cosmian_crypto_base::kdf::hkdf_256(&K, sym_key_len, KDF_INFO)
-                .map_err(Error::CryptoError)?;
+        if sym_key_len > secret_key.len() {
+            secret_key = SecretKey(
+                cosmian_crypto_base::kdf::hkdf_256(&secret_key, sym_key_len, KDF_INFO)
+                    .map_err(Error::CryptoError)?,
+            );
         } else {
-            K = K[..sym_key_len].to_owned();
+            secret_key = SecretKey(secret_key[..sym_key_len].to_owned());
         }
-        Ok((K, E))
+        Ok((secret_key, encapsulation))
     }
 
     /// Decrypt a symmetric key generated with `generate_symmetric_key()`
@@ -214,17 +164,17 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     pub fn decrypt_symmetric_key(
         &self,
         sk_u: &PrivateKey<KEM>,
-        c: &CipherText,
+        ciphertext: &Encapsulation,
         sym_key_len: usize,
-    ) -> Result<Vec<u8>, Error> {
-        let key =
-            cover_crypt_core::decaps::<_, KEM>(sk_u, c)?.ok_or(Error::InsufficientAccessPolicy)?;
-        if sym_key_len > key.len() {
+    ) -> Result<SecretKey, Error> {
+        let key = cover_crypt_core::decaps::<KEM>(sk_u, ciphertext, sym_key_len)?
+            .ok_or(Error::InsufficientAccessPolicy)?;
+        Ok(SecretKey(if sym_key_len > key.len() {
             cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
-                .map_err(Error::CryptoError)
+                .map_err(Error::CryptoError)?
         } else {
-            Ok(key[..sym_key_len].to_owned())
-        }
+            key[..sym_key_len].to_owned()
+        }))
     }
 }
 
