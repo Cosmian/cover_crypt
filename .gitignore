@@ -1,1 +1,3 @@
 /target*
+.cargo_check
+regression_vector.json
