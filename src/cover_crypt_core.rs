@@ -325,7 +325,7 @@ impl Encapsulation {
 /// CovCrypt secret key is a vector of bytes of the same length as secret key
 /// of the underlying KEM.
 #[derive(Clone, PartialEq, Debug)]
-pub struct SecretKey(pub Vec<u8>);
+pub struct SecretKey(Vec<u8>);
 
 impl std::ops::Deref for SecretKey {
     type Target = Vec<u8>;

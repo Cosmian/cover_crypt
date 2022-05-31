@@ -1,16 +1,14 @@
+use crate::{
+    cover_crypt_core::{self, Partition},
+    error::Error,
+    policies::{AccessPolicy, Attribute, Policy},
+};
+use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
 use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::DerefMut,
     sync::Mutex,
-};
-
-use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
-
-use crate::{
-    cover_crypt_core::{self, Encapsulation, Partition, SecretKey},
-    error::Error,
-    policies::{AccessPolicy, Attribute, Policy},
 };
 
 const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
@@ -23,6 +21,9 @@ pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<KEM>;
 /// public keys for some authorisations.
 pub type PublicKey<KEM> = cover_crypt_core::PublicKey<KEM>;
 
+pub type Encapsulation = cover_crypt_core::Encapsulation;
+
+pub type SecretKey = cover_crypt_core::SecretKey;
 /// CoverCrypt public and private key pair.
 #[derive(Clone)]
 pub struct CCKeyPair<KEM: Kem> {
@@ -146,12 +147,12 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         )?;
         // expend keying data if needed
         if sym_key_len > secret_key.len() {
-            secret_key = SecretKey(
+            secret_key = SecretKey::from(
                 cosmian_crypto_base::kdf::hkdf_256(&secret_key, sym_key_len, KDF_INFO)
                     .map_err(Error::CryptoError)?,
             );
         } else {
-            secret_key = SecretKey(secret_key[..sym_key_len].to_owned());
+            secret_key = SecretKey::from(secret_key[..sym_key_len].to_owned());
         }
         Ok((secret_key, encapsulation))
     }
@@ -169,7 +170,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     ) -> Result<SecretKey, Error> {
         let key = cover_crypt_core::decaps::<KEM>(sk_u, ciphertext, sym_key_len)?
             .ok_or(Error::InsufficientAccessPolicy)?;
-        Ok(SecretKey(if sym_key_len > key.len() {
+        Ok(SecretKey::from(if sym_key_len > key.len() {
             cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
                 .map_err(Error::CryptoError)?
         } else {
