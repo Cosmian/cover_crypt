@@ -323,6 +323,8 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_base"
 version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfe81d8e28941d3458de58b7f7ee530facdf28bb39c87d438b9e0434daafb147"
 dependencies = [
  "aes",
  "aes-gcm",
