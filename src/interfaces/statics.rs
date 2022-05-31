@@ -301,20 +301,20 @@ mod tests {
         encrypted_bytes.extend_from_slice(&encrypted_block);
 
         let reg_vectors = RegressionVector {
-            public_key: hex::encode(serde_json::to_vec(&mpk)?),
-            private_key: hex::encode(serde_json::to_vec(&msk)?),
+            public_key: hex::encode(mpk.to_bytes()?),
+            private_key: hex::encode(msk.to_bytes()?),
             policy: hex::encode(serde_json::to_vec(&policy)?),
-            user_decryption_key: hex::encode(serde_json::to_vec(&top_secret_mkg_fin_user)?),
-            user_decryption_key_2: hex::encode(serde_json::to_vec(&medium_secret_mkg_user)?),
+            user_decryption_key: hex::encode(top_secret_mkg_fin_user.to_bytes()?),
+            user_decryption_key_2: hex::encode(medium_secret_mkg_user.to_bytes()?),
             header_bytes: hex::encode(encrypted_header.header_bytes.clone()),
             encrypted_bytes: hex::encode(encrypted_bytes),
             uid: hex::encode(metadata.uid),
         };
-        // std::fs::write(
-        //     "regression_vector.json",
-        //     serde_json::to_string(&reg_vectors).unwrap(),
-        // )
-        // .unwrap();
+        std::fs::write(
+            "regression_vector.json",
+            serde_json::to_string(&reg_vectors).unwrap(),
+        )
+        .unwrap();
 
         Ok(())
     }
