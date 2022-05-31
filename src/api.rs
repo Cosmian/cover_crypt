@@ -88,7 +88,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PrivateKey<KEM>, Error> {
-        cover_crypt_core::join::<KEM>(msk, &ap_to_partitions(access_policy, policy)?)
+        cover_crypt_core::join::<KEM>(msk, &access_policy_to_partitions(access_policy, policy)?)
     }
 
     /// Generate a user public key.
@@ -102,7 +102,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PublicKey<KEM>, Error> {
-        ap_to_partitions(access_policy, policy)?
+        access_policy_to_partitions(access_policy, policy)?
             .iter()
             .map(|partition| {
                 // partition should be contained in the master key in
@@ -201,10 +201,12 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
     }
 
     // perform all the combinations to get all the partitions
-    Ok(combine_attribute_values(0, axes.as_slice(), &map)?
-        .into_iter()
-        .map(Partition::new)
-        .collect())
+    let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
+    let mut set: HashSet<Partition> = HashSet::new();
+    for combination in combinations {
+        set.insert(Partition::from_attributes(combination)?);
+    }
+    Ok(set)
 }
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
@@ -236,11 +238,12 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
         }
     }
 
-    // perform all the combinations to get all the partitions
-    Ok(combine_attribute_values(0, axes.as_slice(), &map)?
-        .into_iter()
-        .map(Partition::new)
-        .collect())
+    let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
+    let mut set: HashSet<Partition> = HashSet::new();
+    for combination in combinations {
+        set.insert(Partition::from_attributes(combination)?);
+    }
+    Ok(set)
 }
 
 fn combine_attribute_values(
@@ -281,14 +284,16 @@ fn combine_attribute_values(
 
 /// Convert an access policy used to decrypt ciphertexts into the corresponding
 /// list of CoverCrypt partitions that can be decrypted by that access policy
-fn ap_to_partitions(
+fn access_policy_to_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
-    Ok(to_attribute_combinations(access_policy, policy)?
-        .iter()
-        .map(|comb| Partition::new(comb.to_owned()))
-        .collect())
+    let combinations = to_attribute_combinations(access_policy, policy)?;
+    let mut set: HashSet<Partition> = HashSet::new();
+    for combination in combinations {
+        set.insert(Partition::from_attributes(combination)?);
+    }
+    Ok(set)
 }
 
 /// Returns the list of partitions that can be built using the values of
@@ -406,7 +411,7 @@ mod tests {
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
-            let partition = Partition::new(vec![att_0_0, *value]);
+            let partition = Partition::from_attributes(vec![att_0_0, *value])?;
             assert!(partitions_0.contains(&partition));
         }
 
@@ -421,7 +426,7 @@ mod tests {
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
-        assert!(partitions_1.contains(&Partition::new(vec![att_0_0, att_1_0])));
+        assert!(partitions_1.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
 
         // this should create the 2combination of the first attribute
         // of the first axis with that the wo of the second axis
@@ -436,8 +441,8 @@ mod tests {
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
         let att_1_1 = axes_attributes[1][1].1;
-        assert!(partitions_2.contains(&Partition::new(vec![att_0_0, att_1_0]),));
-        assert!(partitions_2.contains(&Partition::new(vec![att_0_0, att_1_1]),));
+        assert!(partitions_2.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?,));
+        assert!(partitions_2.contains(&Partition::from_attributes(vec![att_0_0, att_1_1])?,));
 
         // rotation
         policy.rotate(&axes_attributes[0][0].0)?;
@@ -455,8 +460,8 @@ mod tests {
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
         let att_0_0_new = axes_attributes[0][0].1;
-        assert!(partitions_3.contains(&Partition::new(vec![att_0_0_new, att_1_0])));
-        assert!(!partitions_3.contains(&Partition::new(vec![att_0_0, att_1_0])));
+        assert!(partitions_3.contains(&Partition::from_attributes(vec![att_0_0_new, att_1_0])?));
+        assert!(!partitions_3.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
 
         Ok(())
     }
@@ -496,8 +501,10 @@ mod tests {
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Confidential");
         let combinations = to_attribute_combinations(&access_policy, &policy)?;
-        let partitions_: HashSet<Partition> =
-            combinations.into_iter().map(Partition::new).collect();
+        let mut partitions_: HashSet<Partition> = HashSet::new();
+        for combination in combinations {
+            partitions_.insert(Partition::from_attributes(combination)?);
+        }
 
         // combine attribute values to verify
         let mut map: HashMap<String, Vec<u32>> = HashMap::new();
@@ -512,10 +519,12 @@ mod tests {
         map.insert("Security Level".to_owned(), lvl_axis_attributes);
 
         let axes: Vec<String> = policy.as_map().keys().cloned().collect();
-        let partitions: HashSet<Partition> = combine_attribute_values(0, axes.as_slice(), &map)?
-            .into_iter()
-            .map(Partition::new)
-            .collect();
+
+        let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
+        let mut partitions: HashSet<Partition> = HashSet::new();
+        for combination in combinations {
+            partitions.insert(Partition::from_attributes(combination)?);
+        }
 
         assert_eq!(partitions, partitions_);
         Ok(())

@@ -50,7 +50,7 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     let cover_crypt = CoverCrypt::<KEM>::new();
     let (secret_key, encapsulation) =
         cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
-    let encapsulation = encapsulation.to_bytes();
+    let encapsulation = encapsulation.to_bytes()?;
 
     // create header
     let mut header_bytes = Vec::new();

@@ -1,4 +1,8 @@
-use crate::{byte_scanner::BytesScanner, error::Error, utils};
+use crate::{
+    bytes_ser_de::{Deserializer, Serializer},
+    error::Error,
+    utils,
+};
 use cosmian_crypto_base::{asymmetric::KeyPair, hybrid_crypto::Kem, KeyTrait};
 use rand_core::{CryptoRng, RngCore};
 use std::{
@@ -17,17 +21,22 @@ impl Partition {
     /// across all axes of the policy
     ///
     /// The attribute values MUST be unique across all axes
-    pub fn new(mut attribute_values: Vec<u32>) -> Partition {
+    pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Partition, Error> {
         // the sort operation allows to get the same hash for :
         // `Department::HR || Level::Secret`
         // and
         // `Level::Secret || Department::HR`
         attribute_values.sort_unstable();
-        let mut bytes = Vec::with_capacity(attribute_values.len() * 4);
+        let mut buf = [0; 1024];
+        let mut writable = &mut buf[..];
+
+        let mut len = 0_usize;
+        // let mut bytes = Vec::with_capacity(attribute_values.len() * 4);
         for value in attribute_values {
-            bytes.extend(value.to_be_bytes())
+            len += leb128::write::unsigned(&mut writable, value as u64)
+                .map_err(|e| Error::Other(format!("Unexpected LEB128 write issue: {}", e)))?;
         }
-        Partition(bytes)
+        Ok(Partition(buf[0..len].to_vec()))
     }
 }
 
@@ -118,30 +127,29 @@ impl<KEM> PrivateKey<KEM>
 where
     KEM: Kem,
 {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![];
-        self.0.iter().for_each(|(k, v)| {
-            let p_bytes: Vec<u8> = k.into();
-            res.extend((p_bytes.len() as u32).to_be_bytes());
-            res.extend(p_bytes);
-            let key_bytes = v.to_bytes();
-            res.extend((key_bytes.len() as u32).to_be_bytes());
-            res.extend(key_bytes);
-        });
-        res
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        for (partition, key) in &self.0 {
+            serializer.write_array(partition.into())?;
+            serializer.write_array(key.to_bytes())?;
+        }
+        // write an empty array to mak the end (wastes one byte)
+        serializer.write_array(vec![])?;
+        Ok(serializer.value().to_vec())
     }
 
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut scanner = BytesScanner::new(bytes);
         let mut map: HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey> =
             HashMap::new();
-        while scanner.has_more() {
-            let p_bytes_size = scanner.read_u32()? as usize;
-            let p_bytes = scanner.next(p_bytes_size)?;
-            let partition = Partition::try_from(p_bytes.to_vec())
-                .map_err(|_| Error::Other("Failed generating partition from bytes".to_string()))?;
-            let key_bytes_size = scanner.read_u32()? as usize;
-            let key_bytes = scanner.next(key_bytes_size)?;
+        let mut de = Deserializer::new(bytes);
+        loop {
+            let partition_bytes = de.read_array()?;
+            if partition_bytes.is_empty() {
+                //empty array marks the end
+                break;
+            }
+            let partition = Partition::from(partition_bytes);
+            let key_bytes = de.read_array()?;
             let key =
                 <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey::try_from_bytes(key_bytes.to_vec())?;
             map.insert(partition, key);
@@ -208,29 +216,29 @@ impl<KEM> PublicKey<KEM>
 where
     KEM: Kem,
 {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![];
-        self.0.iter().for_each(|(k, v)| {
-            let p_bytes: Vec<u8> = k.into();
-            let key_bytes = v.to_bytes();
-            res.extend((p_bytes.len() as u32).to_be_bytes());
-            res.extend(p_bytes);
-            res.extend((key_bytes.len() as u32).to_be_bytes());
-            res.extend(key_bytes);
-        });
-        res
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        for (partition, key) in &self.0 {
+            serializer.write_array(partition.into())?;
+            serializer.write_array(key.to_bytes())?;
+        }
+        // write an empty array to mak the end (wastes one byte)
+        serializer.write_array(vec![])?;
+        Ok(serializer.value().to_vec())
     }
 
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut scanner = BytesScanner::new(bytes);
         let mut map: HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey> =
             HashMap::new();
-        while scanner.has_more() {
-            let p_bytes_size = scanner.read_u32()? as usize;
-            let p_bytes = scanner.next(p_bytes_size)?;
-            let partition = Partition::from(p_bytes.to_vec());
-            let key_bytes_size = scanner.read_u32()? as usize;
-            let key_bytes = scanner.next(key_bytes_size)?;
+        let mut de = Deserializer::new(bytes);
+        loop {
+            let partition_bytes = de.read_array()?;
+            if partition_bytes.is_empty() {
+                //empty array marks the end
+                break;
+            }
+            let partition = Partition::from(partition_bytes);
+            let key_bytes = de.read_array()?;
             let key =
                 <<KEM as Kem>::KeyPair as KeyPair>::PublicKey::try_from_bytes(key_bytes.to_vec())?;
             map.insert(partition, key);
@@ -284,33 +292,30 @@ impl std::ops::DerefMut for Encapsulation {
 }
 
 impl Encapsulation {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![];
-        self.0.iter().for_each(|(k, (key, ciphertext))| {
-            let p_bytes: Vec<u8> = k.into();
-            res.extend((p_bytes.len() as u32).to_be_bytes());
-            res.extend(p_bytes);
-            res.extend((key.len() as u32).to_be_bytes());
-            res.extend(key);
-            res.extend((ciphertext.len() as u32).to_be_bytes());
-            res.extend(ciphertext);
-        });
-        res
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        for (partition, (key, ciphertext)) in &self.0 {
+            serializer.write_array(partition.into())?;
+            serializer.write_array(key.to_owned())?;
+            serializer.write_array(ciphertext.to_owned())?;
+        }
+        // write an empty array to mak the end (wastes one byte)
+        serializer.write_array(vec![])?;
+        Ok(serializer.value().to_vec())
     }
 
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut scanner = BytesScanner::new(bytes);
         let mut map: HashMap<Partition, (Vec<u8>, Vec<u8>)> = HashMap::new();
-        while scanner.has_more() {
-            let p_bytes_size = scanner.read_u32()? as usize;
-            let p_bytes = scanner.next(p_bytes_size)?;
-            let partition = Partition::from(p_bytes.to_vec());
-            let key_bytes_size = scanner.read_u32()? as usize;
-            let key_bytes = scanner.next(key_bytes_size)?;
-            let key = key_bytes.to_vec();
-            let ct_bytes_size = scanner.read_u32()? as usize;
-            let ct_bytes = scanner.next(ct_bytes_size)?;
-            let ciphertext = ct_bytes.to_vec();
+        let mut de = Deserializer::new(bytes);
+        loop {
+            let partition_bytes = de.read_array()?;
+            if partition_bytes.is_empty() {
+                //empty array marks the end
+                break;
+            }
+            let partition = Partition::from(partition_bytes);
+            let key = de.read_array()?;
+            let ciphertext = de.read_array()?;
             map.insert(partition, (key, ciphertext));
         }
         Ok(Self(map))
@@ -512,6 +517,21 @@ mod tests {
     use cosmian_crypto_base::entropy::CsRng;
 
     #[test]
+    fn test_partitions() -> Result<(), Error> {
+        let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
+        let partition = Partition::from_attributes(values.clone())?;
+        let bytes = partition.0;
+        let mut readable = &bytes[..];
+        // values are sorted n Partition
+        values.sort_unstable();
+        for v in values {
+            let val = leb128::read::unsigned(&mut readable).expect("Should read number") as u32;
+            assert_eq!(v, val);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_ser_de() -> Result<(), Error> {
         let admin_partition = Partition("admin".as_bytes().to_vec());
         let dev_partition = Partition("dev".as_bytes().to_vec());
@@ -523,12 +543,12 @@ mod tests {
         let mut rng = CsRng::new();
         // setup scheme
         let (msk, mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
-        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.to_bytes())?;
+        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.to_bytes()?)?;
         assert_eq!(msk, msk_, "master key comparisons failed");
-        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.to_bytes())?;
+        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.to_bytes()?)?;
         assert_eq!(mpk, mpk_);
         let usk = join::<X25519Crypto>(&msk, &user_set)?;
-        let usk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&usk.to_bytes())?;
+        let usk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&usk.to_bytes()?)?;
         assert_eq!(usk, usk_);
         Ok(())
     }
@@ -560,7 +580,7 @@ mod tests {
         println!(
             "Secret Key size: {}, Encapsulation size: {}",
             secret_key.to_vec().len(),
-            encapsulation.to_bytes().len()
+            encapsulation.to_bytes()?.len()
         );
         // decapsulate for users 1 and 3
         let res0 = decaps::<X25519Crypto>(&sk0, &encapsulation, SECRET_KEY_LENGTH)?;
