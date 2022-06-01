@@ -82,3 +82,28 @@ impl From<ParseIntError> for Error {
         Error::ConversionFailed
     }
 }
+
+impl From<cosmian_crypto_base::Error> for Error {
+    fn from(e: cosmian_crypto_base::Error) -> Self {
+        match e {
+            CryptoError::SizeError { given, expected } => {
+                Error::InvalidSize(format!("expected: {}, given: {}", expected, given))
+            }
+            CryptoError::InvalidSize(e) => Error::InvalidSize(e),
+            e => Error::CryptoError(e),
+        }
+    }
+}
+
+#[cfg(feature = "ffi")]
+impl From<std::ffi::NulError> for Error {
+    fn from(e: std::ffi::NulError) -> Self {
+        Error::Other(format!("FFI error: {}", e))
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(e: std::str::Utf8Error) -> Self {
+        Error::Other(format!("UTF8 error: {}", e))
+    }
+}

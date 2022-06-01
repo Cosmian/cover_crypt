@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.0.0] - 2022-05-31
+### Added
+### Changed
+- Complete revamp of encoding of encapsulations and keys for a much more compact size.
+CipherTexts are NOT compatible with those of the 1.x releases
+### Fixed
+### Removed
+
+---
 ## [1.0.3] - 2022-05-27
 ### Added
 - [JS/bindgen] Add `webassembly_encrypt_hybrid_block`

@@ -1,82 +1,27 @@
+use crate::{
+    cover_crypt_core::{self, Partition},
+    error::Error,
+    policies::{AccessPolicy, Attribute, Policy},
+};
+use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
 use std::{
     collections::{HashMap, HashSet},
-    convert::TryFrom,
-    fmt::Display,
     marker::PhantomData,
     ops::DerefMut,
     sync::Mutex,
 };
 
-use cosmian_crypto_base::{entropy::CsRng, hybrid_crypto::Kem};
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    cover_crypt_core,
-    error::Error,
-    policies::{AccessPolicy, Attribute, Policy},
-};
-
-const KDF_INFO: &[u8] = b"Need to extend generated secret key.";
-
-/// Partition associated to a KEM keypair. It corresponds to a combination
-/// of attributes across all axes.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
-#[serde(try_from = "String", into = "String")]
-pub struct Partition(Vec<u8>);
-
-impl Partition {
-    /// Create a Partition from the list of the attribute values
-    /// which constitutes the "coordinates" of the partitions
-    /// across all axes of the policy
-    ///
-    /// The attribute values MUST be unique across all axes
-    pub fn new(mut attribute_values: Vec<u32>) -> Partition {
-        // the sort operation allows to get the same hash for :
-        // `Department::HR || Level::Secret`
-        // and
-        // `Level::Secret || Department::HR`
-        attribute_values.sort_unstable();
-        let mut bytes = Vec::with_capacity(attribute_values.len() * 4);
-        for value in attribute_values {
-            bytes.extend(value.to_be_bytes())
-        }
-        Partition(bytes)
-    }
-}
-
-impl Display for Partition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", hex::encode(&self.0))
-    }
-}
-
-impl From<Partition> for String {
-    fn from(a: Partition) -> Self {
-        format!("{a}")
-    }
-}
-
-impl TryFrom<String> for Partition {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let res = hex::decode(&value).map_err(|_e| Error::ConversionFailed)?;
-        Ok(Partition(res))
-    }
-}
-
-/// Ciphertext of the CoverCrypt algorithm. This is a `HashMap` of the KEM
-/// encapsulations for some authorisations.
-pub type CipherText = cover_crypt_core::Encapsulation<Partition>;
-
 /// Private key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
 /// private keys for some authorisations.
-pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<Partition, KEM>;
+pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<KEM>;
 
 /// Public key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
 /// public keys for some authorisations.
-pub type PublicKey<KEM> = cover_crypt_core::PublicKey<Partition, KEM>;
+pub type PublicKey<KEM> = cover_crypt_core::PublicKey<KEM>;
 
+pub type Encapsulation = cover_crypt_core::Encapsulation;
+
+pub type SecretKey = cover_crypt_core::SecretKey;
 /// CoverCrypt public and private key pair.
 #[derive(Clone)]
 pub struct CCKeyPair<KEM: Kem> {
@@ -125,7 +70,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         &self,
         policy: &Policy,
     ) -> Result<(PrivateKey<KEM>, PublicKey<KEM>), Error> {
-        Ok(cover_crypt_core::setup::<_, CsRng, KEM>(
+        Ok(cover_crypt_core::setup::<CsRng, KEM>(
             &mut self.rng.lock().expect("a mutex lock failed"),
             &all_partitions(policy)?,
         ))
@@ -142,7 +87,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PrivateKey<KEM>, Error> {
-        cover_crypt_core::join::<_, KEM>(msk, &ap_to_partitions(access_policy, policy)?)
+        cover_crypt_core::join::<KEM>(msk, &access_policy_to_partitions(access_policy, policy)?)
     }
 
     /// Generate a user public key.
@@ -156,7 +101,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PublicKey<KEM>, Error> {
-        ap_to_partitions(access_policy, policy)?
+        access_policy_to_partitions(access_policy, policy)?
             .iter()
             .map(|partition| {
                 // partition should be contained in the master key in
@@ -170,8 +115,8 @@ impl<KEM: Kem> CoverCrypt<KEM> {
                 })?;
                 Ok((partition.to_owned(), kem_public_key.to_owned()))
             })
-            // `PublicKey` is an alias to a `HashMap` which is collected here
-            .collect()
+            .collect::<Result<HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey>, Error>>()
+            .map(|m| cover_crypt_core::PublicKey(m))
     }
 
     /// Generate a random symmetric key of `symmetric_key_len` to be used in an
@@ -188,22 +133,14 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         pk: &PublicKey<KEM>,
         attributes: &[Attribute],
         sym_key_len: usize,
-    ) -> Result<(Vec<u8>, CipherText), Error> {
+    ) -> Result<(SecretKey, Encapsulation), Error> {
         // get the authorisations associated to the given access policy
-        let partitions = to_partitions(attributes, policy)?;
-        let (mut K, E) = cover_crypt_core::encaps::<_, _, KEM>(
+        cover_crypt_core::encaps::<_, KEM>(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
-            &partitions,
-        )?;
-        // expend keying data if needed
-        if sym_key_len > K.len() {
-            K = cosmian_crypto_base::kdf::hkdf_256(&K, sym_key_len, KDF_INFO)
-                .map_err(Error::CryptoError)?;
-        } else {
-            K = K[..sym_key_len].to_owned();
-        }
-        Ok((K, E))
+            &to_partitions(attributes, policy)?,
+            sym_key_len,
+        )
     }
 
     /// Decrypt a symmetric key generated with `generate_symmetric_key()`
@@ -214,17 +151,11 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     pub fn decrypt_symmetric_key(
         &self,
         sk_u: &PrivateKey<KEM>,
-        c: &CipherText,
+        ciphertext: &Encapsulation,
         sym_key_len: usize,
-    ) -> Result<Vec<u8>, Error> {
-        let key =
-            cover_crypt_core::decaps::<_, KEM>(sk_u, c)?.ok_or(Error::InsufficientAccessPolicy)?;
-        if sym_key_len > key.len() {
-            cosmian_crypto_base::kdf::hkdf_256(&key, sym_key_len, KDF_INFO)
-                .map_err(Error::CryptoError)
-        } else {
-            Ok(key[..sym_key_len].to_owned())
-        }
+    ) -> Result<SecretKey, Error> {
+        cover_crypt_core::decaps::<KEM>(sk_u, ciphertext, sym_key_len)?
+            .ok_or(Error::InsufficientAccessPolicy)
     }
 }
 
@@ -251,10 +182,12 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
     }
 
     // perform all the combinations to get all the partitions
-    Ok(combine_attribute_values(0, axes.as_slice(), &map)?
-        .into_iter()
-        .map(Partition::new)
-        .collect())
+    let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
+    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
+    for combination in combinations {
+        set.insert(Partition::from_attributes(combination)?);
+    }
+    Ok(set)
 }
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
@@ -286,11 +219,12 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
         }
     }
 
-    // perform all the combinations to get all the partitions
-    Ok(combine_attribute_values(0, axes.as_slice(), &map)?
-        .into_iter()
-        .map(Partition::new)
-        .collect())
+    let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
+    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
+    for combination in combinations {
+        set.insert(Partition::from_attributes(combination)?);
+    }
+    Ok(set)
 }
 
 fn combine_attribute_values(
@@ -331,14 +265,16 @@ fn combine_attribute_values(
 
 /// Convert an access policy used to decrypt ciphertexts into the corresponding
 /// list of CoverCrypt partitions that can be decrypted by that access policy
-fn ap_to_partitions(
+fn access_policy_to_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
-    Ok(to_attribute_combinations(access_policy, policy)?
-        .iter()
-        .map(|comb| Partition::new(comb.to_owned()))
-        .collect())
+    let combinations = to_attribute_combinations(access_policy, policy)?;
+    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
+    for combination in combinations {
+        set.insert(Partition::from_attributes(combination)?);
+    }
+    Ok(set)
 }
 
 /// Returns the list of partitions that can be built using the values of
@@ -456,7 +392,7 @@ mod tests {
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
-            let partition = Partition::new(vec![att_0_0, *value]);
+            let partition = Partition::from_attributes(vec![att_0_0, *value])?;
             assert!(partitions_0.contains(&partition));
         }
 
@@ -471,7 +407,7 @@ mod tests {
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
-        assert!(partitions_1.contains(&Partition::new(vec![att_0_0, att_1_0])));
+        assert!(partitions_1.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
 
         // this should create the 2combination of the first attribute
         // of the first axis with that the wo of the second axis
@@ -486,8 +422,8 @@ mod tests {
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
         let att_1_1 = axes_attributes[1][1].1;
-        assert!(partitions_2.contains(&Partition::new(vec![att_0_0, att_1_0]),));
-        assert!(partitions_2.contains(&Partition::new(vec![att_0_0, att_1_1]),));
+        assert!(partitions_2.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?,));
+        assert!(partitions_2.contains(&Partition::from_attributes(vec![att_0_0, att_1_1])?,));
 
         // rotation
         policy.rotate(&axes_attributes[0][0].0)?;
@@ -505,8 +441,8 @@ mod tests {
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
         let att_0_0_new = axes_attributes[0][0].1;
-        assert!(partitions_3.contains(&Partition::new(vec![att_0_0_new, att_1_0])));
-        assert!(!partitions_3.contains(&Partition::new(vec![att_0_0, att_1_0])));
+        assert!(partitions_3.contains(&Partition::from_attributes(vec![att_0_0_new, att_1_0])?));
+        assert!(!partitions_3.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
 
         Ok(())
     }
@@ -546,8 +482,10 @@ mod tests {
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Confidential");
         let combinations = to_attribute_combinations(&access_policy, &policy)?;
-        let partitions_: HashSet<Partition> =
-            combinations.into_iter().map(Partition::new).collect();
+        let mut partitions_: HashSet<Partition> = HashSet::with_capacity(combinations.len());
+        for combination in combinations {
+            partitions_.insert(Partition::from_attributes(combination)?);
+        }
 
         // combine attribute values to verify
         let mut map: HashMap<String, Vec<u32>> = HashMap::new();
@@ -562,10 +500,12 @@ mod tests {
         map.insert("Security Level".to_owned(), lvl_axis_attributes);
 
         let axes: Vec<String> = policy.as_map().keys().cloned().collect();
-        let partitions: HashSet<Partition> = combine_attribute_values(0, axes.as_slice(), &map)?
-            .into_iter()
-            .map(Partition::new)
-            .collect();
+
+        let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
+        let mut partitions: HashSet<Partition> = HashSet::with_capacity(combinations.len());
+        for combination in combinations {
+            partitions.insert(Partition::from_attributes(combination)?);
+        }
 
         assert_eq!(partitions, partitions_);
         Ok(())

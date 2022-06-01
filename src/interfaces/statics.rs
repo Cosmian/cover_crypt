@@ -8,7 +8,8 @@ use cosmian_crypto_base::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api::{self, CoverCrypt, PrivateKey, PublicKey},
+    api::{CoverCrypt, PrivateKey, PublicKey},
+    cover_crypt_core::Encapsulation,
     error::Error,
     policies::{Attribute, Policy},
 };
@@ -47,9 +48,9 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
 ) -> Result<EncryptedHeader<DEM>, Error> {
     // generate symmetric key and its encapsulation
     let cover_crypt = CoverCrypt::<KEM>::new();
-    let (K, E) =
+    let (secret_key, encapsulation) =
         cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
-    let encapsulation = serde_json::to_vec(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
+    let encapsulation = encapsulation.to_bytes()?;
 
     // create header
     let mut header_bytes = Vec::new();
@@ -70,8 +71,8 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
                     .lock()
                     .expect("Mutex lock failed!")
                     .deref_mut(),
-                &K,
-                b"",
+                &secret_key,
+                None,
                 &meta_data.to_bytes().map_err(|_| Error::ConversionFailed)?,
             )
             .map_err(Error::CryptoError)?,
@@ -79,7 +80,7 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     }
 
     Ok(EncryptedHeader {
-        symmetric_key: DEM::Key::try_from_bytes(K).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(secret_key.into()).map_err(Error::CryptoError)?,
         header_bytes,
     })
 }
@@ -103,27 +104,27 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
         )));
     }
     // get the encapsulation
-    let E = header_bytes[index..index + encapsulation_size].to_owned();
+    let encapsulation_bytes = header_bytes[index..index + encapsulation_size].to_owned();
     index += encapsulation_size;
 
     // decrypt the symmetric key
     let cover_crypt = CoverCrypt::<KEM>::default();
-    let E: api::CipherText =
-        serde_json::from_slice(&E).map_err(|e| Error::JsonParsing(e.to_string()))?;
-    let K = cover_crypt.decrypt_symmetric_key(user_decryption_key, &E, DEM::Key::LENGTH)?;
+    let encapsulation = Encapsulation::try_from_bytes(&encapsulation_bytes)?;
+    let secret_key =
+        cover_crypt.decrypt_symmetric_key(user_decryption_key, &encapsulation, DEM::Key::LENGTH)?;
 
     // decrypt the metadata if any
     let meta_data = if index >= header_size {
         Metadata::default()
     } else {
         Metadata::from_bytes(
-            &DEM::decaps(&K, b"", &header_bytes[index..]).map_err(Error::CryptoError)?,
+            &DEM::decaps(&secret_key, None, &header_bytes[index..]).map_err(Error::CryptoError)?,
         )
         .map_err(|_| Error::ConversionFailed)?
     };
 
     Ok(ClearTextHeader {
-        symmetric_key: DEM::Key::try_from_bytes(K).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(secret_key.into()).map_err(Error::CryptoError)?,
         meta_data,
     })
 }
@@ -300,11 +301,11 @@ mod tests {
         encrypted_bytes.extend_from_slice(&encrypted_block);
 
         let reg_vectors = RegressionVector {
-            public_key: hex::encode(serde_json::to_vec(&mpk)?),
-            private_key: hex::encode(serde_json::to_vec(&msk)?),
+            public_key: hex::encode(mpk.to_bytes()?),
+            private_key: hex::encode(msk.to_bytes()?),
             policy: hex::encode(serde_json::to_vec(&policy)?),
-            user_decryption_key: hex::encode(serde_json::to_vec(&top_secret_mkg_fin_user)?),
-            user_decryption_key_2: hex::encode(serde_json::to_vec(&medium_secret_mkg_user)?),
+            user_decryption_key: hex::encode(top_secret_mkg_fin_user.to_bytes()?),
+            user_decryption_key_2: hex::encode(medium_secret_mkg_user.to_bytes()?),
             header_bytes: hex::encode(encrypted_header.header_bytes.clone()),
             encrypted_bytes: hex::encode(encrypted_bytes),
             uid: hex::encode(metadata.uid),
@@ -322,12 +323,12 @@ mod tests {
     fn test_non_reg_decrypt_hybrid_header() {
         let reg_vector_json: Value =
             serde_json::from_str(include_str!("regression_vector.json")).unwrap();
-
         let user_decryption_key =
             hex::decode(reg_vector_json["user_decryption_key"].as_str().unwrap()).unwrap();
         let header_bytes = hex::decode(reg_vector_json["header_bytes"].as_str().unwrap()).unwrap();
 
-        let user_decryption_key_from_file = serde_json::from_slice(&user_decryption_key).unwrap();
+        let user_decryption_key_from_file =
+            PrivateKey::try_from_bytes(&user_decryption_key).unwrap();
         assert!(decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
             &user_decryption_key_from_file,
             &header_bytes[4..], // provoke InvalidSize error
