@@ -222,7 +222,7 @@ where
             serializer.write_array(partition.into())?;
             serializer.write_array(key.to_bytes())?;
         }
-        // write an empty array to mak the end (wastes one byte)
+        // write an empty array to mark the end (wastes one byte)
         serializer.write_array(vec![])?;
         Ok(serializer.value().to_vec())
     }
@@ -299,13 +299,13 @@ impl Encapsulation {
             serializer.write_array(key.to_owned())?;
             serializer.write_array(ciphertext.to_owned())?;
         }
-        // write an empty array to mak the end (wastes one byte)
+        // write an empty array to mark the end (wastes one byte)
         serializer.write_array(vec![])?;
         Ok(serializer.value().to_vec())
     }
 
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut map: HashMap<Partition, (Vec<u8>, Vec<u8>)> = HashMap::new();
+        let mut map = HashMap::new();
         let mut de = Deserializer::new(bytes);
         loop {
             let partition_bytes = de.read_array()?;

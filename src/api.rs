@@ -240,7 +240,7 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     }
 
     let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
-    let mut set: HashSet<Partition> = HashSet::new();
+    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
     for combination in combinations {
         set.insert(Partition::from_attributes(combination)?);
     }
@@ -290,7 +290,7 @@ fn access_policy_to_partitions(
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
     let combinations = to_attribute_combinations(access_policy, policy)?;
-    let mut set: HashSet<Partition> = HashSet::new();
+    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
     for combination in combinations {
         set.insert(Partition::from_attributes(combination)?);
     }
@@ -502,7 +502,7 @@ mod tests {
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Confidential");
         let combinations = to_attribute_combinations(&access_policy, &policy)?;
-        let mut partitions_: HashSet<Partition> = HashSet::new();
+        let mut partitions_: HashSet<Partition> = HashSet::with_capacity(combinations.len());
         for combination in combinations {
             partitions_.insert(Partition::from_attributes(combination)?);
         }
@@ -522,7 +522,7 @@ mod tests {
         let axes: Vec<String> = policy.as_map().keys().cloned().collect();
 
         let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
-        let mut partitions: HashSet<Partition> = HashSet::new();
+        let mut partitions: HashSet<Partition> = HashSet::with_capacity(combinations.len());
         for combination in combinations {
             partitions.insert(Partition::from_attributes(combination)?);
         }
