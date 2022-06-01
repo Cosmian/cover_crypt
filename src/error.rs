@@ -90,20 +90,7 @@ impl From<cosmian_crypto_base::Error> for Error {
                 Error::InvalidSize(format!("expected: {}, given: {}", expected, given))
             }
             CryptoError::InvalidSize(e) => Error::InvalidSize(e),
-            CryptoError::HexParseError(e) => {
-                Error::Other(format!("crypto_base hex parse error: {}", e))
-            }
-            CryptoError::ConversionError(e) => {
-                Error::Other(format!("crypto_base conversion error: {}", e))
-            }
-            CryptoError::KdfError(e) => Error::Other(format!("crypto_base KDF error: {}", e)),
-            CryptoError::KeyGenError => Error::Other(format!("crypto_base Key Gen error: {}", e)),
-            CryptoError::EncryptionError(e) => {
-                Error::Other(format!("crypto_base encryption error: {}", e))
-            }
-            CryptoError::DecryptionError(e) => {
-                Error::Other(format!("crypto_base decryption error: {}", e))
-            }
+            e => Error::CryptoError(e),
         }
     }
 }

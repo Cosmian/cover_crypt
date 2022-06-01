@@ -12,10 +12,11 @@ impl<'a> Deserializer<'a> {
     }
 
     pub fn read_array(&mut self) -> Result<Vec<u8>, Error> {
-        let len_u64 = leb128::read::unsigned(&mut self.readable).map_err(|_| {
-            Error::InvalidSize(
-                "Deserializer: failed reading the size of the next array".to_string(),
-            )
+        let len_u64 = leb128::read::unsigned(&mut self.readable).map_err(|e| {
+            Error::InvalidSize(format!(
+                "Deserializer: failed reading the size of the next array: {}",
+                e
+            ))
         })?;
         if len_u64 == 0 {
             return Ok(vec![]);

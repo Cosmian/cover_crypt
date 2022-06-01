@@ -22,6 +22,10 @@ impl Partition {
     ///
     /// The attribute values MUST be unique across all axes
     pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Partition, Error> {
+        // guard against overflow of the 1024 bytes buffer below
+        if attribute_values.len() > 200 {
+            return Err(Error::InvalidAttribute("The current implementation does not currently support more than 200 attributes for a partition".to_string()));
+        }
         // the sort operation allows to get the same hash for :
         // `Department::HR || Level::Secret`
         // and
@@ -30,8 +34,7 @@ impl Partition {
         let mut buf = [0; 1024];
         let mut writable = &mut buf[..];
 
-        let mut len = 0_usize;
-        // let mut bytes = Vec::with_capacity(attribute_values.len() * 4);
+        let mut len = 0;
         for value in attribute_values {
             len += leb128::write::unsigned(&mut writable, value as u64)
                 .map_err(|e| Error::Other(format!("Unexpected LEB128 write issue: {}", e)))?;
@@ -49,15 +52,6 @@ impl Display for Partition {
 impl From<Partition> for String {
     fn from(a: Partition) -> Self {
         format!("{a}")
-    }
-}
-
-impl TryFrom<String> for Partition {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let res = hex::decode(&value).map_err(|_e| Error::ConversionFailed)?;
-        Ok(Partition(res))
     }
 }
 
@@ -119,7 +113,7 @@ where
     KEM: Kem,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Private Key: {:#?}", self.0.keys()))
+        f.write_fmt(format_args!("Private Key: {:#?}", self.keys()))
     }
 }
 
@@ -129,7 +123,7 @@ where
 {
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        for (partition, key) in &self.0 {
+        for (partition, key) in self.iter() {
             serializer.write_array(partition.into())?;
             serializer.write_array(key.to_bytes())?;
         }
@@ -166,7 +160,7 @@ where
         if self.len() != other.len() {
             return false;
         }
-        for (k, v) in &self.0 {
+        for (k, v) in self.iter() {
             match other.0.get(k) {
                 Some(v_other) => {
                     if v.to_bytes() != v_other.to_bytes() {
@@ -208,7 +202,7 @@ where
     KEM: Kem,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Public Key: {:#?}", self.0.keys()))
+        f.write_fmt(format_args!("Public Key: {:#?}", self.keys()))
     }
 }
 
@@ -218,7 +212,7 @@ where
 {
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        for (partition, key) in &self.0 {
+        for (partition, key) in self.iter() {
             serializer.write_array(partition.into())?;
             serializer.write_array(key.to_bytes())?;
         }
@@ -255,7 +249,7 @@ where
         if self.len() != other.len() {
             return false;
         }
-        for (k, v) in &self.0 {
+        for (k, v) in self.iter() {
             match other.0.get(k) {
                 Some(v_other) => {
                     if v.to_bytes() != v_other.to_bytes() {
@@ -349,7 +343,7 @@ impl From<Vec<u8>> for SecretKey {
 
 impl From<SecretKey> for Vec<u8> {
     fn from(sk: SecretKey) -> Self {
-        sk.0.to_vec()
+        sk.to_vec()
     }
 }
 
