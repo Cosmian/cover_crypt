@@ -3,20 +3,17 @@
 //   cargo run --release --features interfaces --bin bench_abe_gpsw -- --help
 // for online help
 
-use std::env;
-
-use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
 use cosmian_crypto_base::{
-    hybrid_crypto::Metadata, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
+    asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
+    symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
 };
-use cover_crypt::policies::ap;
 use cover_crypt::{
     api::{CoverCrypt, PublicKey},
     error::Error,
     interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
-    policies::{Attribute, Policy, PolicyAxis},
+    policies::{ap, Attribute, Policy, PolicyAxis},
 };
-#[cfg(any(feature = "interfaces", feature = "ffi"))]
+use std::env;
 use std::time::Instant;
 #[cfg(feature = "ffi")]
 use {
