@@ -107,3 +107,16 @@ impl From<cosmian_crypto_base::Error> for Error {
         }
     }
 }
+
+#[cfg(feature = "ffi")]
+impl From<std::ffi::NulError> for Error {
+    fn from(e: std::ffi::NulError) -> Self {
+        Error::Other(format!("FFI error: {}", e))
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(e: std::str::Utf8Error) -> Self {
+        Error::Other(format!("UTF8 error: {}", e))
+    }
+}

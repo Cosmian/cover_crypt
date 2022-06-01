@@ -452,7 +452,6 @@ where
                 .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
             let (k_i, e_i) =
                 KEM::encaps(rng, kem_public_key, secret_key_length).map_err(Error::CryptoError)?;
-            println!("k_i size: {}, e_i size: {}", k_i.len(), e_i.len());
             Ok((
                 partition.to_owned(),
                 (

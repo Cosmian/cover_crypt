@@ -18,6 +18,10 @@ crate-type = ["lib", "cdylib", "staticlib"]
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
+[[bin]]
+name = "bench_cover_crypt"
+path = "src/bench.rs"
+
 [features]
 ffi = ["lazy_static"]
 wasm_bindgen = ["js-sys", "wasm-bindgen"]
