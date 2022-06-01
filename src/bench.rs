@@ -144,29 +144,33 @@ pub fn bench_header_encryption_size() -> Result<(), Error> {
     let cc = CoverCrypt::<X25519Crypto>::default();
     let (_msk, mpk) = cc.generate_master_keys(&policy)?;
 
-    let policy_attributes_1 = vec![Attribute::new("Department", "FIN")];
+    let policy_attributes_1 = vec![
+        Attribute::new("Department", "FIN"),
+        Attribute::new("Security Level", "Confidential"),
+    ];
     let encrypted_header_1 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
         &policy,
         &mpk,
         &policy_attributes_1,
         None,
     )?;
-
-    let policy_attributes_2 = vec![
+    let policy_attributes_3 = vec![
         Attribute::new("Department", "FIN"),
+        Attribute::new("Security Level", "Top Secret"),
         Attribute::new("Security Level", "Confidential"),
+        Attribute::new("Security Level", "Protected"),
     ];
-    let encrypted_header_2 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+    let encrypted_header_3 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
         &policy,
         &mpk,
-        &policy_attributes_2,
+        &policy_attributes_3,
         None,
     )?;
 
     println!(
-        "1 attribute: {} bytes, 2 attributes: {} bytes",
+        "1 partition: {} bytes, 3 partitions: {} bytes",
         encrypted_header_1.header_bytes.len(),
-        encrypted_header_2.header_bytes.len()
+        encrypted_header_3.header_bytes.len(),
     );
 
     Ok(())
