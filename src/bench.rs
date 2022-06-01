@@ -45,8 +45,10 @@ fn main() -> Result<(), Error> {
             selector
         );
     }
-    if selector == "header_encryption" {
-        bench_header_encryption()?;
+    if selector == "header_encryption_size" {
+        bench_header_encryption_size()?;
+    } else if selector == "header_encryption_speed" {
+        bench_header_encryption_speed()?;
     } else if selector == "ffi_header_encryption" {
         #[cfg(feature = "ffi")]
         unsafe {
@@ -70,7 +72,8 @@ fn main() -> Result<(), Error> {
             bench_ffi_header_decryption_using_cache()?;
         }
     } else if selector == "all" {
-        bench_header_encryption()?;
+        bench_header_encryption_size()?;
+        bench_header_encryption_speed()?;
         #[cfg(feature = "ffi")]
         unsafe {
             bench_ffi_header_encryption()?;
@@ -90,12 +93,13 @@ Usage: cargo run --release --features ffi --bin bench_abe_gpsw -- [OPTION]
 where [OPTION] is:
 
 all                        : (or none) run all benches
-header_encryption          : reference hybrid header encryption
-ffi_header_encryption      : hybrid header encryption via FFI
-ffi_header_enc_using_cache : hybrid header encryption via FFI using a cache
-header_decryption          : reference hybrid header decryption
-ffi_header_decryption      : hybrid header decryption via FFI
-ffi_header_dec_using_cache : hybrid header decryption via FFI using a cache
+header_encryption_size     : hybrid header encryption size
+header_encryption_speed    : reference hybrid header encryption speed
+ffi_header_encryption       : hybrid header encryption speed via FFI
+ffi_header_enc_using_cache  : hybrid header encryption speed via FFI using a cache
+header_decryption          : reference hybrid header decryption speed
+ffi_header_decryption       : hybrid header decryption speed via FFI
+ffi_header_dec_using_cache  : hybrid header decryption speed via FFI using a cache
 
 
 To generate a flame graph:
@@ -132,7 +136,43 @@ pub fn policy() -> Result<Policy, Error> {
     Ok(policy)
 }
 
-pub fn bench_header_encryption() -> Result<(), Error> {
+pub fn bench_header_encryption_size() -> Result<(), Error> {
+    print!("Running header encryption size...");
+
+    let policy = policy()?;
+
+    let cc = CoverCrypt::<X25519Crypto>::default();
+    let (_msk, mpk) = cc.generate_master_keys(&policy)?;
+
+    let policy_attributes_1 = vec![Attribute::new("Department", "FIN")];
+    let encrypted_header_1 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+        &policy,
+        &mpk,
+        &policy_attributes_1,
+        None,
+    )?;
+
+    let policy_attributes_2 = vec![
+        Attribute::new("Department", "FIN"),
+        Attribute::new("Security Level", "Confidential"),
+    ];
+    let encrypted_header_2 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+        &policy,
+        &mpk,
+        &policy_attributes_2,
+        None,
+    )?;
+
+    println!(
+        "1 attribute: {} bytes, 2 attributes: {} bytes",
+        encrypted_header_1.header_bytes.len(),
+        encrypted_header_2.header_bytes.len()
+    );
+
+    Ok(())
+}
+
+pub fn bench_header_encryption_speed() -> Result<(), Error> {
     print!("Running 'direct' header encryption...");
 
     let policy = policy()?;
