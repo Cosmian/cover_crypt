@@ -3,6 +3,13 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
+use cosmian_crypto_base::{
+    asymmetric::ristretto::X25519Crypto,
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use wasm_bindgen::prelude::*;
+
 use crate::{
     api::{PrivateKey, PublicKey},
     interfaces::statics::{
@@ -11,21 +18,8 @@ use crate::{
     },
     policies::Attribute,
 };
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use wasm_bindgen::prelude::*;
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-    fn alert(s: &str);
-}
 
 /// Extract header from encrypted bytes
 #[wasm_bindgen]

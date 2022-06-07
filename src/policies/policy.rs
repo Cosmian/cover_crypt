@@ -166,7 +166,7 @@ impl Policy {
     /// Retrieves the current value of an attribute
     pub fn attribute_current_value(&self, attribute: &Attribute) -> Result<u32, Error> {
         let values = self.attribute_values(attribute)?;
-        values.get(0).cloned().ok_or_else(|| {
+        values.first().cloned().ok_or_else(|| {
             Error::InvalidAttribute(format!(
                 "the attribute {} does not have any value!",
                 attribute

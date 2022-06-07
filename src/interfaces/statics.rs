@@ -206,7 +206,7 @@ mod tests {
     use crate::policies::{ap, Attribute, PolicyAxis};
 
     #[derive(Serialize, Deserialize)]
-    struct RegressionVector {
+    struct NonRegressionTestVector {
         public_key: String,
         private_key: String,
         policy: String,
@@ -300,7 +300,7 @@ mod tests {
         encrypted_bytes.extend_from_slice(&encrypted_header.header_bytes);
         encrypted_bytes.extend_from_slice(&encrypted_block);
 
-        let reg_vectors = RegressionVector {
+        let reg_vectors = NonRegressionTestVector {
             public_key: hex::encode(mpk.to_bytes()?),
             private_key: hex::encode(msk.to_bytes()?),
             policy: hex::encode(serde_json::to_vec(&policy)?),
@@ -311,7 +311,7 @@ mod tests {
             uid: hex::encode(metadata.uid),
         };
         std::fs::write(
-            "regression_vector.json",
+            "non_regression_vector.json",
             serde_json::to_string(&reg_vectors).unwrap(),
         )
         .unwrap();
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_non_reg_decrypt_hybrid_header() {
         let reg_vector_json: Value =
-            serde_json::from_str(include_str!("regression_vector.json")).unwrap();
+            serde_json::from_str(include_str!("non_regression_test_vector.json")).unwrap();
         let user_decryption_key =
             hex::decode(reg_vector_json["user_decryption_key"].as_str().unwrap()).unwrap();
         let header_bytes = hex::decode(reg_vector_json["header_bytes"].as_str().unwrap()).unwrap();
