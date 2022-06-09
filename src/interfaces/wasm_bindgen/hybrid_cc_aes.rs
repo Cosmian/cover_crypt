@@ -217,5 +217,5 @@ pub fn webassembly_decrypt_hybrid_block(
         ))
     })?;
 
-    Ok(js_sys::Uint8Array::from(&cleartext[..]))
+    Ok(Uint8Array::from(&cleartext[..]))
 }
