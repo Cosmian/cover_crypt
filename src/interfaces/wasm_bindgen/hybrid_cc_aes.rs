@@ -8,6 +8,7 @@ use cosmian_crypto_base::{
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
     KeyTrait,
 };
+use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -23,9 +24,7 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 
 /// Extract header from encrypted bytes
 #[wasm_bindgen]
-pub fn webassembly_get_encrypted_header_size(
-    encrypted_bytes: js_sys::Uint8Array,
-) -> Result<u32, JsValue> {
+pub fn webassembly_get_encrypted_header_size(encrypted_bytes: Uint8Array) -> Result<u32, JsValue> {
     //
     // Check `encrypted_bytes` input param and store it locally
     if encrypted_bytes.length() < 4 {
@@ -45,11 +44,11 @@ pub fn webassembly_get_encrypted_header_size(
 
 #[wasm_bindgen]
 pub fn webassembly_encrypt_hybrid_header(
-    metadata_bytes: js_sys::Uint8Array,
-    policy_bytes: js_sys::Uint8Array,
-    attributes_bytes: js_sys::Uint8Array,
-    public_key_bytes: js_sys::Uint8Array,
-) -> Result<js_sys::Uint8Array, JsValue> {
+    metadata_bytes: Uint8Array,
+    policy_bytes: Uint8Array,
+    attributes_bytes: Uint8Array,
+    public_key_bytes: Uint8Array,
+) -> Result<Uint8Array, JsValue> {
     let metadata = serde_json::from_slice(metadata_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing metadata: {e}")))?;
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
@@ -66,7 +65,7 @@ pub fn webassembly_encrypt_hybrid_header(
         Some(&metadata),
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
-    Ok(js_sys::Uint8Array::from(
+    Ok(Uint8Array::from(
         serde_json::to_vec(&encrypted_header)
             .map_err(|e| JsValue::from_str(&format!("Error serializing encrypted header: {e}")))?
             .as_slice(),
@@ -81,9 +80,9 @@ pub fn webassembly_encrypt_hybrid_header(
 /// of a resource encrypted using an hybrid crypto scheme.
 #[wasm_bindgen]
 pub fn webassembly_decrypt_hybrid_header(
-    user_decryption_key_bytes: js_sys::Uint8Array,
-    encrypted_header_bytes: js_sys::Uint8Array,
-) -> Result<js_sys::Uint8Array, JsValue> {
+    user_decryption_key_bytes: Uint8Array,
+    encrypted_header_bytes: Uint8Array,
+) -> Result<Uint8Array, JsValue> {
     //
     // Check `user_decryption_key_bytes` input param and store it locally
     if user_decryption_key_bytes.length() == 0 {
@@ -100,7 +99,7 @@ pub fn webassembly_decrypt_hybrid_header(
     // Parse user decryption key
     let user_decryption_key =
         PrivateKey::try_from_bytes(user_decryption_key_bytes.to_vec().as_slice()).map_err(|e| {
-            return JsValue::from_str(&format!("Error deserializing user decryption key: {e}"));
+            JsValue::from_str(&format!("Error deserializing user decryption key: {e}"))
         })?;
 
     //
@@ -110,13 +109,11 @@ pub fn webassembly_decrypt_hybrid_header(
             &user_decryption_key,
             encrypted_header_bytes.to_vec().as_slice(),
         )
-        .map_err(|e| return JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
+        .map_err(|e| JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
 
-    Ok(js_sys::Uint8Array::from(
+    Ok(Uint8Array::from(
         serde_json::to_vec(&cleartext_header)
-            .map_err(|e| {
-                return JsValue::from_str(&format!("Error serializing decrypted header: {e}"));
-            })?
+            .map_err(|e| JsValue::from_str(&format!("Error serializing decrypted header: {e}")))?
             .as_slice(),
     ))
 }
@@ -124,11 +121,11 @@ pub fn webassembly_decrypt_hybrid_header(
 /// Symmetrically Encrypt plaintext data in a block.
 #[wasm_bindgen]
 pub fn webassembly_encrypt_hybrid_block(
-    symmetric_key_bytes: js_sys::Uint8Array,
-    uid_bytes: Option<js_sys::Uint8Array>,
+    symmetric_key_bytes: Uint8Array,
+    uid_bytes: Option<Uint8Array>,
     block_number: Option<usize>,
-    plaintext_bytes: js_sys::Uint8Array,
-) -> Result<js_sys::Uint8Array, JsValue> {
+    plaintext_bytes: Uint8Array,
+) -> Result<Uint8Array, JsValue> {
     //
     // Check `plaintext_bytes` input param
     if plaintext_bytes.length() == 0 {
@@ -163,17 +160,17 @@ pub fn webassembly_encrypt_hybrid_block(
         ))
     })?;
 
-    Ok(js_sys::Uint8Array::from(&ciphertext[..]))
+    Ok(Uint8Array::from(&ciphertext[..]))
 }
 
 /// Symmetrically Decrypt encrypted data in a block.
 #[wasm_bindgen]
 pub fn webassembly_decrypt_hybrid_block(
-    symmetric_key_bytes: js_sys::Uint8Array,
-    uid_bytes: Option<js_sys::Uint8Array>,
+    symmetric_key_bytes: Uint8Array,
+    uid_bytes: Option<Uint8Array>,
     block_number: Option<usize>,
-    encrypted_bytes: js_sys::Uint8Array,
-) -> Result<js_sys::Uint8Array, JsValue> {
+    encrypted_bytes: Uint8Array,
+) -> Result<Uint8Array, JsValue> {
     //
     // Check `user_decryption_key_bytes` input param and store it locally
     if symmetric_key_bytes.length() != 32 {
@@ -191,10 +188,10 @@ pub fn webassembly_decrypt_hybrid_block(
     let symmetric_key =
         <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes.to_vec())
             .map_err(|e| {
-                return JsValue::from_str(&format!(
+                JsValue::from_str(&format!(
                     "Error parsing
     symmetric key: {e}"
-                ));
+                ))
             })?;
 
     let uid = uid_bytes.map_or(vec![], |v| v.to_vec());
@@ -208,11 +205,11 @@ pub fn webassembly_decrypt_hybrid_block(
         &encrypted_bytes.to_vec(),
     )
     .map_err(|e| {
-        return JsValue::from_str(&format!(
+        JsValue::from_str(&format!(
             "Error decrypting block:
     {e}"
-        ));
+        ))
     })?;
 
-    Ok(js_sys::Uint8Array::from(&cleartext[..]))
+    Ok(Uint8Array::from(&cleartext[..]))
 }

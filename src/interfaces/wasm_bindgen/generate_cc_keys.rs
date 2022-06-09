@@ -46,10 +46,10 @@ pub fn webassembly_generate_master_keys(
 
 /// Generate a user private key.
 ///
-/// - `master_private_key_bytes`   : master private key in bytes
-/// - `access_policy_str`       : user access policy (boolean expression as
+/// - `master_private_key_bytes`    : master private key in bytes
+/// - `access_policy_str`           : user access policy (boolean expression as
 ///   string)
-/// - `policy_bytes`        : global policy (serialized from JSON)
+/// - `policy_bytes`                : global policy (serialized from JSON)
 #[wasm_bindgen]
 pub fn webassembly_generate_user_private_key(
     master_private_key_bytes: js_sys::Uint8Array,

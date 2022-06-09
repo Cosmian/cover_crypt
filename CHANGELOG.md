@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ---
 ## [2.0.1] - 2022-06-07
 ### Added
-- [JS/bindgen] Add ABE keys generation
+- [JS/bindgen + FFI] Add ABE keys generation
 ### Changed
 ### Fixed
 ### Removed
