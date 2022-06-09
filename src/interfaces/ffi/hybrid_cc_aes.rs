@@ -52,7 +52,7 @@ pub struct EncryptionCache {
 /// when encrypting multiple messages. This avoids having to re-instantiate
 /// the public key on the Rust side on every encryption which is costly.
 ///
-/// This method is to be used in conjonction with
+/// This method is to be used in conjunction with
 ///     h_aes_encrypt_header_using_cache
 ///
 /// WARN: h_aes_destroy_encrypt_cache() should be called

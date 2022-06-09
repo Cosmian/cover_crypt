@@ -13,7 +13,8 @@ use crate::{
 
 /// Generate the master authority keys for supplied Policy
 ///
-///  - `policy` : Policy to use to generate the keys (serialized from JSON)
+///  - `policy_bytes` : Policy to use to generate the keys (serialized from
+///    JSON)
 #[wasm_bindgen]
 pub fn webassembly_generate_master_keys(
     policy_bytes: js_sys::Uint8Array,
@@ -23,8 +24,7 @@ pub fn webassembly_generate_master_keys(
 
     //
     // Setup CoverCrypt
-    let cc = CoverCrypt::<X25519Crypto>::default();
-    let (private_key, public_key) = cc
+    let (private_key, public_key) = CoverCrypt::<X25519Crypto>::default()
         .generate_master_keys(&policy)
         .map_err(|e| JsValue::from_str(&format!("Error generating master keys: {e}")))?;
 
@@ -36,7 +36,9 @@ pub fn webassembly_generate_master_keys(
         .to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing master public key: {e}")))?;
 
-    let mut master_keys_bytes = u32::to_be_bytes(private_keys_bytes.len() as u32).to_vec();
+    let mut master_keys_bytes =
+        Vec::<u8>::with_capacity(4 + private_keys_bytes.len() + public_keys_bytes.len());
+    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(private_keys_bytes.len() as u32));
     master_keys_bytes.extend_from_slice(&private_keys_bytes);
     master_keys_bytes.extend_from_slice(&public_keys_bytes);
     Ok(js_sys::Uint8Array::from(&master_keys_bytes[..]))
@@ -44,26 +46,26 @@ pub fn webassembly_generate_master_keys(
 
 /// Generate a user private key.
 ///
-/// - `private_key_bytes`   : master secret key in bytes
-/// - `access_policy`       : user access policy (boolean expression as string)
+/// - `master_private_key_bytes`   : master private key in bytes
+/// - `access_policy_str`       : user access policy (boolean expression as
+///   string)
 /// - `policy_bytes`        : global policy (serialized from JSON)
 #[wasm_bindgen]
 pub fn webassembly_generate_user_private_key(
-    private_key_bytes: js_sys::Uint8Array,
+    master_private_key_bytes: js_sys::Uint8Array,
     access_policy_str: &str,
     policy_bytes: js_sys::Uint8Array,
 ) -> Result<js_sys::Uint8Array, JsValue> {
-    let private_key: PrivateKey<X25519Crypto> =
-        PrivateKey::try_from_bytes(private_key_bytes.to_vec().as_slice())
+    let master_private_key: PrivateKey<X25519Crypto> =
+        PrivateKey::try_from_bytes(master_private_key_bytes.to_vec().as_slice())
             .map_err(|e| JsValue::from_str(&format!("Error deserializing private key: {e}")))?;
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing access policy: {e}")))?;
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
-    let user_key = cc
-        .generate_user_private_key(&private_key, &access_policy, &policy)
+    let user_key = CoverCrypt::<X25519Crypto>::default()
+        .generate_user_private_key(&master_private_key, &access_policy, &policy)
         .map_err(|e| JsValue::from_str(&format!("Error generating user private key: {e}")))?;
 
     let user_key_bytes = user_key

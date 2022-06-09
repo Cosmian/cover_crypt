@@ -23,12 +23,6 @@ use crate::{
     policies::{ap, Attribute, Policy, PolicyAxis},
 };
 
-fn bytes_to_js_array(bytes: &[u8]) -> Uint8Array {
-    let js_array = Uint8Array::new_with_length(bytes.len() as u32);
-    js_array.copy_from(bytes);
-    js_array
-}
-
 fn create_test_policy() -> Policy {
     //
     // Policy settings
@@ -152,7 +146,7 @@ fn test_generate_keys() {
     //
     // Generate master keys
     let master_keys =
-        webassembly_generate_master_keys(bytes_to_js_array(&serialized_policy)).unwrap();
+        webassembly_generate_master_keys(Uint8Array::from(serialized_policy.as_slice())).unwrap();
 
     let master_keys_vec = master_keys.to_vec();
     let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
@@ -167,9 +161,9 @@ fn test_generate_keys() {
     //
     // Generate user private key
     webassembly_generate_user_private_key(
-        bytes_to_js_array(private_key_bytes),
+        Uint8Array::from(private_key_bytes),
         "Department::FIN && Security Level::Top Secret",
-        bytes_to_js_array(&serialized_policy),
+        Uint8Array::from(serialized_policy.as_slice()),
     )
     .unwrap();
 }
