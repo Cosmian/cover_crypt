@@ -4,7 +4,7 @@ Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm.
 
 # Building and testing
 
-The crate is separated in 2 main modules:
+The crate is separated in 3 main modules:
 
 - `cover_crypt_core`: contains the cryptographic code for CoverCrypt. 
 - `api.rs`: exposes the public API with policy management
