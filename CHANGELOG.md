@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.0.2] - 2022-06-14
+### Added
+- [pyo3] Add Rust bindings for Python thanks to Pyo3
+### Changed
+### Fixed
+### Removed
+
+---
 ## [2.0.1] - 2022-06-07
 ### Added
 - [JS/bindgen + FFI] Add ABE keys generation

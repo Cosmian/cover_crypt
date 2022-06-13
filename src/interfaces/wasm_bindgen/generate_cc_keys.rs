@@ -24,23 +24,24 @@ pub fn webassembly_generate_master_keys(
 
     //
     // Setup CoverCrypt
-    let (private_key, public_key) = CoverCrypt::<X25519Crypto>::default()
+    let (master_private_key, master_public_key) = CoverCrypt::<X25519Crypto>::default()
         .generate_master_keys(&policy)
         .map_err(|e| JsValue::from_str(&format!("Error generating master keys: {e}")))?;
 
     // Serialize master keys
-    let private_keys_bytes = private_key
+    let master_private_key_bytes = master_private_key
         .to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing master private key: {e}")))?;
-    let public_keys_bytes = public_key
+    let master_public_key_bytes = master_public_key
         .to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing master public key: {e}")))?;
 
-    let mut master_keys_bytes =
-        Vec::<u8>::with_capacity(4 + private_keys_bytes.len() + public_keys_bytes.len());
-    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(private_keys_bytes.len() as u32));
-    master_keys_bytes.extend_from_slice(&private_keys_bytes);
-    master_keys_bytes.extend_from_slice(&public_keys_bytes);
+    let mut master_keys_bytes = Vec::<u8>::with_capacity(
+        4 + master_private_key_bytes.len() + master_public_key_bytes.len(),
+    );
+    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(master_private_key_bytes.len() as u32));
+    master_keys_bytes.extend_from_slice(&master_private_key_bytes);
+    master_keys_bytes.extend_from_slice(&master_public_key_bytes);
     Ok(js_sys::Uint8Array::from(&master_keys_bytes[..]))
 }
 
