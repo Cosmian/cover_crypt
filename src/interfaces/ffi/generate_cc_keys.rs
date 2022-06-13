@@ -40,10 +40,10 @@ pub unsafe extern "C" fn h_generate_master_keys(
     // Policy
     let policy = match CStr::from_ptr(policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
-        Err(_e) => {
-            set_last_error(FfiError::Generic(
-                "CoverCrypt keys generation: invalid Policy".to_owned(),
-            ));
+        Err(e) => {
+            set_last_error(FfiError::Generic(format!(
+                "CoverCrypt keys generation: invalid Policy: {e}",
+            )));
             return 1;
         }
     };
@@ -51,19 +51,20 @@ pub unsafe extern "C" fn h_generate_master_keys(
 
     //
     // Generate master keys
-    let (private_key, public_key) =
+    let (master_private_key, master_public_key) =
         ffi_unwrap!(CoverCrypt::<X25519Crypto>::default().generate_master_keys(&policy));
 
     //
     // Serialize master keys
-    let private_keys_bytes = ffi_unwrap!(private_key.to_bytes());
-    let public_keys_bytes = ffi_unwrap!(public_key.to_bytes());
+    let master_private_key_bytes = ffi_unwrap!(master_private_key.to_bytes());
+    let master_public_key_bytes = ffi_unwrap!(master_public_key.to_bytes());
 
-    let mut master_keys_bytes =
-        Vec::<u8>::with_capacity(4 + private_keys_bytes.len() + public_keys_bytes.len());
-    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(private_keys_bytes.len() as u32));
-    master_keys_bytes.extend_from_slice(&private_keys_bytes);
-    master_keys_bytes.extend_from_slice(&public_keys_bytes);
+    let mut master_keys_bytes = Vec::<u8>::with_capacity(
+        4 + master_private_key_bytes.len() + master_public_key_bytes.len(),
+    );
+    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(master_private_key_bytes.len() as u32));
+    master_keys_bytes.extend_from_slice(&master_private_key_bytes);
+    master_keys_bytes.extend_from_slice(&master_public_key_bytes);
 
     //
     // Prepare output
@@ -109,7 +110,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         "User private key pointer should point to pre-allocated memory"
     );
     if *user_private_key_len == 0 {
-        ffi_bail!("The user private key buffer should have a size greater than zero");
+        ffi_bail!("The user private key buffer should not be empty");
     }
     ffi_not_null!(
         master_private_key_ptr,
@@ -137,10 +138,10 @@ pub unsafe extern "C" fn h_generate_user_private_key(
     // Access Policy
     let access_policy = match CStr::from_ptr(access_policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
-        Err(_e) => {
-            set_last_error(FfiError::Generic(
-                "CoverCrypt keys generation: invalid Policy".to_owned(),
-            ));
+        Err(e) => {
+            set_last_error(FfiError::Generic(format!(
+                "CoverCrypt keys generation: invalid Access Policy: {e}"
+            )));
             return 1;
         }
     };
@@ -150,10 +151,10 @@ pub unsafe extern "C" fn h_generate_user_private_key(
     // Policy
     let policy = match CStr::from_ptr(policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
-        Err(_e) => {
-            set_last_error(FfiError::Generic(
-                "CoverCrypt keys generation: invalid Policy".to_owned(),
-            ));
+        Err(e) => {
+            set_last_error(FfiError::Generic(format!(
+                "CoverCrypt keys generation: invalid Policy: {e}"
+            )));
             return 1;
         }
     };
