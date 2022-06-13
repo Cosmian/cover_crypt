@@ -110,7 +110,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         "User private key pointer should point to pre-allocated memory"
     );
     if *user_private_key_len == 0 {
-        ffi_bail!("The user private key buffer should not be empty");
+        ffi_bail!("The user private key buffer should have a size greater than zero");
     }
     ffi_not_null!(
         master_private_key_ptr,
