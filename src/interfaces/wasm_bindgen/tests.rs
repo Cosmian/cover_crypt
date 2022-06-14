@@ -1,12 +1,20 @@
+/// Test WASM bindgen functions prerequisites:
+/// - `cargo install wasm-bindgen-cli`
+/// - `cargo test --target wasm32-unknown-unknown --release --features
+///   wasm_bindgen --lib`
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
     symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
 };
+use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;
 
+use super::generate_cc_keys::{
+    webassembly_generate_master_keys, webassembly_generate_user_private_key,
+};
 use crate::{
-    api::{self, CoverCrypt, PrivateKey},
+    api::{self, CoverCrypt, PrivateKey, PublicKey},
     error::Error,
     interfaces::{
         statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
@@ -15,16 +23,33 @@ use crate::{
     policies::{ap, Attribute, Policy, PolicyAxis},
 };
 
+fn create_test_policy() -> Policy {
+    //
+    // Policy settings
+    //
+    let sec_level = PolicyAxis::new(
+        "Security Level",
+        &["Protected", "Confidential", "Top Secret"],
+        true,
+    );
+    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+    let mut policy = Policy::new(100);
+    policy.add_axis(&sec_level).unwrap();
+    policy.add_axis(&department).unwrap();
+    policy.rotate(&Attribute::new("Department", "FIN")).unwrap();
+    policy
+}
+
 fn encrypt_header(
     metadata: &Metadata,
     policy: &Policy,
     attributes: &[Attribute],
     public_key: &api::PublicKey<X25519Crypto>,
 ) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
-    let metadata_bytes = js_sys::Uint8Array::from(serde_json::to_vec(metadata)?.as_slice());
-    let policy_bytes = js_sys::Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
-    let attributes_bytes = js_sys::Uint8Array::from(serde_json::to_vec(attributes)?.as_slice());
-    let public_key_bytes = js_sys::Uint8Array::from(public_key.to_bytes()?.as_slice());
+    let metadata_bytes = Uint8Array::from(serde_json::to_vec(metadata)?.as_slice());
+    let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
+    let attributes_bytes = Uint8Array::from(serde_json::to_vec(attributes)?.as_slice());
+    let public_key_bytes = Uint8Array::from(public_key.to_bytes()?.as_slice());
     let encrypted_header = webassembly_encrypt_hybrid_header(
         metadata_bytes,
         policy_bytes,
@@ -40,8 +65,8 @@ fn decrypt_header(
     encrypted_header: &EncryptedHeader<Aes256GcmCrypto>,
     user_decryption_key: &api::PrivateKey<X25519Crypto>,
 ) -> Result<ClearTextHeader<Aes256GcmCrypto>, Error> {
-    let encrypted_header_bytes = js_sys::Uint8Array::from(encrypted_header.header_bytes.as_slice());
-    let sk_u = js_sys::Uint8Array::from(user_decryption_key.to_bytes()?.as_slice());
+    let encrypted_header_bytes = Uint8Array::from(encrypted_header.header_bytes.as_slice());
+    let sk_u = Uint8Array::from(user_decryption_key.to_bytes()?.as_slice());
     let decrypted_header_bytes = webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes)
         .map_err(|e| Error::Other(e.as_string().unwrap()))?;
     serde_json::from_slice(&decrypted_header_bytes.to_vec())
@@ -53,16 +78,7 @@ pub fn test_decrypt_hybrid_header() {
     //
     // Policy settings
     //
-    let sec_level = PolicyAxis::new(
-        "Security Level",
-        &["Protected", "Confidential", "Top Secret"],
-        true,
-    );
-    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
-    let mut policy = Policy::new(100);
-    policy.add_axis(&sec_level).unwrap();
-    policy.add_axis(&department).unwrap();
-    policy.rotate(&Attribute::new("Department", "FIN")).unwrap();
+    let policy = create_test_policy();
     let attributes = vec![
         Attribute::new("Security Level", "Confidential"),
         Attribute::new("Department", "HR"),
@@ -105,7 +121,7 @@ pub fn test_decrypt_hybrid_header() {
 #[wasm_bindgen_test]
 fn test_non_reg_decrypt_hybrid_header() {
     let reg_vector_json: Value =
-        serde_json::from_str(include_str!("../regression_vector.json")).unwrap();
+        serde_json::from_str(include_str!("../non_regression_test_vector.json")).unwrap();
 
     let user_decryption_key =
         hex::decode(reg_vector_json["user_decryption_key"].as_str().unwrap()).unwrap();
@@ -115,6 +131,39 @@ fn test_non_reg_decrypt_hybrid_header() {
     decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
         &user_decryption_key_from_file,
         &header_bytes,
+    )
+    .unwrap();
+}
+
+#[wasm_bindgen_test]
+fn test_generate_keys() {
+    //
+    // Policy settings
+    //
+    let policy = create_test_policy();
+    let serialized_policy = serde_json::to_vec(&policy).unwrap();
+
+    //
+    // Generate master keys
+    let master_keys =
+        webassembly_generate_master_keys(Uint8Array::from(serialized_policy.as_slice())).unwrap();
+
+    let master_keys_vec = master_keys.to_vec();
+    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
+    let private_key_bytes = &master_keys_vec[4..4 + private_key_size as usize];
+
+    //
+    // Check deserialization
+    PrivateKey::<X25519Crypto>::try_from_bytes(private_key_bytes).unwrap();
+    PublicKey::<X25519Crypto>::try_from_bytes(&master_keys_vec[4 + private_key_size as usize..])
+        .unwrap();
+
+    //
+    // Generate user private key
+    webassembly_generate_user_private_key(
+        Uint8Array::from(private_key_bytes),
+        "Department::FIN && Security Level::Top Secret",
+        Uint8Array::from(serialized_policy.as_slice()),
     )
     .unwrap();
 }
