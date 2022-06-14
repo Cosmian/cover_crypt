@@ -8,7 +8,7 @@ init(){
   pip install maturin
 }
 
-# init()
+# init
 
 maturin develop --cargo-extra-args="--release --features python"
 

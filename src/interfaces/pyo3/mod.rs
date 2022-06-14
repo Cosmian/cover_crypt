@@ -7,6 +7,13 @@ use self::{
         encrypt_hybrid_header, get_encrypted_header_size,
     },
 };
+use crate::error::Error;
+
+impl From<Error> for pyo3::PyErr {
+    fn from(e: Error) -> Self {
+        pyo3::exceptions::PyTypeError::new_err(format!("{e}"))
+    }
+}
 
 /// A Python module implemented in Rust.
 #[pymodule]

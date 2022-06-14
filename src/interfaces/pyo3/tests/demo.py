@@ -26,7 +26,7 @@ plaintext = "My secret data"
 low_secret_mkg_data = cover_crypt.encrypt(metadata, policy, bytes(json.dumps(
     ['Security Level::Low Secret', 'Department::MKG']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
 top_secret_mkg_data = cover_crypt.encrypt(metadata, policy, bytes(json.dumps(
-    ['Security Level::Top Secret', ' Department::MKG']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
+    ['Security Level::Top Secret', 'Department::MKG']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
 low_secret_fin_data = cover_crypt.encrypt(metadata, policy, bytes(json.dumps(
     ['Security Level::Low Secret', 'Department::FIN']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
 

@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ---
 ## [2.0.2] - 2022-06-14
 ### Added
+- Add Gitlab CI .gitlab-ci.yml
 - [pyo3] Add Rust bindings for Python thanks to Pyo3
 ### Changed
 ### Fixed

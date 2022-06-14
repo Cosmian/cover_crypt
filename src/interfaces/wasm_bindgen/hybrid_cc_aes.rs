@@ -19,12 +19,6 @@ use crate::{
     },
     policies::Attribute,
 };
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use wasm_bindgen::prelude::*;
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 

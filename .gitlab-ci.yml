@@ -1,0 +1,179 @@
+image: gitlab.cosmian.com:5000/core/ci-rust:latest
+
+variables:
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo/
+  SCCACHE_DIR: ${CI_PROJECT_DIR}/.cache/sccache
+  SHARING_DATA: ${CI_PROJECT_DIR}/SharingData.txt
+
+stages:
+  - prebuild
+  - build
+
+rust_toolchain_bump:
+  stage: prebuild
+  image: alpine:3.11
+  before_script:
+    - apk add --update curl
+  script:
+    - curl --request POST --form token=$CI_CC_TOKEN --form ref=main --form "variables[DEPLOY]=\"auto\"" http://gitlab.cosmian.com/api/v4/projects/10/trigger/pipeline
+  only:
+    refs:
+      - develop
+    changes:
+      - rust-toolchain
+    # Otherwise, triggered every time in scheduled pipelines (https://gitlab.com/gitlab-org/gitlab-foss/issues/58961)
+    variables:
+      - $CI_PIPELINE_SOURCE == "push"
+
+rustfmt:
+  stage: prebuild
+  cache: {}
+  script:
+    - cargo format
+
+doc:
+  stage: prebuild
+  cache: {}
+  before_script:
+    - rustup toolchain install nightly --no-self-update
+    - rustup override set nightly
+  script:
+    - cargo doc --all-features
+
+clippy:
+  stage: prebuild
+  cache: {}
+  before_script:
+    - rustup toolchain install nightly --no-self-update
+    - rustup override set nightly
+  script:
+    - cargo clippy-all
+
+# Security check
+cargo_audit:
+  stage: prebuild
+  cache: {}
+  script:
+    - cargo audit
+  allow_failure: true
+  only:
+    refs:
+      - tags
+      - main
+      - develop
+    variables:
+      - $DEPLOY
+
+#
+# Coverage
+#
+coverage:
+  stage: prebuild
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    policy: pull
+    paths:
+      - $CARGO_HOME
+      - $SCCACHE_DIR
+  before_script:
+    - sccache -s
+    - cargo tarpaulin --version
+  script:
+    - cargo coverage
+    - sccache -s
+  coverage: /^\d+.\d+% coverage/
+  only:
+    refs:
+      - tags
+      - main
+      - develop
+    variables:
+      - $DEPLOY
+
+#
+# Build base
+#
+.base_compile: &base_compile
+  stage: build
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    policy: pull
+    paths:
+      - $CARGO_HOME
+      - $SCCACHE_DIR
+  before_script:
+    - rustup toolchain install nightly --no-self-update
+    - rustup override set nightly
+    - rustup target add wasm32-unknown-unknown x86_64-pc-windows-gnu # to be removed
+    - sccache -s
+
+build_x86_64:
+  <<: *base_compile
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+  artifacts:
+    paths:
+      - target/x86_64-unknown-linux-gnu/release/*.so
+    expire_in: 3 mos
+
+build_centos7:
+  <<: *base_compile
+  image: gitlab.cosmian.com:5000/core/ci-rust-glibc-2.17:latest
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+  artifacts:
+    paths:
+      - target/x86_64-unknown-linux-gnu/release/*.so
+      - target/*.h
+    expire_in: 3 mos
+
+build_wasm32:
+  <<: *base_compile
+  stage: build
+  script:
+    - wasm-pack build --release --features wasm_bindgen
+  artifacts:
+    paths:
+      - pkg
+    expire_in: 3 mos
+
+build_python_whl:
+  <<: *base_compile
+  stage: build
+  before_script:
+    - pip install maturin
+  script:
+    - maturin build --cargo-extra-args="--release --features python"
+  artifacts:
+    paths:
+      - target/wheels/*.whl
+    expire_in: 3 mos
+
+build_windows:
+  <<: *base_compile
+  stage: build
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-pc-windows-gnu
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+  artifacts:
+    paths:
+      - target/x86_64-pc-windows-gnu/release/*.dll
+      - target/*.h
+    expire_in: 3 mos
+
+build_osx:
+  <<: *base_compile
+  stage: build
+  image: gitlab.cosmian.com:5000/core/ci-rust-osx:latest
+  script:
+    - cargo build --verbose --release --features ffi
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+  artifacts:
+    paths:
+      - target/release/*.a
+      - target/release/*.so
+      - target/*.h
+    expire_in: 3 mos
