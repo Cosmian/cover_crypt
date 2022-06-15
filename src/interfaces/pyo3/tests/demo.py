@@ -1,10 +1,61 @@
-import cover_crypt
 import json
+import cover_crypt
 
 
-# Data to be written
-policy_json = {"last_attribute_value": 10, "max_attribute_value": 100, "store": {"Security Level": [["Protected", "Low Secret", "Medium Secret", "High Secret", "Top Secret"], True], "Department": [["R&D", "HR", "MKG", "FIN"], False]}, "attribute_to_int": {
-    "Security Level::Low Secret": [2], "Department::MKG": [8], "Security Level::Medium Secret": [3], "Security Level::Top Secret": [5], "Security Level::Protected": [1], "Department::FIN": [10, 9], "Department::HR": [7], "Department::R&D": [6], "Security Level::High Secret": [4]}}
+# CoverCrypt Policy with 2 axes:
+policy_json = {
+    "last_attribute_value": 10,
+    "max_attribute_value": 100,
+    "store": {
+        "Security Level": [
+            [
+                "Protected",
+                "Low Secret",
+                "Medium Secret",
+                "High Secret",
+                "Top Secret"
+            ], True
+        ],
+        "Department": [
+            [
+                "R&D",
+                "HR",
+                "MKG",
+                "FIN"
+            ], False
+        ]
+    },
+    "attribute_to_int": {
+        "Security Level::Low Secret": [
+            2
+        ],
+        "Department::MKG": [
+            8
+        ],
+        "Security Level::Medium Secret": [
+            3
+        ],
+        "Security Level::Top Secret": [
+            5
+        ],
+        "Security Level::Protected": [
+            1
+        ],
+        "Department::FIN": [
+            10,
+            9
+        ],
+        "Department::HR": [
+            7
+        ],
+        "Department::R&D": [
+            6
+        ],
+        "Security Level::High Secret": [
+            4
+        ]
+    }
+}
 
 policy = bytes(json.dumps(policy_json), 'utf-8')
 

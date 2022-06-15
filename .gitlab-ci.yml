@@ -3,27 +3,10 @@ image: gitlab.cosmian.com:5000/core/ci-rust:latest
 variables:
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo/
   SCCACHE_DIR: ${CI_PROJECT_DIR}/.cache/sccache
-  SHARING_DATA: ${CI_PROJECT_DIR}/SharingData.txt
 
 stages:
   - prebuild
   - build
-
-rust_toolchain_bump:
-  stage: prebuild
-  image: alpine:3.11
-  before_script:
-    - apk add --update curl
-  script:
-    - curl --request POST --form token=$CI_CC_TOKEN --form ref=main --form "variables[DEPLOY]=\"auto\"" http://gitlab.cosmian.com/api/v4/projects/10/trigger/pipeline
-  only:
-    refs:
-      - develop
-    changes:
-      - rust-toolchain
-    # Otherwise, triggered every time in scheduled pipelines (https://gitlab.com/gitlab-org/gitlab-foss/issues/58961)
-    variables:
-      - $CI_PIPELINE_SOURCE == "push"
 
 rustfmt:
   stage: prebuild
@@ -34,18 +17,12 @@ rustfmt:
 doc:
   stage: prebuild
   cache: {}
-  before_script:
-    - rustup toolchain install nightly --no-self-update
-    - rustup override set nightly
   script:
     - cargo doc --all-features
 
 clippy:
   stage: prebuild
   cache: {}
-  before_script:
-    - rustup toolchain install nightly --no-self-update
-    - rustup override set nightly
   script:
     - cargo clippy-all
 
@@ -61,34 +38,6 @@ cargo_audit:
       - tags
       - main
       - develop
-    variables:
-      - $DEPLOY
-
-#
-# Coverage
-#
-coverage:
-  stage: prebuild
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}"
-    policy: pull
-    paths:
-      - $CARGO_HOME
-      - $SCCACHE_DIR
-  before_script:
-    - sccache -s
-    - cargo tarpaulin --version
-  script:
-    - cargo coverage
-    - sccache -s
-  coverage: /^\d+.\d+% coverage/
-  only:
-    refs:
-      - tags
-      - main
-      - develop
-    variables:
-      - $DEPLOY
 
 #
 # Build base
@@ -102,9 +51,6 @@ coverage:
       - $CARGO_HOME
       - $SCCACHE_DIR
   before_script:
-    - rustup toolchain install nightly --no-self-update
-    - rustup override set nightly
-    - rustup target add wasm32-unknown-unknown x86_64-pc-windows-gnu # to be removed
     - sccache -s
 
 build_x86_64:
@@ -143,10 +89,9 @@ build_wasm32:
 build_python_whl:
   <<: *base_compile
   stage: build
-  before_script:
-    - pip install maturin
   script:
     - maturin build --cargo-extra-args="--release --features python"
+    - bash src/interfaces/pyo3/tests/test.sh
   artifacts:
     paths:
       - target/wheels/*.whl

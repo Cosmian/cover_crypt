@@ -38,7 +38,7 @@ pub fn get_encrypted_header_size(encrypted_bytes: Vec<u8>) -> PyResult<u32> {
     //
     // Recover header from `encrypted_bytes`
     let mut header_size_bytes = [0; 4];
-    header_size_bytes.copy_from_slice(&encrypted_bytes.to_vec()[0..4]);
+    header_size_bytes.copy_from_slice(&encrypted_bytes[0..4]);
     let header_size = u32::from_be_bytes(header_size_bytes);
 
     Ok(header_size)
@@ -59,7 +59,7 @@ pub fn encrypt_hybrid_header(
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing policy: {e}")))?;
     let attributes: Vec<Attribute> = serde_json::from_slice(&attributes_bytes)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
-    let public_key = PublicKey::try_from_bytes(&public_key_bytes.to_vec())?;
+    let public_key = PublicKey::try_from_bytes(&public_key_bytes)?;
 
     //
     // Encrypt
@@ -134,12 +134,12 @@ pub fn encrypt_hybrid_block(
     //
     // Parse symmetric key
     let symmetric_key =
-        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes.to_vec())
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes)
             .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //
     // Parse other input params
-    let uid = uid_bytes.map_or_else(Vec::new, |v| v.to_vec());
+    let uid = uid_bytes.unwrap_or_default();
     let block_number_value = block_number.unwrap_or(0);
 
     //
@@ -148,7 +148,7 @@ pub fn encrypt_hybrid_block(
         &symmetric_key,
         &uid,
         block_number_value,
-        &plaintext_bytes.to_vec(),
+        &plaintext_bytes,
     )?;
 
     Ok(ciphertext)
@@ -177,12 +177,12 @@ pub fn decrypt_hybrid_block(
     //
     // Parse symmetric key
     let symmetric_key =
-        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes.to_vec())
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes)
             .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //
     // Parse other input params
-    let uid = uid_bytes.map_or(vec![], |v| v.to_vec());
+    let uid = uid_bytes.unwrap_or_default();
     let block_number_value = block_number.unwrap_or(0);
 
     //
@@ -191,7 +191,7 @@ pub fn decrypt_hybrid_block(
         &symmetric_key,
         &uid,
         block_number_value as usize,
-        &encrypted_bytes.to_vec(),
+        &encrypted_bytes,
     )?;
 
     Ok(cleartext)
