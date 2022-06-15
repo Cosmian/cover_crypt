@@ -1,7 +1,8 @@
+#[cfg(feature = "ffi")]
+use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure;
 use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    hybrid_crypto::Metadata,
-    symmetric_crypto::aes_256_gcm_pure::{self, Aes256GcmCrypto},
+    asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
+    symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
 };
 use cover_crypt::{
     api::{CoverCrypt, PublicKey},
@@ -148,7 +149,7 @@ fn bench_header_encryption(c: &mut Criterion) {
 ///
 /// # Safety
 #[cfg(feature = "ffi")]
-pub fn bench_ffi_header_encryption(c: &mut Criterion) {
+fn bench_ffi_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::<X25519Crypto>::default();
@@ -223,7 +224,7 @@ pub fn bench_ffi_header_encryption(c: &mut Criterion) {
 ///
 /// # Safety
 #[cfg(feature = "ffi")]
-pub fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
+fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::<X25519Crypto>::default();
@@ -401,7 +402,7 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
 }
 
 #[cfg(feature = "ffi")]
-pub fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
+fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::<X25519Crypto>::default();
@@ -473,6 +474,7 @@ criterion_group!(
         bench_header_decryption
 );
 
+#[cfg(feature = "ffi")]
 criterion_group!(
     name = benches_ffi;
     config = Criterion::default().sample_size(5000);
@@ -483,4 +485,8 @@ criterion_group!(
         bench_ffi_header_decryption_using_cache
 );
 
+#[cfg(feature = "ffi")]
 criterion_main!(benches, benches_ffi);
+
+#[cfg(not(feature = "ffi"))]
+criterion_main!(benches);

@@ -49,8 +49,26 @@ maturin develop --cargo-extra-args="--release --features python
 
 ## Benchmarks
 
+Benchmarking is using [Criterion](https://github.com/bheisler/criterion.rs) library.
+
+Run all benchmarks:
+
 ```bash
 cargo bench --features ffi
 ```
 
 note: unfortunately, we cannot automatically tell Criterion to run benchmarks with `ffi` feature activated, we need to specify it.
+
+Run only non-FFI benchmarks:
+
+```console
+cargo bench
+```
+
+## Flamegraph
+
+To generate a [Flamegraph](https://github.com/flamegraph-rs/flamegraph) on Criterion's benchmark:
+
+```console
+cargo flamegraph --bench benches --features ffi -- --bench
+```
