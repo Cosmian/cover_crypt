@@ -45,7 +45,6 @@ pyo3 = { version = "0.16.3", features = ["extension-module"], optional = true }
 wasm-bindgen = { version = "0.2", features = [
   "serde-serialize",
 ], optional = true }
-witgen = { version = "0.4", optional = true }
 
 [dev-dependencies]
 wasm-bindgen-test = { version = "0.3" }

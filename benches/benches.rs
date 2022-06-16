@@ -183,7 +183,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
     let policy_ptr = policy_cs.as_ptr();
 
     let public_key_bytes = public_key
-        .to_bytes()
+        .try_to_bytes()
         .expect("cannot convert public key to bytes");
     let public_key_ptr = public_key_bytes.as_ptr();
 
@@ -250,7 +250,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     let policy_ptr = policy_cs.as_ptr();
 
     let public_key_bytes = public_key
-        .to_bytes()
+        .try_to_bytes()
         .expect("cannot convert public key to bytes");
     let public_key_ptr = public_key_bytes.as_ptr().cast::<i8>();
 
@@ -377,7 +377,7 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
     let mut additional_data_len = additional_data.len() as c_int;
 
     let user_decryption_key_bytes = user_decryption_key
-        .to_bytes()
+        .try_to_bytes()
         .expect("cannot convert public key to bytes");
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast::<i8>();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
@@ -429,7 +429,7 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
     let mut additional_data_len = additional_data.len() as c_int;
 
     let user_decryption_key_bytes = user_decryption_key
-        .to_bytes()
+        .try_to_bytes()
         .expect("cannot convert public key to bytes");
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast::<i8>();
 
