@@ -3,9 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.0.0] - 2022-06-14
+### Added
+- Add Gitlab CI .gitlab-ci.yml
+- [pyo3] Add Rust bindings for Python thanks to Pyo3
+### Changed
+- API changed: `to_bytes` become `try_to_bytes` for `PrivateKey` and `PublicKey`
+### Fixed
+### Removed
+
+---
 ## [2.0.1] - 2022-06-07
 ### Added
 - [JS/bindgen + FFI] Add ABE keys generation
+- [pyo3] Add ABE keys generation
 ### Changed
 ### Fixed
 ### Removed

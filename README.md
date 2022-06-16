@@ -42,3 +42,9 @@ The code contains numerous tests that you can run using
 ## Building the library for a different glibc
 
 Go to the [build](build/glibc-2.17/) directory for an example on hw to build for GLIBC 2.17
+
+## Building for Pyo3
+
+```bash
+maturin develop --cargo-extra-args="--release --features python
+```

@@ -50,7 +50,7 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     let cover_crypt = CoverCrypt::<KEM>::new();
     let (secret_key, encapsulation) =
         cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
-    let encapsulation = encapsulation.to_bytes()?;
+    let encapsulation = encapsulation.try_to_bytes()?;
 
     // create header
     let mut header_bytes = Vec::new();
@@ -93,6 +93,10 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     user_decryption_key: &PrivateKey<KEM>,
     header_bytes: &[u8],
 ) -> Result<ClearTextHeader<DEM>, Error> {
+    // check header size
+    if header_bytes.len() < 4 {
+        return Err(Error::InvalidHeaderSize(header_bytes.len()));
+    }
     // get the encapsulation size (u32)
     let mut index = 4;
     let encapsulation_size = u32::from_be_bytes(header_bytes[..index].try_into()?) as usize;
@@ -149,18 +153,21 @@ pub fn encrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
     symmetric_key: &DEM::Key,
     uid: &[u8],
     block_number: usize,
-    clear_text: &[u8],
+    plaintext: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let mut block = Block::<DEM, MAX_CLEAR_TEXT_SIZE>::new();
-    if clear_text.len() > MAX_CLEAR_TEXT_SIZE {
+    if plaintext.is_empty() {
+        return Err(Error::EmptyPlaintext);
+    }
+    if plaintext.len() > MAX_CLEAR_TEXT_SIZE {
         return Err(Error::InvalidSize(format!(
             "The data to encrypt is too large: {} bytes, max size: {} ",
-            clear_text.len(),
+            plaintext.len(),
             MAX_CLEAR_TEXT_SIZE
         )));
     }
     block
-        .write(0, clear_text)
+        .write(0, plaintext)
         .map_err(|e| Error::InvalidSize(e.to_string()))?;
 
     block
@@ -178,6 +185,9 @@ pub fn decrypt_hybrid_block<KEM: Kem, DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize
     block_number: usize,
     encrypted_bytes: &[u8],
 ) -> Result<Vec<u8>, Error> {
+    if encrypted_bytes.is_empty() {
+        return Err(Error::EmptyCiphertext);
+    }
     if encrypted_bytes.len() > Block::<DEM, MAX_CLEAR_TEXT_SIZE>::MAX_ENCRYPTED_LENGTH {
         return Err(Error::InvalidSize(format!(
             "The encrypted data to decrypt is too large: {} bytes, max size: {} ",
@@ -301,11 +311,11 @@ mod tests {
         encrypted_bytes.extend_from_slice(&encrypted_block);
 
         let reg_vectors = NonRegressionTestVector {
-            public_key: hex::encode(mpk.to_bytes()?),
-            private_key: hex::encode(msk.to_bytes()?),
+            public_key: hex::encode(mpk.try_to_bytes()?),
+            private_key: hex::encode(msk.try_to_bytes()?),
             policy: hex::encode(serde_json::to_vec(&policy)?),
-            user_decryption_key: hex::encode(top_secret_mkg_fin_user.to_bytes()?),
-            user_decryption_key_2: hex::encode(medium_secret_mkg_user.to_bytes()?),
+            user_decryption_key: hex::encode(top_secret_mkg_fin_user.try_to_bytes()?),
+            user_decryption_key_2: hex::encode(medium_secret_mkg_user.try_to_bytes()?),
             header_bytes: hex::encode(encrypted_header.header_bytes.clone()),
             encrypted_bytes: hex::encode(encrypted_bytes),
             uid: hex::encode(metadata.uid),

@@ -20,7 +20,7 @@ use crate::{
     policies::Attribute,
 };
 
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
+pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
 /// Extract header from encrypted bytes
 #[wasm_bindgen]

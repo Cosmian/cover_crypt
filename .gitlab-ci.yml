@@ -1,0 +1,124 @@
+image: gitlab.cosmian.com:5000/core/ci-rust:latest
+
+variables:
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo/
+  SCCACHE_DIR: ${CI_PROJECT_DIR}/.cache/sccache
+
+stages:
+  - prebuild
+  - build
+
+rustfmt:
+  stage: prebuild
+  cache: {}
+  script:
+    - cargo format
+
+doc:
+  stage: prebuild
+  cache: {}
+  script:
+    - cargo doc --all-features
+
+clippy:
+  stage: prebuild
+  cache: {}
+  script:
+    - cargo clippy-all
+
+# Security check
+cargo_audit:
+  stage: prebuild
+  cache: {}
+  script:
+    - cargo audit
+  allow_failure: true
+  only:
+    refs:
+      - tags
+      - main
+      - develop
+
+#
+# Build base
+#
+.base_compile: &base_compile
+  stage: build
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    policy: pull
+    paths:
+      - $CARGO_HOME
+      - $SCCACHE_DIR
+  before_script:
+    - sccache -s
+
+build_x86_64:
+  <<: *base_compile
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+  artifacts:
+    paths:
+      - target/x86_64-unknown-linux-gnu/release/*.so
+    expire_in: 3 mos
+
+build_centos7:
+  <<: *base_compile
+  image: gitlab.cosmian.com:5000/core/ci-rust-glibc-2.17:latest
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+  artifacts:
+    paths:
+      - target/x86_64-unknown-linux-gnu/release/*.so
+      - target/*.h
+    expire_in: 3 mos
+
+build_wasm32:
+  <<: *base_compile
+  stage: build
+  script:
+    - wasm-pack build --release --features wasm_bindgen
+  artifacts:
+    paths:
+      - pkg
+    expire_in: 3 mos
+
+build_python_whl:
+  <<: *base_compile
+  stage: build
+  script:
+    - maturin build --cargo-extra-args="--release --features python"
+    - bash src/interfaces/pyo3/tests/test.sh
+  artifacts:
+    paths:
+      - target/wheels/*.whl
+    expire_in: 3 mos
+
+build_windows:
+  <<: *base_compile
+  stage: build
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-pc-windows-gnu
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+  artifacts:
+    paths:
+      - target/x86_64-pc-windows-gnu/release/*.dll
+      - target/*.h
+    expire_in: 3 mos
+
+build_osx:
+  <<: *base_compile
+  stage: build
+  image: gitlab.cosmian.com:5000/core/ci-rust-osx:latest
+  script:
+    - cargo build --verbose --release --features ffi
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+  artifacts:
+    paths:
+      - target/release/*.a
+      - target/release/*.so
+      - target/*.h
+    expire_in: 3 mos

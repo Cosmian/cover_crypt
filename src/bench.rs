@@ -3,6 +3,8 @@
 //   cargo run --release --features interfaces --bin bench_abe_gpsw -- --help
 // for online help
 
+use std::{env, time::Instant};
+
 use cosmian_crypto_base::{
     asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
     symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
@@ -13,8 +15,6 @@ use cover_crypt::{
     interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
     policies::{ap, Attribute, Policy, PolicyAxis},
 };
-use std::env;
-use std::time::Instant;
 #[cfg(feature = "ffi")]
 use {
     cover_crypt::interfaces::ffi::{
@@ -259,7 +259,7 @@ pub unsafe fn bench_ffi_header_encryption() -> Result<(), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())?;
     let policy_ptr = policy_cs.as_ptr();
 
-    let public_key_bytes = public_key.to_bytes()?;
+    let public_key_bytes = public_key.try_to_bytes()?;
     let public_key_ptr = public_key_bytes.as_ptr();
     let public_key_len = public_key_bytes.len() as i32;
 
@@ -317,7 +317,7 @@ pub unsafe fn bench_ffi_header_encryption_using_cache() -> Result<(), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())?;
     let policy_ptr = policy_cs.as_ptr();
 
-    let public_key_bytes = public_key.to_bytes()?;
+    let public_key_bytes = public_key.try_to_bytes()?;
     let public_key_ptr = public_key_bytes.as_ptr().cast::<i8>();
     let public_key_len = public_key_bytes.len() as i32;
 
@@ -424,7 +424,7 @@ pub unsafe fn bench_ffi_header_decryption() -> Result<(), Error> {
     let additional_data_ptr = additional_data.as_mut_ptr().cast::<i8>();
     let mut additional_data_len = additional_data.len() as c_int;
 
-    let user_decryption_key_bytes = user_decryption_key.to_bytes()?;
+    let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast::<i8>();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
@@ -477,7 +477,7 @@ pub unsafe fn bench_ffi_header_decryption_using_cache() -> Result<(), Error> {
     let additional_data_ptr = additional_data.as_mut_ptr().cast::<i8>();
     let mut additional_data_len = additional_data.len() as c_int;
 
-    let user_decryption_key_bytes = user_decryption_key.to_bytes()?;
+    let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast::<i8>();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
@@ -520,7 +520,7 @@ unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
         let mut message_bytes_len = message_bytes_key.len() as c_int;
         get_last_error(message_bytes_ptr, &mut message_bytes_len);
         let cstr = CStr::from_ptr(message_bytes_ptr);
-        return Err(Error::Other(format!("FFI ERROR: {}", cstr.to_str()?)));
+        Err(Error::Other(format!("FFI ERROR: {}", cstr.to_str()?)))
     } else {
         Ok(())
     }

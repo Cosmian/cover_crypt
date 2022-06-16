@@ -1,5 +1,23 @@
 #![allow(dead_code)]
 
+use std::{
+    collections::HashMap,
+    ffi::CStr,
+    os::raw::{c_char, c_int},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        RwLock,
+    },
+};
+
+use cosmian_crypto_base::{
+    asymmetric::ristretto::X25519Crypto,
+    hybrid_crypto::{Block, Metadata},
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use lazy_static::lazy_static;
+
 use crate::{
     api::{PrivateKey, PublicKey},
     ffi_bail, ffi_not_null, ffi_unwrap,
@@ -11,22 +29,6 @@ use crate::{
         },
     },
     policies::{Attribute, Policy},
-};
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    hybrid_crypto::{Block, Metadata},
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use lazy_static::lazy_static;
-use std::{
-    collections::HashMap,
-    ffi::CStr,
-    os::raw::{c_char, c_int},
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        RwLock,
-    },
 };
 
 // -------------------------------
@@ -150,15 +152,14 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     let map = ENCRYPTION_CACHE_MAP
         .read()
         .expect("a read mutex on the encryption cache failed");
-    let cache = match map.get(&cache_handle) {
-        Some(cache) => cache,
-        None => {
-            set_last_error(FfiError::Generic(format!(
-                "Hybrid Cipher: no encryption cache with handle: {}",
-                cache_handle
-            )));
-            return 1;
-        }
+    let cache = if let Some(cache) = map.get(&cache_handle) {
+        cache
+    } else {
+        set_last_error(FfiError::Generic(format!(
+            "Hybrid Cipher: no encryption cache with handle: {}",
+            cache_handle
+        )));
+        return 1;
     };
 
     // Attributes
@@ -486,15 +487,14 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     let map = DECRYPTION_CACHE_MAP
         .read()
         .expect("a read mutex on the decryption cache failed");
-    let cache = match map.get(&cache_handle) {
-        Some(cache) => cache,
-        None => {
-            set_last_error(FfiError::Generic(format!(
-                "Hybrid Cipher: no decryption cache with handle: {}",
-                cache_handle
-            )));
-            return 1;
-        }
+    let cache = if let Some(cache) = map.get(&cache_handle) {
+        cache
+    } else {
+        set_last_error(FfiError::Generic(format!(
+            "Hybrid Cipher: no decryption cache with handle: {}",
+            cache_handle
+        )));
+        return 1;
     };
 
     let header: ClearTextHeader<Aes256GcmCrypto> =
@@ -690,7 +690,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
 
 // maximum clear text size that can be safely encrypted with AES GCM (using a a
 // single random nonce)
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
+pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
 #[no_mangle]
 ///

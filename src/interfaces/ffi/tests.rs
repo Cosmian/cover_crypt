@@ -42,7 +42,7 @@ unsafe fn encrypt_header(
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
 
-    let public_key_bytes = public_key.to_bytes()?;
+    let public_key_bytes = public_key.try_to_bytes()?;
     let public_key_ptr = public_key_bytes.as_ptr();
     let public_key_len = public_key_bytes.len() as i32;
 
@@ -103,7 +103,7 @@ unsafe fn decrypt_header(
     let additional_data_ptr = additional_data.as_mut_ptr() as *mut c_char;
     let mut additional_data_len = additional_data.len() as c_int;
 
-    let user_decryption_key_bytes = user_decryption_key.to_bytes()?;
+    let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
@@ -231,7 +231,7 @@ unsafe fn encrypt_header_using_cache(
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
 
-    let public_key_bytes = public_key.to_bytes()?;
+    let public_key_bytes = public_key.try_to_bytes()?;
     let public_key_ptr = public_key_bytes.as_ptr() as *const c_char;
     let public_key_len = public_key_bytes.len() as i32;
 
@@ -298,7 +298,7 @@ unsafe fn decrypt_header_using_cache(
     user_decryption_key: &UserDecryptionKey,
     header: &EncryptedHeader<Aes256GcmCrypto>,
 ) -> Result<DecryptedHeader, Error> {
-    let user_decryption_key_bytes = user_decryption_key.to_bytes()?;
+    let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
@@ -444,7 +444,7 @@ unsafe fn generate_user_private_key(
 ) -> Result<PrivateKey<X25519Crypto>, Error> {
     //
     // Prepare private key
-    let master_private_key_bytes = master_private_key.to_bytes()?;
+    let master_private_key_bytes = master_private_key.try_to_bytes()?;
     let master_private_key_ptr = master_private_key_bytes.as_ptr() as *const c_char;
     let master_private_key_len = master_private_key_bytes.len() as i32;
 

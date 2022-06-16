@@ -1,9 +1,10 @@
-use cosmian_crypto_base::Error as CryptoError;
 use std::{
     array::TryFromSliceError,
     fmt::Debug,
     num::{ParseIntError, TryFromIntError},
 };
+
+use cosmian_crypto_base::Error as CryptoError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -40,6 +41,14 @@ pub enum Error {
     ExistingPolicy(String),
     #[error("invalid size")]
     InvalidSize(String),
+    #[error("Empty private key")]
+    EmptyPrivateKey,
+    #[error("Empty ciphertext")]
+    EmptyCiphertext,
+    #[error("Empty plaintext")]
+    EmptyPlaintext,
+    #[error("Header length must be at least 4 bytes. Found {0}")]
+    InvalidHeaderSize(usize),
     #[error("could not decode number of attributes in encrypted message")]
     DecodingAttributeNumber,
     #[error(
