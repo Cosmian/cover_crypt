@@ -22,9 +22,22 @@ use crate::{
     policies::Attribute,
 };
 
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
+pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
-/// Extract header from encrypted bytes
+/// Get size of header inside an encrypted data
+/// * ENCRYPTED_DATA = HEADER_SIZE (4 bytes) | HEADER | AES_DATA
+///
+/// # Arguments
+///
+/// * `encrypted_bytes`: encrypted data
+///
+/// # Returns
+///
+/// * the length header
+///
+/// # Errors
+///
+/// Function fails if input data is less than 4 bytes
 #[pyfunction]
 pub fn get_encrypted_header_size(encrypted_bytes: Vec<u8>) -> PyResult<u32> {
     //
@@ -39,11 +52,21 @@ pub fn get_encrypted_header_size(encrypted_bytes: Vec<u8>) -> PyResult<u32> {
     // Recover header from `encrypted_bytes`
     let mut header_size_bytes = [0; 4];
     header_size_bytes.copy_from_slice(&encrypted_bytes[0..4]);
-    let header_size = u32::from_be_bytes(header_size_bytes);
-
-    Ok(header_size)
+    Ok(u32::from_be_bytes(header_size_bytes))
 }
 
+/// Generate an encrypted header. A header contains the following elements:
+///
+/// - `encapsulation_size`  : the size of the symmetric key encapsulation (u32)
+/// - `encapsulation`       : symmetric key encapsulation using CoverCrypt
+/// - `encrypted_metadata`  : Optional metadata encrypted using the DEM
+///
+/// Parameters:
+///
+/// - `metadata_bytes`         : meta data
+/// - `policy_bytes`           : global policy
+/// - `attributes_bytes`       : access policy
+/// - `public_key_bytes`       : CoverCrypt public key
 #[pyfunction]
 pub fn encrypt_hybrid_header(
     metadata_bytes: Vec<u8>,
@@ -76,36 +99,20 @@ pub fn encrypt_hybrid_header(
     ))
 }
 
-/// Decrypt with a user decryption key an encrypted header
-/// of a resource encrypted using an hybrid crypto scheme.
+/// Decrypt the given header bytes using a user decryption key.
+///
+/// - `user_decryption_key_bytes&   ` : private key to use for decryption
+/// - `encrypted_header_bytes`        : encrypted header bytes
 #[pyfunction]
 pub fn decrypt_hybrid_header(
     user_decryption_key_bytes: Vec<u8>,
     encrypted_header_bytes: Vec<u8>,
 ) -> PyResult<(Vec<u8>, Vec<u8>)> {
     //
-    // Check `user_decryption_key_bytes` input param and store it locally
-    if user_decryption_key_bytes.is_empty() {
-        return Err(PyTypeError::new_err("User decryption key is empty"));
-    }
-
-    //
-    // Check `encrypted_bytes` input param and store it locally
-    if encrypted_header_bytes.len() < 4 {
-        return Err(PyTypeError::new_err(
-            "Size of encrypted value cannot be less than 4!",
-        ));
-    }
-
-    //
-    // Parse user decryption key
-    let user_decryption_key = PrivateKey::try_from_bytes(&user_decryption_key_bytes)?;
-
-    //
     // Finally decrypt symmetric key using given user decryption key
     let cleartext_header: ClearTextHeader<Aes256GcmCrypto> =
         core_decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-            &user_decryption_key,
+            &PrivateKey::try_from_bytes(&user_decryption_key_bytes)?,
             &encrypted_header_bytes,
         )?;
 
@@ -117,63 +124,49 @@ pub fn decrypt_hybrid_header(
     Ok((cleartext_header.symmetric_key.to_bytes(), metadata))
 }
 
-/// Symmetrically Encrypt plaintext data in a block.
+/// Encrypt data symmetrically in a block.
+///
+/// The `uid` should be different for every resource  and `block_number`
+/// different for every block. They are part of the AEAD of the symmetric scheme
+/// if any.
 #[pyfunction]
 pub fn encrypt_hybrid_block(
     symmetric_key_bytes: Vec<u8>,
-    uid_bytes: Option<Vec<u8>>,
-    block_number: Option<usize>,
+    uid_bytes: Vec<u8>,
+    block_number: usize,
     plaintext_bytes: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
     //
-    // Check `plaintext_bytes` input param
-    if plaintext_bytes.is_empty() {
-        return Err(PyTypeError::new_err("Plaintext value is empty"));
-    }
-
-    //
     // Parse symmetric key
     let symmetric_key =
         <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes)
             .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
-
-    //
-    // Parse other input params
-    let uid = uid_bytes.unwrap_or_default();
-    let block_number_value = block_number.unwrap_or(0);
 
     //
     // Encrypt block
-    let ciphertext = core_encrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+    Ok(core_encrypt_hybrid_block::<
+        X25519Crypto,
+        Aes256GcmCrypto,
+        MAX_CLEAR_TEXT_SIZE,
+    >(
         &symmetric_key,
-        &uid,
-        block_number_value,
+        &uid_bytes,
+        block_number,
         &plaintext_bytes,
-    )?;
-
-    Ok(ciphertext)
+    )?)
 }
 
 /// Symmetrically Decrypt encrypted data in a block.
+///
+/// The `uid` and `block_number` are part of the AEAD
+/// of the crypto scheme (when applicable)
 #[pyfunction]
 pub fn decrypt_hybrid_block(
     symmetric_key_bytes: Vec<u8>,
-    uid_bytes: Option<Vec<u8>>,
-    block_number: Option<usize>,
+    uid_bytes: Vec<u8>,
+    block_number: usize,
     encrypted_bytes: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
-    //
-    // Check `user_decryption_key_bytes` input param and store it locally
-    if symmetric_key_bytes.len() != 32 {
-        return Err(PyTypeError::new_err("Symmetric key must be 32-bytes long"));
-    }
-
-    //
-    // Check `encrypted_bytes` input param and store it locally
-    if encrypted_bytes.is_empty() {
-        return Err(PyTypeError::new_err("Encrypted value is empty"));
-    }
-
     //
     // Parse symmetric key
     let symmetric_key =
@@ -181,22 +174,21 @@ pub fn decrypt_hybrid_block(
             .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //
-    // Parse other input params
-    let uid = uid_bytes.unwrap_or_default();
-    let block_number_value = block_number.unwrap_or(0);
-
-    //
     // Decrypt block
-    let cleartext = core_decrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+    Ok(core_decrypt_hybrid_block::<
+        X25519Crypto,
+        Aes256GcmCrypto,
+        MAX_CLEAR_TEXT_SIZE,
+    >(
         &symmetric_key,
-        &uid,
-        block_number_value as usize,
+        &uid_bytes,
+        block_number,
         &encrypted_bytes,
-    )?;
-
-    Ok(cleartext)
+    )?)
 }
 
+/// Hybrid encryption producing:
+/// - ENCRYPTED_DATA = HEADER_SIZE | HEADER | AES_DATA
 #[pyfunction]
 pub fn encrypt(
     metadata_bytes: Vec<u8>,
@@ -215,7 +207,7 @@ pub fn encrypt(
         public_key_bytes,
     )?;
 
-    let ciphertext = encrypt_hybrid_block(header.0, Some(metadata.uid), None, plaintext)?;
+    let ciphertext = encrypt_hybrid_block(header.0, metadata.uid, 0, plaintext)?;
 
     // Encrypted value is composed of: HEADER_LEN (4 bytes) | HEADER | AES_DATA
     let mut encrypted = Vec::<u8>::with_capacity(4 + header.1.len() + ciphertext.len());
@@ -225,6 +217,7 @@ pub fn encrypt(
     Ok(encrypted)
 }
 
+/// Hybrid decryption
 #[pyfunction]
 pub fn decrypt(user_decryption_key_bytes: Vec<u8>, encrypted_bytes: Vec<u8>) -> PyResult<Vec<u8>> {
     let header_size = get_encrypted_header_size(encrypted_bytes.clone())?;
@@ -236,6 +229,5 @@ pub fn decrypt(user_decryption_key_bytes: Vec<u8>, encrypted_bytes: Vec<u8>) -> 
     let metadata = Metadata::from_bytes(&cleartext_header.1)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing metadata: {e}")))?;
 
-    let cleartext = decrypt_hybrid_block(cleartext_header.0, Some(metadata.uid), None, ciphertext)?;
-    Ok(cleartext)
+    decrypt_hybrid_block(cleartext_header.0, metadata.uid, 0, ciphertext)
 }

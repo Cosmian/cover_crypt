@@ -1,13 +1,15 @@
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Debug, Display},
+};
+
+use cosmian_crypto_base::{asymmetric::KeyPair, hybrid_crypto::Kem, KeyTrait};
+use rand_core::{CryptoRng, RngCore};
+
 use crate::{
     bytes_ser_de::{Deserializer, Serializer},
     error::Error,
     utils,
-};
-use cosmian_crypto_base::{asymmetric::KeyPair, hybrid_crypto::Kem, KeyTrait};
-use rand_core::{CryptoRng, RngCore};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{Debug, Display},
 };
 
 /// Partition associated to a KEM keypair. It corresponds to a combination
@@ -24,7 +26,11 @@ impl Partition {
     pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Partition, Error> {
         // guard against overflow of the 1024 bytes buffer below
         if attribute_values.len() > 200 {
-            return Err(Error::InvalidAttribute("The current implementation does not currently support more than 200 attributes for a partition".to_string()));
+            return Err(Error::InvalidAttribute(
+                "The current implementation does not currently support more than 200 attributes \
+                 for a partition"
+                    .to_string(),
+            ));
         }
         // the sort operation allows to get the same hash for :
         // `Department::HR || Level::Secret`
@@ -121,7 +127,7 @@ impl<KEM> PrivateKey<KEM>
 where
     KEM: Kem,
 {
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
         for (partition, key) in self.iter() {
             serializer.write_array(partition.into())?;
@@ -133,6 +139,9 @@ where
     }
 
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.is_empty() {
+            return Err(Error::EmptyPrivateKey);
+        }
         let mut map: HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey> =
             HashMap::new();
         let mut de = Deserializer::new(bytes);
@@ -210,7 +219,7 @@ impl<KEM> PublicKey<KEM>
 where
     KEM: Kem,
 {
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
         for (partition, key) in self.iter() {
             serializer.write_array(partition.into())?;
@@ -286,7 +295,7 @@ impl std::ops::DerefMut for Encapsulation {
 }
 
 impl Encapsulation {
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
         for (partition, (key, ciphertext)) in &self.0 {
             serializer.write_array(partition.into())?;
@@ -347,7 +356,8 @@ impl From<SecretKey> for Vec<u8> {
     }
 }
 
-/// Generate the master private key and master public key of the CoverCrypt scheme.
+/// Generate the master private key and master public key of the CoverCrypt
+/// scheme.
 ///
 /// - `n`   : number of partition groups
 ///
@@ -505,9 +515,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_base::{asymmetric::ristretto::X25519Crypto, entropy::CsRng};
+
     use super::*;
-    use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
-    use cosmian_crypto_base::entropy::CsRng;
 
     #[test]
     fn test_partitions() -> Result<(), Error> {
@@ -536,12 +546,12 @@ mod tests {
         let mut rng = CsRng::new();
         // setup scheme
         let (msk, mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
-        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.to_bytes()?)?;
+        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.try_to_bytes()?)?;
         assert_eq!(msk, msk_, "master key comparisons failed");
-        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.to_bytes()?)?;
+        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
         assert_eq!(mpk, mpk_);
         let usk = join::<X25519Crypto>(&msk, &user_set)?;
-        let usk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&usk.to_bytes()?)?;
+        let usk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
         assert_eq!(usk, usk_);
         Ok(())
     }
@@ -573,7 +583,7 @@ mod tests {
         println!(
             "Secret Key size: {}, Encapsulation size: {}",
             secret_key.to_vec().len(),
-            encapsulation.to_bytes()?.len()
+            encapsulation.try_to_bytes()?.len()
         );
         // decapsulate for users 1 and 3
         let res0 = decaps::<X25519Crypto>(&sk0, &encapsulation, SECRET_KEY_LENGTH)?;

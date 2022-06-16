@@ -49,7 +49,7 @@ fn encrypt_header(
     let metadata_bytes = Uint8Array::from(serde_json::to_vec(metadata)?.as_slice());
     let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
     let attributes_bytes = Uint8Array::from(serde_json::to_vec(attributes)?.as_slice());
-    let public_key_bytes = Uint8Array::from(public_key.to_bytes()?.as_slice());
+    let public_key_bytes = Uint8Array::from(public_key.try_to_bytes()?.as_slice());
     let encrypted_header = webassembly_encrypt_hybrid_header(
         metadata_bytes,
         policy_bytes,
@@ -66,7 +66,7 @@ fn decrypt_header(
     user_decryption_key: &api::PrivateKey<X25519Crypto>,
 ) -> Result<ClearTextHeader<Aes256GcmCrypto>, Error> {
     let encrypted_header_bytes = Uint8Array::from(encrypted_header.header_bytes.as_slice());
-    let sk_u = Uint8Array::from(user_decryption_key.to_bytes()?.as_slice());
+    let sk_u = Uint8Array::from(user_decryption_key.try_to_bytes()?.as_slice());
     let decrypted_header_bytes = webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes)
         .map_err(|e| Error::Other(e.as_string().unwrap()))?;
     serde_json::from_slice(&decrypted_header_bytes.to_vec())

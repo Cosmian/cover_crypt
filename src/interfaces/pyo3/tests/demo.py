@@ -72,14 +72,15 @@ medium_secret_mkg_user = cover_crypt.generate_user_private_key(
 metadata_json = {"uid": [0, 0, 0, 0, 0, 0, 0, 1]}
 metadata = bytes(json.dumps(metadata_json), 'utf-8')
 plaintext = "My secret data"
+plaintext_bytes = bytes(plaintext, 'utf-8')
 
 # Encrypt with different ABE policies
 low_secret_mkg_data = cover_crypt.encrypt(metadata, policy, bytes(json.dumps(
-    ['Security Level::Low Secret', 'Department::MKG']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
+    ['Security Level::Low Secret', 'Department::MKG']), 'utf8'), master_keys[1], plaintext_bytes)
 top_secret_mkg_data = cover_crypt.encrypt(metadata, policy, bytes(json.dumps(
-    ['Security Level::Top Secret', 'Department::MKG']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
+    ['Security Level::Top Secret', 'Department::MKG']), 'utf8'), master_keys[1], plaintext_bytes)
 low_secret_fin_data = cover_crypt.encrypt(metadata, policy, bytes(json.dumps(
-    ['Security Level::Low Secret', 'Department::FIN']), 'utf8'), master_keys[1], bytes(plaintext, 'utf-8'))
+    ['Security Level::Low Secret', 'Department::FIN']), 'utf8'), master_keys[1], plaintext_bytes)
 
 # The medium secret marketing user can successfully decrypt a low security marketing message:
 cleartext = cover_crypt.decrypt(medium_secret_mkg_user, low_secret_mkg_data)
@@ -98,7 +99,9 @@ try:
 except Exception as ex:
     print(f"As expected, user cannot decrypt this message: {ex}")
 
-# The "top secret-marketing-financial" user can decrypt messages from the marketing department OR the financial department that have a security level of Top Secret or below
+# The "top secret-marketing-financial" user can decrypt messages from the marketing
+# department OR the financial department that have a security level of Top Secret or below
+
 # As expected, the top secret marketing financial user can successfully decrypt all messages
 cleartext = cover_crypt.decrypt(top_secret_mkg_fin_user, low_secret_mkg_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)

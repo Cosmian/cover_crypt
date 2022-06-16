@@ -17,8 +17,8 @@ pub fn generate_master_keys(policy_bytes: Vec<u8>) -> PyResult<(Vec<u8>, Vec<u8>
         CoverCrypt::<X25519Crypto>::default().generate_master_keys(&policy)?;
 
     Ok((
-        master_private_key.to_bytes()?,
-        master_public_key.to_bytes()?,
+        master_private_key.try_to_bytes()?,
+        master_public_key.try_to_bytes()?,
     ))
 }
 
@@ -40,5 +40,5 @@ pub fn generate_user_private_key(
         &policy,
     )?;
 
-    Ok(user_key.to_bytes()?)
+    Ok(user_key.try_to_bytes()?)
 }

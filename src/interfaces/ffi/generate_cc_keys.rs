@@ -56,8 +56,8 @@ pub unsafe extern "C" fn h_generate_master_keys(
 
     //
     // Serialize master keys
-    let master_private_key_bytes = ffi_unwrap!(master_private_key.to_bytes());
-    let master_public_key_bytes = ffi_unwrap!(master_public_key.to_bytes());
+    let master_private_key_bytes = ffi_unwrap!(master_private_key.try_to_bytes());
+    let master_public_key_bytes = ffi_unwrap!(master_public_key.try_to_bytes());
 
     let mut master_keys_bytes = Vec::<u8>::with_capacity(
         4 + master_private_key_bytes.len() + master_public_key_bytes.len(),
@@ -172,7 +172,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 
     //
     // Serialize user private key
-    let user_key_bytes = ffi_unwrap!(user_key.to_bytes());
+    let user_key_bytes = ffi_unwrap!(user_key.try_to_bytes());
 
     //
     // Prepare output

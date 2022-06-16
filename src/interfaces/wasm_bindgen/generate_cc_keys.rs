@@ -30,10 +30,10 @@ pub fn webassembly_generate_master_keys(
 
     // Serialize master keys
     let master_private_key_bytes = master_private_key
-        .to_bytes()
+        .try_to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing master private key: {e}")))?;
     let master_public_key_bytes = master_public_key
-        .to_bytes()
+        .try_to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing master public key: {e}")))?;
 
     let mut master_keys_bytes = Vec::<u8>::with_capacity(
@@ -70,7 +70,7 @@ pub fn webassembly_generate_user_private_key(
         .map_err(|e| JsValue::from_str(&format!("Error generating user private key: {e}")))?;
 
     let user_key_bytes = user_key
-        .to_bytes()
+        .try_to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing user key: {e}")))?;
     Ok(js_sys::Uint8Array::from(user_key_bytes.as_slice()))
 }

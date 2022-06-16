@@ -690,7 +690,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
 
 // maximum clear text size that can be safely encrypted with AES GCM (using a a
 // single random nonce)
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
+pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
 #[no_mangle]
 ///
