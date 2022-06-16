@@ -49,10 +49,8 @@ pub fn get_encrypted_header_size(encrypted_bytes: Vec<u8>) -> PyResult<u32> {
     }
 
     //
-    // Recover header from `encrypted_bytes`
-    let mut header_size_bytes = [0; 4];
-    header_size_bytes.copy_from_slice(&encrypted_bytes[0..4]);
-    Ok(u32::from_be_bytes(header_size_bytes))
+    // Recover header size from `encrypted_bytes`
+    Ok(u32::from_be_bytes(encrypted_bytes[..4].try_into()?))
 }
 
 /// Generate an encrypted header. A header contains the following elements:
@@ -101,7 +99,7 @@ pub fn encrypt_hybrid_header(
 
 /// Decrypt the given header bytes using a user decryption key.
 ///
-/// - `user_decryption_key_bytes&   ` : private key to use for decryption
+/// - `user_decryption_key_bytes`     : private key to use for decryption
 /// - `encrypted_header_bytes`        : encrypted header bytes
 #[pyfunction]
 pub fn decrypt_hybrid_header(
