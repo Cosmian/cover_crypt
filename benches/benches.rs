@@ -146,8 +146,6 @@ fn bench_header_encryption(c: &mut Criterion) {
     });
 }
 
-///
-/// # Safety
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
@@ -221,8 +219,6 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
     });
 }
 
-///
-/// # Safety
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
@@ -468,7 +464,7 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
 
 criterion_group!(
     name = benches;
-    config = Criterion::default().sample_size(500);
+    config = Criterion::default().sample_size(5000);
     targets =
         bench_header_encryption,
         bench_header_decryption
