@@ -269,47 +269,42 @@ fn access_policy_to_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
-    let combinations = to_attribute_combinations(access_policy, policy)?;
-    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
-    for combination in combinations {
-        set.insert(Partition::from_attributes(combination)?);
+    let attr_combinations = to_attribute_combinations(access_policy, policy)?;
+    let mut set = HashSet::with_capacity(attr_combinations.len());
+    for attr_combination in &attr_combinations {
+        for partition in to_partitions(attr_combination, policy)? {
+            let is_unique = set.insert(partition);
+            if !is_unique {
+                return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
+            }
+        }
     }
     Ok(set)
 }
 
-/// Returns the list of partitions that can be built using the values of
-/// each attribute in the given access policy. This corresponds to an OR
-/// expression of AND expressions.
+/// Returns the list of attribute conbinations that can be built using the
+/// values of each attribute in the given access policy. This corresponds to
+/// an OR expression of AND expressions.
 ///
 /// - `policy`  : global policy
 fn to_attribute_combinations(
     access_policy: &AccessPolicy,
     policy: &Policy,
-) -> Result<Vec<Vec<u32>>, Error> {
+) -> Result<Vec<Vec<Attribute>>, Error> {
     match access_policy {
         AccessPolicy::Attr(attr) => {
             let (attribute_names, is_hierarchical) = policy
                 .as_map()
                 .get(&attr.axis())
                 .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
-            let mut res = policy
-                .attribute_values(attr)?
-                .iter()
-                .map(|&value| vec![value])
-                .collect::<Vec<Vec<u32>>>();
+            let mut res = vec![vec![attr.clone()]];
             if *is_hierarchical {
                 // add attribute values for all attributes below the given one
                 for name in attribute_names.iter() {
                     if *name == attr.name() {
                         break;
                     }
-                    res.extend(
-                        policy
-                            .attribute_values(&Attribute::new(&attr.axis(), name))?
-                            .iter()
-                            .map(|&value| vec![value])
-                            .collect::<Vec<Vec<u32>>>(),
-                    );
+                    res.push(vec![Attribute::new(&attr.axis(), name)]);
                 }
             }
             Ok(res)
@@ -474,38 +469,50 @@ mod tests {
     }
 
     #[test]
-    fn test_to_attribute_combinations() -> Result<(), Error> {
+    fn test_access_policy_to_partition() -> Result<(), Error> {
+        //
+        // create policy
         let mut policy = policy()?;
-
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let access_policy = (AccessPolicy::new("Department", "HR")
-            | AccessPolicy::new("Department", "FIN"))
-            & AccessPolicy::new("Security Level", "Confidential");
-        let combinations = to_attribute_combinations(&access_policy, &policy)?;
-        let mut partitions_: HashSet<Partition> = HashSet::with_capacity(combinations.len());
-        for combination in combinations {
-            partitions_.insert(Partition::from_attributes(combination)?);
+
+        //
+        // create access policy
+        let access_policy = AccessPolicy::new("Department", "HR")
+            | (AccessPolicy::new("Department", "FIN")
+                & AccessPolicy::new("Security Level", "Confidential"));
+
+        //
+        // create partitions from access policy
+        let partitions = access_policy_to_partitions(&access_policy, &policy)?;
+
+        //
+        // manually create the partitions
+        let mut partitions_ = HashSet::new();
+        // add the partitions associated with the HR department: combine with
+        // all attributes of the Security Level axis
+        let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
+        let (security_levels, _) = policy.as_map().get("Security Level").unwrap();
+        for attr_name in security_levels {
+            let attr_value =
+                policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
+            let mut partition = vec![hr_value, attr_value];
+            partition.sort_unstable();
+            partitions_.insert(Partition::from_attributes(partition)?);
         }
 
-        // combine attribute values to verify
-        let mut map: HashMap<String, Vec<u32>> = HashMap::new();
-        let mut dpt_axis_attributes =
-            policy.attribute_values(&Attribute::new("Department", "FIN"))?;
-        dpt_axis_attributes.extend(policy.attribute_values(&Attribute::new("Department", "HR"))?);
-        map.insert("Department".to_owned(), dpt_axis_attributes);
-        let mut lvl_axis_attributes =
-            policy.attribute_values(&Attribute::new("Security Level", "Confidential"))?;
-        lvl_axis_attributes
-            .extend(policy.attribute_values(&Attribute::new("Security Level", "Protected"))?);
-        map.insert("Security Level".to_owned(), lvl_axis_attributes);
-
-        let axes: Vec<String> = policy.as_map().keys().cloned().collect();
-
-        let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
-        let mut partitions: HashSet<Partition> = HashSet::with_capacity(combinations.len());
-        for combination in combinations {
-            partitions.insert(Partition::from_attributes(combination)?);
-        }
+        // add the other attribute combination: FIN && Confidential
+        let fin_value = policy.attribute_current_value(&Attribute::new("Department", "FIN"))?;
+        let conf_value =
+            policy.attribute_current_value(&Attribute::new("Security Level", "Confidential"))?;
+        let mut partition = vec![fin_value, conf_value];
+        partition.sort_unstable();
+        partitions_.insert(Partition::from_attributes(partition)?);
+        // since this is a hyerachical axis, add the lower values: here only protected
+        let prot_value =
+            policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
+        let mut partition = vec![fin_value, prot_value];
+        partition.sort_unstable();
+        partitions_.insert(Partition::from_attributes(partition)?);
 
         assert_eq!(partitions, partitions_);
         Ok(())

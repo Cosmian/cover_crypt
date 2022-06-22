@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.0.1] - 2022-06-21
+### Added
+- [pyo3] Add CoverCrypt attributes rotation mechanism
+### Changed
+### Fixed
+### Removed
+---
+
 ## [3.0.0] - 2022-06-14
 ### Added
 - Add Gitlab CI .gitlab-ci.yml

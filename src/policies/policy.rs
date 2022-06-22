@@ -1,18 +1,19 @@
 #![allow(clippy::module_name_repetitions)]
 
-use crate::error::Error;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::{BinaryHeap, HashMap},
     fmt::{Debug, Display},
 };
 
+use serde::{Deserialize, Serialize};
+
 use super::attribute::Attribute;
+use crate::error::Error;
 
 // Define a policy axis by its name and its underlying attribute names
 // If `hierarchical` is `true`, we assume a lexicographical order based on the
 // attribute name
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub struct PolicyAxis {
     name: String,
     attributes: Vec<String>,
@@ -29,27 +30,35 @@ impl PolicyAxis {
         }
     }
 
-    pub fn attributes(&self) -> &[String] {
-        &self.attributes
-    }
-
     #[allow(clippy::len_without_is_empty)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.attributes.len()
     }
+
+    pub fn attributes(&self) -> &[String] {
+        &self.attributes
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn is_hierarchical(&self) -> bool {
+        self.hierarchical
+    }
 }
 
-// A policy is a set of fixed policy axes, defining an inner attribute
-// element for each policy axis attribute a fixed number of revocation
-// addition of attributes is allowed
+/// A policy is a set of fixed policy axes, defining an inner attribute
+/// element for each policy axis attribute a fixed number of revocation
+/// addition of attributes is allowed
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Policy {
     pub(crate) last_attribute_value: u32,
     pub(crate) max_attribute_value: u32,
-    // store the policies by name
+    /// store the policies by name
     pub(crate) store: HashMap<String, (Vec<String>, bool)>,
-    // mapping between (policy_name, policy_attribute) -> integer
+    /// mapping between attribute -> integer
     pub(crate) attribute_to_int: HashMap<Attribute, BinaryHeap<u32>>,
 }
 
@@ -130,16 +139,15 @@ impl Policy {
     /// Rotate an attribute, changing its underlying value with that of an
     /// unused slot
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if self.last_attribute_value + 1 > self.max_attribute_value {
-            return Err(Error::CapacityOverflow);
-        }
-        if let Some(uint) = self.attribute_to_int.get_mut(attr) {
+        if self.last_attribute_value == self.max_attribute_value {
+            Err(Error::CapacityOverflow)
+        } else if let Some(heap) = self.attribute_to_int.get_mut(attr) {
             self.last_attribute_value += 1;
-            uint.push(self.last_attribute_value);
+            heap.push(self.last_attribute_value);
+            Ok(())
         } else {
-            return Err(Error::AttributeNotFound(format!("{:?}", attr)));
+            Err(Error::AttributeNotFound(format!("{:?}", attr)))
         }
-        Ok(())
     }
 
     /// Returns the list of Attributes of this Policy

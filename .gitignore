@@ -1,3 +1,4 @@
 /target*
 .cargo_check
 non_regression_vector.json
+*nix*
