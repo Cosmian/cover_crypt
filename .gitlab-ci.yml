@@ -24,6 +24,9 @@ clippy:
   stage: prebuild
   cache: {}
   script:
+    # no feature activated
+    - cargo clippy --all-targets -- -D warnings
+    # all features activated
     - cargo clippy-all
 
 # Security check
@@ -121,4 +124,17 @@ build_osx:
       - target/release/*.a
       - target/release/*.so
       - target/*.h
+    expire_in: 3 mos
+
+build_android:
+  <<: *base_compile
+  stage: build
+  image: gitlab.cosmian.com:5000/core/ci-rust-android:latest
+  before_script:
+    - rustup target add i686-linux-android x86_64-linux-android armv7-linux-androideabi aarch64-linux-android
+  script:
+    - cargo ndk -t x86 -t x86_64 -t armeabi-v7a -t arm64-v8a -o jniLibs build --release --features ffi --lib
+  artifacts:
+    paths:
+      - jniLibs
     expire_in: 3 mos

@@ -314,7 +314,7 @@ unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
         let mut message_bytes_len = message_bytes_key.len() as c_int;
         get_last_error(message_bytes_ptr, &mut message_bytes_len);
         let cstr = CStr::from_ptr(message_bytes_ptr);
-        return Err(Error::Other(format!("FFI ERROR: {}", cstr.to_str()?)));
+        Err(Error::Other(format!("FFI ERROR: {}", cstr.to_str()?)))
     } else {
         Ok(())
     }

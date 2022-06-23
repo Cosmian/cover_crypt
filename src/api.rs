@@ -282,7 +282,7 @@ fn access_policy_to_partitions(
     Ok(set)
 }
 
-/// Returns the list of attribute conbinations that can be built using the
+/// Returns the list of attribute combinations that can be built using the
 /// values of each attribute in the given access policy. This corresponds to
 /// an OR expression of AND expressions.
 ///
