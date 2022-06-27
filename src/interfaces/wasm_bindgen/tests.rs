@@ -12,6 +12,7 @@ use wasm_bindgen_test::*;
 
 use super::generate_cc_keys::{
     webassembly_generate_master_keys, webassembly_generate_user_private_key,
+    webassembly_rotate_attributes,
 };
 use crate::{
     api::{self, CoverCrypt, PrivateKey, PublicKey},
@@ -160,10 +161,71 @@ fn test_generate_keys() {
 
     //
     // Generate user private key
-    webassembly_generate_user_private_key(
+    let user_private_key_bytes = webassembly_generate_user_private_key(
         Uint8Array::from(private_key_bytes),
         "Department::FIN && Security Level::Top Secret",
         Uint8Array::from(serialized_policy.as_slice()),
     )
+    .unwrap()
+    .to_vec();
+    let user_private_key =
+        PrivateKey::<X25519Crypto>::try_from_bytes(&user_private_key_bytes).unwrap();
+
+    let attributes = vec![Attribute::new("Security Level", "Confidential")];
+    let serialized_attributes = serde_json::to_vec(&attributes).unwrap();
+
+    let new_policy = webassembly_rotate_attributes(
+        Uint8Array::from(serialized_attributes.as_slice()),
+        Uint8Array::from(serialized_policy.as_slice()),
+    )
     .unwrap();
+
+    //
+    // Generate master keys
+    let master_keys =
+        webassembly_generate_master_keys(Uint8Array::from(new_policy.as_bytes())).unwrap();
+    let master_keys_vec = master_keys.to_vec();
+    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
+    let private_key_bytes = &master_keys_vec[4..4 + private_key_size as usize];
+
+    //
+    // Check deserialization
+    PrivateKey::<X25519Crypto>::try_from_bytes(private_key_bytes).unwrap();
+    let master_public_key = PublicKey::<X25519Crypto>::try_from_bytes(
+        &master_keys_vec[4 + private_key_size as usize..],
+    )
+    .unwrap();
+
+    //
+    // Encrypt / decrypt
+    //
+    let meta_data = Metadata {
+        uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+        additional_data: Some(vec![10, 11, 12, 13, 14]),
+    };
+
+    let encrypted_header =
+        encrypt_header(&meta_data, &policy, &attributes, &master_public_key).unwrap();
+
+    //
+    // Try to decrypt with a non-refreshed private key (it fails)
+    //
+    assert!(decrypt_header(&encrypted_header, &user_private_key).is_err());
+
+    //
+    // Refresh user private key
+    let user_private_key_bytes = webassembly_generate_user_private_key(
+        Uint8Array::from(private_key_bytes),
+        "Security Level::Confidential",
+        Uint8Array::from(serialized_policy.as_slice()),
+    )
+    .unwrap()
+    .to_vec();
+    let user_private_key =
+        PrivateKey::<X25519Crypto>::try_from_bytes(&user_private_key_bytes).unwrap();
+
+    //
+    // Decrypt with the refreshed private key (it now works)
+    //
+    decrypt_header(&encrypted_header, &user_private_key).unwrap();
 }

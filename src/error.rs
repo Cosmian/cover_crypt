@@ -39,6 +39,8 @@ pub enum Error {
     ExistingAttribute(String, String),
     #[error("policy {0} already exists")]
     ExistingPolicy(String),
+    #[error("Combination {0} already exists")]
+    ExistingCombination(String),
     #[error("invalid size")]
     InvalidSize(String),
     #[error("Empty private key")]

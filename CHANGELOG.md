@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.0.1] - 2022-06-21
+### Added
+- [pyo3 + JS/bindgen + FFI] Add CoverCrypt attributes rotation mechanism
+### Changed
+### Fixed
+- Fix access policy to partitions
+### Removed
+---
+
 ## [3.0.0] - 2022-06-14
 ### Added
 - Add Gitlab CI .gitlab-ci.yml

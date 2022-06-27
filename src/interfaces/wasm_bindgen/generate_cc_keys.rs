@@ -4,11 +4,12 @@
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
 use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
+use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 
 use crate::{
     api::{CoverCrypt, PrivateKey},
-    policies::{AccessPolicy, Policy},
+    policies::{AccessPolicy, Attribute, Policy},
 };
 
 /// Generate the master authority keys for supplied Policy
@@ -16,9 +17,7 @@ use crate::{
 ///  - `policy_bytes` : Policy to use to generate the keys (serialized from
 ///    JSON)
 #[wasm_bindgen]
-pub fn webassembly_generate_master_keys(
-    policy_bytes: js_sys::Uint8Array,
-) -> Result<js_sys::Uint8Array, JsValue> {
+pub fn webassembly_generate_master_keys(policy_bytes: Uint8Array) -> Result<Uint8Array, JsValue> {
     let policy: Policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy:{e}")))?;
 
@@ -42,7 +41,7 @@ pub fn webassembly_generate_master_keys(
     master_keys_bytes.extend_from_slice(&u32::to_be_bytes(master_private_key_bytes.len() as u32));
     master_keys_bytes.extend_from_slice(&master_private_key_bytes);
     master_keys_bytes.extend_from_slice(&master_public_key_bytes);
-    Ok(js_sys::Uint8Array::from(&master_keys_bytes[..]))
+    Ok(Uint8Array::from(&master_keys_bytes[..]))
 }
 
 /// Generate a user private key.
@@ -53,10 +52,10 @@ pub fn webassembly_generate_master_keys(
 /// - `policy_bytes`                : global policy (serialized from JSON)
 #[wasm_bindgen]
 pub fn webassembly_generate_user_private_key(
-    master_private_key_bytes: js_sys::Uint8Array,
+    master_private_key_bytes: Uint8Array,
     access_policy_str: &str,
-    policy_bytes: js_sys::Uint8Array,
-) -> Result<js_sys::Uint8Array, JsValue> {
+    policy_bytes: Uint8Array,
+) -> Result<Uint8Array, JsValue> {
     let master_private_key: PrivateKey<X25519Crypto> =
         PrivateKey::try_from_bytes(master_private_key_bytes.to_vec().as_slice())
             .map_err(|e| JsValue::from_str(&format!("Error deserializing private key: {e}")))?;
@@ -72,5 +71,33 @@ pub fn webassembly_generate_user_private_key(
     let user_key_bytes = user_key
         .try_to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing user key: {e}")))?;
-    Ok(js_sys::Uint8Array::from(user_key_bytes.as_slice()))
+    Ok(Uint8Array::from(user_key_bytes.as_slice()))
+}
+
+/// Rotate attributes, changing their underlying values with that of an unused
+/// slot
+///
+/// - `attributes_bytes`           : user access policy (boolean expression as
+///   string)
+/// - `policy_bytes`                : global policy (serialized from JSON)
+#[wasm_bindgen]
+pub fn webassembly_rotate_attributes(
+    attributes_bytes: Uint8Array,
+    policy_bytes: Uint8Array,
+) -> Result<String, JsValue> {
+    let attributes: Vec<Attribute> =
+        serde_json::from_slice(attributes_bytes.to_vec().as_slice())
+            .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
+    let mut policy: Policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
+        .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
+
+    //
+    // Rotate attributes of the current policy
+    for attr in &attributes {
+        policy
+            .rotate(attr)
+            .map_err(|e| JsValue::from_str(&format!("Error rotating attribute: {e}")))?;
+    }
+
+    Ok(policy.to_string())
 }

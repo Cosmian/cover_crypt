@@ -2,62 +2,35 @@ import json
 import cover_crypt
 
 
-# CoverCrypt Policy with 2 axes:
-policy_json = {
-    "last_attribute_value": 10,
-    "max_attribute_value": 100,
-    "store": {
-        "Security Level": [
-            [
-                "Protected",
-                "Low Secret",
-                "Medium Secret",
-                "High Secret",
-                "Top Secret"
-            ], True
+# Declare 2 CoverCrypt policy axis:
+policy_axis_json = [
+    {
+        "name": "Security Level",
+        "attributes": [
+            "Protected",
+            "Low Secret",
+            "Medium Secret",
+            "High Secret",
+            "Top Secret"
         ],
-        "Department": [
-            [
-                "R&D",
-                "HR",
-                "MKG",
-                "FIN"
-            ], False
-        ]
+        "hierarchical": True
     },
-    "attribute_to_int": {
-        "Security Level::Low Secret": [
-            2
+    {
+        "name": "Department",
+        "attributes": [
+            "R&D",
+            "HR",
+            "MKG",
+            "FIN"
         ],
-        "Department::MKG": [
-            8
-        ],
-        "Security Level::Medium Secret": [
-            3
-        ],
-        "Security Level::Top Secret": [
-            5
-        ],
-        "Security Level::Protected": [
-            1
-        ],
-        "Department::FIN": [
-            10,
-            9
-        ],
-        "Department::HR": [
-            7
-        ],
-        "Department::R&D": [
-            6
-        ],
-        "Security Level::High Secret": [
-            4
-        ]
+        "hierarchical": False
     }
-}
+]
 
-policy = bytes(json.dumps(policy_json), 'utf-8')
+policy_axis = bytes(json.dumps(policy_axis_json), 'utf-8')
+
+policy = cover_crypt.generate_policy(
+    policy_axis_bytes=policy_axis, max_attribute_value=100)
 
 master_keys = cover_crypt.generate_master_keys(policy)
 
@@ -110,4 +83,38 @@ cleartext = cover_crypt.decrypt(top_secret_mkg_fin_user, top_secret_mkg_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)
 
 cleartext = cover_crypt.decrypt(top_secret_mkg_fin_user, low_secret_fin_data)
+assert(str(bytes(cleartext), "utf-8") == plaintext)
+
+# Rotation of Policy attributes
+# At anytime, Policy attributes can be rotated.
+# When that happens future encryption of data for a "rotated" attribute cannot
+# be decrypted with user decryption keys which are not "refreshed" for that
+# attribute. Let us rotate the Security Level Low Secret
+new_policy = cover_crypt.rotate_attributes(bytes(json.dumps(
+    ['Security Level::Low Secret']), 'utf8'), policy)
+# # Printing the policy before and after the rotation of the attribute.
+# print("Before the rotation of attribute Security Level::Low Secret")
+# print(json.loads(str(bytes(policy), "utf-8")))
+# print("After attributes rotation")
+# print(json.loads(str(bytes(new_policy), "utf-8")))
+
+# Master keys MUST be refreshed
+master_keys = cover_crypt.generate_master_keys(new_policy)
+new_low_secret_mkg_data = cover_crypt.encrypt(metadata, new_policy, bytes(json.dumps(
+    ['Security Level::Low Secret', 'Department::MKG']), 'utf8'), master_keys[1], plaintext_bytes)
+
+# The medium secret user cannot decrypt the new message until its key is refreshed
+try:
+    cleartext = cover_crypt.decrypt(
+        medium_secret_mkg_user, new_low_secret_mkg_data)
+except Exception as ex:
+    print(f"As expected, user cannot decrypt this message: {ex}")
+
+# Refresh medium secret key
+new_medium_secret_mkg_user = cover_crypt.generate_user_private_key(
+    master_keys[0], "Security Level::Medium Secret && Department::MKG", new_policy)
+
+# New messages can now be decrypted
+cleartext = cover_crypt.decrypt(
+    new_medium_secret_mkg_user, new_low_secret_mkg_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)

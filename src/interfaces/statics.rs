@@ -213,7 +213,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::policies::{ap, Attribute, PolicyAxis};
+    use crate::policies::{ap, AccessPolicy, Attribute, PolicyAxis};
 
     #[derive(Serialize, Deserialize)]
     struct NonRegressionTestVector {
@@ -344,5 +344,93 @@ mod tests {
             &header_bytes[4..], // provoke InvalidSize error
         )
         .is_err());
+    }
+
+    fn policy() -> Result<Policy, Error> {
+        let sec_level = PolicyAxis::new(
+            "Security Level",
+            &["Protected", "Confidential", "Top Secret"],
+            true,
+        );
+        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let mut policy = Policy::new(100);
+        policy.add_axis(&sec_level)?;
+        policy.add_axis(&department)?;
+        Ok(policy)
+    }
+
+    #[test]
+    fn test_single_attribute_in_access_policy() -> Result<(), Error> {
+        //
+        // Declare policy
+        let policy = policy()?;
+
+        //
+        // Setup CoverCrypt
+        let cc = CoverCrypt::<X25519Crypto>::default();
+        let (master_private_key, _master_public_key) = cc.generate_master_keys(&policy)?;
+
+        //
+        // New user private key
+        let access_policy = AccessPolicy::from_boolean_expression("Security Level::Top Secret")?;
+        let _user_key =
+            cc.generate_user_private_key(&master_private_key, &access_policy, &policy)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_rotate_then_encrypt() -> Result<(), Error> {
+        //
+        // Declare policy
+        let mut policy = policy()?;
+
+        //
+        // Setup CoverCrypt
+        let cc = CoverCrypt::<X25519Crypto>::default();
+        let (master_private_key, master_public_key) = cc.generate_master_keys(&policy)?;
+
+        //
+        // New user private key
+        let access_policy =
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let user_key =
+            cc.generate_user_private_key(&master_private_key, &access_policy, &policy)?;
+
+        //
+        // Encrypt
+        let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &policy,
+            &master_public_key,
+            &[Attribute::from(("Security Level", "Top Secret"))],
+            None,
+        )?;
+
+        let _cleartext_header = decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &user_key,
+            &encrypted_header.header_bytes,
+        )?;
+
+        //
+        // Rotate argument (must refresh master keys)
+        policy.rotate(&Attribute::from(("Security Level", "Top Secret")))?;
+        let (_master_private_key, master_public_key) = cc.generate_master_keys(&policy)?;
+
+        //
+        // Encrypt with new attribute
+        let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &policy,
+            &master_public_key,
+            &[Attribute::from(("Security Level", "Top Secret"))],
+            None,
+        )?;
+
+        assert!(decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            &user_key,
+            &encrypted_header.header_bytes,
+        )
+        .is_err());
+
+        Ok(())
     }
 }
