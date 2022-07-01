@@ -4,7 +4,7 @@ use std::{
     num::{ParseIntError, TryFromIntError},
 };
 
-use cosmian_crypto_base::Error as CryptoError;
+use cosmian_crypto_base::CryptoBaseError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,7 +12,7 @@ pub enum Error {
     #[error("Unknown partition {0}")]
     UnknownPartition(String),
     #[error("{0}")]
-    CryptoError(CryptoError),
+    CryptoError(CryptoBaseError),
     #[error("attribute not found: {0}")]
     AttributeNotFound(String),
     #[error("{} is missing{}",
@@ -94,13 +94,13 @@ impl From<ParseIntError> for Error {
     }
 }
 
-impl From<cosmian_crypto_base::Error> for Error {
-    fn from(e: cosmian_crypto_base::Error) -> Self {
+impl From<CryptoBaseError> for Error {
+    fn from(e: CryptoBaseError) -> Self {
         match e {
-            CryptoError::SizeError { given, expected } => {
+            CryptoBaseError::SizeError { given, expected } => {
                 Error::InvalidSize(format!("expected: {}, given: {}", expected, given))
             }
-            CryptoError::InvalidSize(e) => Error::InvalidSize(e),
+            CryptoBaseError::InvalidSize(e) => Error::InvalidSize(e),
             e => Error::CryptoError(e),
         }
     }
