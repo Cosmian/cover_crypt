@@ -137,7 +137,7 @@ pub fn encrypt_hybrid_block(
     //
     // Parse symmetric key
     let symmetric_key =
-        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes)
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(&symmetric_key_bytes)
             .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //
@@ -168,7 +168,7 @@ pub fn decrypt_hybrid_block(
     //
     // Parse symmetric key
     let symmetric_key =
-        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(symmetric_key_bytes)
+        <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(&symmetric_key_bytes)
             .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //

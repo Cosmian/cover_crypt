@@ -80,7 +80,7 @@ pub fn encrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     }
 
     Ok(EncryptedHeader {
-        symmetric_key: DEM::Key::try_from_bytes(secret_key.into()).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(&secret_key).map_err(Error::CryptoError)?,
         header_bytes,
     })
 }
@@ -128,7 +128,7 @@ pub fn decrypt_hybrid_header<KEM: Kem, DEM: Dem>(
     };
 
     Ok(ClearTextHeader {
-        symmetric_key: DEM::Key::try_from_bytes(secret_key.into()).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(&secret_key).map_err(Error::CryptoError)?,
         meta_data,
     })
 }

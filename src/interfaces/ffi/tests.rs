@@ -66,8 +66,7 @@ unsafe fn encrypt_header(
     ))?;
 
     let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
-        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-            .to_vec(),
+        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize),
     )
     .map_err(|e| Error::Other(e.to_string()))?;
 
@@ -121,8 +120,7 @@ unsafe fn decrypt_header(
     ))?;
 
     let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
-        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-            .to_vec(),
+        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize),
     )
     .map_err(|e| Error::Other(e.to_string()))?;
 
@@ -275,8 +273,7 @@ unsafe fn encrypt_header_using_cache(
     ))?;
 
     let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
-        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-            .to_vec(),
+        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize),
     )
     .map_err(|e| Error::Other(e.to_string()))?;
 
@@ -335,8 +332,7 @@ unsafe fn decrypt_header_using_cache(
     ))?;
 
     let symmetric_key_ = <Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
-        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-            .to_vec(),
+        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize),
     )
     .map_err(|e| Error::Other(e.to_string()))?;
 

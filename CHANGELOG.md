@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.1.0] - 2022-07-01
+### Added
+### Changed
+- Bump the cosmian_crypto_base version
+### Fixed
+### Removed
+---
+
+---
 ## [3.0.1] - 2022-06-21
 ### Added
 - [pyo3 + JS/bindgen + FFI] Add CoverCrypt attributes rotation mechanism

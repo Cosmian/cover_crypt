@@ -153,8 +153,7 @@ where
             }
             let partition = Partition::from(partition_bytes);
             let key_bytes = de.read_array()?;
-            let key =
-                <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey::try_from_bytes(key_bytes.to_vec())?;
+            let key = <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey::try_from_bytes(&key_bytes)?;
             map.insert(partition, key);
         }
         Ok(Self(map))
@@ -242,8 +241,7 @@ where
             }
             let partition = Partition::from(partition_bytes);
             let key_bytes = de.read_array()?;
-            let key =
-                <<KEM as Kem>::KeyPair as KeyPair>::PublicKey::try_from_bytes(key_bytes.to_vec())?;
+            let key = <<KEM as Kem>::KeyPair as KeyPair>::PublicKey::try_from_bytes(&key_bytes)?;
             map.insert(partition, key);
         }
         Ok(Self(map))
