@@ -7,10 +7,9 @@ use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 
-use crate::{
-    api::{CoverCrypt, PrivateKey},
-    policies::{AccessPolicy, Attribute, Policy},
-};
+use crate::api::{CoverCrypt, PrivateKey};
+
+use abe_policy::{AccessPolicy, Attribute, Policy};
 
 /// Generate the master authority keys for supplied Policy
 ///

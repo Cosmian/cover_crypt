@@ -1,10 +1,8 @@
 use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
 use pyo3::{exceptions::PyTypeError, prelude::*};
 
-use crate::{
-    api::{CoverCrypt, PrivateKey},
-    policies::{AccessPolicy, Attribute, Policy, PolicyAxis},
-};
+use crate::api::{CoverCrypt, PrivateKey};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 
 /// Generate the master authority keys for supplied Policy
 ///
@@ -40,7 +38,8 @@ pub fn generate_user_private_key(
         PrivateKey::try_from_bytes(&master_private_key_bytes)?;
     let policy = serde_json::from_slice(&policy_bytes)
         .map_err(|e| PyTypeError::new_err(format!("Policy deserialization failed: {e}")))?;
-    let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)?;
+    let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
     let user_key = CoverCrypt::<X25519Crypto>::default().generate_user_private_key(
         &master_private_key,
@@ -67,11 +66,13 @@ pub fn generate_policy(policy_axis_bytes: Vec<u8>, max_attribute_value: u32) -> 
             .iter()
             .map(std::ops::Deref::deref)
             .collect::<Vec<_>>();
-        policy.add_axis(&PolicyAxis::new(
-            axis.name(),
-            &attrs,
-            axis.is_hierarchical(),
-        ))?;
+        policy
+            .add_axis(&PolicyAxis::new(
+                axis.name(),
+                &attrs,
+                axis.is_hierarchical(),
+            ))
+            .map_err(|e| PyTypeError::new_err(format!("Error adding axes: {e}")))?;
     }
 
     let policy_bytes = serde_json::to_vec(&policy)
@@ -91,7 +92,9 @@ pub fn rotate_attributes(attributes_bytes: Vec<u8>, policy_bytes: Vec<u8>) -> Py
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing policy: {e}")))?;
 
     for attr in &attributes {
-        policy.rotate(attr)?;
+        policy
+            .rotate(attr)
+            .map_err(|e| PyTypeError::new_err(format!("Rotation failed: {e}")))?;
     }
     serde_json::to_vec(&policy)
         .map_err(|e| PyTypeError::new_err(format!("Error serializing policy: {e}")))

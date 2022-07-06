@@ -13,32 +13,10 @@ pub enum Error {
     UnknownPartition(String),
     #[error("{0}")]
     CryptoError(CryptoBaseError),
+    #[error(transparent)]
+    PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
     AttributeNotFound(String),
-    #[error("{} is missing{}",
-        .item.clone().unwrap_or_else(|| "attribute".to_string()),
-        match .axis_name {
-            Some(axis) => format!(" in axis {}", axis),
-            None => "".to_string(),
-    })]
-    MissingAttribute {
-        item: Option<String>,
-        axis_name: Option<String>,
-    },
-    #[error("No axis given")]
-    MissingAxis,
-    #[error("attribute {0} expected in {1:?}")]
-    ExpectedAttribute(String, Vec<String>),
-    #[error("unsupported operand {0}")]
-    UnsupportedOperand(String),
-    #[error("unsupported operator {0}")]
-    UnsupportedOperator(String),
-    #[error("attribute capacity overflow")]
-    CapacityOverflow,
-    #[error("attribute {0} for {1} already exists")]
-    ExistingAttribute(String, String),
-    #[error("policy {0} already exists")]
-    ExistingPolicy(String),
     #[error("Combination {0} already exists")]
     ExistingCombination(String),
     #[error("invalid size")]
@@ -61,8 +39,6 @@ pub enum Error {
     #[error("conversion failed")]
     ConversionFailed,
     #[error("invalid boolean expression: {0}")]
-    InvalidBooleanExpression(String),
-    #[error("invalid attribute: {0}")]
     InvalidAttribute(String),
     #[error("json parsing error: {0}")]
     JsonParsing(String),

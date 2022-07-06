@@ -18,8 +18,9 @@ use crate::{
     api::{self, CoverCrypt, PrivateKey},
     error::Error,
     interfaces::{ffi::error::get_last_error, statics::EncryptedHeader},
-    policies::{ap, AccessPolicy, Attribute, Policy, PolicyAxis},
 };
+
+use abe_policy::{ap, AccessPolicy, Attribute, Policy, PolicyAxis};
 
 type PublicKey = api::PublicKey<X25519Crypto>;
 type UserDecryptionKey = api::PrivateKey<X25519Crypto>;
