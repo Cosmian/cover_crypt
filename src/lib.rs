@@ -4,3 +4,5 @@ mod cover_crypt_core;
 pub mod error;
 pub mod interfaces;
 mod utils;
+
+pub use cover_crypt_core::{Encapsulation, MasterPrivateKey, PublicKey, SecretKey, UserPrivateKey};

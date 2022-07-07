@@ -239,8 +239,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_base"
 version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ede4e2cadd3696c9fe4062109dbca1652eb5359d77f60b6be2dd3ab716d00fd"
+source = "git+https://github.com/Cosmian/crypto_base?branch=features/tbz_op_for_X25519PrivateKey#bc1a00739f1afd30f77c05d090d127ceccae17a2"
 dependencies = [
  "aes",
  "aes-gcm",
