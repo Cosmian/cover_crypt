@@ -1,46 +1,16 @@
 use crate::{
-    cover_crypt_core::{self, Partition},
+    cover_crypt_core::{
+        self, Encapsulation, MasterPrivateKey, Partition, PublicKey, SecretKey, UserPrivateKey,
+    },
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
-
-use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
+use cosmian_crypto_base::entropy::CsRng;
 use std::{
     collections::{HashMap, HashSet},
-    marker::PhantomData,
     ops::DerefMut,
     sync::Mutex,
 };
-
-/// Private key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
-/// private keys for some authorisations.
-pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<KEM>;
-
-/// Public key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
-/// public keys for some authorisations.
-pub type PublicKey<KEM> = cover_crypt_core::PublicKey<KEM>;
-
-pub type Encapsulation = cover_crypt_core::Encapsulation;
-
-pub type SecretKey = cover_crypt_core::SecretKey;
-/// CoverCrypt public and private key pair.
-#[derive(Clone)]
-pub struct CCKeyPair<KEM: Kem> {
-    pub(crate) pk: PublicKey<KEM>,
-    pub(crate) sk: PrivateKey<KEM>,
-}
-
-impl<KEM: Kem> CCKeyPair<KEM> {
-    /// Return the public key.
-    pub fn public_key(&self) -> &PublicKey<KEM> {
-        &self.pk
-    }
-
-    /// Return the private key.
-    pub fn private_key(&self) -> &PrivateKey<KEM> {
-        &self.sk
-    }
-}
 
 /// The engine is the main entry point for the core functionalities.
 ///
@@ -50,17 +20,15 @@ impl<KEM: Kem> CCKeyPair<KEM> {
 /// In addition, two methods are supplied to generate random symmetric keys and
 /// their corresponding cipher texts which are suitable for use in a hybrid
 /// encryption scheme.
-pub struct CoverCrypt<KEM> {
+pub struct CoverCrypt {
     pub(crate) rng: Mutex<CsRng>,
-    phantom_kem: PhantomData<KEM>,
 }
 
-impl<KEM: Kem> CoverCrypt<KEM> {
+impl CoverCrypt {
     /// Instantiate a new CoverCrypt object.
     pub fn new() -> Self {
         Self {
             rng: Mutex::new(CsRng::new()),
-            phantom_kem: PhantomData,
         }
     }
 
@@ -70,8 +38,8 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     pub fn generate_master_keys(
         &self,
         policy: &Policy,
-    ) -> Result<(PrivateKey<KEM>, PublicKey<KEM>), Error> {
-        Ok(cover_crypt_core::setup::<CsRng, KEM>(
+    ) -> Result<(MasterPrivateKey, PublicKey), Error> {
+        Ok(cover_crypt_core::setup::<CsRng>(
             &mut self.rng.lock().expect("a mutex lock failed"),
             &all_partitions(policy)?,
         ))
@@ -87,11 +55,11 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     pub fn update_master_keys(
         &self,
         policy: &Policy,
-        msk: &mut PrivateKey<KEM>,
-        mpk: &mut PublicKey<KEM>,
+        msk: &mut MasterPrivateKey,
+        mpk: &mut PublicKey,
     ) -> Result<(), Error> {
-        cover_crypt_core::update::<CsRng, KEM>(
-            &mut self.rng.lock().expect("a mutex lock failed"),
+        cover_crypt_core::update(
+            &mut self.rng.lock().expect("a mutex lock failed").deref_mut(),
             msk,
             mpk,
             &all_partitions(policy)?,
@@ -106,11 +74,12 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - `policy`          : global policy
     pub fn generate_user_private_key(
         &self,
-        msk: &PrivateKey<KEM>,
+        msk: &MasterPrivateKey,
         access_policy: &AccessPolicy,
         policy: &Policy,
-    ) -> Result<PrivateKey<KEM>, Error> {
-        cover_crypt_core::join::<KEM>(
+    ) -> Result<UserPrivateKey, Error> {
+        cover_crypt_core::join(
+            self.rng.lock().expect("a mutex lock failed").deref_mut(),
             msk,
             &access_policy_to_current_partitions(access_policy, policy)?,
         )
@@ -128,48 +97,19 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - preserve_old_partitions_access:  whether access to old partitions (i.e. before rotation) should be kept
     pub fn refresh_user_private_key(
         &self,
-        usk: &mut PrivateKey<KEM>,
+        usk: &mut UserPrivateKey,
         access_policy: &AccessPolicy,
-        msk: &PrivateKey<KEM>,
+        msk: &MasterPrivateKey,
         policy: &Policy,
         preserve_old_partitions_access: bool,
     ) -> Result<(), Error> {
         let mut current_partitions = access_policy_to_current_partitions(access_policy, policy)?;
         if preserve_old_partitions_access {
-            for key_partition in usk.clone().into_keys() {
-                current_partitions.insert(key_partition);
+            for key_partition in usk.map().keys() {
+                current_partitions.insert(key_partition.to_owned());
             }
         }
         cover_crypt_core::refresh(msk, usk, &current_partitions)
-    }
-
-    /// Generate a user public key.
-    ///
-    /// - `mpk`                 : master public key
-    /// - `access_policy`       : user access policy
-    /// - `policy`              : global policy
-    pub fn generate_user_public_key(
-        &self,
-        mpk: &PublicKey<KEM>,
-        access_policy: &AccessPolicy,
-        policy: &Policy,
-    ) -> Result<PublicKey<KEM>, Error> {
-        access_policy_to_current_partitions(access_policy, policy)?
-            .iter()
-            .map(|partition| {
-                // partition should be contained in the master key in
-                // order to generate a valid user key
-                let kem_public_key = mpk.get(partition).ok_or_else(|| {
-                    Error::UnknownPartition(format!(
-                        "generate user public key: the master public key does not have partition \
-                         {:?}",
-                        partition
-                    ))
-                })?;
-                Ok((partition.to_owned(), kem_public_key.to_owned()))
-            })
-            .collect::<Result<HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey>, Error>>()
-            .map(|m| cover_crypt_core::PublicKey(m))
     }
 
     /// Generate a random symmetric key of `symmetric_key_len` to be used in an
@@ -183,12 +123,12 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     pub fn generate_symmetric_key(
         &self,
         policy: &Policy,
-        pk: &PublicKey<KEM>,
+        pk: &PublicKey,
         attributes: &[Attribute],
         sym_key_len: usize,
     ) -> Result<(SecretKey, Encapsulation), Error> {
         // get the authorisations associated to the given access policy
-        cover_crypt_core::encaps::<_, KEM>(
+        cover_crypt_core::encaps(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &to_partitions(attributes, policy)?,
@@ -203,16 +143,16 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - `sym_key_len` : length of the symmetric key to generate
     pub fn decrypt_symmetric_key(
         &self,
-        sk_u: &PrivateKey<KEM>,
+        sk_u: &UserPrivateKey,
         ciphertext: &Encapsulation,
         sym_key_len: usize,
     ) -> Result<SecretKey, Error> {
-        cover_crypt_core::decaps::<KEM>(sk_u, ciphertext, sym_key_len)?
+        cover_crypt_core::decaps(sk_u, ciphertext, sym_key_len)?
             .ok_or(Error::InsufficientAccessPolicy)
     }
 }
 
-impl<KEM: Kem> Default for CoverCrypt<KEM> {
+impl Default for CoverCrypt {
     fn default() -> Self {
         Self::new()
     }
@@ -391,8 +331,6 @@ fn to_attribute_combinations(
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
-
     use super::*;
     use abe_policy::{Attribute, PolicyAxis};
 
@@ -498,10 +436,10 @@ mod tests {
     #[test]
     fn test_update_master_keys() -> Result<(), Error> {
         let mut policy = policy()?;
-        let cc = CoverCrypt::<X25519Crypto>::default();
+        let cc = CoverCrypt::default();
         let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
-        let partitions_msk: Vec<Partition> = msk.0.clone().into_keys().collect();
-        let partitions_mpk: Vec<Partition> = mpk.0.clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.map().clone().into_keys().collect();
+        let partitions_mpk: Vec<Partition> = mpk.map().clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
             assert!(partitions_mpk.contains(p));
@@ -510,8 +448,8 @@ mod tests {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.0.clone().into_keys().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.0.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.map().clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.map().clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
@@ -524,20 +462,20 @@ mod tests {
     #[test]
     fn test_refresh_user_key() -> Result<(), Error> {
         let mut policy = policy()?;
-        let cc = CoverCrypt::<X25519Crypto>::default();
+        let cc = CoverCrypt::default();
         let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
         let access_policy = AccessPolicy::from_boolean_expression(
             "Department::MKG && Security Level::Confidential",
         )?;
         let mut usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let original_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
+        let original_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        let new_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
         assert_eq!(
             new_user_partitions.len(),
@@ -548,7 +486,7 @@ mod tests {
         }
         // refresh the user key but do NOT preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, false)?;
-        let new_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
         // the user should still have access to the same number of partitions
         assert_eq!(new_user_partitions.len(), original_user_partitions.len());
         for original_partition in &original_user_partitions {
@@ -566,7 +504,7 @@ mod tests {
         let access_policy = (AccessPolicy::new("Department", "R&D")
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Top Secret");
-        let cc = CoverCrypt::<X25519Crypto>::default();
+        let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let (key, encrypted_key) = cc.generate_symmetric_key(
             &policy,

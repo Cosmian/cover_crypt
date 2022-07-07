@@ -1,18 +1,26 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{Debug, Display},
-};
-
-use cosmian_crypto_base::{asymmetric::KeyPair, hybrid_crypto::Kem, KeyTrait};
-use rand_core::{CryptoRng, RngCore};
+// Used to be able to use the paper naming conventions
+#![allow(non_snake_case)]
 
 use crate::{
     bytes_ser_de::{Deserializer, Serializer},
     error::Error,
     utils,
 };
+use cosmian_crypto_base::{
+    asymmetric::ristretto::{X25519PrivateKey, X25519PublicKey},
+    kdf::hkdf_256,
+    KeyTrait,
+};
+use rand_core::{CryptoRng, RngCore};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Debug, Display},
+};
 
-/// Partition associated to a KEM keypair. It corresponds to a combination
+/// Additional information to generate symmetric key using the KDF.
+const KEY_GEN_INFO: &str = "key generation info";
+
+/// Partition associated to a subset. It corresponds to a combination
 /// of attributes across all axes.
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct Partition(Vec<u8>);
@@ -85,246 +93,236 @@ impl From<&Partition> for Vec<u8> {
     }
 }
 
-/// CovCrypt private keys are a set of KEM private keys.
+/// CoverCrypt master private key. It is composed of `u`, `v` and `s`, three
+/// randomly chosen scalars, and the `x_i` associated to the subsets `S_i`.
 ///
-/// The partition A into bytes MUST not exceed 2^32 bytes
-/// The PrivateKey into bytes MUST not exceed 2^32 bytes
-#[derive(Clone)]
-pub struct PrivateKey<KEM>(pub HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey>)
-where
-    KEM: Kem;
-
-impl<KEM> std::ops::Deref for PrivateKey<KEM>
-where
-    KEM: Kem,
-{
-    type Target = HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
+/// WARNING: the master private key into bytes MUST not exceed 2^32 bytes
+#[derive(Debug, Clone, PartialEq)]
+pub struct MasterPrivateKey {
+    u: X25519PrivateKey,
+    v: X25519PrivateKey,
+    s: X25519PrivateKey,
+    x: HashMap<Partition, X25519PrivateKey>,
 }
 
-impl<KEM> std::ops::DerefMut for PrivateKey<KEM>
-where
-    KEM: Kem,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+impl MasterPrivateKey {
+    /// Return a reference to the `x` hashmap.
+    pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
+        &self.x
     }
-}
 
-impl<KEM> Debug for PrivateKey<KEM>
-where
-    KEM: Kem,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Private Key: {:#?}", self.keys()))
-    }
-}
-
-impl<KEM> PrivateKey<KEM>
-where
-    KEM: Kem,
-{
+    /// Serialize the master private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        for (partition, key) in self.iter() {
+        serializer.write_array(self.u.to_bytes())?;
+        serializer.write_array(self.v.to_bytes())?;
+        serializer.write_array(self.s.to_bytes())?;
+        serializer.write_array((self.x.len() as u32).to_be_bytes().to_vec())?;
+        for (partition, x_i) in &self.x {
             serializer.write_array(partition.into())?;
-            serializer.write_array(key.to_bytes())?;
+            serializer.write_array(x_i.to_bytes())?;
         }
-        // write an empty array to mak the end (wastes one byte)
-        serializer.write_array(vec![])?;
         Ok(serializer.value().to_vec())
     }
 
+    /// Deserialize the master private key from the given bytes.
+    ///
+    /// - `bytes`   : bytes from which to read the master private key
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.is_empty() {
             return Err(Error::EmptyPrivateKey);
         }
-        let mut map: HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey> =
-            HashMap::new();
         let mut de = Deserializer::new(bytes);
-        loop {
-            let partition_bytes = de.read_array()?;
-            if partition_bytes.is_empty() {
-                //empty array marks the end
-                break;
-            }
-            let partition = Partition::from(partition_bytes);
-            let key_bytes = de.read_array()?;
-            let key = <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey::try_from_bytes(&key_bytes)?;
-            map.insert(partition, key);
+        let u = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
+        let v = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
+        let s = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
+        let x_len = de.read_array()?;
+        let x_len = <[u8; 4]>::try_from(x_len.as_slice())?;
+        let x_len = u32::from_be_bytes(x_len);
+        let mut x = HashMap::with_capacity(x_len as usize);
+        for _ in 0..x_len {
+            let partition = de.read_array()?;
+            let x_i = de.read_array()?;
+            x.insert(
+                Partition::from(partition),
+                X25519PrivateKey::try_from_bytes(&x_i)?,
+            );
         }
-        Ok(Self(map))
+        Ok(Self { u, v, s, x })
     }
 }
 
-impl<KEM> PartialEq for PrivateKey<KEM>
-where
-    KEM: Kem,
-{
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        for (k, v) in self.iter() {
-            match other.0.get(k) {
-                Some(v_other) => {
-                    if v.to_bytes() != v_other.to_bytes() {
-                        return false;
-                    }
-                }
-                None => return false,
-            }
-        }
-        true
-    }
-}
-
-/// CovCrypt public keys are a set of KEM public keys.
+/// CoverCrypt user private key. It is composed of:
+/// - `a` and `b` such that `a * u + b * v = s`, where `u`, `v` and `s` are
+/// scalars from the master private key
+/// - the `x_i` associated to the subsets `S_i` for which the user has been
+/// given the rights.
 ///
-/// The partition A into bytes MUST not exceed 2^32 bytes
-/// The PublicKey into bytes MUST not exceed 2^32 bytes
-#[derive(Clone)]
-pub struct PublicKey<KEM: Kem>(
-    pub HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey>,
-);
-
-impl<KEM: Kem> std::ops::Deref for PublicKey<KEM> {
-    type Target = HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+/// Therefore, a user can decrypt messages encrypted for any subset `S_i` his
+/// private key holds the associted `x_i`.
+///
+/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
+/// WARNING: the user private key into bytes MUST not exceed 2^32 bytes
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserPrivateKey {
+    a: X25519PrivateKey,
+    b: X25519PrivateKey,
+    x: HashMap<Partition, X25519PrivateKey>,
 }
 
-impl<KEM: Kem> std::ops::DerefMut for PublicKey<KEM> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+impl UserPrivateKey {
+    /// Return a reference to the `x` hashmap.
+    pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
+        &self.x
     }
-}
 
-impl<KEM> Debug for PublicKey<KEM>
-where
-    KEM: Kem,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Public Key: {:#?}", self.keys()))
-    }
-}
-
-impl<KEM> PublicKey<KEM>
-where
-    KEM: Kem,
-{
+    /// Serialize the user private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        for (partition, key) in self.iter() {
+        serializer.write_array(self.a.to_bytes())?;
+        serializer.write_array(self.b.to_bytes())?;
+        serializer.write_array((self.x.len() as u32).to_be_bytes().to_vec())?;
+        for (partition, x_i) in &self.x {
             serializer.write_array(partition.into())?;
-            serializer.write_array(key.to_bytes())?;
+            serializer.write_array(x_i.to_bytes())?;
         }
-        // write an empty array to mark the end (wastes one byte)
-        serializer.write_array(vec![])?;
         Ok(serializer.value().to_vec())
     }
 
+    /// Deserialize the user private key.
+    ///
+    /// - `bytes`   : bytes from which to read the user private key
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut map: HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey> =
-            HashMap::new();
+        if bytes.is_empty() {
+            return Err(Error::EmptyPrivateKey);
+        }
         let mut de = Deserializer::new(bytes);
-        loop {
-            let partition_bytes = de.read_array()?;
-            if partition_bytes.is_empty() {
-                //empty array marks the end
-                break;
-            }
-            let partition = Partition::from(partition_bytes);
-            let key_bytes = de.read_array()?;
-            let key = <<KEM as Kem>::KeyPair as KeyPair>::PublicKey::try_from_bytes(&key_bytes)?;
-            map.insert(partition, key);
+        let a = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
+        let b = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
+        let x_len = de.read_array()?;
+        let x_len = <[u8; 4]>::try_from(x_len.as_slice())?;
+        let x_len = u32::from_be_bytes(x_len);
+        let mut x = HashMap::with_capacity(x_len as usize);
+        for _ in 0..x_len {
+            let partition = de.read_array()?;
+            let x_i = de.read_array()?;
+            x.insert(
+                Partition::from(partition),
+                X25519PrivateKey::try_from_bytes(&x_i)?,
+            );
         }
-        Ok(Self(map))
+        Ok(Self { a, b, x })
     }
 }
 
-impl<KEM> PartialEq for PublicKey<KEM>
-where
-    KEM: Kem,
-{
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        for (k, v) in self.iter() {
-            match other.0.get(k) {
-                Some(v_other) => {
-                    if v.to_bytes() != v_other.to_bytes() {
-                        return false;
-                    }
-                }
-                None => return false,
-            }
-        }
-        true
-    }
-}
-
-/// CovCrypt ciphertexts are a list of secret key / encapsulation couples
-/// generated by the underlying KEM scheme.
+/// CoverCrypt public key, it is composed of:
 ///
-/// The partition A into bytes MUST not exceed 2^32 bytes
-/// The Key and encryption of the key into bytes MUST not exceed 2^32 bytes each
-#[derive(Clone)]
-pub struct Encapsulation(pub HashMap<Partition, (Vec<u8>, Vec<u8>)>);
+/// - `U` and `V` such that `U = g * u` and `V = g * v`, where `u` and `v` are
+/// scalars from the master private key and `g` is the group generator.
+///
+/// - the `H_i` such that `H_i = g * s * x_i` with `x_i` the scalar associated
+/// to each subset `S_i`.
+///
+/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
+/// WARNING: the PublicKey into bytes MUST not exceed 2^32 bytes
+#[derive(Clone, Debug, PartialEq)]
+pub struct PublicKey {
+    U: X25519PublicKey,
+    V: X25519PublicKey,
+    H: HashMap<Partition, X25519PublicKey>,
+}
 
-impl std::ops::Deref for Encapsulation {
-    type Target = HashMap<Partition, (Vec<u8>, Vec<u8>)>;
+impl PublicKey {
+    /// Return a reference to the `H` hashmap.
+    pub fn map(&self) -> &HashMap<Partition, X25519PublicKey> {
+        &self.H
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    /// Serialize the public key.
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        serializer.write_array(self.U.to_bytes())?;
+        serializer.write_array(self.V.to_bytes())?;
+        serializer.write_array((self.H.len() as u32).to_be_bytes().to_vec())?;
+        for (partition, H_i) in &self.H {
+            serializer.write_array(partition.into())?;
+            serializer.write_array(H_i.to_bytes())?;
+        }
+        Ok(serializer.value().to_vec())
+    }
+
+    /// Deserialize the public key.
+    ///
+    /// - `bytes`   : bytes from which to read the public key
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.is_empty() {
+            return Err(Error::EmptyPrivateKey);
+        }
+        let mut de = Deserializer::new(bytes);
+        let U = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
+        let V = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
+        let H_len = de.read_array()?;
+        let H_len = <[u8; 4]>::try_from(H_len.as_slice())?;
+        let H_len = u32::from_be_bytes(H_len);
+        let mut H = HashMap::with_capacity(H_len as usize);
+        for _ in 0..H_len {
+            let partition = de.read_array()?;
+            let H_i = de.read_array()?;
+            H.insert(
+                Partition::from(partition),
+                X25519PublicKey::try_from_bytes(&H_i)?,
+            );
+        }
+        Ok(Self { U, V, H })
     }
 }
 
-impl std::ops::DerefMut for Encapsulation {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+#[derive(Clone, Debug, PartialEq)]
+pub struct Encapsulation {
+    C: X25519PublicKey,
+    D: X25519PublicKey,
+    E: HashMap<Partition, Vec<u8>>,
 }
 
 impl Encapsulation {
+    /// Serialize the public key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        for (partition, (key, ciphertext)) in &self.0 {
+        serializer.write_array(self.C.to_bytes())?;
+        serializer.write_array(self.D.to_bytes())?;
+        serializer.write_array((self.E.len() as u32).to_be_bytes().to_vec())?;
+        for (partition, K_i) in &self.E {
             serializer.write_array(partition.into())?;
-            serializer.write_array(key.to_owned())?;
-            serializer.write_array(ciphertext.to_owned())?;
+            serializer.write_array(K_i.to_vec())?;
         }
-        // write an empty array to mark the end (wastes one byte)
-        serializer.write_array(vec![])?;
         Ok(serializer.value().to_vec())
     }
 
+    /// Deserialize the public key.
+    ///
+    /// - `bytes`   : bytes from which to read the public key
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut map = HashMap::new();
-        let mut de = Deserializer::new(bytes);
-        loop {
-            let partition_bytes = de.read_array()?;
-            if partition_bytes.is_empty() {
-                //empty array marks the end
-                break;
-            }
-            let partition = Partition::from(partition_bytes);
-            let key = de.read_array()?;
-            let ciphertext = de.read_array()?;
-            map.insert(partition, (key, ciphertext));
+        if bytes.is_empty() {
+            return Err(Error::EmptyPrivateKey);
         }
-        Ok(Self(map))
+        let mut de = Deserializer::new(bytes);
+        let C = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
+        let D = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
+        let K_len = de.read_array()?;
+        let K_len = <[u8; 4]>::try_from(K_len.as_slice())?;
+        let K_len = u32::from_be_bytes(K_len);
+        let mut K = HashMap::with_capacity(K_len as usize);
+        for _ in 0..K_len {
+            let partition = de.read_array()?;
+            let K_i = de.read_array()?;
+            K.insert(Partition::from(partition), K_i);
+        }
+        Ok(Self { C, D, E: K })
     }
 }
 
-/// CovCrypt secret key is a vector of bytes of the same length as secret key
-/// of the underlying KEM.
+/// CoverCrypt secret key is a vector of bytes.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SecretKey(Vec<u8>);
 
@@ -357,154 +355,179 @@ impl From<SecretKey> for Vec<u8> {
 /// Generate the master private key and master public key of the CoverCrypt
 /// scheme.
 ///
-/// - `n`   : number of partition groups
+/// # Paper
 ///
 /// Setup : `λ → (msk,mpk)`
-///  - takes the security parameter (number of security bits we would like to
-/// reach).
 ///
-/// It first defines the partition of subsets Sᵢ that covers the set S
-/// with respect to the target users’ rights.
+/// - Sample random `𝑢`, `𝑣` and `𝑠` in `ℤ_𝑞` and define : `𝑈 = 𝑔 ^ 𝑢` and
+/// `𝑉 = 𝑔 ^ 𝑣` and `𝐻 = 𝑔 ^ 𝑠`
+/// - Define the partition of subsets `𝑆_𝑖` that covers the whole set of rights
+/// `𝑆` with respect to the target users’ rights.
+/// - For each set `𝑆_𝑖`, define `𝐻_𝑖 = 𝐻^𝑥_𝑖` for random `𝑥_𝑖`.
+/// - Let `msk = (𝑢, 𝑣, 𝑠, (𝑥_𝑖)_𝑖)` and `mpk = (< 𝐺, 𝑔 >, 𝑈 , 𝑉 , (𝐻_𝑖)_𝑖)`.
 ///
-/// And for each Sᵢ, it invokes (`KEM.KeyGen` which outputs `(pkᵢ,skᵢ)` and
-/// defines `mpk = (pkᵢ)ᵢ` and `msk = (skᵢ)ᵢ` the master public key and master
-/// secret key.
-pub fn setup<R, KEM>(
-    rng: &mut R,
-    partitions_set: &HashSet<Partition>,
-) -> (PrivateKey<KEM>, PublicKey<KEM>)
+/// # Arguments
+///
+/// - `rng`         : random number generator
+/// - `partitions`  : set of partition to be used
+pub fn setup<R>(rng: &mut R, partitions: &HashSet<Partition>) -> (MasterPrivateKey, PublicKey)
 where
     R: CryptoRng + RngCore,
-    KEM: Kem,
 {
-    let (mut msk, mut mpk) = (
-        PrivateKey(HashMap::with_capacity(partitions_set.len())),
-        PublicKey(HashMap::with_capacity(partitions_set.len())),
-    );
-    for partition in partitions_set.iter() {
-        let keypair = KEM::key_gen(rng);
-        msk.insert(partition.to_owned(), keypair.private_key().to_owned());
-        mpk.insert(partition.to_owned(), keypair.public_key().to_owned());
-    }
+    let msk = MasterPrivateKey {
+        u: X25519PrivateKey::new(rng),
+        v: X25519PrivateKey::new(rng),
+        s: X25519PrivateKey::new(rng),
+        x: partitions
+            .iter()
+            .map(|partition| (partition.clone(), X25519PrivateKey::new(rng)))
+            .collect(),
+    };
+
+    let S = X25519PublicKey::from(&msk.s);
+    let mpk = PublicKey {
+        U: X25519PublicKey::from(&msk.u),
+        V: X25519PublicKey::from(&msk.v),
+        H: msk
+            .x
+            .iter()
+            .map(|(partition, x_i)| (partition.clone(), &S * x_i))
+            .collect(),
+    };
     (msk, mpk)
 }
 
-/// Generate a user private key for a given list of user groups. It is composed
-/// by the list of the KEM private keys associated with the user groups
-/// containing the given user ID.
+/// Generate a user private key for the given decryption sets. It is composed of
+/// the scalars `(a_j, b_j)` and the `x_i` associated with the decryption sets.
 ///
-/// - `msk` : master secret key
-/// - `U`   : user partitions
+/// # Paper
 ///
-/// Join : `(msk, U) → skU`
+/// Join: (msk, 𝑗) → sk_𝑗`
 ///
-/// For a user U, define skU as the set of secret keys ski for each i such that
-/// U ∈ Si (meaning U has rights associated to set Si).
-pub fn join<KEM>(
-    msk: &PrivateKey<KEM>,
-    user_set: &HashSet<Partition>,
-) -> Result<PrivateKey<KEM>, Error>
+/// - takes a user identifier `𝑗` and choses `(𝑎_𝑗, 𝑏_𝑗)` such that:
+/// `𝑎_𝑗 ⋅ 𝑢 + 𝑏_𝑗 ⋅ 𝑣 = 𝑠`
+/// - Let `𝐴` the set of indices to which user `𝑗` belongs to, i.e. for each
+/// `𝑖 ∈ 𝐴`, user `𝑗` has the right to decrypt the ciphertexts associated to set `𝑆_𝑖`.
+///
+/// # Arguments
+///
+/// - `rng`             : random number generator
+/// - `msk`             : master secret key
+/// - `decryption_set`  : decryption set
+pub fn join<R>(
+    rng: &mut R,
+    msk: &MasterPrivateKey,
+    decryption_set: &HashSet<Partition>,
+) -> Result<UserPrivateKey, Error>
 where
-    KEM: Kem,
+    R: CryptoRng + RngCore,
 {
-    user_set.iter()
-        .map(|partition| {
-            let kem_private_key = msk
-                .get(partition)
-                .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
-            Ok((partition.to_owned(), kem_private_key.to_owned()))
+    let a = X25519PrivateKey::new(rng);
+    let b = (&msk.s - &a * &msk.u) * &msk.v.invert();
+    let x = msk
+        .x
+        .iter()
+        .filter_map(|(partition, x_i)| {
+            if decryption_set.contains(partition) {
+                Some((partition.clone(), x_i.clone()))
+            } else {
+                None
+            }
         })
-        .collect::<Result<HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey>, Error>>()
-        .map(|m| PrivateKey(m))
+        .collect();
+    Ok(UserPrivateKey { a, b, x })
 }
 
 /// Generate the secret key and its encapsulation.
 ///
-/// - `rng` : secure random number generator
-/// - `mpk` : master public key
-/// - `T`   : target groups
-/// - `S`   : user groups
+/// # Paper
 ///
-/// Encaps : `(mpk, T) → C = (K, Ci = (Ki ⊕ K, Ei)i∈A)`
+/// Encaps: `𝑇 → (𝐾, 𝐶_𝑖 = (𝐾_𝑖 ⊕ 𝐾, 𝐸_𝑖)_{𝑖∈𝐵})`
 ///
-/// Takes as input mpk and target set T. It first samples a random key K and
-/// express T as set of covering subsets, i.e T = ∪i∈ASi.
-/// Then for each i ∈ A, it invokes KEM.Encaps which Ci = (Ki, Ei)i∈A. It
-/// finally returns (K, C = (Ki ⊕ K, Ei)i∈A).
-pub fn encaps<R, KEM>(
+/// - sample a random key `𝐾 ∈ {0, 1} ^ 𝑛1` and a random `𝑟`.
+/// - set `𝐶 = 𝑈 ^ 𝑟` and `𝐷 = 𝑉 ^ 𝑟`.
+/// - for each subset `𝑆_𝑖` included in the target `𝑇` ‑ we denote `𝐵` this
+/// set of indices ‑ we set `𝐾_𝑖 = 𝐻_𝑖 ^ r`, `𝑖 ∈ {0, 1} ^ 𝑛1`
+///
+/// The encapsulation `𝐸` is given by the tuple `(𝐶, 𝐷, (𝐾_𝑖 ⊕ 𝐾)_{𝑖∈𝐵})`.
+///
+/// # Arguments
+///
+/// - `rng`                 : secure random number generator
+/// - `mpk`                 : master public key
+/// - `encyption_set`       : sets for which to generate a ciphertext
+/// - `secret_key_length`   : desired length of the generated secret key
+pub fn encaps<R>(
     rng: &mut R,
-    mpk: &PublicKey<KEM>,
-    target_group: &HashSet<Partition>,
+    mpk: &PublicKey,
+    encryption_set: &HashSet<Partition>,
     secret_key_length: usize,
 ) -> Result<(SecretKey, Encapsulation), Error>
 where
     R: CryptoRng + RngCore,
-    KEM: Kem,
 {
-    // secret key
-    let secret_key = SecretKey(utils::generate_random_bytes(rng, secret_key_length));
-
-    // construct secret key encapsulation
-    let encapsulation = target_group
-        .iter()
-        .map(|partition| {
-            let kem_public_key = mpk
-                .get(partition)
-                .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
-            let (k_i, e_i) =
-                KEM::encaps(rng, kem_public_key, secret_key_length).map_err(Error::CryptoError)?;
-            Ok((
-                partition.to_owned(),
-                (
-                    k_i.iter()
-                        .zip(secret_key.iter())
-                        .map(|(e1, e2)| e1 ^ e2)
-                        .collect(),
-                    e_i,
-                ),
-            ))
-        })
-        .collect::<Result<HashMap<Partition, (Vec<u8>, Vec<u8>)>, Error>>()
-        .map(Encapsulation)?;
-
-    Ok((secret_key, encapsulation))
+    let K = SecretKey(utils::generate_random_bytes(rng, secret_key_length));
+    let r = X25519PrivateKey::new(rng);
+    let C = &mpk.U * &r;
+    let D = &mpk.V * &r;
+    let mut E = HashMap::with_capacity(encryption_set.len());
+    for partition in encryption_set {
+        if let Some(H_i) = mpk.H.get(partition) {
+            let K_i = hkdf_256(
+                &(H_i * &r).to_bytes(),
+                secret_key_length,
+                KEY_GEN_INFO.as_bytes(),
+            )?;
+            let E_i = K_i
+                .iter()
+                .zip(K.iter())
+                .map(|(e_1, e_2)| e_1 ^ e_2)
+                .collect();
+            E.insert(partition.clone(), E_i);
+        } // else may log a warning about unknown target partition
+    }
+    Ok((K, Encapsulation { C, D, E }))
 }
 
 /// Decapsulate the secret key if the given user ID is in the target set.
 ///
-/// - `uid`     : user ID
-/// - `sk_u`    : user private key
-/// - `E`       : encapsulation
-/// - `T`       : target set
-/// - `S`       : list of all user groups
+/// # Paper
 ///
-/// • Decaps: (skU, C) → K
+/// Encaps: `(sk_𝑗, 𝐸) → 𝐾`
 ///
-/// Let T = ∪i∈BSi for some integers set B and A the indices of sets associated
-/// to C.
-/// If user U is in T, and there exists an index i ∈ A such that U is in
-/// Si ⊆ T, it invokes KEM.Decaps(ski, Ei) which gives Ki. Then using the
-/// corresponding Ci parsed as Ki', Ei, it obtains K = Ki' ⊕ Ki.
-pub fn decaps<KEM>(
-    sk_u: &PrivateKey<KEM>,
+/// - parse `𝐸` as `(𝐶, 𝐷, (𝐸_𝑗)_{𝑗∈𝐵})`
+/// - let `𝐴` be the set of indices user `𝑗` is authorized to decrypt and `𝑇`
+/// the target set associated to `𝐸`.
+///
+/// Note that: `𝐾_𝑖 = 𝐻_𝑖 ^ 𝑟 = 𝐻 ^ 𝑟 ^ 𝑥_𝑖 = (𝑔 ^ 𝑠 ^ 𝑟) ^ 𝑥_𝑖`
+///
+/// If there exists an index `k ∈ 𝐴` such that `𝑆_k ⊆ 𝑇` , then user `𝑗` has
+/// `𝑥_k` and can obtain:
+///
+/// `𝐾_k = (𝐶 ^ 𝑎_𝑗 𝐷 ^ 𝑏_𝑗 ) ^ 𝑥_k`
+///
+/// Using the corresponding ciphertext `𝐸_𝑗`, it obtains the session key as
+/// `𝐾 = 𝐾_k ⊕ 𝐸`
+///
+/// # Arguments
+///
+/// - `sk_j`                : user private key
+/// - `encapsulation`       : symmetric key encapsulation
+/// - `secret_key_length`   : desired length of the generated secret key
+pub fn decaps(
+    sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation,
     secret_key_length: usize,
-) -> Result<Option<SecretKey>, Error>
-where
-    KEM: Kem,
-{
-    for (partition, (ki_1, e_i)) in encapsulation.iter() {
-        if let Some(sk) = sk_u.get(partition) {
-            let ki_2 = KEM::decaps(sk, e_i, secret_key_length).map_err(Error::CryptoError)?;
-
-            // XOR the two `K_i`
-            let secret_key = SecretKey(
-                ki_1.iter()
-                    .zip(ki_2.iter())
-                    .map(|(e1, e2)| e1 ^ e2)
-                    .collect::<Vec<u8>>(),
-            );
-            return Ok(Some(secret_key));
+) -> Result<Option<SecretKey>, Error> {
+    for (partition, E_i) in encapsulation.E.iter() {
+        if let Some(x_k) = sk_j.x.get(partition) {
+            let K_k = (&encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b) * x_k;
+            let K = hkdf_256(&K_k.to_bytes(), secret_key_length, KEY_GEN_INFO.as_bytes())?
+                .iter()
+                .zip(E_i.iter())
+                .map(|(e_1, e_2)| e_1 ^ e_2)
+                .collect();
+            return Ok(Some(SecretKey(K)));
         }
     }
     Ok(None)
@@ -517,36 +540,30 @@ where
 ///
 /// If a partition exists in the list, but not in the keys, it will be "added" to the keys,
 /// by adding a new partition key pair as performed in the setup procedure above
-pub fn update<R, KEM>(
+pub fn update<R: CryptoRng + RngCore>(
     rng: &mut R,
-    msk: &mut PrivateKey<KEM>,
-    mpk: &mut PublicKey<KEM>,
+    msk: &mut MasterPrivateKey,
+    mpk: &mut PublicKey,
     partitions_set: &HashSet<Partition>,
-) -> Result<(), Error>
-where
-    R: CryptoRng + RngCore,
-    KEM: Kem,
-{
+) -> Result<(), Error> {
     // add keys for partitions that do not exist
     for partition in partitions_set.iter() {
-        if !msk.contains_key(partition) || !mpk.contains_key(partition) {
-            // add a new Keypair
-            let keypair = KEM::key_gen(rng);
-            msk.insert(partition.to_owned(), keypair.private_key().to_owned());
-            mpk.insert(partition.to_owned(), keypair.public_key().to_owned());
+        if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
+            let x_i = X25519PrivateKey::new(rng);
+            let H_i = X25519PublicKey::from(&x_i);
+            msk.x.insert(partition.to_owned(), x_i);
+            mpk.H.insert(partition.to_owned(), H_i);
         }
     }
     // remove keys for partitions not in the list
-    let partitions_in_private_key: Vec<Partition> = msk.clone().into_keys().collect();
-    for partition in partitions_in_private_key {
-        if !partitions_set.contains(&partition) {
-            msk.remove_entry(&partition);
+    for (partition, _) in msk.x.clone().iter() {
+        if !partitions_set.contains(partition) {
+            msk.x.remove_entry(partition);
         }
     }
-    let partitions_in_public_key: Vec<Partition> = mpk.clone().into_keys().collect();
-    for partition in partitions_in_public_key {
-        if !partitions_set.contains(&partition) {
-            mpk.remove_entry(&partition);
+    for (partition, _) in mpk.H.clone().iter() {
+        if !partitions_set.contains(partition) {
+            mpk.H.remove_entry(partition);
         }
     }
     Ok(())
@@ -559,31 +576,28 @@ where
 ///
 /// If a partition exists in the list, but not in the user key, it will be "added" to the user key,
 /// by copying the proper partition key from the master private key
-pub fn refresh<KEM>(
-    msk: &PrivateKey<KEM>,
-    usk: &mut PrivateKey<KEM>,
+pub fn refresh(
+    msk: &MasterPrivateKey,
+    usk: &mut UserPrivateKey,
     user_set: &HashSet<Partition>,
-) -> Result<(), Error>
-where
-    KEM: Kem,
-{
+) -> Result<(), Error> {
     // add keys for partitions that do not exist
     for partition in user_set.iter() {
-        if !usk.contains_key(partition) {
+        if !usk.x.contains_key(partition) {
             // extract key from master private key (see join)
-            let kem_private_key = msk.get(partition).ok_or_else(|| {
+            let kem_private_key = msk.x.get(partition).ok_or_else(|| {
                 Error::UnknownPartition(format!(
                     "the master private key does not contain the partition: {partition:?}"
                 ))
             })?;
-            usk.insert(partition.to_owned(), kem_private_key.to_owned());
+            usk.x
+                .insert(partition.to_owned(), kem_private_key.to_owned());
         }
     }
     // remove keys for partitions not in the list
-    let partitions_in_user_key: Vec<Partition> = usk.clone().into_keys().collect();
-    for partition in partitions_in_user_key {
-        if !user_set.contains(&partition) {
-            usk.remove_entry(&partition);
+    for (partition, _) in usk.x.clone().iter() {
+        if !user_set.contains(partition) {
+            usk.x.remove_entry(partition);
         }
     }
     Ok(())
@@ -591,9 +605,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_base::{asymmetric::ristretto::X25519Crypto, entropy::CsRng};
-
     use super::*;
+    use cosmian_crypto_base::entropy::CsRng;
+
+    /// Length of the desired symmetric key
+    const SYM_KEY_LENGTH: usize = 32;
 
     #[test]
     fn test_partitions() -> Result<(), Error> {
@@ -611,30 +627,37 @@ mod tests {
     }
 
     #[test]
-    fn test_ser_de() -> Result<(), Error> {
+    fn test_serialization() -> Result<(), Error> {
         let admin_partition = Partition("admin".as_bytes().to_vec());
         let dev_partition = Partition("dev".as_bytes().to_vec());
         // partition list
         let partitions_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         // user list
-        let user_set = HashSet::from([admin_partition, dev_partition]);
+        let user_set = HashSet::from([admin_partition.clone(), dev_partition]);
+        // target set
+        let target_set = HashSet::from([admin_partition]);
         // secure random number generator
         let mut rng = CsRng::new();
         // setup scheme
-        let (msk, mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
-        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.try_to_bytes()?)?;
-        assert_eq!(msk, msk_, "master key comparisons failed");
-        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
-        assert_eq!(mpk, mpk_);
-        let usk = join::<X25519Crypto>(&msk, &user_set)?;
-        let usk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
-        assert_eq!(usk, usk_);
+        let (msk, mpk) = setup(&mut rng, &partitions_set);
+        let msk_ = MasterPrivateKey::try_from_bytes(&msk.try_to_bytes()?)?;
+        assert_eq!(msk, msk_, "Master secret key comparisons failed");
+        let mpk_ = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
+        assert_eq!(mpk, mpk_, "Master public key comparison failed");
+        let usk = join(&mut rng, &msk, &user_set)?;
+        let usk_ = UserPrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
+        assert_eq!(usk, usk_, "User secret key comparison failed");
+        let (_, encapsulation) = encaps(&mut rng, &mpk, &target_set, SYM_KEY_LENGTH)?;
+        let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
+        assert_eq!(
+            encapsulation, encapsulation_,
+            "Encapsulation comparison failed"
+        );
         Ok(())
     }
 
     #[test]
     fn test_cover_crypt() -> Result<(), Error> {
-        const SECRET_KEY_LENGTH: usize = 32;
         let admin_partition = Partition("admin".as_bytes().to_vec());
         let dev_partition = Partition("dev".as_bytes().to_vec());
         // partition list
@@ -649,22 +672,18 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::new();
         // setup scheme
-        let (msk, mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
+        let (msk, mpk) = setup(&mut rng, &partitions_set);
         // generate user private keys
-        let sk0 = join::<X25519Crypto>(&msk, &users_set[0])?;
-        let sk1 = join::<X25519Crypto>(&msk, &users_set[1])?;
+        let sk0 = join(&mut rng, &msk, &users_set[0])?;
+        let sk1 = join(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
-        let (secret_key, encapsulation) =
-            encaps::<_, X25519Crypto>(&mut rng, &mpk, &target_set, SECRET_KEY_LENGTH)?;
-        println!(
-            "Secret Key size: {}, Encapsulation size: {}",
-            secret_key.to_vec().len(),
-            encapsulation.try_to_bytes()?.len()
-        );
+        let (secret_key, encapsulation) = encaps(&mut rng, &mpk, &target_set, SYM_KEY_LENGTH)?;
+        println!("Secret Key : {:?}", secret_key,);
         // decapsulate for users 1 and 3
-        let res0 = decaps::<X25519Crypto>(&sk0, &encapsulation, SECRET_KEY_LENGTH)?;
-        let res1 = decaps::<X25519Crypto>(&sk1, &encapsulation, SECRET_KEY_LENGTH)?;
+        let res0 = decaps(&sk0, &encapsulation, SYM_KEY_LENGTH)?;
+        let res1 = decaps(&sk1, &encapsulation, SYM_KEY_LENGTH)?;
         assert!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
+        println!("{res1:?}");
         assert!(Some(secret_key) == res1, "Wrong decapsulation for user 1!");
         Ok(())
     }
@@ -678,18 +697,18 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::new();
         // setup scheme
-        let (mut msk, mut mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition("3".as_bytes().to_vec());
         let new_partitions_set = HashSet::from([partition_2.clone(), partition_3.clone()]);
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        assert!(!msk.contains_key(&partition_1));
-        assert!(msk.contains_key(&partition_2));
-        assert!(msk.contains_key(&partition_3));
-        assert!(!mpk.contains_key(&partition_1));
-        assert!(mpk.contains_key(&partition_2));
-        assert!(mpk.contains_key(&partition_3));
+        assert!(!msk.map().contains_key(&partition_1));
+        assert!(msk.map().contains_key(&partition_2));
+        assert!(msk.map().contains_key(&partition_3));
+        assert!(!mpk.map().contains_key(&partition_1));
+        assert!(mpk.map().contains_key(&partition_2));
+        assert!(mpk.map().contains_key(&partition_3));
         Ok(())
     }
 
@@ -707,9 +726,10 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::new();
         // setup scheme
-        let (mut msk, mut mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
         // create a user key with access to partition 1 and 2
         let mut usk = join(
+            &mut rng,
             &msk,
             &HashSet::from([partition_1.clone(), partition_2.clone()]),
         )?;
@@ -729,10 +749,10 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
-        assert!(!usk.contains_key(&partition_1));
-        assert!(usk.contains_key(&partition_2));
-        assert!(!usk.contains_key(&partition_3));
-        assert!(usk.contains_key(&partition_4));
+        assert!(!usk.map().contains_key(&partition_1));
+        assert!(usk.map().contains_key(&partition_2));
+        assert!(!usk.map().contains_key(&partition_3));
+        assert!(usk.map().contains_key(&partition_4));
         Ok(())
     }
 }

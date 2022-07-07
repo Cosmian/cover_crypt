@@ -1,7 +1,6 @@
-use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
 use pyo3::{exceptions::PyTypeError, prelude::*};
 
-use crate::api::{CoverCrypt, PrivateKey};
+use crate::{api::CoverCrypt, MasterPrivateKey};
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 
 /// Generate the master authority keys for supplied Policy
@@ -15,7 +14,7 @@ pub fn generate_master_keys(policy_bytes: Vec<u8>) -> PyResult<(Vec<u8>, Vec<u8>
     //
     // Setup CoverCrypt
     let (master_private_key, master_public_key) =
-        CoverCrypt::<X25519Crypto>::default().generate_master_keys(&policy)?;
+        CoverCrypt::default().generate_master_keys(&policy)?;
 
     Ok((
         master_private_key.try_to_bytes()?,
@@ -34,14 +33,13 @@ pub fn generate_user_private_key(
     access_policy_str: String,
     policy_bytes: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
-    let master_private_key: PrivateKey<X25519Crypto> =
-        PrivateKey::try_from_bytes(&master_private_key_bytes)?;
+    let master_private_key = MasterPrivateKey::try_from_bytes(&master_private_key_bytes)?;
     let policy = serde_json::from_slice(&policy_bytes)
         .map_err(|e| PyTypeError::new_err(format!("Policy deserialization failed: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
         .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
-    let user_key = CoverCrypt::<X25519Crypto>::default().generate_user_private_key(
+    let user_key = CoverCrypt::default().generate_user_private_key(
         &master_private_key,
         &access_policy,
         &policy,
