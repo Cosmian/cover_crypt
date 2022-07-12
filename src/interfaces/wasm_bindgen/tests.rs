@@ -21,8 +21,9 @@ use crate::{
         statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
         wasm_bindgen::hybrid_cc_aes::*,
     },
-    policies::{ap, Attribute, Policy, PolicyAxis},
 };
+
+use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 
 fn create_test_policy() -> Policy {
     //

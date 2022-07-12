@@ -1,3 +1,4 @@
+use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 #[cfg(feature = "ffi")]
 use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure;
 use cosmian_crypto_base::{
@@ -8,8 +9,8 @@ use cover_crypt::{
     api::{CoverCrypt, PublicKey},
     error::Error,
     interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
-    policies::{ap, Attribute, Policy, PolicyAxis},
 };
+
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {

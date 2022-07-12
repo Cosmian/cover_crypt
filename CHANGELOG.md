@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.2.0] - 2022-07-06
+### Added
+### Changed
+- Use `abe_policy` library. 
+### Fixed
+### Removed
+- Remove `policy.rs` from the library
+---
+
+---
 ## [3.1.0] - 2022-07-01
 ### Added
 ### Changed

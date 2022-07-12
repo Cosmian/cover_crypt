@@ -1,8 +1,9 @@
 use crate::{
     cover_crypt_core::{self, Partition},
     error::Error,
-    policies::{AccessPolicy, Attribute, Policy},
 };
+use abe_policy::{AccessPolicy, Attribute, Policy};
+
 use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
 use std::{
     collections::{HashMap, HashSet},
@@ -214,7 +215,7 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
             let values = attribute_names
                 .iter()
                 .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
-                .collect::<Result<Vec<u32>, Error>>()?;
+                .collect::<Result<Vec<u32>, abe_policy::Error>>()?;
             map.insert(axis.to_owned(), values);
         }
     }
@@ -341,7 +342,7 @@ mod tests {
     use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
 
     use super::*;
-    use crate::policies::{Attribute, PolicyAxis};
+    use abe_policy::{Attribute, PolicyAxis};
 
     fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(

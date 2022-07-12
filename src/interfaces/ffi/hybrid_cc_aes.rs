@@ -28,8 +28,9 @@ use crate::{
             encrypt_hybrid_header, ClearTextHeader,
         },
     },
-    policies::{Attribute, Policy},
 };
+
+use abe_policy::{Attribute, Policy};
 
 // -------------------------------
 //         Encryption

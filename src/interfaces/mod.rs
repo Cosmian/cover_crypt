@@ -1,5 +1,3 @@
-pub use crate::policies;
-
 pub mod statics;
 
 #[cfg(feature = "ffi")]

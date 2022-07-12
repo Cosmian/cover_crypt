@@ -1,6 +1,6 @@
 [package]
 name = "cover_crypt"
-version = "3.1.0"
+version = "3.2.0"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -31,6 +31,7 @@ wasm_bindgen = ["js-sys", "wasm-bindgen"]
 python = ["pyo3"]
 
 [dependencies]
+abe_policy = "0.1"
 cosmian_crypto_base = "2.0"
 hex = "0.4"
 leb128 = "0.2"

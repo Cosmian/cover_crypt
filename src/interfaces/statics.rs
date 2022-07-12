@@ -11,8 +11,9 @@ use crate::{
     api::{CoverCrypt, PrivateKey, PublicKey},
     cover_crypt_core::Encapsulation,
     error::Error,
-    policies::{Attribute, Policy},
 };
+
+use abe_policy::{Attribute, Policy};
 
 /// An EncryptedHeader returned by the `encrypt_hybrid_header` function
 #[derive(Serialize, Deserialize)]
@@ -213,7 +214,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::policies::{ap, AccessPolicy, Attribute, PolicyAxis};
+    use abe_policy::{ap, AccessPolicy, Attribute, PolicyAxis};
 
     #[derive(Serialize, Deserialize)]
     struct NonRegressionTestVector {

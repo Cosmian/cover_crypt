@@ -9,8 +9,9 @@ use crate::{
     api::{CoverCrypt, PrivateKey},
     ffi_bail, ffi_not_null, ffi_unwrap,
     interfaces::ffi::error::{set_last_error, FfiError},
-    policies::{AccessPolicy, Attribute, Policy},
 };
+
+use abe_policy::{AccessPolicy, Attribute, Policy};
 
 #[no_mangle]
 /// Generate the master authority keys for supplied Policy

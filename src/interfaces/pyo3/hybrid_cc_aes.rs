@@ -19,8 +19,9 @@ use crate::{
         encrypt_hybrid_block as core_encrypt_hybrid_block,
         encrypt_hybrid_header as core_encrypt_hybrid_header, ClearTextHeader,
     },
-    policies::Attribute,
 };
+
+use abe_policy::Attribute;
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
