@@ -288,6 +288,7 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-test",
+ "zeroize",
 ]
 
 [[package]]

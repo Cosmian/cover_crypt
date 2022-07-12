@@ -10,7 +10,6 @@ use cover_crypt::{
     interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
     PublicKey,
 };
-
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {

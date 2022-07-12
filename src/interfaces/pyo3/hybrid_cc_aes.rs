@@ -3,12 +3,6 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
-use cosmian_crypto_base::{
-    hybrid_crypto::Metadata,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 use crate::{
     interfaces::statics::{
         decrypt_hybrid_block as core_decrypt_hybrid_block,
@@ -19,6 +13,12 @@ use crate::{
     PublicKey, UserPrivateKey,
 };
 use abe_policy::Attribute;
+use cosmian_crypto_base::{
+    hybrid_crypto::Metadata,
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
