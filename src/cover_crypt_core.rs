@@ -16,6 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
 };
+use zeroize::Zeroize;
 
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &str = "key generation info";
@@ -148,6 +149,23 @@ impl MasterPrivateKey {
     }
 }
 
+impl Zeroize for MasterPrivateKey {
+    fn zeroize(&mut self) {
+        self.u.zeroize();
+        self.v.zeroize();
+        self.s.zeroize();
+        for (_, x_i) in self.x.iter_mut() {
+            x_i.zeroize();
+        }
+    }
+}
+
+impl Drop for MasterPrivateKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 /// CoverCrypt user private key. It is composed of:
 /// - `a` and `b` such that `a * u + b * v = s`, where `u`, `v` and `s` are
 /// scalars from the master private key
@@ -203,6 +221,22 @@ impl UserPrivateKey {
             );
         }
         Ok(Self { a, b, x })
+    }
+}
+
+impl Zeroize for UserPrivateKey {
+    fn zeroize(&mut self) {
+        self.a.zeroize();
+        self.b.zeroize();
+        for (_, x_i) in self.x.iter_mut() {
+            x_i.zeroize();
+        }
+    }
+}
+
+impl Drop for UserPrivateKey {
+    fn drop(&mut self) {
+        self.zeroize();
     }
 }
 
@@ -334,6 +368,12 @@ impl From<Vec<u8>> for SecretKey {
 impl From<SecretKey> for Vec<u8> {
     fn from(sk: SecretKey) -> Self {
         sk.to_vec()
+    }
+}
+
+impl Drop for SecretKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }
 
