@@ -63,13 +63,14 @@ impl CoverCrypt {
         )
     }
 
-    /// Generate a random symmetric key of `symmetric_key_len` to be used in an
-    /// hybrid encryption scheme and generate its CoverCrypt encrypted version
+    /// Generate a random symmetric key of `sym_key_len` to be used in an
+    /// hybrid encryption scheme and generate its CoverCrypt encapsulation
     /// with the supplied policy `attributes`.
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
-    /// - `access_policy`   : access policy to use for key encryption
+    /// TODO: why isn't it an access policy here ? Maybe uniformise
+    /// - `attributes`     access_policy : access policy to use for key encryption
     /// - `sym_key_len`     : length of the symmetric key to generate
     pub fn generate_symmetric_key(
         &self,
@@ -87,18 +88,18 @@ impl CoverCrypt {
         )
     }
 
-    /// Decrypt a symmetric key generated with `generate_symmetric_key()`
+    /// Decapsulate a symmetric key generated with `generate_symmetric_key()`.
     ///
-    /// - `sk_u`        : user secret key
-    /// - `c`           : encrypted symmetric key
-    /// - `sym_key_len` : length of the symmetric key to generate
-    pub fn decrypt_symmetric_key(
+    /// - `sk_u`            : user secret key
+    /// - `encapsulation`   : encrypted symmetric key
+    /// - `sym_key_len`     : length of the symmetric key to generate
+    pub fn decaps_symmetric_key(
         &self,
         sk_u: &UserPrivateKey,
-        ciphertext: &Encapsulation,
+        encapsulation: &Encapsulation,
         sym_key_len: usize,
     ) -> Result<SecretKey, Error> {
-        cover_crypt_core::decaps(sk_u, ciphertext, sym_key_len)?
+        cover_crypt_core::decaps(sk_u, encapsulation, sym_key_len)?
             .ok_or(Error::InsufficientAccessPolicy)
     }
 }
@@ -109,7 +110,10 @@ impl Default for CoverCrypt {
     }
 }
 
-pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
+/// Generate all possible partitions from the given policy.
+///
+/// - `policy`  : policy from which to generate partitions
+fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // Build a map of all attribute value for all axis
     let mut map = HashMap::with_capacity(policy.as_map().len());
     // We also a collect a Vec of axes which is used later
@@ -136,6 +140,9 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
 /// corresponding list of CoverCrypt partitions
+///
+/// - `attributes`  : liste of attributes
+/// - `policy`      : security policy
 fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // First split the attributes per axis using their latest value and check that
     // they exist
@@ -171,6 +178,11 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     Ok(set)
 }
 
+/// Generate all attribute values combinations from the given axes.
+///
+/// - `current_axis`    : axis from which to start to combine values with other axes
+/// - `axes`            : list of axes
+/// - `map`             : map axes with their associated attribute values
 fn combine_attribute_values(
     current_axis: usize,
     axes: &[String],
@@ -405,7 +417,7 @@ mod tests {
             KEY_LENGTH,
         )?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let recovered_key = cc.decrypt_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
+        let recovered_key = cc.decaps_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
         assert!(key == recovered_key, "Wrong decryption of the key!");
         Ok(())
     }

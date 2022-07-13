@@ -1,17 +1,15 @@
-use std::ops::DerefMut;
-
+use crate::{
+    api::CoverCrypt,
+    cover_crypt_core::{Encapsulation, PublicKey, UserPrivateKey},
+    error::Error,
+};
 use cosmian_crypto_base::{
     entropy::CsRng,
     hybrid_crypto::{Block, Dem, Metadata},
     KeyTrait,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    api::CoverCrypt,
-    cover_crypt_core::{Encapsulation, PublicKey, UserPrivateKey},
-    error::Error,
-};
+use std::ops::DerefMut;
 
 use abe_policy::{Attribute, Policy};
 
@@ -116,7 +114,7 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     let cover_crypt = CoverCrypt::default();
     let encapsulation = Encapsulation::try_from_bytes(&encapsulation_bytes)?;
     let secret_key =
-        cover_crypt.decrypt_symmetric_key(user_decryption_key, &encapsulation, DEM::Key::LENGTH)?;
+        cover_crypt.decaps_symmetric_key(user_decryption_key, &encapsulation, DEM::Key::LENGTH)?;
 
     // decrypt the metadata if any
     let meta_data = if index >= header_size {
