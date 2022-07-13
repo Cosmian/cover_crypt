@@ -4,7 +4,6 @@
 use crate::{
     bytes_ser_de::{Deserializer, Serializer},
     error::Error,
-    utils,
 };
 use cosmian_crypto_base::{
     asymmetric::ristretto::{X25519PrivateKey, X25519PublicKey},
@@ -506,7 +505,9 @@ pub fn encaps<R>(
 where
     R: CryptoRng + RngCore,
 {
-    let K = SecretKey(utils::generate_random_bytes(rng, secret_key_length));
+    let mut bytes = vec![0_u8; secret_key_length];
+    rng.fill_bytes(&mut bytes);
+    let K = SecretKey(bytes);
     let r = X25519PrivateKey::new(rng);
     let C = &mpk.U * &r;
     let D = &mpk.V * &r;
