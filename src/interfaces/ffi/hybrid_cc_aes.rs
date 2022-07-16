@@ -210,6 +210,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     let allocated = *symmetric_key_len;
     let symmetric_key_bytes = encrypted_header.symmetric_key.to_bytes();
     let len = symmetric_key_bytes.len();
+    *symmetric_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated symmetric key buffer is too small; need {} bytes",
@@ -218,10 +219,10 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     }
     std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, len)
         .copy_from_slice(&symmetric_key_bytes);
-    *symmetric_key_len = len as c_int;
 
     let allocated = *header_bytes_len;
     let len = encrypted_header.header_bytes.len();
+    *header_bytes_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated symmetric key buffer is too small; need {} bytes",
@@ -230,7 +231,6 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     }
     std::slice::from_raw_parts_mut(header_bytes_ptr as *mut u8, len)
         .copy_from_slice(&encrypted_header.header_bytes);
-    *header_bytes_len = len as c_int;
     0
 }
 
@@ -339,6 +339,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let allocated = *symmetric_key_len;
     let symmetric_key_bytes = encrypted_header.symmetric_key.to_bytes();
     let len = symmetric_key_bytes.len();
+    *symmetric_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated symmetric key buffer is too small; need {} bytes, allocated {}",
@@ -348,10 +349,10 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     }
     std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, len)
         .copy_from_slice(&symmetric_key_bytes);
-    *symmetric_key_len = len as c_int;
 
     let allocated = *header_bytes_len;
     let len = encrypted_header.header_bytes.len();
+    *header_bytes_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated encrypted header buffer is too small; need {} bytes, allocated {}",
@@ -361,7 +362,6 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     }
     std::slice::from_raw_parts_mut(header_bytes_ptr as *mut u8, len)
         .copy_from_slice(&encrypted_header.header_bytes);
-    *header_bytes_len = len as c_int;
 
     0
 }
@@ -508,6 +508,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     let allocated = *symmetric_key_len;
     let symmetric_key_bytes = header.symmetric_key.to_bytes();
     let len = symmetric_key_bytes.len();
+    *symmetric_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated symmetric key buffer is too small; need {} bytes",
@@ -516,13 +517,13 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     }
     std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, len)
         .copy_from_slice(&symmetric_key_bytes);
-    *symmetric_key_len = len as c_int;
 
     // UID - if expected
     if !uid_ptr.is_null() && *uid_len > 0 {
         let allocated = *uid_len;
         let uid_bytes = &header.meta_data.uid;
         let len = uid_bytes.len();
+        *uid_len = len as c_int;
         if (allocated as usize) < len {
             ffi_bail!(
                 "The pre-allocated uid buffer is too small; need {} bytes",
@@ -530,7 +531,6 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
             );
         }
         std::slice::from_raw_parts_mut(uid_ptr as *mut u8, len).copy_from_slice(uid_bytes);
-        *uid_len = len as c_int;
     }
 
     // additional data - if expected
@@ -539,6 +539,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         let additional_data_bytes = &header.meta_data.additional_data;
         if let Some(ad) = additional_data_bytes {
             let len = ad.len();
+            *additional_data_len = len as c_int;
             if (allocated as usize) < len {
                 ffi_bail!(
                     "The pre-allocated additional_data buffer is too small; need {} bytes",
@@ -546,7 +547,6 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
                 );
             }
             std::slice::from_raw_parts_mut(additional_data_ptr as *mut u8, len).copy_from_slice(ad);
-            *additional_data_len = len as c_int;
         } else {
             *additional_data_len = 0_i32;
         }
@@ -642,6 +642,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     let allocated = *symmetric_key_len;
     let symmetric_key_bytes = header.symmetric_key.to_bytes();
     let len = symmetric_key_bytes.len();
+    *symmetric_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated symmetric key buffer is too small; need {} bytes",
@@ -650,13 +651,13 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     }
     std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, len)
         .copy_from_slice(&symmetric_key_bytes);
-    *symmetric_key_len = len as c_int;
 
     // UID - if expected
     if !uid_ptr.is_null() && *uid_len > 0 {
         let allocated = *uid_len;
         let uid_bytes = &header.meta_data.uid;
         let len = uid_bytes.len();
+        *uid_len = len as c_int;
         if (allocated as usize) < len {
             ffi_bail!(
                 "The pre-allocated uid buffer is too small; need {} bytes",
@@ -664,7 +665,6 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
             );
         }
         std::slice::from_raw_parts_mut(uid_ptr as *mut u8, len).copy_from_slice(uid_bytes);
-        *uid_len = len as c_int;
     }
 
     // additional data - if expected
@@ -673,6 +673,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         let additional_data_bytes = &header.meta_data.additional_data;
         if let Some(ad) = additional_data_bytes {
             let len = ad.len();
+            *additional_data_len = len as c_int;
             if (allocated as usize) < len {
                 ffi_bail!(
                     "The pre-allocated additional_data buffer is too small; need {} bytes",
@@ -680,7 +681,6 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
                 );
             }
             std::slice::from_raw_parts_mut(additional_data_ptr as *mut u8, len).copy_from_slice(ad);
-            *additional_data_len = len as c_int;
         } else {
             *additional_data_len = 0_i32;
         }
@@ -759,6 +759,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
 
     let allocated = *encrypted_len;
     let len = encrypted_block.len();
+    *encrypted_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated encrypted bytes buffer is too small; need {} bytes",
@@ -766,7 +767,6 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
         );
     }
     std::slice::from_raw_parts_mut(encrypted_ptr as *mut u8, len).copy_from_slice(&encrypted_block);
-    *encrypted_len = len as c_int;
 
     0
 }
@@ -834,6 +834,7 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
 
     let allocated = *clear_text_len;
     let len = encrypted_block.len();
+    *clear_text_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated clear text buffer is too small; need {} bytes",
@@ -842,7 +843,6 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     }
     std::slice::from_raw_parts_mut(clear_text_ptr as *mut u8, len)
         .copy_from_slice(&encrypted_block);
-    *clear_text_len = len as c_int;
 
     0
 }

@@ -93,7 +93,7 @@ build_python_whl:
   <<: *base_compile
   stage: build
   script:
-    - maturin build --cargo-extra-args="--release --features python"
+    - maturin build --release --features python
     - bash src/interfaces/pyo3/tests/test.sh
   artifacts:
     paths:
