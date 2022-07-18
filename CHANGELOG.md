@@ -3,10 +3,19 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.2.1] - 2022-07-18
+### Added
+### Changed
+### Fixed
+- Returns in FFI functions (before exiting) the required pre-allocated out buffer size when buffer is too small
+### Removed
+---
+
+---
 ## [3.2.0] - 2022-07-06
 ### Added
 ### Changed
-- Use `abe_policy` library. 
+- Use `abe_policy` library.
 ### Fixed
 ### Removed
 - Remove `policy.rs` from the library

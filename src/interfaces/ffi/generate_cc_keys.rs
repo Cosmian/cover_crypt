@@ -71,6 +71,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
     // Prepare output
     let allocated = *master_keys_len;
     let len = master_keys_bytes.len();
+    *master_keys_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated master keys buffer is too small; need {} bytes, allocated {}",
@@ -80,7 +81,6 @@ pub unsafe extern "C" fn h_generate_master_keys(
     }
     std::slice::from_raw_parts_mut(master_keys_ptr as *mut u8, len)
         .copy_from_slice(&master_keys_bytes);
-    *master_keys_len = len as c_int;
 
     0
 }
@@ -179,6 +179,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
     // Prepare output
     let allocated = *user_private_key_len;
     let len = user_key_bytes.len();
+    *user_private_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated user private key buffer is too small; need {} bytes, allocated {}",
@@ -188,7 +189,6 @@ pub unsafe extern "C" fn h_generate_user_private_key(
     }
     std::slice::from_raw_parts_mut(user_private_key_ptr as *mut u8, len)
         .copy_from_slice(&user_key_bytes);
-    *user_private_key_len = len as c_int;
 
     0
 }
@@ -259,6 +259,7 @@ pub unsafe extern "C" fn h_rotate_attributes(
     // Prepare output
     let allocated = *new_policy_len;
     let len = new_policy_string.len();
+    *new_policy_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
             "The pre-allocated output policy buffer is too small; need {len} bytes, allocated {allocated}"
@@ -266,7 +267,6 @@ pub unsafe extern "C" fn h_rotate_attributes(
     }
     std::slice::from_raw_parts_mut(new_policy_ptr as *mut u8, len)
         .copy_from_slice(new_policy_string.as_bytes());
-    *new_policy_len = len as c_int;
 
     0
 }

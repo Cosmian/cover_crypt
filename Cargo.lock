@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "cover_crypt"
-version = "3.2.0"
+version = "3.2.1"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_base",

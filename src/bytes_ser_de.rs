@@ -56,7 +56,7 @@ impl Serializer {
                     e
                 ))
             })?;
-        len += (&mut self.writable).write(&array).map_err(|e| {
+        len += self.writable.write(&array).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected error writing {} bytes: {}",
                 array.len(),
