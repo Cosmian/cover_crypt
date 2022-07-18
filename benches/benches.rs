@@ -131,7 +131,7 @@ fn bench_header_encryption(c: &mut Criterion) {
 fn bench_ffi_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (_msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -204,7 +204,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (_msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -330,7 +330,7 @@ fn bench_header_decryption(c: &mut Criterion) {
 fn bench_ffi_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -382,7 +382,7 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
 fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");

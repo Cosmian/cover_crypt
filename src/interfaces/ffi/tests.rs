@@ -1,29 +1,23 @@
-use std::{
-    ffi::{CStr, CString},
-    os::raw::{c_char, c_int},
-};
-
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    hybrid_crypto::Metadata,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-
 use super::{
     generate_cc_keys::{h_generate_master_keys, h_generate_user_private_key},
     hybrid_cc_aes::*,
 };
 use crate::{
-    api::{self, CoverCrypt, PrivateKey},
+    api::CoverCrypt,
     error::Error,
     interfaces::{ffi::error::get_last_error, statics::EncryptedHeader},
+    MasterPrivateKey, PublicKey, UserPrivateKey,
 };
-
 use abe_policy::{ap, AccessPolicy, Attribute, Policy, PolicyAxis};
-
-type PublicKey = api::PublicKey<X25519Crypto>;
-type UserDecryptionKey = api::PrivateKey<X25519Crypto>;
+use cosmian_crypto_base::{
+    hybrid_crypto::Metadata,
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use std::{
+    ffi::{CStr, CString},
+    os::raw::{c_char, c_int},
+};
 
 unsafe fn encrypt_header(
     meta_data: &Metadata,
@@ -89,7 +83,7 @@ struct DecryptedHeader {
 
 unsafe fn decrypt_header(
     header: &EncryptedHeader<Aes256GcmCrypto>,
-    user_decryption_key: &UserDecryptionKey,
+    user_decryption_key: &UserPrivateKey,
 ) -> Result<DecryptedHeader, Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
@@ -192,7 +186,7 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         //
         // CoverCrypt setup
         //
-        let cc = CoverCrypt::<X25519Crypto>::default();
+        let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
@@ -293,7 +287,7 @@ unsafe fn encrypt_header_using_cache(
 }
 
 unsafe fn decrypt_header_using_cache(
-    user_decryption_key: &UserDecryptionKey,
+    user_decryption_key: &UserPrivateKey,
     header: &EncryptedHeader<Aes256GcmCrypto>,
 ) -> Result<DecryptedHeader, Error> {
     let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
@@ -376,7 +370,7 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
         //
         // CoverCrypt setup
         //
-        let cc = CoverCrypt::<X25519Crypto>::default();
+        let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
@@ -404,9 +398,7 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
     Ok(())
 }
 
-unsafe fn generate_master_keys(
-    policy: &Policy,
-) -> Result<(PrivateKey<X25519Crypto>, PublicKey), Error> {
+unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterPrivateKey, PublicKey), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
@@ -425,20 +417,20 @@ unsafe fn generate_master_keys(
         std::slice::from_raw_parts(master_keys_ptr as *const u8, master_keys_len as usize).to_vec();
 
     let master_private_key_size = u32::from_be_bytes(master_keys_bytes[0..4].try_into()?);
-    let private_key_bytes = &master_keys_bytes[4..4 + master_private_key_size as usize];
+    let master_private_key_bytes = &master_keys_bytes[4..4 + master_private_key_size as usize];
     let public_key_bytes = &master_keys_bytes[4 + master_private_key_size as usize..];
 
-    let private_key = PrivateKey::<X25519Crypto>::try_from_bytes(private_key_bytes)?;
+    let master_private_key = MasterPrivateKey::try_from_bytes(master_private_key_bytes)?;
     let public_key = PublicKey::try_from_bytes(public_key_bytes)?;
 
-    Ok((private_key, public_key))
+    Ok((master_private_key, public_key))
 }
 
 unsafe fn generate_user_private_key(
-    master_private_key: &PrivateKey<X25519Crypto>,
+    master_private_key: &MasterPrivateKey,
     access_policy: &AccessPolicy,
     policy: &Policy,
-) -> Result<PrivateKey<X25519Crypto>, Error> {
+) -> Result<UserPrivateKey, Error> {
     //
     // Prepare private key
     let master_private_key_bytes = master_private_key.try_to_bytes()?;
@@ -477,7 +469,7 @@ unsafe fn generate_user_private_key(
     .to_vec();
 
     // Check deserialization of private key
-    let user_key = UserDecryptionKey::try_from_bytes(&user_key_bytes)?;
+    let user_key = UserPrivateKey::try_from_bytes(&user_key_bytes)?;
 
     Ok(user_key)
 }

@@ -3,14 +3,12 @@ use std::{
     os::raw::{c_char, c_int},
 };
 
-use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
-
 use crate::{
-    api::{CoverCrypt, PrivateKey},
+    api::CoverCrypt,
     ffi_bail, ffi_not_null, ffi_unwrap,
     interfaces::ffi::error::{set_last_error, FfiError},
+    MasterPrivateKey,
 };
-
 use abe_policy::{AccessPolicy, Attribute, Policy};
 
 #[no_mangle]
@@ -53,7 +51,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
     //
     // Generate master keys
     let (master_private_key, master_public_key) =
-        ffi_unwrap!(CoverCrypt::<X25519Crypto>::default().generate_master_keys(&policy));
+        ffi_unwrap!(CoverCrypt::default().generate_master_keys(&policy));
 
     //
     // Serialize master keys
@@ -132,8 +130,8 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         master_private_key_ptr as *const u8,
         master_private_key_len as usize,
     );
-    let master_private_key: PrivateKey<X25519Crypto> =
-        ffi_unwrap!(PrivateKey::try_from_bytes(master_private_key_bytes));
+    let master_private_key =
+        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
 
     //
     // Access Policy
@@ -163,22 +161,20 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 
     //
     // Generate user private key
-    let user_key = ffi_unwrap!(
-        CoverCrypt::<X25519Crypto>::default().generate_user_private_key(
-            &master_private_key,
-            &access_policy,
-            &policy
-        )
-    );
+    let user_private_key = ffi_unwrap!(CoverCrypt::default().generate_user_private_key(
+        &master_private_key,
+        &access_policy,
+        &policy
+    ));
 
     //
     // Serialize user private key
-    let user_key_bytes = ffi_unwrap!(user_key.try_to_bytes());
+    let user_private_key_bytes = ffi_unwrap!(user_private_key.try_to_bytes());
 
     //
     // Prepare output
     let allocated = *user_private_key_len;
-    let len = user_key_bytes.len();
+    let len = user_private_key_bytes.len();
     *user_private_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
@@ -188,7 +184,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         );
     }
     std::slice::from_raw_parts_mut(user_private_key_ptr as *mut u8, len)
-        .copy_from_slice(&user_key_bytes);
+        .copy_from_slice(&user_private_key_bytes);
 
     0
 }
