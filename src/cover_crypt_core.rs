@@ -409,10 +409,10 @@ where
 {
     user_set.iter()
         .map(|partition| {
-            let kem_private_ley = msk
+            let kem_private_key = msk
                 .get(partition)
                 .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
-            Ok((partition.to_owned(), kem_private_ley.to_owned()))
+            Ok((partition.to_owned(), kem_private_key.to_owned()))
         })
         .collect::<Result<HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PrivateKey>, Error>>()
         .map(|m| PrivateKey(m))
@@ -519,8 +519,8 @@ where
 /// by adding a new partition key pair as performed in the setup procedure above
 pub fn update<R, KEM>(
     rng: &mut R,
-    private_key: &mut PrivateKey<KEM>,
-    public_key: &mut PublicKey<KEM>,
+    msk: &mut PrivateKey<KEM>,
+    mpk: &mut PublicKey<KEM>,
     partitions_set: &HashSet<Partition>,
 ) -> Result<(), Error>
 where
@@ -529,24 +529,59 @@ where
 {
     // add keys for partitions that do not exist
     for partition in partitions_set.iter() {
-        if !private_key.contains_key(partition) || !public_key.contains_key(partition) {
+        if !msk.contains_key(partition) || !mpk.contains_key(partition) {
             // add a new Keypair
             let keypair = KEM::key_gen(rng);
-            private_key.insert(partition.to_owned(), keypair.private_key().to_owned());
-            public_key.insert(partition.to_owned(), keypair.public_key().to_owned());
+            msk.insert(partition.to_owned(), keypair.private_key().to_owned());
+            mpk.insert(partition.to_owned(), keypair.public_key().to_owned());
         }
     }
     // remove keys for partitions not in the list
-    let partitions_in_private_key: Vec<Partition> = private_key.clone().into_keys().collect();
+    let partitions_in_private_key: Vec<Partition> = msk.clone().into_keys().collect();
     for partition in partitions_in_private_key {
         if !partitions_set.contains(&partition) {
-            private_key.remove_entry(&partition);
+            msk.remove_entry(&partition);
         }
     }
-    let partitions_in_public_key: Vec<Partition> = public_key.clone().into_keys().collect();
+    let partitions_in_public_key: Vec<Partition> = mpk.clone().into_keys().collect();
     for partition in partitions_in_public_key {
         if !partitions_set.contains(&partition) {
-            public_key.remove_entry(&partition);
+            mpk.remove_entry(&partition);
+        }
+    }
+    Ok(())
+}
+
+/// Refresh a user key from the master private key and a list of partitions.
+/// The partitions MUST exist in the master secret key.
+///
+/// If a partition exists in the user key but is not in the list, it will be removed from the user key.
+///
+/// If a partition exists in the list, but not in the user key, it will be "added" to the user key,
+/// by copying the proper partition key from the master private key
+pub fn refresh<KEM>(
+    msk: &PrivateKey<KEM>,
+    usk: &mut PrivateKey<KEM>,
+    user_set: &HashSet<Partition>,
+) -> Result<(), Error>
+where
+    KEM: Kem,
+{
+    // add keys for partitions that do not exist
+    for partition in user_set.iter() {
+        if !usk.contains_key(partition) {
+            // extract key from master private key (see join)
+            let kem_private_key = msk
+                .get(partition)
+                .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
+            usk.insert(partition.to_owned(), kem_private_key.to_owned());
+        }
+    }
+    // remove keys for partitions not in the list
+    let partitions_in_user_key: Vec<Partition> = usk.clone().into_keys().collect();
+    for partition in partitions_in_user_key {
+        if !user_set.contains(&partition) {
+            usk.remove_entry(&partition);
         }
     }
     Ok(())
@@ -633,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn test_partitions_update() -> Result<(), Error> {
+    fn test_master_keys_update() -> Result<(), Error> {
         let partition_1 = Partition("1".as_bytes().to_vec());
         let partition_2 = Partition("2".as_bytes().to_vec());
         // partition list
@@ -642,10 +677,6 @@ mod tests {
         let mut rng = CsRng::new();
         // setup scheme
         let (mut msk, mut mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
-        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.try_to_bytes()?)?;
-        assert_eq!(msk, msk_, "master key comparisons failed");
-        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
-        assert_eq!(mpk, mpk_);
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition("3".as_bytes().to_vec());
@@ -657,6 +688,49 @@ mod tests {
         assert!(!mpk.contains_key(&partition_1));
         assert!(mpk.contains_key(&partition_2));
         assert!(mpk.contains_key(&partition_3));
+        Ok(())
+    }
+
+    #[test]
+    fn test_user_key_refresh() -> Result<(), Error> {
+        let partition_1 = Partition("1".as_bytes().to_vec());
+        let partition_2 = Partition("2".as_bytes().to_vec());
+        let partition_3 = Partition("3".as_bytes().to_vec());
+        // partition list
+        let partitions_set = HashSet::from([
+            partition_1.clone(),
+            partition_2.clone(),
+            partition_3.clone(),
+        ]);
+        // secure random number generator
+        let mut rng = CsRng::new();
+        // setup scheme
+        let (mut msk, mut mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
+        // create a user key with access to partition 1 and 2
+        let mut usk = join(
+            &msk,
+            &HashSet::from([partition_1.clone(), partition_2.clone()]),
+        )?;
+
+        // now remove partition 1 and add partition 4
+        let partition_4 = Partition("4".as_bytes().to_vec());
+        let new_partitions_set = HashSet::from([
+            partition_2.clone(),
+            partition_3.clone(),
+            partition_4.clone(),
+        ]);
+        // update the master keys
+        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        // refresh the user key with partitions 2 and 4
+        refresh(
+            &msk,
+            &mut usk,
+            &HashSet::from([partition_2.clone(), partition_4.clone()]),
+        )?;
+        assert!(!usk.contains_key(&partition_1));
+        assert!(usk.contains_key(&partition_2));
+        assert!(!usk.contains_key(&partition_3));
+        assert!(usk.contains_key(&partition_4));
         Ok(())
     }
 }

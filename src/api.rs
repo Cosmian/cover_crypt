@@ -77,7 +77,29 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         ))
     }
 
+    /// Update the master keys according to this new policy.
+    /// When a partition exists in the new policy but not in the master keys,
+    /// a new keypair is added to the master keys for that partition.
+    /// When a partition exists on the master keys, but not in the new policy,
+    /// it is removed from the master keys.
+    ///
+    ///  - `policy` : Policy to use to generate the keys
+    pub fn update_master_keys(
+        &self,
+        policy: &Policy,
+        msk: &mut PrivateKey<KEM>,
+        mpk: &mut PublicKey<KEM>,
+    ) -> Result<(), Error> {
+        cover_crypt_core::update::<CsRng, KEM>(
+            &mut self.rng.lock().expect("a mutex lock failed"),
+            msk,
+            mpk,
+            &all_partitions(policy)?,
+        )
+    }
+
     /// Generate a user private key.
+    /// A new user private key does NOT include to old (i.e. rotated) partitions
     ///
     /// - `msk`             : master secret key
     /// - `access_policy`   : user access policy
@@ -88,21 +110,59 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<PrivateKey<KEM>, Error> {
-        cover_crypt_core::join::<KEM>(msk, &access_policy_to_partitions(access_policy, policy)?)
+        cover_crypt_core::join::<KEM>(
+            msk,
+            &access_policy_to_partitions(access_policy, policy, false)?,
+        )
+    }
+
+    /// Refresh the user key according to the given master key and access policy.
+    /// When a partition exists in the access policy but not in the user key,
+    /// the partition key extracted from the master key is added to the user key.
+    /// When a partition exists in the key, but not in the access policy,
+    /// it is removed from user key.
+    ///
+    /// - `usk`                 : the user key to refresh
+    /// - `access_policy`       : the access policy of the user key
+    /// - `msk`                 : master secret key
+    /// - `policy`              : global policy of the master secret key
+    /// - include_old_partitions:  whether access to old partitions (i.e. before rotation) should be granted to the user
+    pub fn refresh_user_private_key(
+        &self,
+        usk: &mut PrivateKey<KEM>,
+        access_policy: &AccessPolicy,
+        msk: &PrivateKey<KEM>,
+        policy: &Policy,
+        include_old_partitions: bool,
+    ) -> Result<(), Error> {
+        let partitions =
+            access_policy_to_partitions(access_policy, policy, include_old_partitions)?;
+
+        println!("PARTITIONS: {partitions:#?}");
+
+        Ok(())
+        // cover_crypt_core::refresh::<CsRng, KEM>(
+        //     &mut self.rng.lock().expect("a mutex lock failed"),
+        //     msk,
+        //     mpk,
+        //     &all_partitions(policy)?,
+        // )
     }
 
     /// Generate a user public key.
     ///
-    /// - `mpk`             : master public key
-    /// - `access_policy`   : user access policy
-    /// - `policy`          : global policy
+    /// - `mpk`                 : master public key
+    /// - `access_policy`       : user access policy
+    /// - `policy`              : global policy
+    /// - include_old_partitions:  whether access to old partitions (i.e. before rotation) should be granted to the user
     pub fn generate_user_public_key(
         &self,
         mpk: &PublicKey<KEM>,
         access_policy: &AccessPolicy,
         policy: &Policy,
+        include_old_partitions: bool,
     ) -> Result<PublicKey<KEM>, Error> {
-        access_policy_to_partitions(access_policy, policy)?
+        access_policy_to_partitions(access_policy, policy, include_old_partitions)?
             .iter()
             .map(|partition| {
                 // partition should be contained in the master key in
@@ -126,7 +186,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
-    /// - `access_policy`   : access policy to use for key encryption
+    /// - `attributes`      : the list of attributes to compose to generate the symmetric key
     /// - `sym_key_len`     : length of the symmetric key to generate
     pub fn generate_symmetric_key(
         &self,
@@ -139,7 +199,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         cover_crypt_core::encaps::<_, KEM>(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
-            &to_partitions(attributes, policy)?,
+            &to_partitions(attributes, policy, false)?,
             sym_key_len,
         )
     }
@@ -167,7 +227,7 @@ impl<KEM: Kem> Default for CoverCrypt<KEM> {
 }
 
 pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
-    // Build a map of all attribute value for all axis
+    // Build a map of all attribute values for all axes
     let mut map = HashMap::with_capacity(policy.as_map().len());
     // We also a collect a Vec of axes which is used later
     let mut axes = Vec::with_capacity(policy.as_map().len());
@@ -193,7 +253,11 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
 /// corresponding list of CoverCrypt partitions
-fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Partition>, Error> {
+fn to_partitions(
+    attributes: &[Attribute],
+    policy: &Policy,
+    include_old_partitions: bool,
+) -> Result<HashSet<Partition>, Error> {
     // First split the attributes per axis using their latest value and check that
     // they exist
     let mut map = HashMap::new();
@@ -211,11 +275,22 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
         axes.push(axis.to_owned());
         if !map.contains_key(axis) {
-            // gather all the latest value for that axis
-            let values = attribute_names
-                .iter()
-                .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
-                .collect::<Result<Vec<u32>, abe_policy::Error>>()?;
+            let values = if include_old_partitions {
+                // gather all the prior and latest value for that axis
+                attribute_names
+                    .iter()
+                    .map(|name| policy.attribute_values(&Attribute::new(axis, name)))
+                    .collect::<Result<Vec<Vec<u32>>, abe_policy::Error>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<u32>>()
+            } else {
+                // gather all the latest value for that axis
+                attribute_names
+                    .iter()
+                    .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
+                    .collect::<Result<Vec<u32>, abe_policy::Error>>()?
+            };
             map.insert(axis.to_owned(), values);
         }
     }
@@ -269,11 +344,12 @@ fn combine_attribute_values(
 fn access_policy_to_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
+    include_old_partitions: bool,
 ) -> Result<HashSet<Partition>, Error> {
     let attr_combinations = to_attribute_combinations(access_policy, policy)?;
     let mut set = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
-        for partition in to_partitions(attr_combination, policy)? {
+        for partition in to_partitions(attr_combination, policy, include_old_partitions)? {
             let is_unique = set.insert(partition);
             if !is_unique {
                 return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
@@ -384,7 +460,8 @@ mod tests {
 
         // this should create the combination of the first attribute
         // with all those of the second axis
-        let partitions_0 = super::to_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
+        let partitions_0 =
+            super::to_partitions(&[axes_attributes[0][0].0.clone()], &policy, false)?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
@@ -400,6 +477,7 @@ mod tests {
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -414,6 +492,7 @@ mod tests {
                 axes_attributes[1][1].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
@@ -433,6 +512,7 @@ mod tests {
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -440,6 +520,59 @@ mod tests {
         assert!(partitions_3.contains(&Partition::from_attributes(vec![att_0_0_new, att_1_0])?));
         assert!(!partitions_3.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_master_keys() -> Result<(), Error> {
+        let mut policy = policy()?;
+        let cc = CoverCrypt::<X25519Crypto>::default();
+        let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
+        let partitions_msk: Vec<Partition> = msk.0.clone().into_keys().collect();
+        let partitions_mpk: Vec<Partition> = mpk.0.clone().into_keys().collect();
+        assert_eq!(partitions_msk.len(), partitions_mpk.len());
+        for p in &partitions_msk {
+            assert!(partitions_mpk.contains(p));
+        }
+        // rotate he FIN department
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        // update the master keys
+        cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        let new_partitions_msk: Vec<Partition> = msk.0.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.0.clone().into_keys().collect();
+        assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
+        for p in &new_partitions_msk {
+            assert!(new_partitions_mpk.contains(p));
+        }
+        // 3 is the size of the security level axis
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_refresh_user_key() -> Result<(), Error> {
+        let mut policy = policy()?;
+        let cc = CoverCrypt::<X25519Crypto>::default();
+        let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
+        let access_policy = AccessPolicy::from_boolean_expression(
+            "Department::MKG && Security Level::Confidential",
+        )?;
+        let mut usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
+        // rotate he FIN department
+        policy.rotate(&Attribute::new("Department", "MKG"))?;
+
+        println!("POLICY: {policy:#?}");
+        // update the master keys
+        cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, true)?;
+        // let new_partitions_msk: Vec<Partition> = msk.0.clone().into_keys().collect();
+        // let new_partitions_mpk: Vec<Partition> = mpk.0.clone().into_keys().collect();
+        // assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
+        // for p in &new_partitions_msk {
+        //     assert!(new_partitions_mpk.contains(p));
+        // }
+        // // 3 is the size of the security level axis
+        // assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 3);
         Ok(())
     }
 
@@ -484,7 +617,7 @@ mod tests {
 
         //
         // create partitions from access policy
-        let partitions = access_policy_to_partitions(&access_policy, &policy)?;
+        let partitions = access_policy_to_partitions(&access_policy, &policy, false)?;
 
         //
         // manually create the partitions
