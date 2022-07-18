@@ -194,7 +194,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 }
 
 #[no_mangle]
-/// Generate the user private key matching the given access policy
+/// Rotate the attributes of the given policy
 ///
 /// - `new_policy_ptr`: Output buffer containing new policy
 /// - `new_policy_len`: Size of the output buffer

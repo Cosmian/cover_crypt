@@ -383,7 +383,6 @@ where
     );
     for partition in partitions_set.iter() {
         let keypair = KEM::key_gen(rng);
-        // let partition = partition.to_owned();
         msk.insert(partition.to_owned(), keypair.private_key().to_owned());
         mpk.insert(partition.to_owned(), keypair.public_key().to_owned());
     }
@@ -511,6 +510,48 @@ where
     Ok(None)
 }
 
+/// Update the master private key and master public key of the CoverCrypt
+/// scheme with the given list of partitions.
+///
+/// If a partition exists in the keys but not in the list, it will be removed from the keys.
+///
+/// If a partition exists in the list, but not in the keys, it will be "added" to the keys,
+/// by adding a new partition key pair as performed in the setup procedure above
+pub fn update<R, KEM>(
+    rng: &mut R,
+    private_key: &mut PrivateKey<KEM>,
+    public_key: &mut PublicKey<KEM>,
+    partitions_set: &HashSet<Partition>,
+) -> Result<(), Error>
+where
+    R: CryptoRng + RngCore,
+    KEM: Kem,
+{
+    // add keys for partitions that do not exist
+    for partition in partitions_set.iter() {
+        if !private_key.contains_key(partition) || !public_key.contains_key(partition) {
+            // add a new Keypair
+            let keypair = KEM::key_gen(rng);
+            private_key.insert(partition.to_owned(), keypair.private_key().to_owned());
+            public_key.insert(partition.to_owned(), keypair.public_key().to_owned());
+        }
+    }
+    // remove keys for partitions not in the list
+    let partitions_in_private_key: Vec<Partition> = private_key.clone().into_keys().collect();
+    for partition in partitions_in_private_key {
+        if !partitions_set.contains(&partition) {
+            private_key.remove_entry(&partition);
+        }
+    }
+    let partitions_in_public_key: Vec<Partition> = public_key.clone().into_keys().collect();
+    for partition in partitions_in_public_key {
+        if !partitions_set.contains(&partition) {
+            public_key.remove_entry(&partition);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_base::{asymmetric::ristretto::X25519Crypto, entropy::CsRng};
@@ -588,6 +629,34 @@ mod tests {
         let res1 = decaps::<X25519Crypto>(&sk1, &encapsulation, SECRET_KEY_LENGTH)?;
         assert!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
         assert!(Some(secret_key) == res1, "Wrong decapsulation for user 1!");
+        Ok(())
+    }
+
+    #[test]
+    fn test_partitions_update() -> Result<(), Error> {
+        let partition_1 = Partition("1".as_bytes().to_vec());
+        let partition_2 = Partition("2".as_bytes().to_vec());
+        // partition list
+        let partitions_set = HashSet::from([partition_1.clone(), partition_2.clone()]);
+        // secure random number generator
+        let mut rng = CsRng::new();
+        // setup scheme
+        let (mut msk, mut mpk) = setup::<_, X25519Crypto>(&mut rng, &partitions_set);
+        let msk_: PrivateKey<X25519Crypto> = PrivateKey::try_from_bytes(&msk.try_to_bytes()?)?;
+        assert_eq!(msk, msk_, "master key comparisons failed");
+        let mpk_: PublicKey<X25519Crypto> = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
+        assert_eq!(mpk, mpk_);
+
+        // now remove partition 1 and add partition 3
+        let partition_3 = Partition("3".as_bytes().to_vec());
+        let new_partitions_set = HashSet::from([partition_2.clone(), partition_3.clone()]);
+        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        assert!(!msk.contains_key(&partition_1));
+        assert!(msk.contains_key(&partition_2));
+        assert!(msk.contains_key(&partition_3));
+        assert!(!mpk.contains_key(&partition_1));
+        assert!(mpk.contains_key(&partition_2));
+        assert!(mpk.contains_key(&partition_3));
         Ok(())
     }
 }
