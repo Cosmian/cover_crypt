@@ -160,7 +160,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 
     //
     // Generate user private key
-    let user_key = ffi_unwrap!(CoverCrypt::default().generate_user_private_key(
+    let user_private_key = ffi_unwrap!(CoverCrypt::default().generate_user_private_key(
         &master_private_key,
         &access_policy,
         &policy
@@ -168,12 +168,12 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 
     //
     // Serialize user private key
-    let user_key_bytes = ffi_unwrap!(user_key.try_to_bytes());
+    let user_private_key_bytes = ffi_unwrap!(user_private_key.try_to_bytes());
 
     //
     // Prepare output
     let allocated = *user_private_key_len;
-    let len = user_key_bytes.len();
+    let len = user_private_key_bytes.len();
     *user_private_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
@@ -183,7 +183,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         );
     }
     std::slice::from_raw_parts_mut(user_private_key_ptr as *mut u8, len)
-        .copy_from_slice(&user_key_bytes);
+        .copy_from_slice(&user_private_key_bytes);
 
     0
 }

@@ -1,22 +1,5 @@
 #![allow(dead_code)]
 
-use std::{
-    collections::HashMap,
-    ffi::CStr,
-    os::raw::{c_char, c_int},
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        RwLock,
-    },
-};
-
-use cosmian_crypto_base::{
-    hybrid_crypto::{Block, Metadata},
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use lazy_static::lazy_static;
-
 use crate::{
     ffi_bail, ffi_not_null, ffi_unwrap,
     interfaces::{
@@ -28,8 +11,22 @@ use crate::{
     },
     PublicKey, UserPrivateKey,
 };
-
 use abe_policy::{Attribute, Policy};
+use cosmian_crypto_base::{
+    hybrid_crypto::{Block, Metadata},
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use lazy_static::lazy_static;
+use std::{
+    collections::HashMap,
+    ffi::CStr,
+    os::raw::{c_char, c_int},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        RwLock,
+    },
+};
 
 // -------------------------------
 //         Encryption

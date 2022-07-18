@@ -1,12 +1,12 @@
-use super::generate_cc_keys::{
-    webassembly_generate_master_keys, webassembly_generate_user_private_key,
-    webassembly_rotate_attributes,
-};
 use crate::{
     api::CoverCrypt,
     error::Error,
     interfaces::{
         statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
+        wasm_bindgen::generate_cc_keys::{
+            webassembly_generate_master_keys, webassembly_generate_user_private_key,
+            webassembly_rotate_attributes,
+        },
         wasm_bindgen::hybrid_cc_aes::*,
     },
     MasterPrivateKey, PublicKey, UserPrivateKey,
@@ -145,20 +145,20 @@ fn test_generate_keys() {
     // Generate master keys
     let master_keys =
         webassembly_generate_master_keys(Uint8Array::from(serialized_policy.as_slice())).unwrap();
-
     let master_keys_vec = master_keys.to_vec();
-    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
-    let private_key_bytes = &master_keys_vec[4..4 + private_key_size as usize];
+    let master_private_key_size =
+        u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap()) as usize;
+    let master_private_key_bytes = &master_keys_vec[4..4 + master_private_key_size];
 
     //
     // Check deserialization
-    MasterPrivateKey::try_from_bytes(private_key_bytes).unwrap();
-    PublicKey::try_from_bytes(&master_keys_vec[4 + private_key_size as usize..]).unwrap();
+    MasterPrivateKey::try_from_bytes(master_private_key_bytes).unwrap();
+    PublicKey::try_from_bytes(&master_keys_vec[4 + master_private_key_size..]).unwrap();
 
     //
     // Generate user private key
     let user_private_key_bytes = webassembly_generate_user_private_key(
-        Uint8Array::from(private_key_bytes),
+        Uint8Array::from(master_private_key_bytes),
         "Department::FIN && Security Level::Top Secret",
         Uint8Array::from(serialized_policy.as_slice()),
     )
@@ -180,14 +180,14 @@ fn test_generate_keys() {
     let master_keys =
         webassembly_generate_master_keys(Uint8Array::from(new_policy.as_bytes())).unwrap();
     let master_keys_vec = master_keys.to_vec();
-    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
-    let private_key_bytes = &master_keys_vec[4..4 + private_key_size as usize];
+    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap()) as usize;
+    let private_key_bytes = &master_keys_vec[4..4 + private_key_size];
 
     //
     // Check deserialization
     MasterPrivateKey::try_from_bytes(private_key_bytes).unwrap();
     let master_public_key =
-        PublicKey::try_from_bytes(&master_keys_vec[4 + private_key_size as usize..]).unwrap();
+        PublicKey::try_from_bytes(&master_keys_vec[4 + private_key_size..]).unwrap();
 
     //
     // Encrypt / decrypt

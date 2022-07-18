@@ -424,13 +424,13 @@ unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterPrivateKey, Pub
         std::slice::from_raw_parts(master_keys_ptr as *const u8, master_keys_len as usize).to_vec();
 
     let master_private_key_size = u32::from_be_bytes(master_keys_bytes[0..4].try_into()?);
-    let private_key_bytes = &master_keys_bytes[4..4 + master_private_key_size as usize];
+    let master_private_key_bytes = &master_keys_bytes[4..4 + master_private_key_size as usize];
     let public_key_bytes = &master_keys_bytes[4 + master_private_key_size as usize..];
 
-    let private_key = MasterPrivateKey::try_from_bytes(private_key_bytes)?;
+    let master_private_key = MasterPrivateKey::try_from_bytes(master_private_key_bytes)?;
     let public_key = PublicKey::try_from_bytes(public_key_bytes)?;
 
-    Ok((private_key, public_key))
+    Ok((master_private_key, public_key))
 }
 
 unsafe fn generate_user_private_key(

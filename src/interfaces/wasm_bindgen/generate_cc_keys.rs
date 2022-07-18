@@ -31,9 +31,8 @@ pub fn webassembly_generate_master_keys(policy_bytes: Uint8Array) -> Result<Uint
         .try_to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing master public key: {e}")))?;
 
-    let mut master_keys_bytes = Vec::<u8>::with_capacity(
-        4 + master_private_key_bytes.len() + master_public_key_bytes.len(),
-    );
+    let mut master_keys_bytes =
+        Vec::with_capacity(4 + master_private_key_bytes.len() + master_public_key_bytes.len());
     master_keys_bytes.extend_from_slice(&u32::to_be_bytes(master_private_key_bytes.len() as u32));
     master_keys_bytes.extend_from_slice(&master_private_key_bytes);
     master_keys_bytes.extend_from_slice(&master_public_key_bytes);

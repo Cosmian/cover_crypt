@@ -1,7 +1,6 @@
-use pyo3::{exceptions::PyTypeError, prelude::*};
-
 use crate::{api::CoverCrypt, MasterPrivateKey};
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use pyo3::{exceptions::PyTypeError, prelude::*};
 
 /// Generate the master authority keys for supplied Policy
 ///
