@@ -17,8 +17,7 @@ use crate::{
 };
 use abe_policy::{ap, AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_crypto_base::{
-    hybrid_crypto::Metadata,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata, SymmetricCrypto},
     KeyTrait,
 };
 use std::{

@@ -28,7 +28,7 @@ impl<'a> Deserializer<'a> {
             ))
         })?;
         let mut buf = vec![0_u8; len];
-        (&mut self.readable).read_exact(&mut buf).map_err(|_| {
+        self.readable.read_exact(&mut buf).map_err(|_| {
             Error::InvalidSize(format!(
                 "Deserializer: failed reading array of: {} bytes",
                 len

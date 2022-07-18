@@ -13,8 +13,7 @@ use crate::{
 };
 use abe_policy::{Attribute, Policy};
 use cosmian_crypto_base::{
-    hybrid_crypto::{Block, Metadata},
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Block, Metadata, SymmetricCrypto},
     KeyTrait,
 };
 use lazy_static::lazy_static;

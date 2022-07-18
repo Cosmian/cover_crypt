@@ -229,13 +229,13 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_base"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d85d75ec068e26a877a841581d17f0724badc703f199660f1e93136536c61365"
+version = "2.1.1"
+source = "git+https://github.com/Cosmian/crypto_base?branch=tbz_refactor#c139f684cf54de24264a7fc3777961ecb0f73f37"
 dependencies = [
  "aes",
  "aes-gcm",
  "bindgen",
+ "cosmian_crypto_base_anssi",
  "cosmian_fpe",
  "cupid",
  "curve25519-dalek",
@@ -253,6 +253,29 @@ dependencies = [
  "sha2",
  "thiserror",
  "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_crypto_base_anssi"
+version = "1.0.0"
+source = "git+https://github.com/Cosmian/crypto_base?branch=tbz_refactor#c139f684cf54de24264a7fc3777961ecb0f73f37"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "bindgen",
+ "cupid",
+ "curve25519-dalek",
+ "hex",
+ "hkdf",
+ "num-bigint",
+ "num-traits",
+ "rand",
+ "rand_core 0.5.1",
+ "rand_hc",
+ "serde",
+ "sha2",
+ "thiserror",
  "zeroize",
 ]
 

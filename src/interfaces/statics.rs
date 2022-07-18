@@ -5,7 +5,7 @@ use crate::{
 };
 use cosmian_crypto_base::{
     entropy::CsRng,
-    hybrid_crypto::{Block, Dem, Metadata},
+    symmetric_crypto::{Block, Dem, Metadata},
     KeyTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -72,7 +72,9 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
                     .deref_mut(),
                 &secret_key,
                 None,
-                &meta_data.to_bytes().map_err(|_| Error::ConversionFailed)?,
+                &meta_data
+                    .try_to_bytes()
+                    .map_err(|_| Error::ConversionFailed)?,
             )
             .map_err(Error::CryptoError)?,
         );
@@ -119,7 +121,7 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     let meta_data = if index >= header_size {
         Metadata::default()
     } else {
-        Metadata::from_bytes(
+        Metadata::try_from_bytes(
             &DEM::decaps(&secret_key, None, &header_bytes[index..]).map_err(Error::CryptoError)?,
         )
         .map_err(|_| Error::ConversionFailed)?

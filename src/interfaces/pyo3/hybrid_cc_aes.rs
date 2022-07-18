@@ -14,8 +14,7 @@ use crate::{
 };
 use abe_policy::Attribute;
 use cosmian_crypto_base::{
-    hybrid_crypto::Metadata,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata, SymmetricCrypto},
     KeyTrait,
 };
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
@@ -114,7 +113,7 @@ pub fn decrypt_hybrid_header(
 
     let metadata = cleartext_header
         .meta_data
-        .to_bytes()
+        .try_to_bytes()
         .map_err(|e| PyTypeError::new_err(format!("Serialize metadata failed: {e}")))?;
 
     Ok((cleartext_header.symmetric_key.to_bytes(), metadata))
@@ -220,7 +219,7 @@ pub fn decrypt(user_decryption_key_bytes: Vec<u8>, encrypted_bytes: Vec<u8>) -> 
 
     let cleartext_header = decrypt_hybrid_header(user_decryption_key_bytes, header)?;
 
-    let metadata = Metadata::from_bytes(&cleartext_header.1)
+    let metadata = Metadata::try_from_bytes(&cleartext_header.1)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing metadata: {e}")))?;
 
     decrypt_hybrid_block(cleartext_header.0, metadata.uid, 0, ciphertext)
