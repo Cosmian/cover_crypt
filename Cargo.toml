@@ -1,6 +1,6 @@
 [package]
 name = "cover_crypt"
-version = "3.2.1"
+version = "3.3.0"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -32,13 +32,14 @@ python = ["pyo3"]
 
 [dependencies]
 abe_policy = "0.1"
-cosmian_crypto_base = "2.0"
+cosmian_crypto_base = "2.1.0"
 hex = "0.4"
 leb128 = "0.2"
 rand_core = { version = "0.5", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
+zeroize = "1.5"
 # Optional ones
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }

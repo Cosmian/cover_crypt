@@ -3,25 +3,22 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
-    hybrid_crypto::Metadata,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
-    KeyTrait,
-};
-use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
-
 use crate::{
-    api::{PrivateKey, PublicKey},
     interfaces::statics::{
         decrypt_hybrid_block as core_decrypt_hybrid_block,
         decrypt_hybrid_header as core_decrypt_hybrid_header,
         encrypt_hybrid_block as core_encrypt_hybrid_block,
         encrypt_hybrid_header as core_encrypt_hybrid_header, ClearTextHeader,
     },
+    PublicKey, UserPrivateKey,
 };
-
 use abe_policy::Attribute;
+use cosmian_crypto_base::{
+    hybrid_crypto::Metadata,
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+    KeyTrait,
+};
+use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
@@ -85,7 +82,7 @@ pub fn encrypt_hybrid_header(
 
     //
     // Encrypt
-    let encrypted_header = core_encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+    let encrypted_header = core_encrypt_hybrid_header::<Aes256GcmCrypto>(
         &policy,
         &public_key,
         &attributes,
@@ -110,8 +107,8 @@ pub fn decrypt_hybrid_header(
     //
     // Finally decrypt symmetric key using given user decryption key
     let cleartext_header: ClearTextHeader<Aes256GcmCrypto> =
-        core_decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-            &PrivateKey::try_from_bytes(&user_decryption_key_bytes)?,
+        core_decrypt_hybrid_header::<Aes256GcmCrypto>(
+            &UserPrivateKey::try_from_bytes(&user_decryption_key_bytes)?,
             &encrypted_header_bytes,
         )?;
 
@@ -144,7 +141,6 @@ pub fn encrypt_hybrid_block(
     //
     // Encrypt block
     Ok(core_encrypt_hybrid_block::<
-        X25519Crypto,
         Aes256GcmCrypto,
         MAX_CLEAR_TEXT_SIZE,
     >(
@@ -175,7 +171,6 @@ pub fn decrypt_hybrid_block(
     //
     // Decrypt block
     Ok(core_decrypt_hybrid_block::<
-        X25519Crypto,
         Aes256GcmCrypto,
         MAX_CLEAR_TEXT_SIZE,
     >(

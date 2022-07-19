@@ -1,46 +1,16 @@
 use crate::{
-    cover_crypt_core::{self, Partition},
+    cover_crypt_core::{
+        self, Encapsulation, MasterPrivateKey, Partition, PublicKey, SecretKey, UserPrivateKey,
+    },
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
-
-use cosmian_crypto_base::{asymmetric::KeyPair, entropy::CsRng, hybrid_crypto::Kem};
+use cosmian_crypto_base::entropy::CsRng;
 use std::{
     collections::{HashMap, HashSet},
-    marker::PhantomData,
     ops::DerefMut,
     sync::Mutex,
 };
-
-/// Private key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
-/// private keys for some authorisations.
-pub type PrivateKey<KEM> = cover_crypt_core::PrivateKey<KEM>;
-
-/// Public key of the CoverCrypt algorithm. This is a `HashMap` of the KEM
-/// public keys for some authorisations.
-pub type PublicKey<KEM> = cover_crypt_core::PublicKey<KEM>;
-
-pub type Encapsulation = cover_crypt_core::Encapsulation;
-
-pub type SecretKey = cover_crypt_core::SecretKey;
-/// CoverCrypt public and private key pair.
-#[derive(Clone)]
-pub struct CCKeyPair<KEM: Kem> {
-    pub(crate) pk: PublicKey<KEM>,
-    pub(crate) sk: PrivateKey<KEM>,
-}
-
-impl<KEM: Kem> CCKeyPair<KEM> {
-    /// Return the public key.
-    pub fn public_key(&self) -> &PublicKey<KEM> {
-        &self.pk
-    }
-
-    /// Return the private key.
-    pub fn private_key(&self) -> &PrivateKey<KEM> {
-        &self.sk
-    }
-}
 
 /// The engine is the main entry point for the core functionalities.
 ///
@@ -50,17 +20,15 @@ impl<KEM: Kem> CCKeyPair<KEM> {
 /// In addition, two methods are supplied to generate random symmetric keys and
 /// their corresponding cipher texts which are suitable for use in a hybrid
 /// encryption scheme.
-pub struct CoverCrypt<KEM> {
+pub struct CoverCrypt {
     pub(crate) rng: Mutex<CsRng>,
-    phantom_kem: PhantomData<KEM>,
 }
 
-impl<KEM: Kem> CoverCrypt<KEM> {
+impl CoverCrypt {
     /// Instantiate a new CoverCrypt object.
     pub fn new() -> Self {
         Self {
             rng: Mutex::new(CsRng::new()),
-            phantom_kem: PhantomData,
         }
     }
 
@@ -70,8 +38,8 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     pub fn generate_master_keys(
         &self,
         policy: &Policy,
-    ) -> Result<(PrivateKey<KEM>, PublicKey<KEM>), Error> {
-        Ok(cover_crypt_core::setup::<CsRng, KEM>(
+    ) -> Result<(MasterPrivateKey, PublicKey), Error> {
+        Ok(cover_crypt_core::setup::<CsRng>(
             &mut self.rng.lock().expect("a mutex lock failed"),
             &all_partitions(policy)?,
         ))
@@ -84,89 +52,72 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - `policy`          : global policy
     pub fn generate_user_private_key(
         &self,
-        msk: &PrivateKey<KEM>,
+        msk: &MasterPrivateKey,
         access_policy: &AccessPolicy,
         policy: &Policy,
-    ) -> Result<PrivateKey<KEM>, Error> {
-        cover_crypt_core::join::<KEM>(msk, &access_policy_to_partitions(access_policy, policy)?)
+    ) -> Result<UserPrivateKey, Error> {
+        cover_crypt_core::join(
+            self.rng.lock().expect("a mutex lock failed").deref_mut(),
+            msk,
+            &access_policy_to_partitions(access_policy, policy)?,
+        )
     }
 
-    /// Generate a user public key.
-    ///
-    /// - `mpk`             : master public key
-    /// - `access_policy`   : user access policy
-    /// - `policy`          : global policy
-    pub fn generate_user_public_key(
-        &self,
-        mpk: &PublicKey<KEM>,
-        access_policy: &AccessPolicy,
-        policy: &Policy,
-    ) -> Result<PublicKey<KEM>, Error> {
-        access_policy_to_partitions(access_policy, policy)?
-            .iter()
-            .map(|partition| {
-                // partition should be contained in the master key in
-                // order to generate a valid user key
-                let kem_public_key = mpk.get(partition).ok_or_else(|| {
-                    Error::UnknownPartition(format!(
-                        "generate user public key: the master public key does not have partition \
-                         {:?}",
-                        partition
-                    ))
-                })?;
-                Ok((partition.to_owned(), kem_public_key.to_owned()))
-            })
-            .collect::<Result<HashMap<Partition, <<KEM as Kem>::KeyPair as KeyPair>::PublicKey>, Error>>()
-            .map(|m| cover_crypt_core::PublicKey(m))
-    }
-
-    /// Generate a random symmetric key of `symmetric_key_len` to be used in an
-    /// hybrid encryption scheme and generate its CoverCrypt encrypted version
+    /// Generate a random symmetric key of `sym_key_len` to be used in an
+    /// hybrid encryption scheme and generate its CoverCrypt encapsulation
     /// with the supplied policy `attributes`.
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
-    /// - `access_policy`   : access policy to use for key encryption
+    /// TODO: why isn't it an access policy here ? Maybe uniformise
+    /// - `attributes`     access_policy : access policy to use for key encryption
     /// - `sym_key_len`     : length of the symmetric key to generate
     pub fn generate_symmetric_key(
         &self,
         policy: &Policy,
-        pk: &PublicKey<KEM>,
+        pk: &PublicKey,
         attributes: &[Attribute],
         sym_key_len: usize,
     ) -> Result<(SecretKey, Encapsulation), Error> {
-        // get the authorisations associated to the given access policy
-        cover_crypt_core::encaps::<_, KEM>(
+        let bytes = self
+            .rng
+            .lock()
+            .expect("Mutex lock failed!")
+            .generate_random_bytes(sym_key_len);
+        let sym_key = SecretKey::from(bytes);
+        let encapsulation = cover_crypt_core::encaps(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &to_partitions(attributes, policy)?,
-            sym_key_len,
-        )
+            &sym_key,
+        )?;
+        Ok((sym_key, encapsulation))
     }
 
-    /// Decrypt a symmetric key generated with `generate_symmetric_key()`
+    /// Decapsulate a symmetric key generated with `generate_symmetric_key()`.
     ///
-    /// - `sk_u`        : user secret key
-    /// - `c`           : encrypted symmetric key
-    /// - `sym_key_len` : length of the symmetric key to generate
-    pub fn decrypt_symmetric_key(
+    /// - `sk_u`            : user secret key
+    /// - `encapsulation`   : encrypted symmetric key
+    /// - `sym_key_len`     : length of the symmetric key to generate
+    pub fn decaps_symmetric_key(
         &self,
-        sk_u: &PrivateKey<KEM>,
-        ciphertext: &Encapsulation,
-        sym_key_len: usize,
+        sk_u: &UserPrivateKey,
+        encapsulation: &Encapsulation,
     ) -> Result<SecretKey, Error> {
-        cover_crypt_core::decaps::<KEM>(sk_u, ciphertext, sym_key_len)?
-            .ok_or(Error::InsufficientAccessPolicy)
+        cover_crypt_core::decaps(sk_u, encapsulation)?.ok_or(Error::InsufficientAccessPolicy)
     }
 }
 
-impl<KEM: Kem> Default for CoverCrypt<KEM> {
+impl Default for CoverCrypt {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
+/// Generate all possible partitions from the given policy.
+///
+/// - `policy`  : policy from which to generate partitions
+fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // Build a map of all attribute value for all axis
     let mut map = HashMap::with_capacity(policy.as_map().len());
     // We also a collect a Vec of axes which is used later
@@ -193,6 +144,9 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
 /// corresponding list of CoverCrypt partitions
+///
+/// - `attributes`  : liste of attributes
+/// - `policy`      : security policy
 fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // First split the attributes per axis using their latest value and check that
     // they exist
@@ -228,6 +182,11 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     Ok(set)
 }
 
+/// Generate all attribute values combinations from the given axes.
+///
+/// - `current_axis`    : axis from which to start to combine values with other axes
+/// - `axes`            : list of axes
+/// - `map`             : map axes with their associated attribute values
 fn combine_attribute_values(
     current_axis: usize,
     axes: &[String],
@@ -339,8 +298,6 @@ fn to_attribute_combinations(
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
-
     use super::*;
     use abe_policy::{Attribute, PolicyAxis};
 
@@ -452,7 +409,7 @@ mod tests {
         let access_policy = (AccessPolicy::new("Department", "R&D")
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Top Secret");
-        let cc = CoverCrypt::<X25519Crypto>::default();
+        let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let (key, encrypted_key) = cc.generate_symmetric_key(
             &policy,
@@ -464,7 +421,7 @@ mod tests {
             KEY_LENGTH,
         )?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let recovered_key = cc.decrypt_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
+        let recovered_key = cc.decaps_symmetric_key(&sk_u, &encrypted_key)?;
         assert!(key == recovered_key, "Wrong decryption of the key!");
         Ok(())
     }

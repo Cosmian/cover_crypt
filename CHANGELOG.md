@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.3.0] - 2022-07-19
+### Added
+### Changed
+- Implements the new version of CoverCrypt.
+### Fixed
+### Removed
+---
+
+---
 ## [3.2.1] - 2022-07-18
 ### Added
 ### Changed
