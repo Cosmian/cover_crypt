@@ -271,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "cover_crypt"
-version = "3.2.1"
+version = "3.3.0"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_base",
