@@ -133,7 +133,7 @@ impl CoverCrypt {
             .expect("Mutex lock failed!")
             .generate_random_bytes(sym_key_len);
         let sym_key = SecretKey::from(bytes);
-        let encapsulation = cover_crypt_core::encrypt(
+        let encapsulation = cover_crypt_core::encaps(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &to_partitions(attributes, policy)?,
@@ -151,10 +151,8 @@ impl CoverCrypt {
         &self,
         sk_u: &UserPrivateKey,
         encapsulation: &Encapsulation,
-        sym_key_len: usize,
     ) -> Result<SecretKey, Error> {
-        cover_crypt_core::decaps(sk_u, encapsulation, sym_key_len)?
-            .ok_or(Error::InsufficientAccessPolicy)
+        cover_crypt_core::decaps(sk_u, encapsulation)?.ok_or(Error::InsufficientAccessPolicy)
     }
 }
 
@@ -534,7 +532,7 @@ mod tests {
             KEY_LENGTH,
         )?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let recovered_key = cc.decaps_symmetric_key(&sk_u, &encrypted_key, KEY_LENGTH)?;
+        let recovered_key = cc.decaps_symmetric_key(&sk_u, &encrypted_key)?;
         assert!(key == recovered_key, "Wrong decryption of the key!");
         Ok(())
     }

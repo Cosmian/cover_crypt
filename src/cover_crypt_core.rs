@@ -504,7 +504,7 @@ where
 /// - `mpk`             : master public key
 /// - `encyption_set`   : sets for which to generate a ciphertext
 /// - `K`               : secret key
-pub fn encrypt<R>(
+pub fn encaps<R>(
     rng: &mut R,
     mpk: &PublicKey,
     encryption_set: &HashSet<Partition>,
@@ -548,16 +548,14 @@ where
 ///
 /// - `sk_j`                : user private key
 /// - `encapsulation`       : symmetric key encapsulation
-/// - `secret_key_length`   : desired length of the generated secret key
 pub fn decaps(
     sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation,
-    secret_key_length: usize,
 ) -> Result<Option<SecretKey>, Error> {
     for (partition, E_i) in encapsulation.E.iter() {
         if let Some(x_k) = sk_j.x.get(partition) {
             let K_k = (&encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b) * x_k;
-            let K = hkdf_256(&K_k.to_bytes(), secret_key_length, KEY_GEN_INFO.as_bytes())?
+            let K = hkdf_256(&K_k.to_bytes(), E_i.len(), KEY_GEN_INFO.as_bytes())?
                 .iter()
                 .zip(E_i.iter())
                 .map(|(e_1, e_2)| e_1 ^ e_2)
@@ -683,7 +681,7 @@ mod tests {
         let usk_ = UserPrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
         let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
-        let encapsulation = encrypt(&mut rng, &mpk, &target_set, &sym_key)?;
+        let encapsulation = encaps(&mut rng, &mpk, &target_set, &sym_key)?;
         let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
         assert_eq!(
             encapsulation, encapsulation_,
@@ -714,10 +712,10 @@ mod tests {
         let sk1 = join(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
         let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
-        let encapsulation = encrypt(&mut rng, &mpk, &target_set, &sym_key)?;
+        let encapsulation = encaps(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
-        let res0 = decaps(&sk0, &encapsulation, SYM_KEY_LENGTH)?;
-        let res1 = decaps(&sk1, &encapsulation, SYM_KEY_LENGTH)?;
+        let res0 = decaps(&sk0, &encapsulation)?;
+        let res1 = decaps(&sk1, &encapsulation)?;
         assert!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
         assert!(Some(sym_key) == res1, "Wrong decapsulation for user 1!");
         Ok(())
