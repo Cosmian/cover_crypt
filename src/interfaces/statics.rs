@@ -113,8 +113,7 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     // decrypt the symmetric key
     let cover_crypt = CoverCrypt::default();
     let encapsulation = Encapsulation::try_from_bytes(&encapsulation_bytes)?;
-    let secret_key =
-        cover_crypt.decaps_symmetric_key(user_decryption_key, &encapsulation, DEM::Key::LENGTH)?;
+    let secret_key = cover_crypt.decaps_symmetric_key(user_decryption_key, &encapsulation)?;
 
     // decrypt the metadata if any
     let meta_data = if index >= header_size {
