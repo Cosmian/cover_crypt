@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [4.0.0] - 2022-07-19
+### Added
+### Changed
+- Implements the new version of CoverCrypt (V2).
+### Fixed
+### Removed
+---
+
+
+---
 ## [3.4.0] - 2022-07-18
 ### Added
 ### Changed
@@ -11,7 +21,6 @@ All notable changes to this project will be documented in this file.
 - Attributes rotation; wrong update of the master keys
 ### Removed
 ---
-
 
 ---
 ## [3.2.1] - 2022-07-18
