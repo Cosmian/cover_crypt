@@ -237,9 +237,9 @@ impl Zeroize for UserPrivateKey {
     fn zeroize(&mut self) {
         self.a.zeroize();
         self.b.zeroize();
-        for (_, x_i) in self.x.iter_mut() {
+        self.x.iter_mut().for_each(|(_, x_i)| {
             x_i.zeroize();
-        }
+        });
     }
 }
 
@@ -552,7 +552,7 @@ pub fn decaps(
     sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation,
 ) -> Result<Option<SecretKey>, Error> {
-    for (partition, E_i) in encapsulation.E.iter() {
+    for (partition, E_i) in &encapsulation.E {
         if let Some(x_k) = sk_j.x.get(partition) {
             let K_k = (&encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b) * x_k;
             let K = hkdf_256(&K_k.to_bytes(), E_i.len(), KEY_GEN_INFO.as_bytes())?
