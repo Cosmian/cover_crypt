@@ -112,41 +112,35 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     ) -> Result<PrivateKey<KEM>, Error> {
         cover_crypt_core::join::<KEM>(
             msk,
-            &access_policy_to_partitions(access_policy, policy, false)?,
+            &access_policy_to_current_partitions(access_policy, policy)?,
         )
     }
 
     /// Refresh the user key according to the given master key and access policy.
-    /// When a partition exists in the access policy but not in the user key,
-    /// the partition key extracted from the master key is added to the user key.
-    /// When a partition exists in the key, but not in the access policy,
-    /// it is removed from user key.
     ///
-    /// - `usk`                 : the user key to refresh
-    /// - `access_policy`       : the access policy of the user key
-    /// - `msk`                 : master secret key
-    /// - `policy`              : global policy of the master secret key
-    /// - include_old_partitions:  whether access to old partitions (i.e. before rotation) should be granted to the user
+    /// The user key will be granted access to the current partitions, as determined by its access policy.
+    /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
+    ///
+    /// - `usk`                  : the user key to refresh
+    /// - `access_policy`        : the access policy of the user key
+    /// - `msk`                  : master secret key
+    /// - `policy`               : global policy of the master secret key
+    /// - preserve_old_partitions_access:  whether access to old partitions (i.e. before rotation) should be kept
     pub fn refresh_user_private_key(
         &self,
         usk: &mut PrivateKey<KEM>,
         access_policy: &AccessPolicy,
         msk: &PrivateKey<KEM>,
         policy: &Policy,
-        include_old_partitions: bool,
+        preserve_old_partitions_access: bool,
     ) -> Result<(), Error> {
-        let partitions =
-            access_policy_to_partitions(access_policy, policy, include_old_partitions)?;
-
-        println!("PARTITIONS: {partitions:#?}");
-
-        Ok(())
-        // cover_crypt_core::refresh::<CsRng, KEM>(
-        //     &mut self.rng.lock().expect("a mutex lock failed"),
-        //     msk,
-        //     mpk,
-        //     &all_partitions(policy)?,
-        // )
+        let mut current_partitions = access_policy_to_current_partitions(access_policy, policy)?;
+        if preserve_old_partitions_access {
+            for key_partition in usk.clone().into_keys() {
+                current_partitions.insert(key_partition);
+            }
+        }
+        cover_crypt_core::refresh(msk, usk, &current_partitions)
     }
 
     /// Generate a user public key.
@@ -154,15 +148,13 @@ impl<KEM: Kem> CoverCrypt<KEM> {
     /// - `mpk`                 : master public key
     /// - `access_policy`       : user access policy
     /// - `policy`              : global policy
-    /// - include_old_partitions:  whether access to old partitions (i.e. before rotation) should be granted to the user
     pub fn generate_user_public_key(
         &self,
         mpk: &PublicKey<KEM>,
         access_policy: &AccessPolicy,
         policy: &Policy,
-        include_old_partitions: bool,
     ) -> Result<PublicKey<KEM>, Error> {
-        access_policy_to_partitions(access_policy, policy, include_old_partitions)?
+        access_policy_to_current_partitions(access_policy, policy)?
             .iter()
             .map(|partition| {
                 // partition should be contained in the master key in
@@ -199,7 +191,7 @@ impl<KEM: Kem> CoverCrypt<KEM> {
         cover_crypt_core::encaps::<_, KEM>(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
-            &to_partitions(attributes, policy, false)?,
+            &to_partitions(attributes, policy)?,
             sym_key_len,
         )
     }
@@ -252,12 +244,8 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 }
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
-/// corresponding list of CoverCrypt partitions
-fn to_partitions(
-    attributes: &[Attribute],
-    policy: &Policy,
-    include_old_partitions: bool,
-) -> Result<HashSet<Partition>, Error> {
+/// corresponding list of CoverCrypt partitions; this only gets the current partitions, not the old ones
+fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // First split the attributes per axis using their latest value and check that
     // they exist
     let mut map = HashMap::new();
@@ -275,22 +263,11 @@ fn to_partitions(
     for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
         axes.push(axis.to_owned());
         if !map.contains_key(axis) {
-            let values = if include_old_partitions {
-                // gather all the prior and latest value for that axis
-                attribute_names
-                    .iter()
-                    .map(|name| policy.attribute_values(&Attribute::new(axis, name)))
-                    .collect::<Result<Vec<Vec<u32>>, abe_policy::Error>>()?
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<u32>>()
-            } else {
-                // gather all the latest value for that axis
-                attribute_names
-                    .iter()
-                    .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
-                    .collect::<Result<Vec<u32>, abe_policy::Error>>()?
-            };
+            // gather all the latest value for that axis
+            let values = attribute_names
+                .iter()
+                .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
+                .collect::<Result<Vec<u32>, abe_policy::Error>>()?;
             map.insert(axis.to_owned(), values);
         }
     }
@@ -340,16 +317,15 @@ fn combine_attribute_values(
 }
 
 /// Convert an access policy used to decrypt ciphertexts into the corresponding
-/// list of CoverCrypt partitions that can be decrypted by that access policy
-fn access_policy_to_partitions(
+/// list of CoverCrypt current partitions that can be decrypted by that access policy
+fn access_policy_to_current_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
-    include_old_partitions: bool,
 ) -> Result<HashSet<Partition>, Error> {
     let attr_combinations = to_attribute_combinations(access_policy, policy)?;
     let mut set = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
-        for partition in to_partitions(attr_combination, policy, include_old_partitions)? {
+        for partition in to_partitions(attr_combination, policy)? {
             let is_unique = set.insert(partition);
             if !is_unique {
                 return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
@@ -460,8 +436,7 @@ mod tests {
 
         // this should create the combination of the first attribute
         // with all those of the second axis
-        let partitions_0 =
-            super::to_partitions(&[axes_attributes[0][0].0.clone()], &policy, false)?;
+        let partitions_0 = super::to_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
@@ -477,7 +452,6 @@ mod tests {
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -492,7 +466,6 @@ mod tests {
                 axes_attributes[1][1].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
@@ -512,7 +485,6 @@ mod tests {
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -558,21 +530,30 @@ mod tests {
             "Department::MKG && Security Level::Confidential",
         )?;
         let mut usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
+        let original_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
-
-        println!("POLICY: {policy:#?}");
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        // refresh the user key and preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        // let new_partitions_msk: Vec<Partition> = msk.0.clone().into_keys().collect();
-        // let new_partitions_mpk: Vec<Partition> = mpk.0.clone().into_keys().collect();
-        // assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
-        // for p in &new_partitions_msk {
-        //     assert!(new_partitions_mpk.contains(p));
-        // }
-        // // 3 is the size of the security level axis
-        // assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 3);
+        let new_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        assert_eq!(
+            new_user_partitions.len(),
+            original_user_partitions.len() + 2
+        );
+        for original_partition in &original_user_partitions {
+            assert!(new_user_partitions.contains(original_partition));
+        }
+        // refresh the user key but do NOT preserve access to old partitions
+        cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, false)?;
+        let new_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
+        // the user should still have access to the same number of partitions
+        assert_eq!(new_user_partitions.len(), original_user_partitions.len());
+        for original_partition in &original_user_partitions {
+            assert!(!new_user_partitions.contains(original_partition));
+        }
         Ok(())
     }
 
@@ -617,7 +598,7 @@ mod tests {
 
         //
         // create partitions from access policy
-        let partitions = access_policy_to_partitions(&access_policy, &policy, false)?;
+        let partitions = access_policy_to_current_partitions(&access_policy, &policy)?;
 
         //
         // manually create the partitions

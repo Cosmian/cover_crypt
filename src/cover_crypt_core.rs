@@ -571,9 +571,11 @@ where
     for partition in user_set.iter() {
         if !usk.contains_key(partition) {
             // extract key from master private key (see join)
-            let kem_private_key = msk
-                .get(partition)
-                .ok_or_else(|| Error::UnknownPartition(format!("{partition:?}")))?;
+            let kem_private_key = msk.get(partition).ok_or_else(|| {
+                Error::UnknownPartition(format!(
+                    "the master private key does not contain the partition: {partition:?}"
+                ))
+            })?;
             usk.insert(partition.to_owned(), kem_private_key.to_owned());
         }
     }
