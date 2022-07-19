@@ -127,13 +127,19 @@ impl CoverCrypt {
         attributes: &[Attribute],
         sym_key_len: usize,
     ) -> Result<(SecretKey, Encapsulation), Error> {
-        // get the authorisations associated to the given access policy
-        cover_crypt_core::encaps(
+        let bytes = self
+            .rng
+            .lock()
+            .expect("Mutex lock failed!")
+            .generate_random_bytes(sym_key_len);
+        let sym_key = SecretKey::from(bytes);
+        let encapsulation = cover_crypt_core::encrypt(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &to_partitions(attributes, policy)?,
-            sym_key_len,
-        )
+            &sym_key,
+        )?;
+        Ok((sym_key, encapsulation))
     }
 
     /// Decapsulate a symmetric key generated with `generate_symmetric_key()`.

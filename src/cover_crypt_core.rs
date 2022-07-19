@@ -98,7 +98,7 @@ impl From<&Partition> for Vec<u8> {
 ///
 /// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
 /// WARNING: the master private key into bytes MUST not exceed 2^32 bytes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterPrivateKey {
     u: X25519PrivateKey,
     v: X25519PrivateKey,
@@ -158,9 +158,9 @@ impl Zeroize for MasterPrivateKey {
         self.u.zeroize();
         self.v.zeroize();
         self.s.zeroize();
-        for (_, x_i) in self.x.iter_mut() {
+        self.x.iter_mut().for_each(|(_, x_i)| {
             x_i.zeroize();
-        }
+        });
     }
 }
 
@@ -181,7 +181,7 @@ impl Drop for MasterPrivateKey {
 ///
 /// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
 /// WARNING: the user private key into bytes MUST not exceed 2^32 bytes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserPrivateKey {
     a: X25519PrivateKey,
     b: X25519PrivateKey,
@@ -259,7 +259,7 @@ impl Drop for UserPrivateKey {
 ///
 /// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
 /// WARNING: the PublicKey into bytes MUST not exceed 2^32 bytes
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicKey {
     U: X25519PublicKey,
     V: X25519PublicKey,
@@ -311,7 +311,7 @@ impl PublicKey {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encapsulation {
     C: X25519PublicKey,
     D: X25519PublicKey,
@@ -396,14 +396,16 @@ impl Drop for SecretKey {
 ///
 /// # Paper
 ///
-/// Setup : `λ → (msk,mpk)`
+/// Setup(`(𝑆_𝑖)_𝑖`): it generates the master public key mpk and the master
+/// secret key msk as follows:
 ///
-/// - Sample random `𝑢`, `𝑣` and `𝑠` in `ℤ_𝑞` and define : `𝑈 = 𝑔 ^ 𝑢` and
-/// `𝑉 = 𝑔 ^ 𝑣` and `𝐻 = 𝑔 ^ 𝑠`
-/// - Define the partition of subsets `𝑆_𝑖` that covers the whole set of rights
-/// `𝑆` with respect to the target users’ rights.
-/// - For each set `𝑆_𝑖`, define `𝐻_𝑖 = 𝐻^𝑥_𝑖` for random `𝑥_𝑖`.
-/// - Let `msk = (𝑢, 𝑣, 𝑠, (𝑥_𝑖)_𝑖)` and `mpk = (< 𝐺, 𝑔 >, 𝑈 , 𝑉 , (𝐻_𝑖)_𝑖)`.
+/// - it samples random `𝑢, 𝑣, 𝑠 ← ℤ_𝑞` and sets `𝑈 ← 𝑔 ^ 𝑢`, `𝑉 ← 𝑔 ^ 𝑣` and
+/// `𝐻 ← 𝑔 ^ 𝑠`
+///
+/// - For each set `𝑆_𝑖 ∈ 𝒮`, where `𝒮 = (𝑆_𝑖)_𝑖` , it chooses a random
+/// `𝑥_𝑖 ← ℤ_𝑞` and sets `𝐻_𝑖 ← 𝐻 ^ 𝑥_𝑖` .
+///
+/// Let `msk ← (𝑢, 𝑣, 𝑠, (𝑥_𝑖)_𝑖)` and `mpk ← (𝔾, 𝑔, 𝑈 , 𝑉 , 𝐻, (𝐻_𝑖)_𝑖)`.
 ///
 /// # Arguments
 ///
@@ -441,12 +443,14 @@ where
 ///
 /// # Paper
 ///
-/// Join: (msk, 𝑗) → sk_𝑗`
+/// Join(`msk`, `𝑗`, `𝐴_𝑗`): it takes as input the master secret key `msk`, a
+/// user identifier `𝑗`, and the set `𝐴_𝑗` of indices `𝑖` such that user `𝑗`
+/// belongs to `𝑆_𝑖`, and provides its secret key `SK_𝑗`.
 ///
-/// - takes a user identifier `𝑗` and choses `(𝑎_𝑗, 𝑏_𝑗)` such that:
-/// `𝑎_𝑗 ⋅ 𝑢 + 𝑏_𝑗 ⋅ 𝑣 = 𝑠`
-/// - Let `𝐴` the set of indices to which user `𝑗` belongs to, i.e. for each
-/// `𝑖 ∈ 𝐴`, user `𝑗` has the right to decrypt the ciphertexts associated to set `𝑆_𝑖`.
+/// For the tracing, one first chooses random scalars `(𝑎_𝑗, 𝑏_𝑗)` such that
+/// `𝑎_𝑗 ⋅ 𝑢 + 𝑏_𝑗 ⋅ 𝑣 = 𝑠`.
+///
+/// Then `SK_𝑗 ← (𝑎_𝑗 , 𝑏_𝑗 , (𝑥_𝑖)_{𝑖∈𝐴_𝑗})` is provided to user `𝑗`.
 ///
 /// # Arguments
 ///
@@ -477,48 +481,45 @@ where
     Ok(UserPrivateKey { a, b, x })
 }
 
-/// Generate the secret key and its encapsulation.
+/// Generate the secret key encapsulation.
 ///
 /// # Paper
 ///
-/// Encaps: `𝑇 → (𝐾, 𝐶_𝑖 = (𝐾_𝑖 ⊕ 𝐾, 𝐸_𝑖)_{𝑖∈𝐵})`
+/// • Enc(`𝐾`, `𝐵`): it takes as input a bitstring `𝐾 ∈ {0, 1}^𝑛` to encrypt
+/// to all the users belonging to `𝑆_𝑖` , for `𝑖 ∈ 𝐵`, and outputs the
+/// encryption of `𝐾`.
 ///
-/// - sample a random key `𝐾 ∈ {0, 1} ^ 𝑛1` and a random `𝑟`.
-/// - set `𝐶 = 𝑈 ^ 𝑟` and `𝐷 = 𝑉 ^ 𝑟`.
-/// - for each subset `𝑆_𝑖` included in the target `𝑇` ‑ we denote `𝐵` this
-/// set of indices ‑ we set `𝐾_𝑖 = 𝐻_𝑖 ^ r`, `𝑖 ∈ {0, 1} ^ 𝑛1`
+/// – it samples a random `𝑟 ← ℤ_𝑞`;
 ///
-/// The encapsulation `𝐸` is given by the tuple `(𝐶, 𝐷, (𝐾_𝑖 ⊕ 𝐾)_{𝑖∈𝐵})`.
+/// – it sets `𝐶 ← 𝑈 ^ 𝑟` and `𝐷 ← 𝑉 ^ 𝑟`;
+///
+/// – for every `𝑖 ∈ 𝐵`, it generates `𝐾_𝑖 ← 𝐻_𝑖 ^ 𝑟` .
+///
+/// The ciphertext thus consists of `(𝐶, 𝐷, (𝐸_𝑖 = ℋ (𝐾_𝑖) ⊕ 𝐾)_{𝑖∈𝐵})`, where
+/// `ℋ ` is a hash function onto `{0, 1}^𝑛` .
 ///
 /// # Arguments
 ///
-/// - `rng`                 : secure random number generator
-/// - `mpk`                 : master public key
-/// - `encyption_set`       : sets for which to generate a ciphertext
-/// - `secret_key_length`   : desired length of the generated secret key
-pub fn encaps<R>(
+/// - `rng`             : secure random number generator
+/// - `mpk`             : master public key
+/// - `encyption_set`   : sets for which to generate a ciphertext
+/// - `K`               : secret key
+pub fn encrypt<R>(
     rng: &mut R,
     mpk: &PublicKey,
     encryption_set: &HashSet<Partition>,
-    secret_key_length: usize,
-) -> Result<(SecretKey, Encapsulation), Error>
+    K: &SecretKey,
+) -> Result<Encapsulation, Error>
 where
     R: CryptoRng + RngCore,
 {
-    let mut bytes = vec![0_u8; secret_key_length];
-    rng.fill_bytes(&mut bytes);
-    let K = SecretKey(bytes);
     let r = X25519PrivateKey::new(rng);
     let C = &mpk.U * &r;
     let D = &mpk.V * &r;
     let mut E = HashMap::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let K_i = hkdf_256(
-                &(H_i * &r).to_bytes(),
-                secret_key_length,
-                KEY_GEN_INFO.as_bytes(),
-            )?;
+            let K_i = hkdf_256(&(H_i * &r).to_bytes(), K.len(), KEY_GEN_INFO.as_bytes())?;
             let E_i = K_i
                 .iter()
                 .zip(K.iter())
@@ -527,28 +528,21 @@ where
             E.insert(partition.clone(), E_i);
         } // else may log a warning about unknown target partition
     }
-    Ok((K, Encapsulation { C, D, E }))
+    Ok(Encapsulation { C, D, E })
 }
 
 /// Decapsulate the secret key if the given user ID is in the target set.
 ///
 /// # Paper
 ///
-/// Encaps: `(sk_𝑗, 𝐸) → 𝐾`
+/// Dec(`SK_𝑗`, `(𝐶, 𝐷, (𝐸_𝑖 = 𝐾_𝑖 ⊕ 𝐾)_{𝑖∈𝐵})`): it takes as input a user’s
+/// secret key and a ciphertext, it outputs the decrypyted key `𝐾`.
 ///
-/// - parse `𝐸` as `(𝐶, 𝐷, (𝐸_𝑗)_{𝑗∈𝐵})`
-/// - let `𝐴` be the set of indices user `𝑗` is authorized to decrypt and `𝑇`
-/// the target set associated to `𝐸`.
+/// - the user first chooses an index `𝑖 ∈ 𝐵 ∩ 𝐴_𝑗` , in both its set of rights
+/// `𝐴_𝑗` and the rights `𝐵` of the ciphertext, and then uses `𝑥_𝑖 = sk_𝑖 ∈ SK_𝑗`;
 ///
-/// Note that: `𝐾_𝑖 = 𝐻_𝑖 ^ 𝑟 = 𝐻 ^ 𝑟 ^ 𝑥_𝑖 = (𝑔 ^ 𝑠 ^ 𝑟) ^ 𝑥_𝑖`
-///
-/// If there exists an index `k ∈ 𝐴` such that `𝑆_k ⊆ 𝑇` , then user `𝑗` has
-/// `𝑥_k` and can obtain:
-///
-/// `𝐾_k = (𝐶 ^ 𝑎_𝑗 𝐷 ^ 𝑏_𝑗 ) ^ 𝑥_k`
-///
-/// Using the corresponding ciphertext `𝐸_𝑗`, it obtains the session key as
-/// `𝐾 = 𝐾_k ⊕ 𝐸`
+/// - it can compute `𝐾_𝑖 = (𝐶 ^ 𝑎_𝑗 𝐷 ^ 𝑏_𝑗 ) ^ 𝑥_𝑖` , and extract
+/// `𝐾 = 𝐸_𝑖 ⊕ ℋ (𝐾_𝑖)`.
 ///
 /// # Arguments
 ///
@@ -669,8 +663,8 @@ mod tests {
 
     #[test]
     fn test_serialization() -> Result<(), Error> {
-        let admin_partition = Partition("admin".as_bytes().to_vec());
-        let dev_partition = Partition("dev".as_bytes().to_vec());
+        let admin_partition = Partition(b"admin".to_vec());
+        let dev_partition = Partition(b"dev".to_vec());
         // partition list
         let partitions_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         // user list
@@ -688,7 +682,8 @@ mod tests {
         let usk = join(&mut rng, &msk, &user_set)?;
         let usk_ = UserPrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
-        let (_, encapsulation) = encaps(&mut rng, &mpk, &target_set, SYM_KEY_LENGTH)?;
+        let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
+        let encapsulation = encrypt(&mut rng, &mpk, &target_set, &sym_key)?;
         let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
         assert_eq!(
             encapsulation, encapsulation_,
@@ -699,8 +694,8 @@ mod tests {
 
     #[test]
     fn test_cover_crypt() -> Result<(), Error> {
-        let admin_partition = Partition("admin".as_bytes().to_vec());
-        let dev_partition = Partition("dev".as_bytes().to_vec());
+        let admin_partition = Partition(b"admin".to_vec());
+        let dev_partition = Partition(b"dev".to_vec());
         // partition list
         let partitions_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         // user list
@@ -718,14 +713,13 @@ mod tests {
         let sk0 = join(&mut rng, &msk, &users_set[0])?;
         let sk1 = join(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
-        let (secret_key, encapsulation) = encaps(&mut rng, &mpk, &target_set, SYM_KEY_LENGTH)?;
-        println!("Secret Key : {:?}", secret_key,);
+        let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
+        let encapsulation = encrypt(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
         let res0 = decaps(&sk0, &encapsulation, SYM_KEY_LENGTH)?;
         let res1 = decaps(&sk1, &encapsulation, SYM_KEY_LENGTH)?;
         assert!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
-        println!("{res1:?}");
-        assert!(Some(secret_key) == res1, "Wrong decapsulation for user 1!");
+        assert!(Some(sym_key) == res1, "Wrong decapsulation for user 1!");
         Ok(())
     }
 
