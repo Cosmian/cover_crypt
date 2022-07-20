@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [3.4.0] - 2022-07-18
+### Added
+### Changed
+ -bumped crypto_base to 2.1.0
+### Fixed
+- Attributes rotation; wrong update of the master keys
+### Removed
+---
+
+
+---
 ## [3.2.1] - 2022-07-18
 ### Added
 ### Changed
