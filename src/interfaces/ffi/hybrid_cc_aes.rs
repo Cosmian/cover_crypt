@@ -297,7 +297,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         Ok(msg) => msg.to_owned(),
         Err(_e) => {
             set_last_error(FfiError::Generic(
-                "Hybrid Cipher: invalid Policy".to_owned(),
+                "Hybrid Cipher: invalid attributes".to_owned(),
             ));
             return 1;
         }

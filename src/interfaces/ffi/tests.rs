@@ -11,25 +11,31 @@ use cosmian_crypto_base::{
 };
 
 use super::{
-    generate_cc_keys::{h_generate_master_keys, h_generate_user_private_key},
+    generate_cc_keys::{
+        h_generate_master_keys, h_generate_user_private_key, h_refresh_user_private_key,
+        h_update_master_keys,
+    },
     hybrid_cc_aes::*,
 };
 use crate::{
-    api::{self, CoverCrypt, PrivateKey},
+    api::{self, CoverCrypt, PrivateKey, PublicKey},
+    cover_crypt_core::Partition,
     error::Error,
-    interfaces::{ffi::error::get_last_error, statics::EncryptedHeader},
+    interfaces::{
+        ffi::{error::get_last_error, generate_cc_keys::h_rotate_attributes},
+        statics::EncryptedHeader,
+    },
 };
 
 use abe_policy::{ap, AccessPolicy, Attribute, Policy, PolicyAxis};
 
-type PublicKey = api::PublicKey<X25519Crypto>;
 type UserDecryptionKey = api::PrivateKey<X25519Crypto>;
 
 unsafe fn encrypt_header(
     meta_data: &Metadata,
     policy: &Policy,
     attributes: &[Attribute],
-    public_key: &PublicKey,
+    public_key: &PublicKey<X25519Crypto>,
 ) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
@@ -222,7 +228,7 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
 }
 
 unsafe fn encrypt_header_using_cache(
-    public_key: &PublicKey,
+    public_key: &PublicKey<X25519Crypto>,
     policy: &Policy,
     meta_data: &Metadata,
 ) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
@@ -406,7 +412,7 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
 
 unsafe fn generate_master_keys(
     policy: &Policy,
-) -> Result<(PrivateKey<X25519Crypto>, PublicKey), Error> {
+) -> Result<(PrivateKey<X25519Crypto>, PublicKey<X25519Crypto>), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
@@ -502,5 +508,211 @@ fn test_ffi_keygen() -> Result<(), Error> {
     let _user_private_key =
         unsafe { generate_user_private_key(&master_keys.0, &access_policy, &policy)? };
 
+    Ok(())
+}
+
+unsafe fn rotate_policy(policy: &Policy, attributes: &[Attribute]) -> Result<Policy, Error> {
+    let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let policy_ptr = policy_cs.as_ptr();
+
+    let attributes_json = CString::new(serde_json::to_string(attributes)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let attributes_ptr = attributes_json.as_ptr();
+
+    // prepare update policy pointer
+    let mut updated_policy_bytes = vec![0u8; 64 * 1024];
+    let updated_policy_ptr = updated_policy_bytes.as_mut_ptr() as *mut c_char;
+    let mut updated_policy_len = updated_policy_bytes.len() as c_int;
+
+    unwrap_ffi_error(h_rotate_attributes(
+        updated_policy_ptr,
+        &mut updated_policy_len,
+        attributes_ptr,
+        policy_ptr,
+    ))?;
+
+    let updated_policy_bytes =
+        std::slice::from_raw_parts(updated_policy_ptr as *const u8, updated_policy_len as usize)
+            .to_vec();
+    let updated_policy: Policy = serde_json::from_slice(&updated_policy_bytes)?;
+
+    Ok(updated_policy)
+}
+
+unsafe fn update_master_keys(
+    policy: &Policy,
+    master_private_key: &PrivateKey<X25519Crypto>,
+    master_public_key: &PublicKey<X25519Crypto>,
+) -> Result<(PrivateKey<X25519Crypto>, PublicKey<X25519Crypto>), Error> {
+    let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let policy_ptr = policy_cs.as_ptr();
+
+    let master_private_key_bytes = master_private_key.try_to_bytes()?;
+    let master_private_key_ptr = master_private_key_bytes.as_ptr() as *const c_char;
+    let master_private_key_len = master_private_key_bytes.len() as i32;
+
+    let master_public_key_bytes = master_public_key.try_to_bytes()?;
+    let master_public_key_ptr = master_public_key_bytes.as_ptr() as *const c_char;
+    let master_public_key_len = master_public_key_bytes.len() as i32;
+
+    // prepare updated master private key pointer
+    let mut updated_master_private_key_bytes = vec![0u8; 64 * 1024];
+    let updated_master_private_key_ptr =
+        updated_master_private_key_bytes.as_mut_ptr() as *mut c_char;
+    let mut updated_master_private_key_len = updated_master_private_key_bytes.len() as c_int;
+
+    // prepare updated master public key pointer
+    let mut updated_master_public_key_bytes = vec![0u8; 64 * 1024];
+    let updated_master_public_key_ptr = updated_master_public_key_bytes.as_mut_ptr() as *mut c_char;
+    let mut updated_master_public_key_len = updated_master_public_key_bytes.len() as c_int;
+
+    unwrap_ffi_error(h_update_master_keys(
+        updated_master_private_key_ptr,
+        &mut updated_master_private_key_len,
+        updated_master_public_key_ptr,
+        &mut updated_master_public_key_len,
+        master_private_key_ptr,
+        master_private_key_len,
+        master_public_key_ptr,
+        master_public_key_len,
+        policy_ptr,
+    ))?;
+
+    let updated_master_private_key_bytes = std::slice::from_raw_parts(
+        updated_master_private_key_ptr as *const u8,
+        updated_master_private_key_len as usize,
+    )
+    .to_vec();
+    let updated_master_private_key =
+        PrivateKey::<X25519Crypto>::try_from_bytes(&updated_master_private_key_bytes)?;
+
+    let updated_master_public_key_bytes = std::slice::from_raw_parts(
+        updated_master_public_key_ptr as *const u8,
+        updated_master_public_key_len as usize,
+    )
+    .to_vec();
+    let update_master_public_key =
+        PublicKey::<X25519Crypto>::try_from_bytes(&updated_master_public_key_bytes)?;
+
+    Ok((updated_master_private_key, update_master_public_key))
+}
+
+unsafe fn refresh_user_private_key(
+    user_private_key: &PrivateKey<X25519Crypto>,
+    access_policy: &AccessPolicy,
+    master_private_key: &PrivateKey<X25519Crypto>,
+    policy: &Policy,
+    preserve_old_partitions_access: bool,
+) -> Result<PrivateKey<X25519Crypto>, Error> {
+    let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let policy_ptr = policy_cs.as_ptr();
+
+    let master_private_key_bytes = master_private_key.try_to_bytes()?;
+    let master_private_key_ptr = master_private_key_bytes.as_ptr() as *const c_char;
+    let master_private_key_len = master_private_key_bytes.len() as i32;
+
+    let user_private_key_bytes = user_private_key.try_to_bytes()?;
+    let user_private_key_ptr = user_private_key_bytes.as_ptr() as *const c_char;
+    let user_private_key_len = user_private_key_bytes.len() as i32;
+
+    // Get pointer from access policy
+    let access_policy_cs = CString::new(serde_json::to_string(&access_policy)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let access_policy_ptr = access_policy_cs.as_ptr();
+
+    let preserve_old_partitions_access_c: c_int =
+        if preserve_old_partitions_access { 1 } else { 0 };
+
+    // prepare updated user private key pointer
+    let mut updated_user_private_key_bytes = vec![0u8; 64 * 1024];
+    let updated_user_private_key_ptr = updated_user_private_key_bytes.as_mut_ptr() as *mut c_char;
+    let mut updated_user_private_key_len = updated_user_private_key_bytes.len() as c_int;
+
+    unwrap_ffi_error(h_refresh_user_private_key(
+        updated_user_private_key_ptr,
+        &mut updated_user_private_key_len,
+        master_private_key_ptr,
+        master_private_key_len,
+        user_private_key_ptr,
+        user_private_key_len,
+        access_policy_ptr,
+        policy_ptr,
+        preserve_old_partitions_access_c,
+    ))?;
+
+    let updated_user_private_key_bytes = std::slice::from_raw_parts(
+        updated_user_private_key_ptr as *const u8,
+        updated_user_private_key_len as usize,
+    )
+    .to_vec();
+    let updated_user_private_key =
+        PrivateKey::<X25519Crypto>::try_from_bytes(&updated_user_private_key_bytes)?;
+
+    Ok(updated_user_private_key)
+}
+
+#[test]
+fn test_ffi_rotate_attribute() -> Result<(), Error> {
+    //
+    // CoverCrypt setup
+    //
+    let policy = policy()?;
+    let cc = CoverCrypt::<X25519Crypto>::default();
+    let (msk, mpk) = cc.generate_master_keys(&policy)?;
+    let original_msk_partitions: Vec<Partition> = msk.clone().into_keys().collect();
+    let original_mpk_partitions: Vec<Partition> = mpk.clone().into_keys().collect();
+
+    let access_policy = ap("Department", "MKG") & ap("Security Level", "Confidential");
+    let usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
+    let original_user_partitions: Vec<Partition> = usk.clone().into_keys().collect();
+
+    unsafe {
+        //rotate the policy
+        let updated_policy = rotate_policy(&policy, &[Attribute::new("Department", "MKG")])?;
+        // update the master keys
+        let (updated_msk, updated_mpk) = update_master_keys(&updated_policy, &msk, &mpk)?;
+        // check the msk updated partitions
+        let updated_msk_partitions: Vec<Partition> = updated_msk.clone().into_keys().collect();
+        assert_eq!(
+            updated_msk_partitions.len(),
+            original_msk_partitions.len() + 3
+        );
+        for original_partition in &original_msk_partitions {
+            assert!(updated_msk_partitions.contains(original_partition));
+        }
+        // check the mpk updated partitions
+        let updated_mpk_partitions: Vec<Partition> = updated_mpk.clone().into_keys().collect();
+        assert_eq!(
+            updated_mpk_partitions.len(),
+            original_mpk_partitions.len() + 3
+        );
+        for original_partition in &original_mpk_partitions {
+            assert!(updated_mpk_partitions.contains(original_partition));
+        }
+        // update the user key, preserving the accesses to the rotated partitions
+        let updated_usk =
+            refresh_user_private_key(&usk, &access_policy, &updated_msk, &updated_policy, true)?;
+        let new_user_partitions: Vec<Partition> = updated_usk.clone().into_keys().collect();
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        assert_eq!(
+            new_user_partitions.len(),
+            original_user_partitions.len() + 2
+        );
+        for original_partition in &original_user_partitions {
+            assert!(new_user_partitions.contains(original_partition));
+        }
+        // update the user key, but do NOT preserve the accesses to the rotated partitions
+        let updated_usk =
+            refresh_user_private_key(&usk, &access_policy, &updated_msk, &updated_policy, false)?;
+        let new_user_partitions: Vec<Partition> = updated_usk.clone().into_keys().collect();
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        assert_eq!(new_user_partitions.len(), original_user_partitions.len());
+        for original_partition in &original_user_partitions {
+            assert!(!new_user_partitions.contains(original_partition));
+        }
+    }
     Ok(())
 }
