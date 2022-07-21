@@ -3,6 +3,7 @@ use crate::{
     cover_crypt_core::{Encapsulation, PublicKey, UserPrivateKey},
     error::Error,
 };
+use abe_policy::{Attribute, Policy};
 use cosmian_crypto_base::{
     entropy::CsRng,
     symmetric_crypto::{Block, Dem, Metadata},
@@ -10,8 +11,6 @@ use cosmian_crypto_base::{
 };
 use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
-
-use abe_policy::{Attribute, Policy};
 
 /// An EncryptedHeader returned by the `encrypt_hybrid_header` function
 #[derive(Serialize, Deserialize)]
@@ -37,7 +36,7 @@ pub struct ClearTextHeader<DEM: Dem> {
 ///
 /// - `policy`          : global policy
 /// - `public_key`      : CoverCrypt public key
-/// - `access_policy`   : access policy
+/// - `attributes`      : attributes used for encryption
 /// - `meta_data`       : optional meta data
 pub fn encrypt_hybrid_header<DEM: Dem>(
     policy: &Policy,
@@ -51,8 +50,15 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
         cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
     let encapsulation = encapsulation.try_to_bytes()?;
 
-    // create header
-    let mut header_bytes = Vec::new();
+    // Allocate enough space dot the header bytes
+    let mut header_bytes = Vec::with_capacity(
+        4 + encapsulation.len()
+            + if let Some(meta_data) = meta_data {
+                meta_data.len()
+            } else {
+                0
+            },
+    );
 
     header_bytes.extend(
         u32::try_from(encapsulation.len())
@@ -94,31 +100,31 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     user_decryption_key: &UserPrivateKey,
     header_bytes: &[u8],
 ) -> Result<ClearTextHeader<DEM>, Error> {
-    // check header size
-    if header_bytes.len() < 4 {
-        return Err(Error::InvalidHeaderSize(header_bytes.len()));
-    }
     // get the encapsulation size (u32)
     let mut index = 4;
-    let encapsulation_size = u32::from_be_bytes(header_bytes[..index].try_into()?) as usize;
-    let header_size = header_bytes.len();
-    if encapsulation_size > header_size - 4 {
+    if header_bytes.len() < index {
+        return Err(Error::InvalidHeaderSize(header_bytes.len()));
+    }
+    let encapsulation_size: usize =
+        u32::from_be_bytes(header_bytes[..index].try_into()?).try_into()?;
+    if encapsulation_size > header_bytes.len() - index {
         return Err(Error::InvalidSize(format!(
             "Invalid Header bytes: the 4 first bytes (big endian encoded) give an u32 value \
-             greater than the header size ({encapsulation_size} against {header_size})"
+             greater than the header size ({encapsulation_size} against {})",
+            header_bytes.len()
         )));
     }
     // get the encapsulation
-    let encapsulation_bytes = header_bytes[index..index + encapsulation_size].to_owned();
+    let encapsulation =
+        Encapsulation::try_from_bytes(&header_bytes[index..index + encapsulation_size])?;
     index += encapsulation_size;
 
     // decrypt the symmetric key
-    let cover_crypt = CoverCrypt::default();
-    let encapsulation = Encapsulation::try_from_bytes(&encapsulation_bytes)?;
-    let secret_key = cover_crypt.decaps_symmetric_key(user_decryption_key, &encapsulation)?;
+    let secret_key =
+        CoverCrypt::default().decaps_symmetric_key(user_decryption_key, &encapsulation)?;
 
     // decrypt the metadata if any
-    let meta_data = if index >= header_size {
+    let meta_data = if index >= header_bytes.len() {
         Metadata::default()
     } else {
         Metadata::try_from_bytes(

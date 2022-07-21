@@ -569,17 +569,26 @@ pub fn decaps(
 /// Update the master private key and master public key of the CoverCrypt
 /// scheme with the given list of partitions.
 ///
-/// If a partition exists in the keys but not in the list, it will be removed from the keys.
+/// If a partition exists in the keys but not in the list, it will be removed
+/// from the keys.
 ///
-/// If a partition exists in the list, but not in the keys, it will be "added" to the keys,
-/// by adding a new partition key pair as performed in the setup procedure above
+/// If a partition exists in the list, but not in the keys, it will be "added"
+/// to the keys, by adding a new partition key pair as performed in the setup
+/// procedure above.
+///
+/// # Arguments
+///
+/// - `rng`             : random number generator
+/// - `msk`             : master secret key
+/// - `mpk`             : master public key
+/// - `partition_set`   : new set of partitions to use after the update
 pub fn update<R: CryptoRng + RngCore>(
     rng: &mut R,
     msk: &mut MasterPrivateKey,
     mpk: &mut PublicKey,
     partitions_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
-    // add keys for partitions that do not exist
+    // add keys for partitions that do not exist in the master keys
     for partition in partitions_set.iter() {
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = X25519PrivateKey::new(rng);

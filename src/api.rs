@@ -46,12 +46,15 @@ impl CoverCrypt {
     }
 
     /// Update the master keys according to this new policy.
+    ///
     /// When a partition exists in the new policy but not in the master keys,
     /// a new keypair is added to the master keys for that partition.
     /// When a partition exists on the master keys, but not in the new policy,
     /// it is removed from the master keys.
     ///
     ///  - `policy` : Policy to use to generate the keys
+    ///  - `msk`    : master secret key
+    ///  - `mpk`    : master public key
     pub fn update_master_keys(
         &self,
         policy: &Policy,
@@ -67,6 +70,7 @@ impl CoverCrypt {
     }
 
     /// Generate a user private key.
+    ///
     /// A new user private key does NOT include to old (i.e. rotated) partitions
     ///
     /// - `msk`             : master secret key
@@ -90,21 +94,21 @@ impl CoverCrypt {
     /// The user key will be granted access to the current partitions, as determined by its access policy.
     /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
     ///
-    /// - `usk`                  : the user key to refresh
-    /// - `access_policy`        : the access policy of the user key
-    /// - `msk`                  : master secret key
-    /// - `policy`               : global policy of the master secret key
-    /// - preserve_old_partitions_access:  whether access to old partitions (i.e. before rotation) should be kept
+    /// - `usk`                 : the user key to refresh
+    /// - `access_policy`       : the access policy of the user key
+    /// - `msk`                 : master secret key
+    /// - `policy`              : global policy of the master secret key
+    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before rotation) should be kept
     pub fn refresh_user_private_key(
         &self,
         usk: &mut UserPrivateKey,
         access_policy: &AccessPolicy,
         msk: &MasterPrivateKey,
         policy: &Policy,
-        preserve_old_partitions_access: bool,
+        keep_old_accesses: bool,
     ) -> Result<(), Error> {
         let mut current_partitions = access_policy_to_current_partitions(access_policy, policy)?;
-        if preserve_old_partitions_access {
+        if keep_old_accesses {
             for key_partition in usk.map().keys() {
                 current_partitions.insert(key_partition.to_owned());
             }
@@ -112,7 +116,7 @@ impl CoverCrypt {
         cover_crypt_core::refresh(msk, usk, &current_partitions)
     }
 
-    /// Generate a random symmetric key of `symmetric_key_len` to be used in an
+    /// Generate a random symmetric key of `sym_key_len` to be used in an
     /// hybrid encryption scheme and generate its CoverCrypt encrypted version
     /// with the supplied policy `attributes`.
     ///
@@ -146,7 +150,6 @@ impl CoverCrypt {
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    /// - `sym_key_len`     : length of the symmetric key to generate
     pub fn decaps_symmetric_key(
         &self,
         sk_u: &UserPrivateKey,
@@ -295,7 +298,8 @@ fn access_policy_to_current_partitions(
 /// values of each attribute in the given access policy. This corresponds to
 /// an OR expression of AND expressions.
 ///
-/// - `policy`  : global policy
+/// - `access_policy`   : access policy to convert into attribute combinations
+/// - `policy`          : global policy
 fn to_attribute_combinations(
     access_policy: &AccessPolicy,
     policy: &Policy,

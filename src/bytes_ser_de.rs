@@ -1,6 +1,5 @@
-use std::io::{Read, Write};
-
 use crate::error::Error;
+use std::io::{Read, Write};
 
 pub struct Deserializer<'a> {
     readable: &'a [u8],
@@ -79,9 +78,8 @@ impl Default for Serializer {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Error;
-
     use super::{Deserializer, Serializer};
+    use crate::error::Error;
 
     #[test]
     pub fn test_ser_de() -> Result<(), Error> {
