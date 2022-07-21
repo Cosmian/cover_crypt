@@ -1,6 +1,11 @@
-# CoverCrypt
+# CoverCrypt &emsp; [![Build Status]][actions] [![Latest Version]][crates.io]
 
 Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm.
+
+[Build Status]: https://img.shields.io/github/workflow/status/Cosmian/cover_crypt/CI%20checks/main
+[actions]: https://github.com/Cosmian/cover_crypt/actions?query=branch%3Amain
+[Latest Version]: https://img.shields.io/crates/v/cover_crypt.svg
+[crates.io]: https://crates.io/crates/cover_crypt
 
 # Building and testing
 
