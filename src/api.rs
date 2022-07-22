@@ -5,7 +5,7 @@ use crate::{
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
-use cosmian_crypto_base::entropy::CsRng;
+use cosmian_crypto_base_anssi::entropy::CsRng;
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,

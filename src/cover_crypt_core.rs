@@ -5,8 +5,8 @@ use crate::{
     bytes_ser_de::{Deserializer, Serializer},
     error::Error,
 };
-use cosmian_crypto_base::{
-    asymmetric::ristretto::{X25519PrivateKey, X25519PublicKey},
+use cosmian_crypto_base_anssi::{
+    asymmetric::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
     KeyTrait,
 };
@@ -115,13 +115,13 @@ impl MasterPrivateKey {
     /// Serialize the master private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.u.to_bytes())?;
-        serializer.write_array(self.v.to_bytes())?;
-        serializer.write_array(self.s.to_bytes())?;
-        serializer.write_array((self.x.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(self.u.as_bytes())?;
+        serializer.write_array(self.v.as_bytes())?;
+        serializer.write_array(self.s.as_bytes())?;
+        serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
         for (partition, x_i) in &self.x {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(x_i.to_bytes())?;
+            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(x_i.as_bytes())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -197,12 +197,12 @@ impl UserPrivateKey {
     /// Serialize the user private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.a.to_bytes())?;
-        serializer.write_array(self.b.to_bytes())?;
-        serializer.write_array((self.x.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(self.a.as_bytes())?;
+        serializer.write_array(self.b.as_bytes())?;
+        serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
         for (partition, x_i) in &self.x {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(x_i.to_bytes())?;
+            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(x_i.as_bytes())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -275,12 +275,12 @@ impl PublicKey {
     /// Serialize the public key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.U.to_bytes())?;
-        serializer.write_array(self.V.to_bytes())?;
-        serializer.write_array((self.H.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(&self.U.to_array())?;
+        serializer.write_array(&self.V.to_array())?;
+        serializer.write_array(&(self.H.len() as u32).to_be_bytes())?;
         for (partition, H_i) in &self.H {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(H_i.to_bytes())?;
+            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(&H_i.to_array())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -322,12 +322,12 @@ impl Encapsulation {
     /// Serialize the public key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.C.to_bytes())?;
-        serializer.write_array(self.D.to_bytes())?;
-        serializer.write_array((self.E.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(&self.C.to_array())?;
+        serializer.write_array(&self.D.to_array())?;
+        serializer.write_array(&(self.E.len() as u32).to_be_bytes())?;
         for (partition, K_i) in &self.E {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(K_i.to_vec())?;
+            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(K_i)?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -648,7 +648,7 @@ pub fn refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmian_crypto_base::entropy::CsRng;
+    use cosmian_crypto_base_anssi::entropy::CsRng;
 
     /// Length of the desired symmetric key
     const SYM_KEY_LENGTH: usize = 32;

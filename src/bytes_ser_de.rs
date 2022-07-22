@@ -46,7 +46,7 @@ impl Serializer {
         Serializer { writable: vec![] }
     }
 
-    pub fn write_array(&mut self, array: Vec<u8>) -> Result<usize, Error> {
+    pub fn write_array(&mut self, array: &[u8]) -> Result<usize, Error> {
         let mut len =
             leb128::write::unsigned(&mut self.writable, array.len() as u64).map_err(|e| {
                 Error::InvalidSize(format!(
@@ -55,7 +55,7 @@ impl Serializer {
                     e
                 ))
             })?;
-        len += self.writable.write(&array).map_err(|e| {
+        len += self.writable.write(array).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected error writing {} bytes: {}",
                 array.len(),
@@ -88,9 +88,9 @@ mod tests {
         let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)àç_è-('é&".as_bytes().to_vec();
 
         let mut ser = Serializer::new();
-        assert_eq!(7, ser.write_array(a1.clone())?);
-        assert_eq!(1, ser.write_array(a2.clone())?);
-        assert_eq!(41, ser.write_array(a3.clone())?);
+        assert_eq!(7, ser.write_array(&a1)?);
+        assert_eq!(1, ser.write_array(&a2)?);
+        assert_eq!(41, ser.write_array(&a3)?);
         assert_eq!(49, ser.value().len());
 
         let mut de = Deserializer::new(ser.value());

@@ -4,7 +4,7 @@ use std::{
     num::{ParseIntError, TryFromIntError},
 };
 
-use cosmian_crypto_base::CryptoBaseError;
+use cosmian_crypto_base_anssi::CryptoBaseError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

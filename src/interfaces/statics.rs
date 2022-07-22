@@ -4,7 +4,7 @@ use crate::{
     error::Error,
 };
 use abe_policy::{Attribute, Policy};
-use cosmian_crypto_base::{
+use cosmian_crypto_base_anssi::{
     entropy::CsRng,
     symmetric_crypto::{Block, Dem, Metadata},
     KeyTrait,
@@ -215,7 +215,7 @@ pub fn decrypt_hybrid_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
 mod tests {
     use super::*;
     use abe_policy::{ap, AccessPolicy, Attribute, PolicyAxis};
-    use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
+    use cosmian_crypto_base_anssi::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
 
     #[derive(Debug, Serialize, Deserialize)]
     struct NonRegressionTestVector {
