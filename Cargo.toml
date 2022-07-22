@@ -1,6 +1,6 @@
 [package]
 name = "cover_crypt"
-version = "3.4.0"
+version = "4.0.0"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -39,6 +39,7 @@ rand_core = { version = "0.5", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
+zeroize = "1.5"
 # Optional ones
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }

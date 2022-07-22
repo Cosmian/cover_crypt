@@ -3,22 +3,20 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
+use crate::{
+    interfaces::statics::{
+        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
+        ClearTextHeader,
+    },
+    PublicKey, UserPrivateKey,
+};
+use abe_policy::Attribute;
 use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto,
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
     KeyTrait,
 };
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
-
-use crate::{
-    api::{PrivateKey, PublicKey},
-    interfaces::statics::{
-        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
-        ClearTextHeader,
-    },
-};
-use abe_policy::Attribute;
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
@@ -58,7 +56,7 @@ pub fn webassembly_encrypt_hybrid_header(
             .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
     let public_key = PublicKey::try_from_bytes(&public_key_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
-    let encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+    let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
         &policy,
         &public_key,
         &attributes,
@@ -97,15 +95,15 @@ pub fn webassembly_decrypt_hybrid_header(
 
     //
     // Parse user decryption key
-    let user_decryption_key =
-        PrivateKey::try_from_bytes(user_decryption_key_bytes.to_vec().as_slice()).map_err(|e| {
-            JsValue::from_str(&format!("Error deserializing user decryption key: {e}"))
-        })?;
+    let user_decryption_key = UserPrivateKey::try_from_bytes(
+        user_decryption_key_bytes.to_vec().as_slice(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Error deserializing user decryption key: {e}")))?;
 
     //
     // Finally decrypt symmetric key using given user decryption key
     let cleartext_header: ClearTextHeader<Aes256GcmCrypto> =
-        decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+        decrypt_hybrid_header::<Aes256GcmCrypto>(
             &user_decryption_key,
             encrypted_header_bytes.to_vec().as_slice(),
         )
@@ -147,7 +145,7 @@ pub fn webassembly_encrypt_hybrid_block(
     let block_number_value = block_number.unwrap_or(0);
     //
     // Encrypt block
-    let ciphertext = encrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+    let ciphertext = encrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
         &symmetric_key,
         &uid,
         block_number_value,
@@ -198,7 +196,7 @@ pub fn webassembly_decrypt_hybrid_block(
     let block_number_value = block_number.unwrap_or(0);
     //
     // Decrypt block
-    let cleartext = decrypt_hybrid_block::<X25519Crypto, Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+    let cleartext = decrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
         &symmetric_key,
         &uid,
         block_number_value as usize,

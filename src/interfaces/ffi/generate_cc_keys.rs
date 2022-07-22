@@ -1,17 +1,14 @@
+use crate::{
+    api::CoverCrypt,
+    ffi_bail, ffi_not_null, ffi_unwrap,
+    interfaces::ffi::error::{set_last_error, FfiError},
+    MasterPrivateKey, PublicKey, UserPrivateKey,
+};
+use abe_policy::{AccessPolicy, Attribute, Policy};
 use std::{
     ffi::CStr,
     os::raw::{c_char, c_int},
 };
-
-use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
-
-use crate::{
-    api::{CoverCrypt, PrivateKey, PublicKey},
-    ffi_bail, ffi_not_null, ffi_unwrap,
-    interfaces::ffi::error::{set_last_error, FfiError},
-};
-
-use abe_policy::{AccessPolicy, Attribute, Policy};
 
 #[no_mangle]
 /// Generate the master authority keys for supplied Policy
@@ -53,7 +50,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
     //
     // Generate master keys
     let (master_private_key, master_public_key) =
-        ffi_unwrap!(CoverCrypt::<X25519Crypto>::default().generate_master_keys(&policy));
+        ffi_unwrap!(CoverCrypt::default().generate_master_keys(&policy));
 
     //
     // Serialize master keys
@@ -132,8 +129,8 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         master_private_key_ptr as *const u8,
         master_private_key_len as usize,
     );
-    let master_private_key: PrivateKey<X25519Crypto> =
-        ffi_unwrap!(PrivateKey::try_from_bytes(master_private_key_bytes));
+    let master_private_key =
+        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
 
     //
     // Access Policy
@@ -163,22 +160,20 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 
     //
     // Generate user private key
-    let user_key = ffi_unwrap!(
-        CoverCrypt::<X25519Crypto>::default().generate_user_private_key(
-            &master_private_key,
-            &access_policy,
-            &policy
-        )
-    );
+    let user_private_key = ffi_unwrap!(CoverCrypt::default().generate_user_private_key(
+        &master_private_key,
+        &access_policy,
+        &policy
+    ));
 
     //
     // Serialize user private key
-    let user_key_bytes = ffi_unwrap!(user_key.try_to_bytes());
+    let user_private_key_bytes = ffi_unwrap!(user_private_key.try_to_bytes());
 
     //
     // Prepare output
     let allocated = *user_private_key_len;
-    let len = user_key_bytes.len();
+    let len = user_private_key_bytes.len();
     *user_private_key_len = len as c_int;
     if (allocated as usize) < len {
         ffi_bail!(
@@ -188,7 +183,7 @@ pub unsafe extern "C" fn h_generate_user_private_key(
         );
     }
     std::slice::from_raw_parts_mut(user_private_key_ptr as *mut u8, len)
-        .copy_from_slice(&user_key_bytes);
+        .copy_from_slice(&user_private_key_bytes);
 
     0
 }
@@ -338,15 +333,14 @@ pub unsafe extern "C" fn h_update_master_keys(
         current_master_private_key_ptr as *const u8,
         current_master_private_key_len as usize,
     );
-    let mut master_private_key: PrivateKey<X25519Crypto> =
-        ffi_unwrap!(PrivateKey::try_from_bytes(master_private_key_bytes));
+    let mut master_private_key =
+        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
     // Master public key deserialization
     let master_public_key_bytes = std::slice::from_raw_parts(
         current_master_public_key_ptr as *const u8,
         current_master_public_key_len as usize,
     );
-    let mut master_public_key: PublicKey<X25519Crypto> =
-        ffi_unwrap!(PublicKey::try_from_bytes(master_public_key_bytes));
+    let mut master_public_key = ffi_unwrap!(PublicKey::try_from_bytes(master_public_key_bytes));
 
     //
     // Policy
@@ -363,7 +357,7 @@ pub unsafe extern "C" fn h_update_master_keys(
 
     //
     // update the master keys
-    ffi_unwrap!(CoverCrypt::<X25519Crypto>::default().update_master_keys(
+    ffi_unwrap!(CoverCrypt::default().update_master_keys(
         &policy,
         &mut master_private_key,
         &mut master_public_key
@@ -468,15 +462,14 @@ pub unsafe extern "C" fn h_refresh_user_private_key(
         master_private_key_ptr as *const u8,
         master_private_key_len as usize,
     );
-    let master_private_key: PrivateKey<X25519Crypto> =
-        ffi_unwrap!(PrivateKey::try_from_bytes(master_private_key_bytes));
+    let master_private_key =
+        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
     // Master public key deserialization
     let user_private_key_bytes = std::slice::from_raw_parts(
         current_user_private_key_ptr as *const u8,
         current_user_private_key_len as usize,
     );
-    let mut user_private_key: PrivateKey<X25519Crypto> =
-        ffi_unwrap!(PrivateKey::try_from_bytes(user_private_key_bytes));
+    let mut user_private_key = ffi_unwrap!(UserPrivateKey::try_from_bytes(user_private_key_bytes));
 
     //
     // Access Policy
@@ -506,15 +499,13 @@ pub unsafe extern "C" fn h_refresh_user_private_key(
 
     //
     // update the master keys
-    ffi_unwrap!(
-        CoverCrypt::<X25519Crypto>::default().refresh_user_private_key(
-            &mut user_private_key,
-            &access_policy,
-            &master_private_key,
-            &policy,
-            preserve_old_partitions_access != 0
-        )
-    );
+    ffi_unwrap!(CoverCrypt::default().refresh_user_private_key(
+        &mut user_private_key,
+        &access_policy,
+        &master_private_key,
+        &policy,
+        preserve_old_partitions_access != 0
+    ));
 
     //
     // Serialize the master public key

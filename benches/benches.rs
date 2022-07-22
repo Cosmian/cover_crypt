@@ -2,15 +2,14 @@ use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 #[cfg(feature = "ffi")]
 use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure;
 use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
-    symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
+    hybrid_crypto::Metadata, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
 };
 use cover_crypt::{
-    api::{CoverCrypt, PublicKey},
+    api::CoverCrypt,
     error::Error,
     interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
+    PublicKey,
 };
-
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {
@@ -44,9 +43,7 @@ fn policy() -> Result<Policy, Error> {
 }
 
 /// Generate encrypted header with some metadata
-fn generate_encrypted_header(
-    public_key: &PublicKey<X25519Crypto>,
-) -> EncryptedHeader<Aes256GcmCrypto> {
+fn generate_encrypted_header(public_key: &PublicKey) -> EncryptedHeader<Aes256GcmCrypto> {
     let policy = policy().expect("cannot generate policy");
     let policy_attributes = vec![
         Attribute::new("Department", "FIN"),
@@ -57,7 +54,7 @@ fn generate_encrypted_header(
         additional_data: Some(vec![10, 11, 12, 13, 14]),
     };
 
-    encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+    encrypt_hybrid_header::<Aes256GcmCrypto>(
         &policy,
         public_key,
         &policy_attributes,
@@ -69,7 +66,7 @@ fn generate_encrypted_header(
 fn bench_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (_msk, mpk) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -78,26 +75,18 @@ fn bench_header_encryption(c: &mut Criterion) {
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Confidential"),
     ];
-    let encrypted_header_1 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-        &policy,
-        &mpk,
-        &policy_attributes_1,
-        None,
-    )
-    .expect("cannot encrypt header 1");
+    let encrypted_header_1 =
+        encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_1, None)
+            .expect("cannot encrypt header 1");
     let policy_attributes_3 = vec![
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Top Secret"),
         Attribute::new("Security Level", "Confidential"),
         Attribute::new("Security Level", "Protected"),
     ];
-    let encrypted_header_3 = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-        &policy,
-        &mpk,
-        &policy_attributes_3,
-        None,
-    )
-    .expect("cannot encrypt header 3");
+    let encrypted_header_3 =
+        encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_3, None)
+            .expect("cannot encrypt header 3");
 
     print!("Bench header encryption size: ");
     println!(
@@ -109,24 +98,14 @@ fn bench_header_encryption(c: &mut Criterion) {
     let mut group = c.benchmark_group("Header encryption");
     group.bench_function("1 partition", |b| {
         b.iter(|| {
-            encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-                &policy,
-                &mpk,
-                &policy_attributes_1,
-                None,
-            )
-            .expect("cannot encrypt header 1")
+            encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_1, None)
+                .expect("cannot encrypt header 1")
         })
     });
     group.bench_function("3 partitions", |b| {
         b.iter(|| {
-            encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-                &policy,
-                &mpk,
-                &policy_attributes_3,
-                None,
-            )
-            .expect("cannot encrypt header 3")
+            encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_3, None)
+                .expect("cannot encrypt header 3")
         })
     });
 
@@ -136,7 +115,7 @@ fn bench_header_encryption(c: &mut Criterion) {
     };
     group.bench_function("speed with metadata", |b| {
         b.iter(|| {
-            encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            encrypt_hybrid_header::<Aes256GcmCrypto>(
                 &policy,
                 &mpk,
                 &policy_attributes_1,
@@ -151,7 +130,7 @@ fn bench_header_encryption(c: &mut Criterion) {
 fn bench_ffi_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (_msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -224,7 +203,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (_msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -324,7 +303,7 @@ unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
 fn bench_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -337,7 +316,7 @@ fn bench_header_decryption(c: &mut Criterion) {
 
     c.bench_function("Header decryption", |b| {
         b.iter(|| {
-            decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
+            decrypt_hybrid_header::<Aes256GcmCrypto>(
                 &user_decryption_key,
                 &encrypted_header.header_bytes,
             )
@@ -350,7 +329,7 @@ fn bench_header_decryption(c: &mut Criterion) {
 fn bench_ffi_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -402,7 +381,7 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
 fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (msk, public_key) = cc
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");

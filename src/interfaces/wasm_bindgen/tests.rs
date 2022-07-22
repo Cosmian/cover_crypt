@@ -1,29 +1,27 @@
+use crate::{
+    api::CoverCrypt,
+    error::Error,
+    interfaces::{
+        statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
+        wasm_bindgen::generate_cc_keys::{
+            webassembly_generate_master_keys, webassembly_generate_user_private_key,
+            webassembly_rotate_attributes,
+        },
+        wasm_bindgen::hybrid_cc_aes::*,
+    },
+    MasterPrivateKey, PublicKey, UserPrivateKey,
+};
+use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 /// Test WASM bindgen functions prerequisites:
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
 use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto, hybrid_crypto::Metadata,
-    symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
+    hybrid_crypto::Metadata, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
 };
 use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;
-
-use super::generate_cc_keys::{
-    webassembly_generate_master_keys, webassembly_generate_user_private_key,
-    webassembly_rotate_attributes,
-};
-use crate::{
-    api::{self, CoverCrypt, PrivateKey, PublicKey},
-    error::Error,
-    interfaces::{
-        statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
-        wasm_bindgen::hybrid_cc_aes::*,
-    },
-};
-
-use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 
 fn create_test_policy() -> Policy {
     //
@@ -46,7 +44,7 @@ fn encrypt_header(
     metadata: &Metadata,
     policy: &Policy,
     attributes: &[Attribute],
-    public_key: &api::PublicKey<X25519Crypto>,
+    public_key: &PublicKey,
 ) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
     let metadata_bytes = Uint8Array::from(serde_json::to_vec(metadata)?.as_slice());
     let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
@@ -65,7 +63,7 @@ fn encrypt_header(
 
 fn decrypt_header(
     encrypted_header: &EncryptedHeader<Aes256GcmCrypto>,
-    user_decryption_key: &api::PrivateKey<X25519Crypto>,
+    user_decryption_key: &UserPrivateKey,
 ) -> Result<ClearTextHeader<Aes256GcmCrypto>, Error> {
     let encrypted_header_bytes = Uint8Array::from(encrypted_header.header_bytes.as_slice());
     let sk_u = Uint8Array::from(user_decryption_key.try_to_bytes()?.as_slice());
@@ -90,7 +88,7 @@ pub fn test_decrypt_hybrid_header() {
     //
     // CoverCrypt setup
     //
-    let cc = CoverCrypt::<X25519Crypto>::default();
+    let cc = CoverCrypt::default();
     let (msk, mpk) = cc.generate_master_keys(&policy).unwrap();
 
     let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
@@ -123,18 +121,16 @@ pub fn test_decrypt_hybrid_header() {
 #[wasm_bindgen_test]
 fn test_non_reg_decrypt_hybrid_header() {
     let reg_vector_json: Value =
-        serde_json::from_str(include_str!("../non_regression_test_vector.json")).unwrap();
+        serde_json::from_str(include_str!("../../../non_regression_vector.json")).unwrap();
 
     let user_decryption_key =
         hex::decode(reg_vector_json["user_decryption_key"].as_str().unwrap()).unwrap();
     let header_bytes = hex::decode(reg_vector_json["header_bytes"].as_str().unwrap()).unwrap();
 
-    let user_decryption_key_from_file = PrivateKey::try_from_bytes(&user_decryption_key).unwrap();
-    decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
-        &user_decryption_key_from_file,
-        &header_bytes,
-    )
-    .unwrap();
+    let user_decryption_key_from_file =
+        UserPrivateKey::try_from_bytes(&user_decryption_key).unwrap();
+    decrypt_hybrid_header::<Aes256GcmCrypto>(&user_decryption_key_from_file, &header_bytes)
+        .unwrap();
 }
 
 #[wasm_bindgen_test]
@@ -149,28 +145,26 @@ fn test_generate_keys() {
     // Generate master keys
     let master_keys =
         webassembly_generate_master_keys(Uint8Array::from(serialized_policy.as_slice())).unwrap();
-
     let master_keys_vec = master_keys.to_vec();
-    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
-    let private_key_bytes = &master_keys_vec[4..4 + private_key_size as usize];
+    let master_private_key_size =
+        u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap()) as usize;
+    let master_private_key_bytes = &master_keys_vec[4..4 + master_private_key_size];
 
     //
     // Check deserialization
-    PrivateKey::<X25519Crypto>::try_from_bytes(private_key_bytes).unwrap();
-    PublicKey::<X25519Crypto>::try_from_bytes(&master_keys_vec[4 + private_key_size as usize..])
-        .unwrap();
+    MasterPrivateKey::try_from_bytes(master_private_key_bytes).unwrap();
+    PublicKey::try_from_bytes(&master_keys_vec[4 + master_private_key_size..]).unwrap();
 
     //
     // Generate user private key
     let user_private_key_bytes = webassembly_generate_user_private_key(
-        Uint8Array::from(private_key_bytes),
+        Uint8Array::from(master_private_key_bytes),
         "Department::FIN && Security Level::Top Secret",
         Uint8Array::from(serialized_policy.as_slice()),
     )
     .unwrap()
     .to_vec();
-    let user_private_key =
-        PrivateKey::<X25519Crypto>::try_from_bytes(&user_private_key_bytes).unwrap();
+    let user_private_key = UserPrivateKey::try_from_bytes(&user_private_key_bytes).unwrap();
 
     let attributes = vec![Attribute::new("Security Level", "Confidential")];
     let serialized_attributes = serde_json::to_vec(&attributes).unwrap();
@@ -186,16 +180,14 @@ fn test_generate_keys() {
     let master_keys =
         webassembly_generate_master_keys(Uint8Array::from(new_policy.as_bytes())).unwrap();
     let master_keys_vec = master_keys.to_vec();
-    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap());
-    let private_key_bytes = &master_keys_vec[4..4 + private_key_size as usize];
+    let private_key_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap()) as usize;
+    let private_key_bytes = &master_keys_vec[4..4 + private_key_size];
 
     //
     // Check deserialization
-    PrivateKey::<X25519Crypto>::try_from_bytes(private_key_bytes).unwrap();
-    let master_public_key = PublicKey::<X25519Crypto>::try_from_bytes(
-        &master_keys_vec[4 + private_key_size as usize..],
-    )
-    .unwrap();
+    MasterPrivateKey::try_from_bytes(private_key_bytes).unwrap();
+    let master_public_key =
+        PublicKey::try_from_bytes(&master_keys_vec[4 + private_key_size..]).unwrap();
 
     //
     // Encrypt / decrypt
@@ -222,8 +214,7 @@ fn test_generate_keys() {
     )
     .unwrap()
     .to_vec();
-    let user_private_key =
-        PrivateKey::<X25519Crypto>::try_from_bytes(&user_private_key_bytes).unwrap();
+    let user_private_key = UserPrivateKey::try_from_bytes(&user_private_key_bytes).unwrap();
 
     //
     // Decrypt with the refreshed private key (it now works)
