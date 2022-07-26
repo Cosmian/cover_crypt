@@ -1,3 +1,6 @@
+//! Implement hybrid cryptography based on the CoverCrypt KEM and the DEM based
+//! on AES 256 GCM from `cosmian_crypto_core`.
+
 use crate::{
     api::CoverCrypt,
     cover_crypt_core::{Encapsulation, PublicKey, UserPrivateKey},
@@ -26,7 +29,9 @@ pub struct ClearTextHeader<DEM: Dem> {
     pub meta_data: Metadata,
 }
 
-/// Generate an encrypted header. A header contains the following elements:
+/// Generate an encrypted header.
+///
+/// A header contains the following elements:
 ///
 /// - `encapsulation_size`  : the size of the symmetric key encapsulation (u32)
 /// - `encapsulation`       : symmetric key encapsulation using CoverCrypt
@@ -107,11 +112,11 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     }
     let encapsulation_size: usize =
         u32::from_be_bytes(header_bytes[..index].try_into()?).try_into()?;
-    if encapsulation_size > header_bytes.len() - index {
+    if header_bytes.len() < encapsulation_size + index {
         return Err(Error::InvalidSize(format!(
             "Invalid Header bytes: the 4 first bytes (big endian encoded) give an u32 value \
              greater than the header size ({encapsulation_size} against {})",
-            header_bytes.len()
+            header_bytes.len() - index
         )));
     }
     // get the encapsulation
@@ -155,7 +160,7 @@ pub fn symmetric_encryption_overhead<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>
 /// block. That value should be kept identical for all blocks of a resource.
 ///
 /// The nonce, if any, occupies the first bytes of the encrypted block.
-pub fn encrypt_hybrid_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
+pub fn encrypt_symmetric_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
     symmetric_key: &DEM::Key,
     uid: &[u8],
     block_number: usize,
@@ -181,11 +186,11 @@ pub fn encrypt_hybrid_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
         .map_err(Error::CryptoError)
 }
 
-/// Symmetrically Decrypt encrypted data in a block.
+/// Symmetrically decrypt encrypted block data.
 ///
 /// The `uid` and `block_number` are part of the AEAD
 /// of the crypto scheme (when applicable)
-pub fn decrypt_hybrid_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
+pub fn decrypt_symmetric_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
     symmetric_key: &DEM::Key,
     uid: &[u8],
     block_number: usize,
@@ -287,14 +292,14 @@ mod tests {
 
         let message = b"My secret message";
         const MAX_CLEARTEXT_SIZE: usize = 256;
-        let encrypted_block = encrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEARTEXT_SIZE>(
+        let encrypted_block = encrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEARTEXT_SIZE>(
             &encrypted_header.symmetric_key,
             &metadata.uid,
             0,
             message,
         )?;
 
-        let res = decrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEARTEXT_SIZE>(
+        let res = decrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEARTEXT_SIZE>(
             &encrypted_header.symmetric_key,
             &metadata.uid,
             0,
@@ -387,7 +392,7 @@ mod tests {
         //
         // Setup CoverCrypt
         let cc = CoverCrypt::default();
-        let (master_private_key, master_public_key) = cc.generate_master_keys(&policy)?;
+        let (mut master_private_key, mut master_public_key) = cc.generate_master_keys(&policy)?;
 
         //
         // New user private key
@@ -409,9 +414,9 @@ mod tests {
             decrypt_hybrid_header::<Aes256GcmCrypto>(&user_key, &encrypted_header.header_bytes)?;
 
         //
-        // Rotate argument (must refresh master keys)
+        // Rotate argument (must update master keys)
         policy.rotate(&Attribute::from(("Security Level", "Top Secret")))?;
-        let (_master_private_key, master_public_key) = cc.generate_master_keys(&policy)?;
+        cc.update_master_keys(&policy, &mut master_private_key, &mut master_public_key)?;
 
         //
         // Encrypt with new attribute

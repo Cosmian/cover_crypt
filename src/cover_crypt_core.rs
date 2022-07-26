@@ -1,4 +1,4 @@
-// Used to be able to use the paper naming conventions
+// Needed to use the paper naming conventions
 #![allow(non_snake_case)]
 
 use crate::{
@@ -93,11 +93,10 @@ impl From<&Partition> for Vec<u8> {
     }
 }
 
-/// CoverCrypt master private key. It is composed of `u`, `v` and `s`, three
-/// randomly chosen scalars, and the `x_i` associated to the subsets `S_i`.
+/// CoverCrypt master private key.
 ///
-/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
-/// WARNING: the master private key into bytes MUST not exceed 2^32 bytes
+/// It is composed of `u`, `v` and `s`, three randomly chosen scalars,
+/// and the scalars `x_i` associated to all subsets `S_i`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterPrivateKey {
     u: X25519PrivateKey,
@@ -107,7 +106,8 @@ pub struct MasterPrivateKey {
 }
 
 impl MasterPrivateKey {
-    /// Return a reference to the `x` hashmap.
+    /// Return a reference to a hashmap containing the `x_i` for all subset
+    /// `S_i`.
     pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
         &self.x
     }
@@ -170,17 +170,17 @@ impl Drop for MasterPrivateKey {
     }
 }
 
-/// CoverCrypt user private key. It is composed of:
+/// CoverCrypt user private key.
+///
+/// It is composed of:
+///
 /// - `a` and `b` such that `a * u + b * v = s`, where `u`, `v` and `s` are
 /// scalars from the master private key
-/// - the `x_i` associated to the subsets `S_i` for which the user has been
-/// given the rights.
+/// - the scalars `x_i` associated to the subsets `S_i` for which the user has
+/// been given the rights.
 ///
 /// Therefore, a user can decrypt messages encrypted for any subset `S_i` his
 /// private key holds the associted `x_i`.
-///
-/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
-/// WARNING: the user private key into bytes MUST not exceed 2^32 bytes
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserPrivateKey {
     a: X25519PrivateKey,
@@ -189,7 +189,8 @@ pub struct UserPrivateKey {
 }
 
 impl UserPrivateKey {
-    /// Return a reference to the `x` hashmap.
+    /// Return a reference to a hashmap containing the scalars `x_i` for
+    /// each subset `S_i` the user has been given the rights.
     pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
         &self.x
     }
@@ -249,16 +250,15 @@ impl Drop for UserPrivateKey {
     }
 }
 
-/// CoverCrypt public key, it is composed of:
+/// CoverCrypt public key.
+///
+/// It is composed of:
 ///
 /// - `U` and `V` such that `U = g * u` and `V = g * v`, where `u` and `v` are
 /// scalars from the master private key and `g` is the group generator.
 ///
-/// - the `H_i` such that `H_i = g * s * x_i` with `x_i` the scalar associated
+/// - the `H_i` such that `H_i = g * s * x_i` with `x_i` the scalars associated
 /// to each subset `S_i`.
-///
-/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
-/// WARNING: the PublicKey into bytes MUST not exceed 2^32 bytes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicKey {
     U: X25519PublicKey,
@@ -267,7 +267,8 @@ pub struct PublicKey {
 }
 
 impl PublicKey {
-    /// Return a reference to the `H` hashmap.
+    /// Return a reference to a hashmap containing the points `H_i` for all
+    /// subset `S_i`.
     pub fn map(&self) -> &HashMap<Partition, X25519PublicKey> {
         &self.H
     }
@@ -311,6 +312,17 @@ impl PublicKey {
     }
 }
 
+/// CoverCrypt secret key encapsulation.
+///
+/// It is composed of:
+///
+/// - `C` and `D` such that `C = U * r` and `D = V * r`, where `r` is a random
+/// scalar and `U` and `V` are the points from the public key.
+///
+/// - the `E_i` such that `E_i = Hash(K_i) Xor K` with `K_i = H_i * r` where
+/// the `H_i` are public key points from `H` that are associated to subsets
+/// `S_i` in the encryption set used to generate the encapsulation, and `K` is
+/// the randomly chosen symmetric key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encapsulation {
     C: X25519PublicKey,
@@ -319,7 +331,7 @@ pub struct Encapsulation {
 }
 
 impl Encapsulation {
-    /// Serialize the public key.
+    /// Serialize the encapsulation.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
         serializer.write_array(&self.C.to_array())?;
@@ -332,9 +344,9 @@ impl Encapsulation {
         Ok(serializer.value().to_vec())
     }
 
-    /// Deserialize the public key.
+    /// Deserialize the encapsulation.
     ///
-    /// - `bytes`   : bytes from which to read the public key
+    /// - `bytes`   : bytes from which to read the encapsulation
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.is_empty() {
             return Err(Error::EmptyPrivateKey);
@@ -355,7 +367,9 @@ impl Encapsulation {
     }
 }
 
-/// CoverCrypt secret key is a vector of bytes.
+/// CoverCrypt secret key.
+///
+/// Internally, it is a vector of bytes.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SecretKey(Vec<u8>);
 
@@ -438,8 +452,7 @@ where
     (msk, mpk)
 }
 
-/// Generate a user private key for the given decryption sets. It is composed of
-/// the scalars `(a_j, b_j)` and the `x_i` associated with the decryption sets.
+/// Generate a user private key for the given decryption sets.
 ///
 /// # Paper
 ///

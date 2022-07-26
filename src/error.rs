@@ -1,3 +1,5 @@
+//! Error type for the crate
+
 use std::{
     array::TryFromSliceError,
     fmt::Debug,

@@ -5,8 +5,8 @@
 
 use crate::{
     interfaces::statics::{
-        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
-        ClearTextHeader,
+        decrypt_hybrid_header, decrypt_symmetric_block, encrypt_hybrid_header,
+        encrypt_symmetric_block, ClearTextHeader,
     },
     PublicKey, UserPrivateKey,
 };
@@ -145,7 +145,7 @@ pub fn webassembly_encrypt_hybrid_block(
     let block_number_value = block_number.unwrap_or(0);
     //
     // Encrypt block
-    let ciphertext = encrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+    let ciphertext = encrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
         &symmetric_key,
         &uid,
         block_number_value,
@@ -196,7 +196,7 @@ pub fn webassembly_decrypt_hybrid_block(
     let block_number_value = block_number.unwrap_or(0);
     //
     // Decrypt block
-    let cleartext = decrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+    let cleartext = decrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
         &symmetric_key,
         &uid,
         block_number_value as usize,

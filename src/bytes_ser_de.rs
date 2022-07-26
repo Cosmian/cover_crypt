@@ -1,3 +1,5 @@
+//! Implement the `Serializer` and `Deserializer` objects using LEB128.
+
 use crate::error::Error;
 use std::io::{Read, Write};
 

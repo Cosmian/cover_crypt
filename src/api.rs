@@ -1,3 +1,7 @@
+//! Build a KEM on based on CoverCypt.
+//!
+//! The `CoverCrypt` object is the main entry point for the core functionalities.
+
 use crate::{
     cover_crypt_core::{
         self, Encapsulation, MasterPrivateKey, Partition, PublicKey, SecretKey, UserPrivateKey,

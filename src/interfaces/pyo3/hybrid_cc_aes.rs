@@ -5,10 +5,10 @@
 
 use crate::{
     interfaces::statics::{
-        decrypt_hybrid_block as core_decrypt_hybrid_block,
         decrypt_hybrid_header as core_decrypt_hybrid_header,
-        encrypt_hybrid_block as core_encrypt_hybrid_block,
-        encrypt_hybrid_header as core_encrypt_hybrid_header, ClearTextHeader,
+        decrypt_symmetric_block as core_decrypt_symmetric_block,
+        encrypt_hybrid_header as core_encrypt_hybrid_header,
+        encrypt_symmetric_block as core_encrypt_symmetric_block, ClearTextHeader,
     },
     PublicKey, UserPrivateKey,
 };
@@ -139,7 +139,7 @@ pub fn encrypt_hybrid_block(
 
     //
     // Encrypt block
-    Ok(core_encrypt_hybrid_block::<
+    Ok(core_encrypt_symmetric_block::<
         Aes256GcmCrypto,
         MAX_CLEAR_TEXT_SIZE,
     >(
@@ -169,7 +169,7 @@ pub fn decrypt_hybrid_block(
 
     //
     // Decrypt block
-    Ok(core_decrypt_hybrid_block::<
+    Ok(core_decrypt_symmetric_block::<
         Aes256GcmCrypto,
         MAX_CLEAR_TEXT_SIZE,
     >(
