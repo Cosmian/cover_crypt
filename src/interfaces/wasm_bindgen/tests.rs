@@ -16,7 +16,7 @@ use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
-use cosmian_crypto_base_anssi::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
+use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
 use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;

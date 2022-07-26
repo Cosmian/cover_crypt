@@ -11,7 +11,7 @@ use crate::{
     PublicKey, UserPrivateKey,
 };
 use abe_policy::Attribute;
-use cosmian_crypto_base_anssi::{
+use cosmian_crypto_core::{
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
     KeyTrait,
 };

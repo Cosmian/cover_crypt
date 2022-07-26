@@ -5,8 +5,8 @@ use crate::{
     bytes_ser_de::{Deserializer, Serializer},
     error::Error,
 };
-use cosmian_crypto_base_anssi::{
-    asymmetric::{X25519PrivateKey, X25519PublicKey},
+use cosmian_crypto_core::{
+    asymmetric_crypto::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
     KeyTrait,
 };
@@ -648,7 +648,7 @@ pub fn refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmian_crypto_base_anssi::entropy::CsRng;
+    use cosmian_crypto_core::entropy::CsRng;
 
     /// Length of the desired symmetric key
     const SYM_KEY_LENGTH: usize = 32;

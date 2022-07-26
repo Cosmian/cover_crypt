@@ -1,7 +1,7 @@
 use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 #[cfg(feature = "ffi")]
-use cosmian_crypto_base_anssi::symmetric_crypto::aes_256_gcm_pure;
-use cosmian_crypto_base_anssi::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
+use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure;
+use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
 use cover_crypt::{
     api::CoverCrypt,
     error::Error,
