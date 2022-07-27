@@ -106,7 +106,7 @@ pub struct MasterPrivateKey {
 }
 
 impl MasterPrivateKey {
-    /// Return a reference to a hashmap containing the `x_i` for all subset
+    /// Return a reference to a hashmap containing the `x_i` for all subsets
     /// `S_i`.
     pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
         &self.x
