@@ -32,7 +32,7 @@ python = ["pyo3"]
 
 [dependencies]
 abe_policy = "0.1"
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz_prepare_anssi_repo"}
+cosmian_crypto_core = "1.0"
 hex = "0.4"
 leb128 = "0.2"
 rand_core = { version = "0.6", features = ["getrandom"] }
