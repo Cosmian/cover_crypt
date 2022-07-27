@@ -268,7 +268,7 @@ pub struct PublicKey {
 
 impl PublicKey {
     /// Return a reference to a hashmap containing the points `H_i` for all
-    /// subset `S_i`.
+    /// subsets `S_i`.
     pub fn map(&self) -> &HashMap<Partition, X25519PublicKey> {
         &self.H
     }
