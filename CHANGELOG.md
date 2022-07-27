@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [4.1.0] - 2022-07-27
+### Added
+- Documentation
+### Changed
+- Use CryptoCore v1.0
+- rename two `statics.rs` APIs
+### Fixed
+- serialization `write_array()` now takes a slice as argument
+- replace some `Vec::new()` by `Vec::with_capacity()`
+### Removed
+---
+
+
+---
 ## [4.0.0] - 2022-07-19
 ### Added
 ### Changed
