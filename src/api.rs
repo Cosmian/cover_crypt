@@ -1,4 +1,4 @@
-//! Build a KEM on based on CoverCypt.
+//! Build a KEM based on CoverCypt.
 //!
 //! The `CoverCrypt` object is the main entry point for the core functionalities.
 
