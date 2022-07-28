@@ -1,4 +1,4 @@
-use abe_policy::{ap, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 #[cfg(feature = "ffi")]
 use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure;
 use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
@@ -307,7 +307,8 @@ fn bench_header_decryption(c: &mut Criterion) {
         .expect("cannot generate master keys");
     let encrypted_header = generate_encrypted_header(&public_key);
 
-    let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+    let access_policy =
+        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
     let user_decryption_key = cc
         .generate_user_private_key(&msk, &access_policy, &policy)
         .expect("cannot generate user private key");
@@ -333,7 +334,8 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
         .expect("cannot generate master keys");
     let encrypted_header = generate_encrypted_header(&public_key);
 
-    let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+    let access_policy =
+        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
     let user_decryption_key = cc
         .generate_user_private_key(&msk, &access_policy, &policy)
         .expect("cannot generate user decryption key");
@@ -385,7 +387,8 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
         .expect("cannot generate master keys");
     let encrypted_header = generate_encrypted_header(&public_key);
 
-    let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+    let access_policy =
+        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
     let user_decryption_key = cc
         .generate_user_private_key(&msk, &access_policy, &policy)
         .expect("cannot generate user private key");

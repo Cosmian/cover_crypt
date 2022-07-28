@@ -174,10 +174,10 @@ impl Default for CoverCrypt {
 /// - `policy`  : policy from which to generate partitions
 fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // Build a map of all attribute values for all axes
-    let mut map = HashMap::with_capacity(policy.as_map().len());
+    let mut map = HashMap::with_capacity(policy.axes.len());
     // We also a collect a Vec of axes which is used later
-    let mut axes = Vec::with_capacity(policy.as_map().len());
-    for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
+    let mut axes = Vec::with_capacity(policy.axes.len());
+    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
         axes.push(axis.to_owned());
         let mut values: Vec<u32> = vec![];
         for name in attribute_names {
@@ -209,7 +209,7 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     let mut map = HashMap::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
-        let entry = map.entry(attribute.axis()).or_insert(Vec::new());
+        let entry = map.entry(attribute.axis.to_owned()).or_insert(Vec::new());
         entry.push(value);
     }
 
@@ -217,8 +217,8 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     // assume that the user wants to cover all the attribute names
     // in this axis
     // We also a collect a Vec of axes which is used later
-    let mut axes = Vec::with_capacity(policy.as_map().len());
-    for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
+    let mut axes = Vec::with_capacity(policy.axes.len());
+    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
         axes.push(axis.to_owned());
         if !map.contains_key(axis) {
             // gather all the latest value for that axis
@@ -311,17 +311,17 @@ fn to_attribute_combinations(
     match access_policy {
         AccessPolicy::Attr(attr) => {
             let (attribute_names, is_hierarchical) = policy
-                .as_map()
-                .get(&attr.axis())
-                .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
+                .axes
+                .get(&attr.axis)
+                .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
             let mut res = vec![vec![attr.clone()]];
             if *is_hierarchical {
                 // add attribute values for all attributes below the given one
                 for name in attribute_names.iter() {
-                    if *name == attr.name() {
+                    if *name == attr.name {
                         break;
                     }
-                    res.push(vec![Attribute::new(&attr.axis(), name)]);
+                    res.push(vec![Attribute::new(&attr.axis, name)]);
                 }
             }
             Ok(res)
@@ -378,7 +378,7 @@ mod tests {
         let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
         for axis in axes {
             let mut axis_attributes: Vec<(Attribute, u32)> = vec![];
-            let attribute_names = &policy.as_map()[axis].0;
+            let attribute_names = &policy.axes[axis].0;
             for name in attribute_names {
                 let attribute = Attribute::new(axis, name);
                 let value = policy.attribute_current_value(&attribute)?;
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn test_combine_attribute_values() -> Result<(), Error> {
         let mut policy = policy()?;
-        let axes: Vec<String> = policy.as_map().keys().into_iter().cloned().collect();
+        let axes: Vec<String> = policy.axes.keys().into_iter().cloned().collect();
 
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 
@@ -568,7 +568,7 @@ mod tests {
         // add the partitions associated with the HR department: combine with
         // all attributes of the Security Level axis
         let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
-        let (security_levels, _) = policy.as_map().get("Security Level").unwrap();
+        let (security_levels, _) = policy.axes.get("Security Level").unwrap();
         for attr_name in security_levels {
             let attr_value =
                 policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;

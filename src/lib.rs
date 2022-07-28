@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```
-//! use abe_policy::{ap, AccessPolicy, Attribute, Policy, PolicyAxis};
+//! use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 //! use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
 //! use cover_crypt::{CoverCrypt, interfaces::statics::*};
 //!

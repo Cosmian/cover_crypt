@@ -15,7 +15,7 @@ use crate::{
     },
     MasterPrivateKey, PublicKey, UserPrivateKey,
 };
-use abe_policy::{ap, AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_crypto_core::{
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata, SymmetricCrypto},
     KeyTrait,
@@ -194,7 +194,8 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         //
         let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+        let access_policy = AccessPolicy::new("Department", "FIN")
+            & AccessPolicy::new("Security Level", "Top Secret");
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
 
         //
@@ -378,7 +379,8 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
         //
         let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+        let access_policy = AccessPolicy::new("Department", "FIN")
+            & AccessPolicy::new("Security Level", "Top Secret");
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
 
         //
@@ -655,7 +657,8 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
     let original_msk_partitions: Vec<Partition> = msk.x.clone().into_keys().collect();
     let original_mpk_partitions: Vec<Partition> = mpk.H.clone().into_keys().collect();
 
-    let access_policy = ap("Department", "MKG") & ap("Security Level", "Confidential");
+    let access_policy = AccessPolicy::new("Department", "MKG")
+        & AccessPolicy::new("Security Level", "Confidential");
     let usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
     let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
 

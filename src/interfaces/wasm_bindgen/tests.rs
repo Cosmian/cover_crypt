@@ -11,7 +11,7 @@ use crate::{
     },
     MasterPrivateKey, PublicKey, UserPrivateKey,
 };
-use abe_policy::{ap, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 /// Test WASM bindgen functions prerequisites:
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
@@ -89,7 +89,8 @@ pub fn test_decrypt_hybrid_header() {
     let cc = CoverCrypt::default();
     let (msk, mpk) = cc.generate_master_keys(&policy).unwrap();
 
-    let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+    let access_policy =
+        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
     let sk_u = cc
         .generate_user_private_key(&msk, &access_policy, &policy)
         .unwrap();

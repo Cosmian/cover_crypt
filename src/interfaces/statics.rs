@@ -214,7 +214,7 @@ pub fn decrypt_symmetric_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use abe_policy::{ap, AccessPolicy, Attribute, PolicyAxis};
+    use abe_policy::{AccessPolicy, Attribute, PolicyAxis};
     use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -255,9 +255,10 @@ mod tests {
             Attribute::new("Department", "HR"),
             Attribute::new("Department", "FIN"),
         ];
-        let access_policy = ap("Security Level", "Top Secret")
-            & (ap("Department", "FIN") | ap("Department", "MKG"));
-        let access_policy_2 = ap("Security Level", "Medium Secret") & ap("Department", "MKG");
+        let access_policy = AccessPolicy::new("Security Level", "Top Secret")
+            & (AccessPolicy::new("Department", "FIN") | AccessPolicy::new("Department", "MKG"));
+        let access_policy_2 = AccessPolicy::new("Security Level", "Medium Secret")
+            & AccessPolicy::new("Department", "MKG");
 
         //
         // CoverCrypt setup
