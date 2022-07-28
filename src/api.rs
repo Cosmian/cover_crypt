@@ -1,3 +1,7 @@
+//! Build a KEM based on CoverCypt.
+//!
+//! The `CoverCrypt` object is the main entry point for the core functionalities.
+
 use crate::{
     cover_crypt_core::{
         self, Encapsulation, MasterPrivateKey, Partition, PublicKey, SecretKey, UserPrivateKey,
@@ -5,7 +9,7 @@ use crate::{
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
-use cosmian_crypto_base::entropy::CsRng;
+use cosmian_crypto_core::entropy::CsRng;
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,
@@ -46,12 +50,15 @@ impl CoverCrypt {
     }
 
     /// Update the master keys according to this new policy.
+    ///
     /// When a partition exists in the new policy but not in the master keys,
     /// a new keypair is added to the master keys for that partition.
     /// When a partition exists on the master keys, but not in the new policy,
     /// it is removed from the master keys.
     ///
     ///  - `policy` : Policy to use to generate the keys
+    ///  - `msk`    : master secret key
+    ///  - `mpk`    : master public key
     pub fn update_master_keys(
         &self,
         policy: &Policy,
@@ -67,6 +74,7 @@ impl CoverCrypt {
     }
 
     /// Generate a user private key.
+    ///
     /// A new user private key does NOT include to old (i.e. rotated) partitions
     ///
     /// - `msk`             : master secret key
@@ -90,29 +98,29 @@ impl CoverCrypt {
     /// The user key will be granted access to the current partitions, as determined by its access policy.
     /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
     ///
-    /// - `usk`                  : the user key to refresh
-    /// - `access_policy`        : the access policy of the user key
-    /// - `msk`                  : master secret key
-    /// - `policy`               : global policy of the master secret key
-    /// - preserve_old_partitions_access:  whether access to old partitions (i.e. before rotation) should be kept
+    /// - `usk`                 : the user key to refresh
+    /// - `access_policy`       : the access policy of the user key
+    /// - `msk`                 : master secret key
+    /// - `policy`              : global policy of the master secret key
+    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before rotation) should be kept
     pub fn refresh_user_private_key(
         &self,
         usk: &mut UserPrivateKey,
         access_policy: &AccessPolicy,
         msk: &MasterPrivateKey,
         policy: &Policy,
-        preserve_old_partitions_access: bool,
+        keep_old_accesses: bool,
     ) -> Result<(), Error> {
         let mut current_partitions = access_policy_to_current_partitions(access_policy, policy)?;
-        if preserve_old_partitions_access {
-            for key_partition in usk.map().keys() {
+        if keep_old_accesses {
+            for key_partition in usk.x.keys() {
                 current_partitions.insert(key_partition.to_owned());
             }
         }
         cover_crypt_core::refresh(msk, usk, &current_partitions)
     }
 
-    /// Generate a random symmetric key of `symmetric_key_len` to be used in an
+    /// Generate a random symmetric key of `sym_key_len` to be used in an
     /// hybrid encryption scheme and generate its CoverCrypt encrypted version
     /// with the supplied policy `attributes`.
     ///
@@ -146,7 +154,6 @@ impl CoverCrypt {
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    /// - `sym_key_len`     : length of the symmetric key to generate
     pub fn decaps_symmetric_key(
         &self,
         sk_u: &UserPrivateKey,
@@ -167,10 +174,10 @@ impl Default for CoverCrypt {
 /// - `policy`  : policy from which to generate partitions
 fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
     // Build a map of all attribute values for all axes
-    let mut map = HashMap::with_capacity(policy.as_map().len());
+    let mut map = HashMap::with_capacity(policy.axes.len());
     // We also a collect a Vec of axes which is used later
-    let mut axes = Vec::with_capacity(policy.as_map().len());
-    for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
+    let mut axes = Vec::with_capacity(policy.axes.len());
+    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
         axes.push(axis.to_owned());
         let mut values: Vec<u32> = vec![];
         for name in attribute_names {
@@ -202,7 +209,7 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     let mut map = HashMap::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
-        let entry = map.entry(attribute.axis()).or_insert(Vec::new());
+        let entry = map.entry(attribute.axis.to_owned()).or_insert(Vec::new());
         entry.push(value);
     }
 
@@ -210,8 +217,8 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     // assume that the user wants to cover all the attribute names
     // in this axis
     // We also a collect a Vec of axes which is used later
-    let mut axes = Vec::with_capacity(policy.as_map().len());
-    for (axis, (attribute_names, _hierarchical)) in policy.as_map() {
+    let mut axes = Vec::with_capacity(policy.axes.len());
+    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
         axes.push(axis.to_owned());
         if !map.contains_key(axis) {
             // gather all the latest value for that axis
@@ -295,7 +302,8 @@ fn access_policy_to_current_partitions(
 /// values of each attribute in the given access policy. This corresponds to
 /// an OR expression of AND expressions.
 ///
-/// - `policy`  : global policy
+/// - `access_policy`   : access policy to convert into attribute combinations
+/// - `policy`          : global policy
 fn to_attribute_combinations(
     access_policy: &AccessPolicy,
     policy: &Policy,
@@ -303,17 +311,17 @@ fn to_attribute_combinations(
     match access_policy {
         AccessPolicy::Attr(attr) => {
             let (attribute_names, is_hierarchical) = policy
-                .as_map()
-                .get(&attr.axis())
-                .ok_or_else(|| Error::UnknownPartition(attr.axis()))?;
+                .axes
+                .get(&attr.axis)
+                .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
             let mut res = vec![vec![attr.clone()]];
             if *is_hierarchical {
                 // add attribute values for all attributes below the given one
                 for name in attribute_names.iter() {
-                    if *name == attr.name() {
+                    if *name == attr.name {
                         break;
                     }
-                    res.push(vec![Attribute::new(&attr.axis(), name)]);
+                    res.push(vec![Attribute::new(&attr.axis, name)]);
                 }
             }
             Ok(res)
@@ -370,7 +378,7 @@ mod tests {
         let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
         for axis in axes {
             let mut axis_attributes: Vec<(Attribute, u32)> = vec![];
-            let attribute_names = &policy.as_map()[axis].0;
+            let attribute_names = &policy.axes[axis].0;
             for name in attribute_names {
                 let attribute = Attribute::new(axis, name);
                 let value = policy.attribute_current_value(&attribute)?;
@@ -384,7 +392,7 @@ mod tests {
     #[test]
     fn test_combine_attribute_values() -> Result<(), Error> {
         let mut policy = policy()?;
-        let axes: Vec<String> = policy.as_map().keys().into_iter().cloned().collect();
+        let axes: Vec<String> = policy.axes.keys().into_iter().cloned().collect();
 
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 
@@ -454,8 +462,8 @@ mod tests {
         let mut policy = policy()?;
         let cc = CoverCrypt::default();
         let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
-        let partitions_msk: Vec<Partition> = msk.map().clone().into_keys().collect();
-        let partitions_mpk: Vec<Partition> = mpk.map().clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
+        let partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
             assert!(partitions_mpk.contains(p));
@@ -464,8 +472,8 @@ mod tests {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.map().clone().into_keys().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.map().clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
@@ -484,14 +492,14 @@ mod tests {
             "Department::MKG && Security Level::Confidential",
         )?;
         let mut usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let original_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+        let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        let new_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
         assert_eq!(
             new_user_partitions.len(),
@@ -502,7 +510,7 @@ mod tests {
         }
         // refresh the user key but do NOT preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, false)?;
-        let new_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // the user should still have access to the same number of partitions
         assert_eq!(new_user_partitions.len(), original_user_partitions.len());
         for original_partition in &original_user_partitions {
@@ -560,7 +568,7 @@ mod tests {
         // add the partitions associated with the HR department: combine with
         // all attributes of the Security Level axis
         let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
-        let (security_levels, _) = policy.as_map().get("Security Level").unwrap();
+        let (security_levels, _) = policy.axes.get("Security Level").unwrap();
         for attr_name in security_levels {
             let attr_value =
                 policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;

@@ -5,17 +5,16 @@
 
 use crate::{
     interfaces::statics::{
-        decrypt_hybrid_block as core_decrypt_hybrid_block,
         decrypt_hybrid_header as core_decrypt_hybrid_header,
-        encrypt_hybrid_block as core_encrypt_hybrid_block,
-        encrypt_hybrid_header as core_encrypt_hybrid_header, ClearTextHeader,
+        decrypt_symmetric_block as core_decrypt_symmetric_block,
+        encrypt_hybrid_header as core_encrypt_hybrid_header,
+        encrypt_symmetric_block as core_encrypt_symmetric_block, ClearTextHeader,
     },
     PublicKey, UserPrivateKey,
 };
 use abe_policy::Attribute;
-use cosmian_crypto_base::{
-    hybrid_crypto::Metadata,
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+use cosmian_crypto_core::{
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata, SymmetricCrypto},
     KeyTrait,
 };
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
@@ -114,7 +113,7 @@ pub fn decrypt_hybrid_header(
 
     let metadata = cleartext_header
         .meta_data
-        .to_bytes()
+        .try_to_bytes()
         .map_err(|e| PyTypeError::new_err(format!("Serialize metadata failed: {e}")))?;
 
     Ok((cleartext_header.symmetric_key.to_bytes(), metadata))
@@ -140,7 +139,7 @@ pub fn encrypt_hybrid_block(
 
     //
     // Encrypt block
-    Ok(core_encrypt_hybrid_block::<
+    Ok(core_encrypt_symmetric_block::<
         Aes256GcmCrypto,
         MAX_CLEAR_TEXT_SIZE,
     >(
@@ -170,7 +169,7 @@ pub fn decrypt_hybrid_block(
 
     //
     // Decrypt block
-    Ok(core_decrypt_hybrid_block::<
+    Ok(core_decrypt_symmetric_block::<
         Aes256GcmCrypto,
         MAX_CLEAR_TEXT_SIZE,
     >(
@@ -220,7 +219,7 @@ pub fn decrypt(user_decryption_key_bytes: Vec<u8>, encrypted_bytes: Vec<u8>) -> 
 
     let cleartext_header = decrypt_hybrid_header(user_decryption_key_bytes, header)?;
 
-    let metadata = Metadata::from_bytes(&cleartext_header.1)
+    let metadata = Metadata::try_from_bytes(&cleartext_header.1)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing metadata: {e}")))?;
 
     decrypt_hybrid_block(cleartext_header.0, metadata.uid, 0, ciphertext)

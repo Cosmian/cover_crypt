@@ -5,16 +5,15 @@ use crate::{
     interfaces::{
         ffi::error::{set_last_error, FfiError},
         statics::{
-            decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block,
-            encrypt_hybrid_header, ClearTextHeader,
+            decrypt_hybrid_header, decrypt_symmetric_block, encrypt_hybrid_header,
+            encrypt_symmetric_block, ClearTextHeader,
         },
     },
     PublicKey, UserPrivateKey,
 };
 use abe_policy::{Attribute, Policy};
-use cosmian_crypto_base::{
-    hybrid_crypto::{Block, Metadata},
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
+use cosmian_crypto_core::{
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Block, Metadata, SymmetricCrypto},
     KeyTrait,
 };
 use lazy_static::lazy_static;
@@ -693,7 +692,7 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 #[no_mangle]
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
+pub const unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
     Block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>::ENCRYPTION_OVERHEAD as c_int
 }
 
@@ -748,14 +747,10 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     let symmetric_key = ffi_unwrap!(<Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
         &symmetric_key.to_vec()
     ));
-    let encrypted_block = ffi_unwrap!(
-        encrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
-            &symmetric_key,
-            &uid,
-            block_number as usize,
-            &data
-        )
-    );
+    let encrypted_block = ffi_unwrap!(encrypt_symmetric_block::<
+        Aes256GcmCrypto,
+        MAX_CLEAR_TEXT_SIZE,
+    >(&symmetric_key, &uid, block_number as usize, &data));
 
     let allocated = *encrypted_len;
     let len = encrypted_block.len();
@@ -826,14 +821,10 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     let symmetric_key = ffi_unwrap!(<Aes256GcmCrypto as SymmetricCrypto>::Key::try_from_bytes(
         &symmetric_key.to_vec()
     ));
-    let encrypted_block = ffi_unwrap!(
-        decrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
-            &symmetric_key,
-            &uid,
-            block_number as usize,
-            &data
-        )
-    );
+    let encrypted_block = ffi_unwrap!(decrypt_symmetric_block::<
+        Aes256GcmCrypto,
+        MAX_CLEAR_TEXT_SIZE,
+    >(&symmetric_key, &uid, block_number as usize, &data));
 
     let allocated = *clear_text_len;
     let len = encrypted_block.len();

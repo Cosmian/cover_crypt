@@ -1,3 +1,4 @@
+use super::generate_cc_keys::webassembly_rotate_attributes;
 use crate::{
     api::CoverCrypt,
     error::Error,
@@ -5,20 +6,17 @@ use crate::{
         statics::{decrypt_hybrid_header, ClearTextHeader, EncryptedHeader},
         wasm_bindgen::generate_cc_keys::{
             webassembly_generate_master_keys, webassembly_generate_user_private_key,
-            webassembly_rotate_attributes,
         },
         wasm_bindgen::hybrid_cc_aes::*,
     },
     MasterPrivateKey, PublicKey, UserPrivateKey,
 };
-use abe_policy::{ap, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 /// Test WASM bindgen functions prerequisites:
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
-use cosmian_crypto_base::{
-    hybrid_crypto::Metadata, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
-};
+use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
 use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;
@@ -91,7 +89,8 @@ pub fn test_decrypt_hybrid_header() {
     let cc = CoverCrypt::default();
     let (msk, mpk) = cc.generate_master_keys(&policy).unwrap();
 
-    let access_policy = ap("Department", "FIN") & ap("Security Level", "Top Secret");
+    let access_policy =
+        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
     let sk_u = cc
         .generate_user_private_key(&msk, &access_policy, &policy)
         .unwrap();

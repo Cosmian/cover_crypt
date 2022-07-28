@@ -1,12 +1,12 @@
-// Used to be able to use the paper naming conventions
+// Needed to use the paper naming conventions
 #![allow(non_snake_case)]
 
 use crate::{
     bytes_ser_de::{Deserializer, Serializer},
     error::Error,
 };
-use cosmian_crypto_base::{
-    asymmetric::ristretto::{X25519PrivateKey, X25519PublicKey},
+use cosmian_crypto_core::{
+    asymmetric_crypto::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
     KeyTrait,
 };
@@ -14,6 +14,7 @@ use rand_core::{CryptoRng, RngCore};
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
+    ops::Deref,
 };
 use zeroize::Zeroize;
 
@@ -31,7 +32,7 @@ impl Partition {
     /// across all axes of the policy
     ///
     /// The attribute values MUST be unique across all axes
-    pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Partition, Error> {
+    pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Self, Error> {
         // guard against overflow of the 1024 bytes buffer below
         if attribute_values.len() > 200 {
             return Err(Error::InvalidAttribute(
@@ -53,7 +54,15 @@ impl Partition {
             len += leb128::write::unsigned(&mut writable, value as u64)
                 .map_err(|e| Error::Other(format!("Unexpected LEB128 write issue: {}", e)))?;
         }
-        Ok(Partition(buf[0..len].to_vec()))
+        Ok(Self(buf[0..len].to_vec()))
+    }
+}
+
+impl Deref for Partition {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -71,13 +80,13 @@ impl From<Partition> for String {
 
 impl From<Vec<u8>> for Partition {
     fn from(value: Vec<u8>) -> Self {
-        Partition(value)
+        Self(value)
     }
 }
 
 impl From<&[u8]> for Partition {
     fn from(value: &[u8]) -> Self {
-        Partition(value.to_vec())
+        Self(value.to_vec())
     }
 }
 
@@ -93,35 +102,29 @@ impl From<&Partition> for Vec<u8> {
     }
 }
 
-/// CoverCrypt master private key. It is composed of `u`, `v` and `s`, three
-/// randomly chosen scalars, and the `x_i` associated to the subsets `S_i`.
+/// CoverCrypt master private key.
 ///
-/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
-/// WARNING: the master private key into bytes MUST not exceed 2^32 bytes
+/// It is composed of `u`, `v` and `s`, three randomly chosen scalars,
+/// and the scalars `x_i` associated to all subsets `S_i`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterPrivateKey {
     u: X25519PrivateKey,
     v: X25519PrivateKey,
     s: X25519PrivateKey,
-    x: HashMap<Partition, X25519PrivateKey>,
+    pub(crate) x: HashMap<Partition, X25519PrivateKey>,
 }
 
 impl MasterPrivateKey {
-    /// Return a reference to the `x` hashmap.
-    pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
-        &self.x
-    }
-
     /// Serialize the master private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.u.to_bytes())?;
-        serializer.write_array(self.v.to_bytes())?;
-        serializer.write_array(self.s.to_bytes())?;
-        serializer.write_array((self.x.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(self.u.as_bytes())?;
+        serializer.write_array(self.v.as_bytes())?;
+        serializer.write_array(self.s.as_bytes())?;
+        serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
         for (partition, x_i) in &self.x {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(x_i.to_bytes())?;
+            serializer.write_array(partition)?;
+            serializer.write_array(x_i.as_bytes())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -170,39 +173,34 @@ impl Drop for MasterPrivateKey {
     }
 }
 
-/// CoverCrypt user private key. It is composed of:
+/// CoverCrypt user private key.
+///
+/// It is composed of:
+///
 /// - `a` and `b` such that `a * u + b * v = s`, where `u`, `v` and `s` are
 /// scalars from the master private key
-/// - the `x_i` associated to the subsets `S_i` for which the user has been
-/// given the rights.
+/// - the scalars `x_i` associated to the subsets `S_i` for which the user has
+/// been given the rights.
 ///
 /// Therefore, a user can decrypt messages encrypted for any subset `S_i` his
 /// private key holds the associted `x_i`.
-///
-/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
-/// WARNING: the user private key into bytes MUST not exceed 2^32 bytes
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserPrivateKey {
     a: X25519PrivateKey,
     b: X25519PrivateKey,
-    x: HashMap<Partition, X25519PrivateKey>,
+    pub(crate) x: HashMap<Partition, X25519PrivateKey>,
 }
 
 impl UserPrivateKey {
-    /// Return a reference to the `x` hashmap.
-    pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
-        &self.x
-    }
-
     /// Serialize the user private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.a.to_bytes())?;
-        serializer.write_array(self.b.to_bytes())?;
-        serializer.write_array((self.x.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(self.a.as_bytes())?;
+        serializer.write_array(self.b.as_bytes())?;
+        serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
         for (partition, x_i) in &self.x {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(x_i.to_bytes())?;
+            serializer.write_array(partition)?;
+            serializer.write_array(x_i.as_bytes())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -249,38 +247,32 @@ impl Drop for UserPrivateKey {
     }
 }
 
-/// CoverCrypt public key, it is composed of:
+/// CoverCrypt public key.
+///
+/// It is composed of:
 ///
 /// - `U` and `V` such that `U = g * u` and `V = g * v`, where `u` and `v` are
 /// scalars from the master private key and `g` is the group generator.
 ///
-/// - the `H_i` such that `H_i = g * s * x_i` with `x_i` the scalar associated
+/// - the `H_i` such that `H_i = g * s * x_i` with `x_i` the scalars associated
 /// to each subset `S_i`.
-///
-/// WARNING: the partition A into bytes MUST not exceed 2^32 bytes
-/// WARNING: the PublicKey into bytes MUST not exceed 2^32 bytes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicKey {
     U: X25519PublicKey,
     V: X25519PublicKey,
-    H: HashMap<Partition, X25519PublicKey>,
+    pub(crate) H: HashMap<Partition, X25519PublicKey>,
 }
 
 impl PublicKey {
-    /// Return a reference to the `H` hashmap.
-    pub fn map(&self) -> &HashMap<Partition, X25519PublicKey> {
-        &self.H
-    }
-
     /// Serialize the public key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.U.to_bytes())?;
-        serializer.write_array(self.V.to_bytes())?;
-        serializer.write_array((self.H.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(&self.U.to_array())?;
+        serializer.write_array(&self.V.to_array())?;
+        serializer.write_array(&(self.H.len() as u32).to_be_bytes())?;
         for (partition, H_i) in &self.H {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(H_i.to_bytes())?;
+            serializer.write_array(partition)?;
+            serializer.write_array(&H_i.to_array())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -311,6 +303,17 @@ impl PublicKey {
     }
 }
 
+/// CoverCrypt secret key encapsulation.
+///
+/// It is composed of:
+///
+/// - `C` and `D` such that `C = U * r` and `D = V * r`, where `r` is a random
+/// scalar and `U` and `V` are the points from the public key.
+///
+/// - the `E_i` such that `E_i = Hash(K_i) Xor K` with `K_i = H_i * r` where
+/// the `H_i` are public key points from `H` that are associated to subsets
+/// `S_i` in the encryption set used to generate the encapsulation, and `K` is
+/// the randomly chosen symmetric key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encapsulation {
     C: X25519PublicKey,
@@ -319,22 +322,22 @@ pub struct Encapsulation {
 }
 
 impl Encapsulation {
-    /// Serialize the public key.
+    /// Serialize the encapsulation.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(self.C.to_bytes())?;
-        serializer.write_array(self.D.to_bytes())?;
-        serializer.write_array((self.E.len() as u32).to_be_bytes().to_vec())?;
+        serializer.write_array(&self.C.to_array())?;
+        serializer.write_array(&self.D.to_array())?;
+        serializer.write_array(&(self.E.len() as u32).to_be_bytes())?;
         for (partition, K_i) in &self.E {
-            serializer.write_array(partition.into())?;
-            serializer.write_array(K_i.to_vec())?;
+            serializer.write_array(partition)?;
+            serializer.write_array(K_i)?;
         }
         Ok(serializer.value().to_vec())
     }
 
-    /// Deserialize the public key.
+    /// Deserialize the encapsulation.
     ///
-    /// - `bytes`   : bytes from which to read the public key
+    /// - `bytes`   : bytes from which to read the encapsulation
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.is_empty() {
             return Err(Error::EmptyPrivateKey);
@@ -355,7 +358,9 @@ impl Encapsulation {
     }
 }
 
-/// CoverCrypt secret key is a vector of bytes.
+/// CoverCrypt secret key.
+///
+/// Internally, it is a vector of bytes.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SecretKey(Vec<u8>);
 
@@ -375,7 +380,7 @@ impl std::ops::DerefMut for SecretKey {
 
 impl From<Vec<u8>> for SecretKey {
     fn from(v: Vec<u8>) -> Self {
-        SecretKey(v)
+        Self(v)
     }
 }
 
@@ -438,8 +443,7 @@ where
     (msk, mpk)
 }
 
-/// Generate a user private key for the given decryption sets. It is composed of
-/// the scalars `(a_j, b_j)` and the `x_i` associated with the decryption sets.
+/// Generate a user private key for the given decryption sets.
 ///
 /// # Paper
 ///
@@ -569,17 +573,26 @@ pub fn decaps(
 /// Update the master private key and master public key of the CoverCrypt
 /// scheme with the given list of partitions.
 ///
-/// If a partition exists in the keys but not in the list, it will be removed from the keys.
+/// If a partition exists in the keys but not in the list, it will be removed
+/// from the keys.
 ///
-/// If a partition exists in the list, but not in the keys, it will be "added" to the keys,
-/// by adding a new partition key pair as performed in the setup procedure above
+/// If a partition exists in the list, but not in the keys, it will be "added"
+/// to the keys, by adding a new partition key pair as performed in the setup
+/// procedure above.
+///
+/// # Arguments
+///
+/// - `rng`             : random number generator
+/// - `msk`             : master secret key
+/// - `mpk`             : master public key
+/// - `partition_set`   : new set of partitions to use after the update
 pub fn update<R: CryptoRng + RngCore>(
     rng: &mut R,
     msk: &mut MasterPrivateKey,
     mpk: &mut PublicKey,
     partitions_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
-    // add keys for partitions that do not exist
+    // add keys for partitions that do not exist in the master keys
     for partition in partitions_set.iter() {
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = X25519PrivateKey::new(rng);
@@ -639,7 +652,7 @@ pub fn refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmian_crypto_base::entropy::CsRng;
+    use cosmian_crypto_core::entropy::CsRng;
 
     /// Length of the desired symmetric key
     const SYM_KEY_LENGTH: usize = 32;
@@ -723,8 +736,8 @@ mod tests {
 
     #[test]
     fn test_master_keys_update() -> Result<(), Error> {
-        let partition_1 = Partition("1".as_bytes().to_vec());
-        let partition_2 = Partition("2".as_bytes().to_vec());
+        let partition_1 = Partition(b"1".to_vec());
+        let partition_2 = Partition(b"2".to_vec());
         // partition list
         let partitions_set = HashSet::from([partition_1.clone(), partition_2.clone()]);
         // secure random number generator
@@ -733,23 +746,23 @@ mod tests {
         let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // now remove partition 1 and add partition 3
-        let partition_3 = Partition("3".as_bytes().to_vec());
+        let partition_3 = Partition(b"3".to_vec());
         let new_partitions_set = HashSet::from([partition_2.clone(), partition_3.clone()]);
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        assert!(!msk.map().contains_key(&partition_1));
-        assert!(msk.map().contains_key(&partition_2));
-        assert!(msk.map().contains_key(&partition_3));
-        assert!(!mpk.map().contains_key(&partition_1));
-        assert!(mpk.map().contains_key(&partition_2));
-        assert!(mpk.map().contains_key(&partition_3));
+        assert!(!msk.x.contains_key(&partition_1));
+        assert!(msk.x.contains_key(&partition_2));
+        assert!(msk.x.contains_key(&partition_3));
+        assert!(!mpk.H.contains_key(&partition_1));
+        assert!(mpk.H.contains_key(&partition_2));
+        assert!(mpk.H.contains_key(&partition_3));
         Ok(())
     }
 
     #[test]
     fn test_user_key_refresh() -> Result<(), Error> {
-        let partition_1 = Partition("1".as_bytes().to_vec());
-        let partition_2 = Partition("2".as_bytes().to_vec());
-        let partition_3 = Partition("3".as_bytes().to_vec());
+        let partition_1 = Partition(b"1".to_vec());
+        let partition_2 = Partition(b"2".to_vec());
+        let partition_3 = Partition(b"3".to_vec());
         // partition list
         let partitions_set = HashSet::from([
             partition_1.clone(),
@@ -768,7 +781,7 @@ mod tests {
         )?;
 
         // now remove partition 1 and add partition 4
-        let partition_4 = Partition("4".as_bytes().to_vec());
+        let partition_4 = Partition(b"4".to_vec());
         let new_partitions_set = HashSet::from([
             partition_2.clone(),
             partition_3.clone(),
@@ -782,10 +795,10 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
-        assert!(!usk.map().contains_key(&partition_1));
-        assert!(usk.map().contains_key(&partition_2));
-        assert!(!usk.map().contains_key(&partition_3));
-        assert!(usk.map().contains_key(&partition_4));
+        assert!(!usk.x.contains_key(&partition_1));
+        assert!(usk.x.contains_key(&partition_2));
+        assert!(!usk.x.contains_key(&partition_3));
+        assert!(usk.x.contains_key(&partition_4));
         Ok(())
     }
 }

@@ -59,16 +59,12 @@ pub fn generate_policy(policy_axis_bytes: Vec<u8>, max_attribute_value: u32) -> 
     let mut policy = Policy::new(max_attribute_value);
     for axis in &policy_axis {
         let attrs = axis
-            .attributes()
+            .attributes
             .iter()
             .map(std::ops::Deref::deref)
             .collect::<Vec<_>>();
         policy
-            .add_axis(&PolicyAxis::new(
-                axis.name(),
-                &attrs,
-                axis.is_hierarchical(),
-            ))
+            .add_axis(&PolicyAxis::new(&axis.name, &attrs, axis.hierarchical))
             .map_err(|e| PyTypeError::new_err(format!("Error adding axes: {e}")))?;
     }
 

@@ -1,10 +1,12 @@
+//! Error type for the crate
+
 use std::{
     array::TryFromSliceError,
     fmt::Debug,
     num::{ParseIntError, TryFromIntError},
 };
 
-use cosmian_crypto_base::CryptoBaseError;
+use cosmian_crypto_core::CryptoCoreError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,7 +14,7 @@ pub enum Error {
     #[error("Unknown partition {0}")]
     UnknownPartition(String),
     #[error("{0}")]
-    CryptoError(CryptoBaseError),
+    CryptoError(CryptoCoreError),
     #[error(transparent)]
     PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
@@ -48,36 +50,36 @@ pub enum Error {
 
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
-        Error::ConversionFailed
+        Self::ConversionFailed
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
-        Error::JsonParsing(e.to_string())
+        Self::JsonParsing(e.to_string())
     }
 }
 
 impl From<TryFromSliceError> for Error {
     fn from(_e: TryFromSliceError) -> Self {
-        Error::ConversionFailed
+        Self::ConversionFailed
     }
 }
 
 impl From<ParseIntError> for Error {
     fn from(_e: ParseIntError) -> Self {
-        Error::ConversionFailed
+        Self::ConversionFailed
     }
 }
 
-impl From<CryptoBaseError> for Error {
-    fn from(e: CryptoBaseError) -> Self {
+impl From<CryptoCoreError> for Error {
+    fn from(e: CryptoCoreError) -> Self {
         match e {
-            CryptoBaseError::SizeError { given, expected } => {
-                Error::InvalidSize(format!("expected: {}, given: {}", expected, given))
+            CryptoCoreError::SizeError { given, expected } => {
+                Self::InvalidSize(format!("expected: {}, given: {}", expected, given))
             }
-            CryptoBaseError::InvalidSize(e) => Error::InvalidSize(e),
-            e => Error::CryptoError(e),
+            CryptoCoreError::InvalidSize(e) => Self::InvalidSize(e),
+            e => Self::CryptoError(e),
         }
     }
 }
@@ -85,12 +87,12 @@ impl From<CryptoBaseError> for Error {
 #[cfg(feature = "ffi")]
 impl From<std::ffi::NulError> for Error {
     fn from(e: std::ffi::NulError) -> Self {
-        Error::Other(format!("FFI error: {}", e))
+        Self::Other(format!("FFI error: {}", e))
     }
 }
 
 impl From<std::str::Utf8Error> for Error {
     fn from(e: std::str::Utf8Error) -> Self {
-        Error::Other(format!("UTF8 error: {}", e))
+        Self::Other(format!("UTF8 error: {}", e))
     }
 }

@@ -1,13 +1,14 @@
-use std::io::{Read, Write};
+//! Implement the `Serializer` and `Deserializer` objects using LEB128.
 
 use crate::error::Error;
+use std::io::{Read, Write};
 
 pub struct Deserializer<'a> {
     readable: &'a [u8],
 }
 
 impl<'a> Deserializer<'a> {
-    pub fn new(bytes: &'a [u8]) -> Deserializer<'a> {
+    pub const fn new(bytes: &'a [u8]) -> Deserializer<'a> {
         Deserializer { readable: bytes }
     }
 
@@ -28,7 +29,7 @@ impl<'a> Deserializer<'a> {
             ))
         })?;
         let mut buf = vec![0_u8; len];
-        (&mut self.readable).read_exact(&mut buf).map_err(|_| {
+        self.readable.read_exact(&mut buf).map_err(|_| {
             Error::InvalidSize(format!(
                 "Deserializer: failed reading array of: {} bytes",
                 len
@@ -43,11 +44,11 @@ pub struct Serializer {
 }
 
 impl Serializer {
-    pub fn new() -> Serializer {
-        Serializer { writable: vec![] }
+    pub const fn new() -> Self {
+        Self { writable: vec![] }
     }
 
-    pub fn write_array(&mut self, array: Vec<u8>) -> Result<usize, Error> {
+    pub fn write_array(&mut self, array: &[u8]) -> Result<usize, Error> {
         let mut len =
             leb128::write::unsigned(&mut self.writable, array.len() as u64).map_err(|e| {
                 Error::InvalidSize(format!(
@@ -56,7 +57,7 @@ impl Serializer {
                     e
                 ))
             })?;
-        len += self.writable.write(&array).map_err(|e| {
+        len += self.writable.write(array).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected error writing {} bytes: {}",
                 array.len(),
@@ -79,9 +80,8 @@ impl Default for Serializer {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Error;
-
     use super::{Deserializer, Serializer};
+    use crate::error::Error;
 
     #[test]
     pub fn test_ser_de() -> Result<(), Error> {
@@ -90,9 +90,9 @@ mod tests {
         let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)àç_è-('é&".as_bytes().to_vec();
 
         let mut ser = Serializer::new();
-        assert_eq!(7, ser.write_array(a1.clone())?);
-        assert_eq!(1, ser.write_array(a2.clone())?);
-        assert_eq!(41, ser.write_array(a3.clone())?);
+        assert_eq!(7, ser.write_array(&a1)?);
+        assert_eq!(1, ser.write_array(&a2)?);
+        assert_eq!(41, ser.write_array(&a3)?);
         assert_eq!(49, ser.value().len());
 
         let mut de = Deserializer::new(ser.value());

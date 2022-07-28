@@ -33,7 +33,12 @@ pub fn webassembly_generate_master_keys(policy_bytes: Uint8Array) -> Result<Uint
 
     let mut master_keys_bytes =
         Vec::with_capacity(4 + master_private_key_bytes.len() + master_public_key_bytes.len());
-    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(master_private_key_bytes.len() as u32));
+    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(
+        master_private_key_bytes
+            .len()
+            .try_into()
+            .map_err(|e| JsValue::from_str(&format!("Error while converting usize to u32: {e}")))?,
+    ));
     master_keys_bytes.extend_from_slice(&master_private_key_bytes);
     master_keys_bytes.extend_from_slice(&master_public_key_bytes);
     Ok(Uint8Array::from(&master_keys_bytes[..]))
@@ -72,9 +77,8 @@ pub fn webassembly_generate_user_private_key(
 /// Rotate attributes, changing their underlying values with that of an unused
 /// slot
 ///
-/// - `attributes_bytes`           : user access policy (boolean expression as
-///   string)
-/// - `policy_bytes`                : global policy (serialized from JSON)
+/// - `attributes_bytes`    : user access policy (boolean expression as string)
+/// - `policy_bytes`        : global policy (serialized from JSON)
 #[wasm_bindgen]
 pub fn webassembly_rotate_attributes(
     attributes_bytes: Uint8Array,
