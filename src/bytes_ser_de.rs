@@ -8,7 +8,7 @@ pub struct Deserializer<'a> {
 }
 
 impl<'a> Deserializer<'a> {
-    pub fn new(bytes: &'a [u8]) -> Deserializer<'a> {
+    pub const fn new(bytes: &'a [u8]) -> Deserializer<'a> {
         Deserializer { readable: bytes }
     }
 
@@ -44,8 +44,8 @@ pub struct Serializer {
 }
 
 impl Serializer {
-    pub fn new() -> Serializer {
-        Serializer { writable: vec![] }
+    pub const fn new() -> Self {
+        Self { writable: vec![] }
     }
 
     pub fn write_array(&mut self, array: &[u8]) -> Result<usize, Error> {

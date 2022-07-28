@@ -652,12 +652,12 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
     let policy = policy()?;
     let cc = CoverCrypt::default();
     let (msk, mpk) = cc.generate_master_keys(&policy)?;
-    let original_msk_partitions: Vec<Partition> = msk.map().clone().into_keys().collect();
-    let original_mpk_partitions: Vec<Partition> = mpk.map().clone().into_keys().collect();
+    let original_msk_partitions: Vec<Partition> = msk.x.clone().into_keys().collect();
+    let original_mpk_partitions: Vec<Partition> = mpk.H.clone().into_keys().collect();
 
     let access_policy = ap("Department", "MKG") & ap("Security Level", "Confidential");
     let usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-    let original_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+    let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
 
     unsafe {
         //rotate the policy
@@ -665,8 +665,7 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         // update the master keys
         let (updated_msk, updated_mpk) = update_master_keys(&updated_policy, &msk, &mpk)?;
         // check the msk updated partitions
-        let updated_msk_partitions: Vec<Partition> =
-            updated_msk.map().clone().into_keys().collect();
+        let updated_msk_partitions: Vec<Partition> = updated_msk.x.clone().into_keys().collect();
         assert_eq!(
             updated_msk_partitions.len(),
             original_msk_partitions.len() + 3
@@ -675,8 +674,7 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
             assert!(updated_msk_partitions.contains(original_partition));
         }
         // check the mpk updated partitions
-        let updated_mpk_partitions: Vec<Partition> =
-            updated_mpk.map().clone().into_keys().collect();
+        let updated_mpk_partitions: Vec<Partition> = updated_mpk.H.into_keys().collect();
         assert_eq!(
             updated_mpk_partitions.len(),
             original_mpk_partitions.len() + 3
@@ -687,7 +685,7 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         // update the user key, preserving the accesses to the rotated partitions
         let updated_usk =
             refresh_user_private_key(&usk, &access_policy, &updated_msk, &updated_policy, true)?;
-        let new_user_partitions: Vec<Partition> = updated_usk.map().clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = updated_usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
         assert_eq!(
             new_user_partitions.len(),
@@ -699,7 +697,7 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         // update the user key, but do NOT preserve the accesses to the rotated partitions
         let updated_usk =
             refresh_user_private_key(&usk, &access_policy, &updated_msk, &updated_policy, false)?;
-        let new_user_partitions: Vec<Partition> = updated_usk.map().clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = updated_usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
         assert_eq!(new_user_partitions.len(), original_user_partitions.len());
         for original_partition in &original_user_partitions {

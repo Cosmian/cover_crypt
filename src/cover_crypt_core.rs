@@ -14,6 +14,7 @@ use rand_core::{CryptoRng, RngCore};
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
+    ops::Deref,
 };
 use zeroize::Zeroize;
 
@@ -31,7 +32,7 @@ impl Partition {
     /// across all axes of the policy
     ///
     /// The attribute values MUST be unique across all axes
-    pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Partition, Error> {
+    pub fn from_attributes(mut attribute_values: Vec<u32>) -> Result<Self, Error> {
         // guard against overflow of the 1024 bytes buffer below
         if attribute_values.len() > 200 {
             return Err(Error::InvalidAttribute(
@@ -53,7 +54,15 @@ impl Partition {
             len += leb128::write::unsigned(&mut writable, value as u64)
                 .map_err(|e| Error::Other(format!("Unexpected LEB128 write issue: {}", e)))?;
         }
-        Ok(Partition(buf[0..len].to_vec()))
+        Ok(Self(buf[0..len].to_vec()))
+    }
+}
+
+impl Deref for Partition {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -71,13 +80,13 @@ impl From<Partition> for String {
 
 impl From<Vec<u8>> for Partition {
     fn from(value: Vec<u8>) -> Self {
-        Partition(value)
+        Self(value)
     }
 }
 
 impl From<&[u8]> for Partition {
     fn from(value: &[u8]) -> Self {
-        Partition(value.to_vec())
+        Self(value.to_vec())
     }
 }
 
@@ -102,16 +111,10 @@ pub struct MasterPrivateKey {
     u: X25519PrivateKey,
     v: X25519PrivateKey,
     s: X25519PrivateKey,
-    x: HashMap<Partition, X25519PrivateKey>,
+    pub(crate) x: HashMap<Partition, X25519PrivateKey>,
 }
 
 impl MasterPrivateKey {
-    /// Return a reference to a hashmap containing the `x_i` for all subsets
-    /// `S_i`.
-    pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
-        &self.x
-    }
-
     /// Serialize the master private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
@@ -120,7 +123,7 @@ impl MasterPrivateKey {
         serializer.write_array(self.s.as_bytes())?;
         serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
         for (partition, x_i) in &self.x {
-            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(partition)?;
             serializer.write_array(x_i.as_bytes())?;
         }
         Ok(serializer.value().to_vec())
@@ -185,16 +188,10 @@ impl Drop for MasterPrivateKey {
 pub struct UserPrivateKey {
     a: X25519PrivateKey,
     b: X25519PrivateKey,
-    x: HashMap<Partition, X25519PrivateKey>,
+    pub(crate) x: HashMap<Partition, X25519PrivateKey>,
 }
 
 impl UserPrivateKey {
-    /// Return a reference to a hashmap containing the scalars `x_i` for
-    /// each subset `S_i` the user has been given the rights.
-    pub fn map(&self) -> &HashMap<Partition, X25519PrivateKey> {
-        &self.x
-    }
-
     /// Serialize the user private key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
@@ -202,7 +199,7 @@ impl UserPrivateKey {
         serializer.write_array(self.b.as_bytes())?;
         serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
         for (partition, x_i) in &self.x {
-            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(partition)?;
             serializer.write_array(x_i.as_bytes())?;
         }
         Ok(serializer.value().to_vec())
@@ -263,16 +260,10 @@ impl Drop for UserPrivateKey {
 pub struct PublicKey {
     U: X25519PublicKey,
     V: X25519PublicKey,
-    H: HashMap<Partition, X25519PublicKey>,
+    pub(crate) H: HashMap<Partition, X25519PublicKey>,
 }
 
 impl PublicKey {
-    /// Return a reference to a hashmap containing the points `H_i` for all
-    /// subsets `S_i`.
-    pub fn map(&self) -> &HashMap<Partition, X25519PublicKey> {
-        &self.H
-    }
-
     /// Serialize the public key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
@@ -280,7 +271,7 @@ impl PublicKey {
         serializer.write_array(&self.V.to_array())?;
         serializer.write_array(&(self.H.len() as u32).to_be_bytes())?;
         for (partition, H_i) in &self.H {
-            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(partition)?;
             serializer.write_array(&H_i.to_array())?;
         }
         Ok(serializer.value().to_vec())
@@ -338,7 +329,7 @@ impl Encapsulation {
         serializer.write_array(&self.D.to_array())?;
         serializer.write_array(&(self.E.len() as u32).to_be_bytes())?;
         for (partition, K_i) in &self.E {
-            serializer.write_array(&Vec::from(partition))?;
+            serializer.write_array(partition)?;
             serializer.write_array(K_i)?;
         }
         Ok(serializer.value().to_vec())
@@ -389,7 +380,7 @@ impl std::ops::DerefMut for SecretKey {
 
 impl From<Vec<u8>> for SecretKey {
     fn from(v: Vec<u8>) -> Self {
-        SecretKey(v)
+        Self(v)
     }
 }
 
@@ -745,8 +736,8 @@ mod tests {
 
     #[test]
     fn test_master_keys_update() -> Result<(), Error> {
-        let partition_1 = Partition("1".as_bytes().to_vec());
-        let partition_2 = Partition("2".as_bytes().to_vec());
+        let partition_1 = Partition(b"1".to_vec());
+        let partition_2 = Partition(b"2".to_vec());
         // partition list
         let partitions_set = HashSet::from([partition_1.clone(), partition_2.clone()]);
         // secure random number generator
@@ -755,23 +746,23 @@ mod tests {
         let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // now remove partition 1 and add partition 3
-        let partition_3 = Partition("3".as_bytes().to_vec());
+        let partition_3 = Partition(b"3".to_vec());
         let new_partitions_set = HashSet::from([partition_2.clone(), partition_3.clone()]);
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        assert!(!msk.map().contains_key(&partition_1));
-        assert!(msk.map().contains_key(&partition_2));
-        assert!(msk.map().contains_key(&partition_3));
-        assert!(!mpk.map().contains_key(&partition_1));
-        assert!(mpk.map().contains_key(&partition_2));
-        assert!(mpk.map().contains_key(&partition_3));
+        assert!(!msk.x.contains_key(&partition_1));
+        assert!(msk.x.contains_key(&partition_2));
+        assert!(msk.x.contains_key(&partition_3));
+        assert!(!mpk.H.contains_key(&partition_1));
+        assert!(mpk.H.contains_key(&partition_2));
+        assert!(mpk.H.contains_key(&partition_3));
         Ok(())
     }
 
     #[test]
     fn test_user_key_refresh() -> Result<(), Error> {
-        let partition_1 = Partition("1".as_bytes().to_vec());
-        let partition_2 = Partition("2".as_bytes().to_vec());
-        let partition_3 = Partition("3".as_bytes().to_vec());
+        let partition_1 = Partition(b"1".to_vec());
+        let partition_2 = Partition(b"2".to_vec());
+        let partition_3 = Partition(b"3".to_vec());
         // partition list
         let partitions_set = HashSet::from([
             partition_1.clone(),
@@ -790,7 +781,7 @@ mod tests {
         )?;
 
         // now remove partition 1 and add partition 4
-        let partition_4 = Partition("4".as_bytes().to_vec());
+        let partition_4 = Partition(b"4".to_vec());
         let new_partitions_set = HashSet::from([
             partition_2.clone(),
             partition_3.clone(),
@@ -804,10 +795,10 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
-        assert!(!usk.map().contains_key(&partition_1));
-        assert!(usk.map().contains_key(&partition_2));
-        assert!(!usk.map().contains_key(&partition_3));
-        assert!(usk.map().contains_key(&partition_4));
+        assert!(!usk.x.contains_key(&partition_1));
+        assert!(usk.x.contains_key(&partition_2));
+        assert!(!usk.x.contains_key(&partition_3));
+        assert!(usk.x.contains_key(&partition_4));
         Ok(())
     }
 }

@@ -113,7 +113,7 @@ impl CoverCrypt {
     ) -> Result<(), Error> {
         let mut current_partitions = access_policy_to_current_partitions(access_policy, policy)?;
         if keep_old_accesses {
-            for key_partition in usk.map().keys() {
+            for key_partition in usk.x.keys() {
                 current_partitions.insert(key_partition.to_owned());
             }
         }
@@ -462,8 +462,8 @@ mod tests {
         let mut policy = policy()?;
         let cc = CoverCrypt::default();
         let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
-        let partitions_msk: Vec<Partition> = msk.map().clone().into_keys().collect();
-        let partitions_mpk: Vec<Partition> = mpk.map().clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
+        let partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
             assert!(partitions_mpk.contains(p));
@@ -472,8 +472,8 @@ mod tests {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.map().clone().into_keys().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.map().clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
@@ -492,14 +492,14 @@ mod tests {
             "Department::MKG && Security Level::Confidential",
         )?;
         let mut usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let original_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+        let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
         cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        let new_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
         assert_eq!(
             new_user_partitions.len(),
@@ -510,7 +510,7 @@ mod tests {
         }
         // refresh the user key but do NOT preserve access to old partitions
         cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, false)?;
-        let new_user_partitions: Vec<Partition> = usk.map().clone().into_keys().collect();
+        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // the user should still have access to the same number of partitions
         assert_eq!(new_user_partitions.len(), original_user_partitions.len());
         for original_partition in &original_user_partitions {

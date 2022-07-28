@@ -55,14 +55,9 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
         cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
     let encapsulation = encapsulation.try_to_bytes()?;
 
-    // Allocate enough space dot the header bytes
+    // Allocate enough space to the header bytes
     let mut header_bytes = Vec::with_capacity(
-        4 + encapsulation.len()
-            + if let Some(meta_data) = meta_data {
-                meta_data.len()
-            } else {
-                0
-            },
+        4 + encapsulation.len() + meta_data.map_or(0, |metadata| metadata.len()),
     );
 
     header_bytes.extend(

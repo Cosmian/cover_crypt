@@ -50,25 +50,25 @@ pub enum Error {
 
 impl From<TryFromIntError> for Error {
     fn from(_e: TryFromIntError) -> Self {
-        Error::ConversionFailed
+        Self::ConversionFailed
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
-        Error::JsonParsing(e.to_string())
+        Self::JsonParsing(e.to_string())
     }
 }
 
 impl From<TryFromSliceError> for Error {
     fn from(_e: TryFromSliceError) -> Self {
-        Error::ConversionFailed
+        Self::ConversionFailed
     }
 }
 
 impl From<ParseIntError> for Error {
     fn from(_e: ParseIntError) -> Self {
-        Error::ConversionFailed
+        Self::ConversionFailed
     }
 }
 
@@ -76,10 +76,10 @@ impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         match e {
             CryptoCoreError::SizeError { given, expected } => {
-                Error::InvalidSize(format!("expected: {}, given: {}", expected, given))
+                Self::InvalidSize(format!("expected: {}, given: {}", expected, given))
             }
-            CryptoCoreError::InvalidSize(e) => Error::InvalidSize(e),
-            e => Error::CryptoError(e),
+            CryptoCoreError::InvalidSize(e) => Self::InvalidSize(e),
+            e => Self::CryptoError(e),
         }
     }
 }
@@ -87,12 +87,12 @@ impl From<CryptoCoreError> for Error {
 #[cfg(feature = "ffi")]
 impl From<std::ffi::NulError> for Error {
     fn from(e: std::ffi::NulError) -> Self {
-        Error::Other(format!("FFI error: {}", e))
+        Self::Other(format!("FFI error: {}", e))
     }
 }
 
 impl From<std::str::Utf8Error> for Error {
     fn from(e: std::str::Utf8Error) -> Self {
-        Error::Other(format!("UTF8 error: {}", e))
+        Self::Other(format!("UTF8 error: {}", e))
     }
 }
