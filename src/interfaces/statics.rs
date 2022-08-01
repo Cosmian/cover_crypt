@@ -23,7 +23,7 @@ pub struct EncryptedHeader<DEM: Dem> {
 }
 
 /// A ClearTextHeader returned by the `decrypt_hybrid_header` function
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ClearTextHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub meta_data: Metadata,
@@ -67,24 +67,26 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
     );
     header_bytes.extend(encapsulation);
 
-    // encrypt metadata if it is given
-    if let Some(meta_data) = meta_data {
-        header_bytes.extend(
-            DEM::encaps(
-                cover_crypt
-                    .rng
-                    .lock()
-                    .expect("Mutex lock failed!")
-                    .deref_mut(),
-                &secret_key,
-                None,
-                &meta_data
-                    .try_to_bytes()
-                    .map_err(|_| Error::ConversionFailed)?,
-            )
-            .map_err(Error::CryptoError)?,
-        );
-    }
+    // encrypt metadata
+    let meta_data = meta_data
+        .map(|metadata| -> Result<Vec<u8>, Error> {
+            metadata.try_to_bytes().map_err(|_| Error::ConversionFailed)
+        })
+        .unwrap_or_else(|| Ok(vec![]))?;
+
+    header_bytes.extend(
+        DEM::encaps(
+            cover_crypt
+                .rng
+                .lock()
+                .expect("Mutex lock failed!")
+                .deref_mut(),
+            &secret_key,
+            None,
+            &meta_data,
+        )
+        .map_err(Error::CryptoError)?,
+    );
 
     Ok(EncryptedHeader {
         symmetric_key: DEM::Key::try_from_bytes(&secret_key).map_err(Error::CryptoError)?,
@@ -120,23 +122,23 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     index += encapsulation_size;
 
     // decrypt the symmetric key
-    let secret_key =
+    let secret_keys =
         CoverCrypt::default().decaps_symmetric_key(user_decryption_key, &encapsulation)?;
 
     // decrypt the metadata if any
-    let meta_data = if index >= header_bytes.len() {
-        Metadata::default()
-    } else {
-        Metadata::try_from_bytes(
-            &DEM::decaps(&secret_key, None, &header_bytes[index..]).map_err(Error::CryptoError)?,
-        )
-        .map_err(|_| Error::ConversionFailed)?
-    };
+    for key in &secret_keys {
+        if let Ok(plaintext) =
+            DEM::decaps(key, None, &header_bytes[index..]).map_err(Error::CryptoError)
+        {
+            return Ok(ClearTextHeader {
+                symmetric_key: DEM::Key::try_from_bytes(key).map_err(Error::CryptoError)?,
+                meta_data: Metadata::try_from_bytes(&plaintext)
+                    .map_err(|_| Error::ConversionFailed)?,
+            });
+        }
+    }
 
-    Ok(ClearTextHeader {
-        symmetric_key: DEM::Key::try_from_bytes(&secret_key).map_err(Error::CryptoError)?,
-        meta_data,
-    })
+    Err(Error::InsufficientAccessPolicy)
 }
 
 /// The overhead due to symmetric encryption when encrypting a block.

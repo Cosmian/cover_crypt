@@ -12,13 +12,17 @@ impl<'a> Deserializer<'a> {
         Deserializer { readable: bytes }
     }
 
-    pub fn read_array(&mut self) -> Result<Vec<u8>, Error> {
-        let len_u64 = leb128::read::unsigned(&mut self.readable).map_err(|e| {
+    pub fn read_u64(&mut self) -> Result<u64, Error> {
+        leb128::read::unsigned(&mut self.readable).map_err(|e| {
             Error::InvalidSize(format!(
                 "Deserializer: failed reading the size of the next array: {}",
                 e
             ))
-        })?;
+        })
+    }
+
+    pub fn read_array(&mut self) -> Result<Vec<u8>, Error> {
+        let len_u64 = self.read_u64()?;
         if len_u64 == 0 {
             return Ok(vec![]);
         };
@@ -48,15 +52,17 @@ impl Serializer {
         Self { writable: vec![] }
     }
 
+    pub fn write_u64(&mut self, n: u64) -> Result<usize, Error> {
+        leb128::write::unsigned(&mut self.writable, n as u64).map_err(|e| {
+            Error::InvalidSize(format!(
+                "Serializer: unexpected LEB128 error writing {} bytes: {}",
+                n, e
+            ))
+        })
+    }
+
     pub fn write_array(&mut self, array: &[u8]) -> Result<usize, Error> {
-        let mut len =
-            leb128::write::unsigned(&mut self.writable, array.len() as u64).map_err(|e| {
-                Error::InvalidSize(format!(
-                    "Serializer: unexpected LEB128 error writing {} bytes: {}",
-                    array.len(),
-                    e
-                ))
-            })?;
+        let mut len = self.write_u64(array.len() as u64)?;
         len += self.writable.write(array).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected error writing {} bytes: {}",

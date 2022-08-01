@@ -1,10 +1,6 @@
 //! Error type for the crate
 
-use std::{
-    array::TryFromSliceError,
-    fmt::Debug,
-    num::{ParseIntError, TryFromIntError},
-};
+use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 
 use cosmian_crypto_core::CryptoCoreError;
 use thiserror::Error;
@@ -62,12 +58,6 @@ impl From<serde_json::Error> for Error {
 
 impl From<TryFromSliceError> for Error {
     fn from(_e: TryFromSliceError) -> Self {
-        Self::ConversionFailed
-    }
-}
-
-impl From<ParseIntError> for Error {
-    fn from(_e: ParseIntError) -> Self {
         Self::ConversionFailed
     }
 }

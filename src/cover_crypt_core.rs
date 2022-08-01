@@ -121,7 +121,7 @@ impl MasterPrivateKey {
         serializer.write_array(self.u.as_bytes())?;
         serializer.write_array(self.v.as_bytes())?;
         serializer.write_array(self.s.as_bytes())?;
-        serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
+        serializer.write_u64(self.x.len() as u64)?;
         for (partition, x_i) in &self.x {
             serializer.write_array(partition)?;
             serializer.write_array(x_i.as_bytes())?;
@@ -140,10 +140,8 @@ impl MasterPrivateKey {
         let u = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
         let v = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
         let s = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
-        let x_len = de.read_array()?;
-        let x_len = <[u8; 4]>::try_from(x_len.as_slice())?;
-        let x_len = u32::from_be_bytes(x_len);
-        let mut x = HashMap::with_capacity(x_len as usize);
+        let x_len = de.read_u64()?.try_into()?;
+        let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_array()?;
             let x_i = de.read_array()?;
@@ -197,7 +195,7 @@ impl UserPrivateKey {
         let mut serializer = Serializer::new();
         serializer.write_array(self.a.as_bytes())?;
         serializer.write_array(self.b.as_bytes())?;
-        serializer.write_array(&(self.x.len() as u32).to_be_bytes())?;
+        serializer.write_u64(self.x.len() as u64)?;
         for (partition, x_i) in &self.x {
             serializer.write_array(partition)?;
             serializer.write_array(x_i.as_bytes())?;
@@ -215,10 +213,8 @@ impl UserPrivateKey {
         let mut de = Deserializer::new(bytes);
         let a = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
         let b = X25519PrivateKey::try_from_bytes(&de.read_array()?)?;
-        let x_len = de.read_array()?;
-        let x_len = <[u8; 4]>::try_from(x_len.as_slice())?;
-        let x_len = u32::from_be_bytes(x_len);
-        let mut x = HashMap::with_capacity(x_len as usize);
+        let x_len = de.read_u64()?.try_into()?;
+        let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_array()?;
             let x_i = de.read_array()?;
@@ -269,7 +265,7 @@ impl PublicKey {
         let mut serializer = Serializer::new();
         serializer.write_array(&self.U.to_array())?;
         serializer.write_array(&self.V.to_array())?;
-        serializer.write_array(&(self.H.len() as u32).to_be_bytes())?;
+        serializer.write_u64(self.H.len() as u64)?;
         for (partition, H_i) in &self.H {
             serializer.write_array(partition)?;
             serializer.write_array(&H_i.to_array())?;
@@ -287,10 +283,8 @@ impl PublicKey {
         let mut de = Deserializer::new(bytes);
         let U = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
         let V = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
-        let H_len = de.read_array()?;
-        let H_len = <[u8; 4]>::try_from(H_len.as_slice())?;
-        let H_len = u32::from_be_bytes(H_len);
-        let mut H = HashMap::with_capacity(H_len as usize);
+        let H_len = de.read_u64()?.try_into()?;
+        let mut H = HashMap::with_capacity(H_len);
         for _ in 0..H_len {
             let partition = de.read_array()?;
             let H_i = de.read_array()?;
@@ -318,7 +312,7 @@ impl PublicKey {
 pub struct Encapsulation {
     C: X25519PublicKey,
     D: X25519PublicKey,
-    E: HashMap<Partition, Vec<u8>>,
+    E: HashSet<Vec<u8>>,
 }
 
 impl Encapsulation {
@@ -327,9 +321,8 @@ impl Encapsulation {
         let mut serializer = Serializer::new();
         serializer.write_array(&self.C.to_array())?;
         serializer.write_array(&self.D.to_array())?;
-        serializer.write_array(&(self.E.len() as u32).to_be_bytes())?;
-        for (partition, K_i) in &self.E {
-            serializer.write_array(partition)?;
+        serializer.write_u64(self.E.len() as u64)?;
+        for K_i in &self.E {
             serializer.write_array(K_i)?;
         }
         Ok(serializer.value().to_vec())
@@ -345,14 +338,10 @@ impl Encapsulation {
         let mut de = Deserializer::new(bytes);
         let C = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
         let D = X25519PublicKey::try_from_bytes(&de.read_array()?)?;
-        let K_len = de.read_array()?;
-        let K_len = <[u8; 4]>::try_from(K_len.as_slice())?;
-        let K_len = u32::from_be_bytes(K_len);
-        let mut K = HashMap::with_capacity(K_len as usize);
+        let K_len = de.read_u64()?.try_into()?;
+        let mut K = HashSet::with_capacity(K_len as usize);
         for _ in 0..K_len {
-            let partition = de.read_array()?;
-            let K_i = de.read_array()?;
-            K.insert(Partition::from(partition), K_i);
+            K.insert(de.read_array()?);
         }
         Ok(Self { C, D, E: K })
     }
@@ -520,7 +509,7 @@ where
     let r = X25519PrivateKey::new(rng);
     let C = &mpk.U * &r;
     let D = &mpk.V * &r;
-    let mut E = HashMap::with_capacity(encryption_set.len());
+    let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
             let K_i = hkdf_256(&(H_i * &r).to_bytes(), K.len(), KEY_GEN_INFO.as_bytes())?;
@@ -529,7 +518,7 @@ where
                 .zip(K.iter())
                 .map(|(e_1, e_2)| e_1 ^ e_2)
                 .collect();
-            E.insert(partition.clone(), E_i);
+            E.insert(E_i);
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
@@ -555,19 +544,21 @@ where
 pub fn decaps(
     sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation,
-) -> Result<Option<SecretKey>, Error> {
-    for (partition, E_i) in &encapsulation.E {
-        if let Some(x_k) = sk_j.x.get(partition) {
-            let K_k = (&encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b) * x_k;
-            let K = hkdf_256(&K_k.to_bytes(), E_i.len(), KEY_GEN_INFO.as_bytes())?
+) -> Result<Vec<SecretKey>, Error> {
+    let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
+    let precomp = &encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b;
+    for E_i in &encapsulation.E {
+        for x_k in sk_j.x.values() {
+            let K_k = &precomp * x_k;
+            let K: Vec<u8> = hkdf_256(&K_k.to_bytes(), E_i.len(), KEY_GEN_INFO.as_bytes())?
                 .iter()
                 .zip(E_i.iter())
                 .map(|(e_1, e_2)| e_1 ^ e_2)
                 .collect();
-            return Ok(Some(SecretKey(K)));
+            res.push(SecretKey::from(K));
         }
     }
-    Ok(None)
+    Ok(res)
 }
 
 /// Update the master private key and master public key of the CoverCrypt
@@ -593,10 +584,10 @@ pub fn update<R: CryptoRng + RngCore>(
     partitions_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     // add keys for partitions that do not exist in the master keys
-    for partition in partitions_set.iter() {
+    for partition in partitions_set {
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = X25519PrivateKey::new(rng);
-            let H_i = X25519PublicKey::from(&x_i);
+            let H_i = X25519PublicKey::from(&msk.s) * &x_i;
             msk.x.insert(partition.to_owned(), x_i);
             mpk.H.insert(partition.to_owned(), H_i);
         }
@@ -628,7 +619,7 @@ pub fn refresh(
     user_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     // add keys for partitions that do not exist
-    for partition in user_set.iter() {
+    for partition in user_set {
         if !usk.x.contains_key(partition) {
             // extract key from master private key (see join)
             let kem_private_key = msk.x.get(partition).ok_or_else(|| {
@@ -712,16 +703,16 @@ mod tests {
         // user list
         let users_set = vec![
             HashSet::from([dev_partition.clone()]),
-            HashSet::from([admin_partition.clone(), dev_partition]),
+            HashSet::from([admin_partition.clone(), dev_partition.clone()]),
         ];
         // target set
         let target_set = HashSet::from([admin_partition]);
         // secure random number generator
         let mut rng = CsRng::new();
         // setup scheme
-        let (msk, mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
         // generate user private keys
-        let sk0 = join(&mut rng, &msk, &users_set[0])?;
+        let mut sk0 = join(&mut rng, &msk, &users_set[0])?;
         let sk1 = join(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
         let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
@@ -729,8 +720,41 @@ mod tests {
         // decapsulate for users 1 and 3
         let res0 = decaps(&sk0, &encapsulation)?;
         let res1 = decaps(&sk1, &encapsulation)?;
-        assert!(res0.is_none(), "User 0 shouldn't be able to decapsulate!");
-        assert!(Some(sym_key) == res1, "Wrong decapsulation for user 1!");
+        let mut is_found = false;
+        for key in res0 {
+            if key == sym_key {
+                is_found = true;
+                break;
+            }
+        }
+        assert!(!is_found, "User 0 shouldn't be able to decapsulate!");
+        for key in res1 {
+            if key == sym_key {
+                is_found = true;
+                break;
+            }
+        }
+        assert!(is_found, "Wrong decapsulation for user 1!");
+
+        // rotate and refresh keys
+        println!("Rotate");
+        let client_partition = Partition(b"client".to_vec());
+        let new_partitions_set = HashSet::from([dev_partition, client_partition.clone()]);
+        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        refresh(&msk, &mut sk0, &HashSet::from([client_partition]))?;
+        println!("msk: {:?}", msk.x);
+        println!("usk: {:?}", sk0.x);
+        println!("{sym_key:?}");
+        let new_encapsulation = encaps(&mut rng, &mpk, &new_partitions_set, &sym_key)?;
+        let res0 = decaps(&sk0, &new_encapsulation)?;
+        let mut is_found = false;
+        for key in res0 {
+            if key == sym_key {
+                is_found = true;
+                break;
+            }
+        }
+        assert!(is_found, "User 0 should be able to decapsulate!");
         Ok(())
     }
 
