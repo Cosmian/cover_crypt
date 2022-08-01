@@ -546,9 +546,10 @@ pub fn decaps(
     encapsulation: &Encapsulation,
 ) -> Result<Vec<SecretKey>, Error> {
     let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
+    let precomp = &encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b;
     for E_i in &encapsulation.E {
         for x_k in sk_j.x.values() {
-            let K_k = (&encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b) * x_k;
+            let K_k = &precomp * x_k;
             let K: Vec<u8> = hkdf_256(&K_k.to_bytes(), E_i.len(), KEY_GEN_INFO.as_bytes())?
                 .iter()
                 .zip(E_i.iter())
