@@ -158,8 +158,8 @@ impl CoverCrypt {
         &self,
         sk_u: &UserPrivateKey,
         encapsulation: &Encapsulation,
-    ) -> Result<SecretKey, Error> {
-        cover_crypt_core::decaps(sk_u, encapsulation)?.ok_or(Error::InsufficientAccessPolicy)
+    ) -> Result<Vec<SecretKey>, Error> {
+        cover_crypt_core::decaps(sk_u, encapsulation)
     }
 }
 
@@ -530,7 +530,7 @@ mod tests {
             & AccessPolicy::new("Security Level", "Top Secret");
         let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let (key, encrypted_key) = cc.generate_symmetric_key(
+        let (sym_key, encrypted_key) = cc.generate_symmetric_key(
             &policy,
             &mpk,
             &[
@@ -540,8 +540,15 @@ mod tests {
             KEY_LENGTH,
         )?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let recovered_key = cc.decaps_symmetric_key(&sk_u, &encrypted_key)?;
-        assert!(key == recovered_key, "Wrong decryption of the key!");
+        let recovered_keys = cc.decaps_symmetric_key(&sk_u, &encrypted_key)?;
+        let mut is_found = false;
+        for key in recovered_keys {
+            if key == sym_key {
+                is_found = true;
+                break;
+            }
+        }
+        assert!(is_found, "Wrong decryption of the key!");
         Ok(())
     }
 

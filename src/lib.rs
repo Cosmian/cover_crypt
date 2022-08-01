@@ -137,3 +137,4 @@ pub mod interfaces;
 
 pub use api::CoverCrypt;
 pub use cover_crypt_core::{Encapsulation, MasterPrivateKey, PublicKey, SecretKey, UserPrivateKey};
+pub use error::Error;
