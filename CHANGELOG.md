@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [4.1.1] - 2022-08-01
+### Added
+### Changed
+- Serialization saves some more bytes
+- Remove `Partition`s from `Encapsulation`s: now CoverCrypt returns a vector of
+  symmetric keys when `decaps`. These keys should be tried on real symmetric
+  ciphertexts in order to determine which is the good one. This works because
+  symmetric ciphertexts are autenticated.
+### Fixed
+- bug in public key rotation
+### Removed
+---
+
+---
 ## [4.1.0] - 2022-07-27
 ### Added
 - Documentation
