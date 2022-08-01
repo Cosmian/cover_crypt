@@ -307,16 +307,32 @@ fn bench_header_decryption(c: &mut Criterion) {
         .expect("cannot generate master keys");
     let encrypted_header = generate_encrypted_header(&public_key);
 
-    let access_policy =
-        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
-    let user_decryption_key = cc
-        .generate_user_private_key(&msk, &access_policy, &policy)
+    let access_policy_1 = AccessPolicy::new("Department", "FIN")
+        & AccessPolicy::new("Security Level", "Confidential");
+    let user_decryption_key_1 = cc
+        .generate_user_private_key(&msk, &access_policy_1, &policy)
         .expect("cannot generate user private key");
 
-    c.bench_function("Header decryption", |b| {
+    c.bench_function("Header decryption/1 partition access", |b| {
         b.iter(|| {
             decrypt_hybrid_header::<Aes256GcmCrypto>(
-                &user_decryption_key,
+                &user_decryption_key_1,
+                &encrypted_header.header_bytes,
+            )
+            .expect("cannot decrypt hybrid header")
+        })
+    });
+
+    let access_policy_3 =
+        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
+    let user_decryption_key_3 = cc
+        .generate_user_private_key(&msk, &access_policy_3, &policy)
+        .expect("cannot generate user private key");
+
+    c.bench_function("Header decryption/3 partition access", |b| {
+        b.iter(|| {
+            decrypt_hybrid_header::<Aes256GcmCrypto>(
+                &user_decryption_key_3,
                 &encrypted_header.header_bytes,
             )
             .expect("cannot decrypt hybrid header")
