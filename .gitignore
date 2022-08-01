@@ -2,3 +2,6 @@
 .cargo_check
 *nix*
 /*.sh
+
+perf.data*
+flamegraph.svg

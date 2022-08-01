@@ -22,6 +22,11 @@ crate-type = ["lib", "cdylib", "staticlib"]
 name = "benches"
 harness = false
 
+[[bin]]
+name = "flamegraph"
+path = "src/flamegraph.rs"
+
+
 [profile.bench]
 debug = true
 
