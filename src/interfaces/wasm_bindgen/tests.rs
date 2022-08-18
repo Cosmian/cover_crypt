@@ -16,10 +16,7 @@ use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
-use cosmian_crypto_core::symmetric_crypto::{
-    aes_256_gcm_pure::{Aes256GcmCrypto, KEY_LENGTH},
-    Metadata,
-};
+use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
 use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;
@@ -58,7 +55,7 @@ fn encrypt_header(
         public_key_bytes,
     )
     .map_err(|e| Error::Other(e.as_string().unwrap()))?;
-    serde_json::from_slice(encrypted_header.to_vec().as_slice())
+    EncryptedHeader::try_from_bytes(&encrypted_header.to_vec())
         .map_err(|e| Error::JsonParsing(e.to_string()))
 }
 
@@ -70,7 +67,7 @@ fn decrypt_header(
     let sk_u = Uint8Array::from(user_decryption_key.try_to_bytes()?.as_slice());
     let decrypted_header_bytes = webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes)
         .map_err(|e| Error::Other(e.as_string().unwrap()))?;
-    serde_json::from_slice(&decrypted_header_bytes.to_vec())
+    ClearTextHeader::try_from_bytes(&decrypted_header_bytes.to_vec())
         .map_err(|e| Error::JsonParsing(e.to_string()))
 }
 
@@ -131,11 +128,8 @@ fn test_non_reg_decrypt_hybrid_header() {
 
     let user_decryption_key_from_file =
         UserPrivateKey::try_from_bytes(&user_decryption_key).unwrap();
-    decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
-        &user_decryption_key_from_file,
-        &header_bytes,
-    )
-    .unwrap();
+    decrypt_hybrid_header::<Aes256GcmCrypto>(&user_decryption_key_from_file, &header_bytes)
+        .unwrap();
 }
 
 #[wasm_bindgen_test]

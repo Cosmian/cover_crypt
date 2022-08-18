@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [5.0.0] - 2022-08-24
+### Added
+### Changed
+- Use CryptoCore v2.0.0
+### Fixed
+### Removed
+---
+
+---
 ## [4.1.1] - 2022-08-01
 ### Added
 ### Changed

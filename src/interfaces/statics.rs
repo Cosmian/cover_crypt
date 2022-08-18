@@ -3,30 +3,72 @@
 
 use crate::{
     api::CoverCrypt,
+    bytes_ser_de::{Deserializer, Serializer},
     cover_crypt_core::{Encapsulation, PublicKey, UserPrivateKey},
     error::Error,
 };
 use abe_policy::{Attribute, Policy};
 use cosmian_crypto_core::{
     entropy::CsRng,
-    symmetric_crypto::{Block, Dem, Metadata},
+    symmetric_crypto::{Block, Dem, Metadata, SymKey, SymmetricCrypto},
     KeyTrait,
 };
-use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 
 /// An EncryptedHeader returned by the `encrypt_hybrid_header` function
-#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct EncryptedHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub header_bytes: Vec<u8>,
 }
 
+impl<DEM: Dem> EncryptedHeader<DEM> {
+    /// Tries to serialize the encrypted header.
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        serializer.write_array(self.symmetric_key.as_bytes())?;
+        serializer.write_array(self.header_bytes.as_slice())?;
+        Ok(serializer.value().to_vec())
+    }
+
+    /// Tries to deserialize the encrypted header.
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut de = Deserializer::new(bytes);
+        let symmetric_key = DEM::Key::try_from_bytes(&de.read_array()?)?;
+        let header_bytes = de.read_array()?;
+        Ok(Self {
+            symmetric_key,
+            header_bytes,
+        })
+    }
+}
+
 /// A ClearTextHeader returned by the `decrypt_hybrid_header` function
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct ClearTextHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub meta_data: Metadata,
+}
+
+impl<DEM: Dem> ClearTextHeader<DEM> {
+    /// Tries to serialize the cleartext header.
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        serializer.write_array(self.symmetric_key.as_bytes())?;
+        serializer.write_array(&self.meta_data.try_to_bytes()?)?;
+        Ok(serializer.value().to_vec())
+    }
+
+    /// Tries to deserialize the cleartext header.
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut de = Deserializer::new(bytes);
+        let symmetric_key = DEM::Key::try_from_bytes(&de.read_array()?)?;
+        let meta_data = Metadata::try_from_bytes(&de.read_array()?)?;
+        Ok(Self {
+            symmetric_key,
+            meta_data,
+        })
+    }
 }
 
 /// Generate an encrypted header.
@@ -43,7 +85,7 @@ pub struct ClearTextHeader<DEM: Dem> {
 /// - `public_key`      : CoverCrypt public key
 /// - `attributes`      : attributes used for encryption
 /// - `meta_data`       : optional meta data
-pub fn encrypt_hybrid_header<DEM: Dem, const KEY_LENGTH: usize>(
+pub fn encrypt_hybrid_header<DEM: Dem>(
     policy: &Policy,
     public_key: &PublicKey,
     attributes: &[Attribute],
@@ -51,8 +93,10 @@ pub fn encrypt_hybrid_header<DEM: Dem, const KEY_LENGTH: usize>(
 ) -> Result<EncryptedHeader<DEM>, Error> {
     // generate symmetric key and its encapsulation
     let cover_crypt = CoverCrypt::new();
-    let (secret_key, encapsulation) =
-        cover_crypt.generate_symmetric_key::<KEY_LENGTH>(policy, public_key, attributes)?;
+    let (secret_key, encapsulation) = cover_crypt
+        .generate_symmetric_key::<<<DEM as SymmetricCrypto>::Key as KeyTrait>::Length>(
+        policy, public_key, attributes,
+    )?;
     let encapsulation = encapsulation.try_to_bytes()?;
 
     // Allocate enough space to the header bytes
@@ -99,7 +143,7 @@ pub fn encrypt_hybrid_header<DEM: Dem, const KEY_LENGTH: usize>(
 ///
 /// - `user_decryption_key` : private key to use for decryption
 /// - `header_bytes`        : encrypted header bytes
-pub fn decrypt_hybrid_header<DEM: Dem, const KEY_LENGTH: usize>(
+pub fn decrypt_hybrid_header<DEM: Dem>(
     user_decryption_key: &UserPrivateKey,
     header_bytes: &[u8],
 ) -> Result<ClearTextHeader<DEM>, Error> {
@@ -124,7 +168,10 @@ pub fn decrypt_hybrid_header<DEM: Dem, const KEY_LENGTH: usize>(
 
     // decrypt the symmetric key
     let secret_keys = CoverCrypt::default()
-        .decaps_symmetric_key::<KEY_LENGTH>(user_decryption_key, &encapsulation)?;
+        .decaps_symmetric_key::<<<DEM as SymmetricCrypto>::Key as KeyTrait>::Length>(
+            user_decryption_key,
+            &encapsulation,
+        )?;
 
     // decrypt the metadata if any
     for key in &secret_keys {
@@ -132,8 +179,7 @@ pub fn decrypt_hybrid_header<DEM: Dem, const KEY_LENGTH: usize>(
             DEM::decaps(key.as_slice(), None, &header_bytes[index..]).map_err(Error::CryptoError)
         {
             return Ok(ClearTextHeader {
-                symmetric_key: DEM::Key::try_from_bytes(key.as_slice())
-                    .map_err(Error::CryptoError)?,
+                symmetric_key: DEM::Key::from_bytes(key.to_bytes()),
                 meta_data: Metadata::try_from_bytes(&plaintext)
                     .map_err(|_| Error::ConversionFailed)?,
             });
@@ -219,7 +265,8 @@ pub fn decrypt_symmetric_block<DEM: Dem, const MAX_CLEAR_TEXT_SIZE: usize>(
 mod tests {
     use super::*;
     use abe_policy::{AccessPolicy, Attribute, PolicyAxis};
-    use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::{Aes256GcmCrypto, KEY_LENGTH};
+    use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]
     struct NonRegressionTestVector {
@@ -281,13 +328,9 @@ mod tests {
             uid: 1u32.to_be_bytes().to_vec(),
             additional_data: None,
         };
-        let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
-            &policy,
-            &mpk,
-            &attributes,
-            Some(&metadata),
-        )?;
-        let res = decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        let encrypted_header =
+            encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &attributes, Some(&metadata))?;
+        let res = decrypt_hybrid_header::<Aes256GcmCrypto>(
             &top_secret_mkg_fin_user,
             &encrypted_header.header_bytes,
         )?;
@@ -347,7 +390,7 @@ mod tests {
         )
         .unwrap();
         let header_bytes = hex::decode(reg_vector.header_bytes.as_bytes()).unwrap();
-        assert!(decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
             &user_decryption_key,
             &header_bytes[4..], // provoke InvalidSize error
         )
@@ -407,17 +450,15 @@ mod tests {
 
         //
         // Encrypt
-        let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
             &policy,
             &master_public_key,
             &[Attribute::from(("Security Level", "Top Secret"))],
             None,
         )?;
 
-        let _cleartext_header = decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
-            &user_key,
-            &encrypted_header.header_bytes,
-        )?;
+        let _cleartext_header =
+            decrypt_hybrid_header::<Aes256GcmCrypto>(&user_key, &encrypted_header.header_bytes)?;
 
         //
         // Rotate argument (must update master keys)
@@ -426,14 +467,14 @@ mod tests {
 
         //
         // Encrypt with new attribute
-        let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
             &policy,
             &master_public_key,
             &[Attribute::from(("Security Level", "Top Secret"))],
             None,
         )?;
 
-        assert!(decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
             &user_key,
             &encrypted_header.header_bytes,
         )

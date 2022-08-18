@@ -14,10 +14,7 @@ use crate::{
 };
 use abe_policy::Attribute;
 use cosmian_crypto_core::{
-    symmetric_crypto::{
-        aes_256_gcm_pure::{Aes256GcmCrypto, KEY_LENGTH},
-        Metadata, SymmetricCrypto,
-    },
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata, SymmetricCrypto},
     KeyTrait,
 };
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
@@ -84,7 +81,7 @@ pub fn encrypt_hybrid_header(
 
     //
     // Encrypt
-    let encrypted_header = core_encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+    let encrypted_header = core_encrypt_hybrid_header::<Aes256GcmCrypto>(
         &policy,
         &public_key,
         &attributes,
@@ -92,7 +89,7 @@ pub fn encrypt_hybrid_header(
     )?;
 
     Ok((
-        encrypted_header.symmetric_key.to_bytes(),
+        encrypted_header.symmetric_key.to_bytes().to_vec(),
         encrypted_header.header_bytes,
     ))
 }
@@ -109,7 +106,7 @@ pub fn decrypt_hybrid_header(
     //
     // Finally decrypt symmetric key using given user decryption key
     let cleartext_header: ClearTextHeader<Aes256GcmCrypto> =
-        core_decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        core_decrypt_hybrid_header::<Aes256GcmCrypto>(
             &UserPrivateKey::try_from_bytes(&user_decryption_key_bytes)?,
             &encrypted_header_bytes,
         )?;
@@ -119,7 +116,7 @@ pub fn decrypt_hybrid_header(
         .try_to_bytes()
         .map_err(|e| PyTypeError::new_err(format!("Serialize metadata failed: {e}")))?;
 
-    Ok((cleartext_header.symmetric_key.to_bytes(), metadata))
+    Ok((cleartext_header.symmetric_key.to_bytes().to_vec(), metadata))
 }
 
 /// Encrypt data symmetrically in a block.

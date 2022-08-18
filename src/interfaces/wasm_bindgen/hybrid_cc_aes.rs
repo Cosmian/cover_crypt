@@ -12,10 +12,7 @@ use crate::{
 };
 use abe_policy::Attribute;
 use cosmian_crypto_core::{
-    symmetric_crypto::{
-        aes_256_gcm_pure::{Aes256GcmCrypto, KEY_LENGTH},
-        SymmetricCrypto,
-    },
+    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, SymmetricCrypto},
     KeyTrait,
 };
 use js_sys::Uint8Array;
@@ -59,7 +56,7 @@ pub fn webassembly_encrypt_hybrid_header(
             .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
     let public_key = PublicKey::try_from_bytes(&public_key_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
-    let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+    let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
         &policy,
         &public_key,
         &attributes,
@@ -67,7 +64,8 @@ pub fn webassembly_encrypt_hybrid_header(
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
     Ok(Uint8Array::from(
-        serde_json::to_vec(&encrypted_header)
+        encrypted_header
+            .try_to_bytes()
             .map_err(|e| JsValue::from_str(&format!("Error serializing encrypted header: {e}")))?
             .as_slice(),
     ))
@@ -106,14 +104,15 @@ pub fn webassembly_decrypt_hybrid_header(
     //
     // Finally decrypt symmetric key using given user decryption key
     let cleartext_header: ClearTextHeader<Aes256GcmCrypto> =
-        decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        decrypt_hybrid_header::<Aes256GcmCrypto>(
             &user_decryption_key,
             encrypted_header_bytes.to_vec().as_slice(),
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
 
     Ok(Uint8Array::from(
-        serde_json::to_vec(&cleartext_header)
+        cleartext_header
+            .try_to_bytes()
             .map_err(|e| JsValue::from_str(&format!("Error serializing decrypted header: {e}")))?
             .as_slice(),
     ))

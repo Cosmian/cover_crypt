@@ -8,6 +8,8 @@ use crate::{
 use cosmian_crypto_core::{
     asymmetric_crypto::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
+    reexport::generic_array::{ArrayLength, GenericArray},
+    symmetric_crypto::key::Key,
     KeyTrait,
 };
 use rand_core::{CryptoRng, RngCore};
@@ -263,12 +265,12 @@ impl PublicKey {
     /// Serialize the public key.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(&self.U.to_array())?;
-        serializer.write_array(&self.V.to_array())?;
+        serializer.write_array(&self.U.to_bytes())?;
+        serializer.write_array(&self.V.to_bytes())?;
         serializer.write_u64(self.H.len() as u64)?;
         for (partition, H_i) in &self.H {
             serializer.write_array(partition)?;
-            serializer.write_array(&H_i.to_array())?;
+            serializer.write_array(&H_i.to_bytes())?;
         }
         Ok(serializer.value().to_vec())
     }
@@ -319,8 +321,8 @@ impl Encapsulation {
     /// Serialize the encapsulation.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
-        serializer.write_array(&self.C.to_array())?;
-        serializer.write_array(&self.D.to_array())?;
+        serializer.write_array(&self.C.to_bytes())?;
+        serializer.write_array(&self.D.to_bytes())?;
         serializer.write_u64(self.E.len() as u64)?;
         for K_i in &self.E {
             serializer.write_array(K_i)?;
@@ -344,56 +346,6 @@ impl Encapsulation {
             K.insert(de.read_array()?);
         }
         Ok(Self { C, D, E: K })
-    }
-}
-
-/// CoverCrypt secret key.
-///
-/// Internally, it is a vector of bytes.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct SecretKey<const LENGTH: usize>([u8; LENGTH]);
-
-impl<const KEY_LENGTH: usize> SecretKey<KEY_LENGTH> {
-    pub fn new<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
-        let mut bytes = [0; KEY_LENGTH];
-        rng.fill_bytes(&mut bytes);
-        Self(bytes)
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-impl<const KEY_LENGTH: usize> std::ops::Deref for SecretKey<KEY_LENGTH> {
-    type Target = [u8; KEY_LENGTH];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<const KEY_LENGTH: usize> std::ops::DerefMut for SecretKey<KEY_LENGTH> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<const KEY_LENGTH: usize> From<[u8; KEY_LENGTH]> for SecretKey<KEY_LENGTH> {
-    fn from(v: [u8; KEY_LENGTH]) -> Self {
-        Self(v)
-    }
-}
-
-impl<const KEY_LENGTH: usize> From<SecretKey<KEY_LENGTH>> for [u8; KEY_LENGTH] {
-    fn from(sk: SecretKey<KEY_LENGTH>) -> Self {
-        sk.0
-    }
-}
-
-impl<const KEY_LENGTH: usize> Drop for SecretKey<KEY_LENGTH> {
-    fn drop(&mut self) {
-        self.0.zeroize();
     }
 }
 
@@ -509,11 +461,11 @@ where
 /// - `mpk`             : master public key
 /// - `encyption_set`   : sets for which to generate a ciphertext
 /// - `K`               : secret key
-pub fn encaps<R, const KEY_LENGTH: usize>(
+pub fn encaps<R, KeyLength: ArrayLength<u8>>(
     rng: &mut R,
     mpk: &PublicKey,
     encryption_set: &HashSet<Partition>,
-    K: &SecretKey<KEY_LENGTH>,
+    K: &Key<KeyLength>,
 ) -> Result<Encapsulation, Error>
 where
     R: CryptoRng + RngCore,
@@ -524,7 +476,7 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let K_i = hkdf_256::<KEY_LENGTH>(&(H_i * &r).to_bytes(), KEY_GEN_INFO.as_bytes())?;
+            let K_i = hkdf_256::<KeyLength>(&(H_i * &r).to_bytes(), KEY_GEN_INFO.as_bytes())?;
             let E_i = K_i
                 .iter()
                 .zip(K.iter())
@@ -553,23 +505,22 @@ where
 ///
 /// - `sk_j`                : user private key
 /// - `encapsulation`       : symmetric key encapsulation
-pub fn decaps<const KEY_LENGTH: usize>(
+pub fn decaps<KeyLength: ArrayLength<u8>>(
     sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation,
-) -> Result<Vec<SecretKey<KEY_LENGTH>>, Error> {
+) -> Result<Vec<Key<KeyLength>>, Error> {
     let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
     let precomp = &encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b;
     for E_i in &encapsulation.E {
         for x_k in sk_j.x.values() {
             let K_k = &precomp * x_k;
-            let K: Vec<u8> = hkdf_256::<KEY_LENGTH>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
-                .iter()
-                .zip(E_i.iter())
-                .map(|(e_1, e_2)| e_1 ^ e_2)
-                .collect();
-            let K = <[u8; KEY_LENGTH]>::try_from(K)
-                .map_err(|e| Error::InvalidSize(format!("{e:?}")))?;
-            res.push(SecretKey::from(K));
+            let K: GenericArray<u8, KeyLength> =
+                hkdf_256::<KeyLength>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
+                    .iter()
+                    .zip(E_i.iter())
+                    .map(|(e_1, e_2)| e_1 ^ e_2)
+                    .collect();
+            res.push(Key::from(K));
         }
     }
     Ok(res)
@@ -657,10 +608,12 @@ pub fn refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmian_crypto_core::entropy::CsRng;
+    use cosmian_crypto_core::{
+        entropy::CsRng, reexport::generic_array::typenum, symmetric_crypto::key::Key,
+    };
 
     /// Length of the desired symmetric key
-    const SYM_KEY_LENGTH: usize = 32;
+    type SymKeyLength = typenum::U32;
 
     #[test]
     fn test_partitions() -> Result<(), Error> {
@@ -698,7 +651,7 @@ mod tests {
         let usk = join(&mut rng, &msk, &user_set)?;
         let usk_ = UserPrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
-        let sym_key = SecretKey::<SYM_KEY_LENGTH>::new(&mut rng);
+        let sym_key = Key::<SymKeyLength>::new(&mut rng);
         let encapsulation = encaps(&mut rng, &mpk, &target_set, &sym_key)?;
         let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
         assert_eq!(
@@ -729,7 +682,7 @@ mod tests {
         let mut sk0 = join(&mut rng, &msk, &users_set[0])?;
         let sk1 = join(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
-        let sym_key = SecretKey::<SYM_KEY_LENGTH>::new(&mut rng);
+        let sym_key = Key::<SymKeyLength>::new(&mut rng);
         let encapsulation = encaps(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
         let res0 = decaps(&sk0, &encapsulation)?;
