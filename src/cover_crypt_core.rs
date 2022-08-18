@@ -351,35 +351,47 @@ impl Encapsulation {
 ///
 /// Internally, it is a vector of bytes.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct SecretKey(Vec<u8>);
+pub struct SecretKey<const LENGTH: usize>([u8; LENGTH]);
 
-impl std::ops::Deref for SecretKey {
-    type Target = Vec<u8>;
+impl<const KEY_LENGTH: usize> SecretKey<KEY_LENGTH> {
+    pub fn new<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
+        let mut bytes = [0; KEY_LENGTH];
+        rng.fill_bytes(&mut bytes);
+        Self(bytes)
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+impl<const KEY_LENGTH: usize> std::ops::Deref for SecretKey<KEY_LENGTH> {
+    type Target = [u8; KEY_LENGTH];
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl std::ops::DerefMut for SecretKey {
+impl<const KEY_LENGTH: usize> std::ops::DerefMut for SecretKey<KEY_LENGTH> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl From<Vec<u8>> for SecretKey {
-    fn from(v: Vec<u8>) -> Self {
+impl<const KEY_LENGTH: usize> From<[u8; KEY_LENGTH]> for SecretKey<KEY_LENGTH> {
+    fn from(v: [u8; KEY_LENGTH]) -> Self {
         Self(v)
     }
 }
 
-impl From<SecretKey> for Vec<u8> {
-    fn from(sk: SecretKey) -> Self {
-        sk.to_vec()
+impl<const KEY_LENGTH: usize> From<SecretKey<KEY_LENGTH>> for [u8; KEY_LENGTH] {
+    fn from(sk: SecretKey<KEY_LENGTH>) -> Self {
+        sk.0
     }
 }
 
-impl Drop for SecretKey {
+impl<const KEY_LENGTH: usize> Drop for SecretKey<KEY_LENGTH> {
     fn drop(&mut self) {
         self.0.zeroize();
     }
@@ -497,11 +509,11 @@ where
 /// - `mpk`             : master public key
 /// - `encyption_set`   : sets for which to generate a ciphertext
 /// - `K`               : secret key
-pub fn encaps<R>(
+pub fn encaps<R, const KEY_LENGTH: usize>(
     rng: &mut R,
     mpk: &PublicKey,
     encryption_set: &HashSet<Partition>,
-    K: &SecretKey,
+    K: &SecretKey<KEY_LENGTH>,
 ) -> Result<Encapsulation, Error>
 where
     R: CryptoRng + RngCore,
@@ -512,7 +524,7 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let K_i = hkdf_256(&(H_i * &r).to_bytes(), K.len(), KEY_GEN_INFO.as_bytes())?;
+            let K_i = hkdf_256::<KEY_LENGTH>(&(H_i * &r).to_bytes(), KEY_GEN_INFO.as_bytes())?;
             let E_i = K_i
                 .iter()
                 .zip(K.iter())
@@ -541,20 +553,22 @@ where
 ///
 /// - `sk_j`                : user private key
 /// - `encapsulation`       : symmetric key encapsulation
-pub fn decaps(
+pub fn decaps<const KEY_LENGTH: usize>(
     sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation,
-) -> Result<Vec<SecretKey>, Error> {
+) -> Result<Vec<SecretKey<KEY_LENGTH>>, Error> {
     let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
     let precomp = &encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b;
     for E_i in &encapsulation.E {
         for x_k in sk_j.x.values() {
             let K_k = &precomp * x_k;
-            let K: Vec<u8> = hkdf_256(&K_k.to_bytes(), E_i.len(), KEY_GEN_INFO.as_bytes())?
+            let K: Vec<u8> = hkdf_256::<KEY_LENGTH>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
                 .iter()
                 .zip(E_i.iter())
                 .map(|(e_1, e_2)| e_1 ^ e_2)
                 .collect();
+            let K = <[u8; KEY_LENGTH]>::try_from(K)
+                .map_err(|e| Error::InvalidSize(format!("{e:?}")))?;
             res.push(SecretKey::from(K));
         }
     }
@@ -684,7 +698,7 @@ mod tests {
         let usk = join(&mut rng, &msk, &user_set)?;
         let usk_ = UserPrivateKey::try_from_bytes(&usk.try_to_bytes()?)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
-        let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
+        let sym_key = SecretKey::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps(&mut rng, &mpk, &target_set, &sym_key)?;
         let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
         assert_eq!(
@@ -715,7 +729,7 @@ mod tests {
         let mut sk0 = join(&mut rng, &msk, &users_set[0])?;
         let sk1 = join(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
-        let sym_key = SecretKey(rng.generate_random_bytes(SYM_KEY_LENGTH));
+        let sym_key = SecretKey::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
         let res0 = decaps(&sk0, &encapsulation)?;

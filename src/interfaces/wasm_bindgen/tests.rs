@@ -16,7 +16,10 @@ use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
-use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
+use cosmian_crypto_core::symmetric_crypto::{
+    aes_256_gcm_pure::{Aes256GcmCrypto, KEY_LENGTH},
+    Metadata,
+};
 use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;
@@ -128,8 +131,11 @@ fn test_non_reg_decrypt_hybrid_header() {
 
     let user_decryption_key_from_file =
         UserPrivateKey::try_from_bytes(&user_decryption_key).unwrap();
-    decrypt_hybrid_header::<Aes256GcmCrypto>(&user_decryption_key_from_file, &header_bytes)
-        .unwrap();
+    decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
+        &user_decryption_key_from_file,
+        &header_bytes,
+    )
+    .unwrap();
 }
 
 #[wasm_bindgen_test]

@@ -18,7 +18,7 @@
 //!
 //! ```
 //! use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-//! use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
+//! use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::{Aes256GcmCrypto, KEY_LENGTH};
 //! use cover_crypt::{CoverCrypt, interfaces::statics::*};
 //!
 //! //
@@ -67,7 +67,7 @@
 //!
 //! //
 //! // Encrypt
-//! let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
+//! let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
 //!     &policy,
 //!     &master_public_key,
 //!     &[Attribute::from(("Security Level", "Top Secret"))],
@@ -78,7 +78,7 @@
 //! // Decryption
 //!
 //! // The user is able to decrypt the encrypted header.
-//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
+//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
 //!     &user_key,
 //!     &encrypted_header.header_bytes,
 //! )
@@ -95,7 +95,7 @@
 //!
 //! //
 //! // Encrypt with rotated attribute
-//! let new_encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
+//! let new_encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
 //!     &policy,
 //!     &master_public_key,
 //!     &[Attribute::from(("Security Level", "Top Secret"))],
@@ -103,7 +103,7 @@
 //! ).unwrap();
 //!
 //! // user cannot decrypt the newly encrypted header
-//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
+//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
 //!     &user_key,
 //!     &new_encrypted_header.header_bytes,
 //! )
@@ -115,14 +115,14 @@
 //!     .unwrap();
 //!
 //! // The user with refreshed key is able to decrypt the newly encrypted header.
-//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
+//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
 //!     &user_key,
 //!     &new_encrypted_header.header_bytes,
 //! )
 //! .is_ok());
 //!
 //! // But it cannot decrypt old ciphertexts
-//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
+//! assert!(decrypt_hybrid_header::<Aes256GcmCrypto, KEY_LENGTH>(
 //!     &user_key,
 //!     &encrypted_header.header_bytes,
 //! )
