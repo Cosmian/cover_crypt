@@ -126,6 +126,8 @@ fn bench_header_encryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_encryption(c: &mut Criterion) {
+    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
+
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::default();
@@ -142,7 +144,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
         additional_data: Some(vec![10, 11, 12, 13, 14]),
     };
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KEY_LENGTH];
+    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
@@ -199,6 +201,8 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
+    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
+
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::default();
@@ -239,7 +243,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
         .expect("cannot create aes encryption cache");
     }
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KEY_LENGTH];
+    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
@@ -342,6 +346,8 @@ fn bench_header_decryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_decryption(c: &mut Criterion) {
+    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
+
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::default();
@@ -356,7 +362,7 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
         .generate_user_private_key(&msk, &access_policy, &policy)
         .expect("cannot generate user decryption key");
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KEY_LENGTH];
+    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
@@ -395,6 +401,8 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
+    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
+
     let policy = policy().expect("cannot generate policy");
 
     let cc = CoverCrypt::default();
@@ -409,7 +417,7 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
         .generate_user_private_key(&msk, &access_policy, &policy)
         .expect("cannot generate user private key");
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KEY_LENGTH];
+    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
