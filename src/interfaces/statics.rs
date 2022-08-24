@@ -3,30 +3,72 @@
 
 use crate::{
     api::CoverCrypt,
+    bytes_ser_de::{Deserializer, Serializer},
     cover_crypt_core::{Encapsulation, PublicKey, UserPrivateKey},
     error::Error,
 };
 use abe_policy::{Attribute, Policy};
 use cosmian_crypto_core::{
     entropy::CsRng,
-    symmetric_crypto::{Block, Dem, Metadata},
+    symmetric_crypto::{Block, Dem, Metadata, SymKey, SymmetricCrypto},
     KeyTrait,
 };
-use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 
 /// An EncryptedHeader returned by the `encrypt_hybrid_header` function
-#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct EncryptedHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub header_bytes: Vec<u8>,
 }
 
+impl<DEM: Dem> EncryptedHeader<DEM> {
+    /// Tries to serialize the encrypted header.
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        serializer.write_array(self.symmetric_key.as_bytes())?;
+        serializer.write_array(self.header_bytes.as_slice())?;
+        Ok(serializer.value().to_vec())
+    }
+
+    /// Tries to deserialize the encrypted header.
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut de = Deserializer::new(bytes);
+        let symmetric_key = DEM::Key::try_from_bytes(&de.read_array()?)?;
+        let header_bytes = de.read_array()?;
+        Ok(Self {
+            symmetric_key,
+            header_bytes,
+        })
+    }
+}
+
 /// A ClearTextHeader returned by the `decrypt_hybrid_header` function
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct ClearTextHeader<DEM: Dem> {
     pub symmetric_key: DEM::Key,
     pub meta_data: Metadata,
+}
+
+impl<DEM: Dem> ClearTextHeader<DEM> {
+    /// Tries to serialize the cleartext header.
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut serializer = Serializer::new();
+        serializer.write_array(self.symmetric_key.as_bytes())?;
+        serializer.write_array(&self.meta_data.try_to_bytes()?)?;
+        Ok(serializer.value().to_vec())
+    }
+
+    /// Tries to deserialize the cleartext header.
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut de = Deserializer::new(bytes);
+        let symmetric_key = DEM::Key::try_from_bytes(&de.read_array()?)?;
+        let meta_data = Metadata::try_from_bytes(&de.read_array()?)?;
+        Ok(Self {
+            symmetric_key,
+            meta_data,
+        })
+    }
 }
 
 /// Generate an encrypted header.
@@ -51,8 +93,10 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
 ) -> Result<EncryptedHeader<DEM>, Error> {
     // generate symmetric key and its encapsulation
     let cover_crypt = CoverCrypt::new();
-    let (secret_key, encapsulation) =
-        cover_crypt.generate_symmetric_key(policy, public_key, attributes, DEM::Key::LENGTH)?;
+    let (secret_key, encapsulation) = cover_crypt
+        .generate_symmetric_key::<<<DEM as SymmetricCrypto>::Key as KeyTrait>::Length>(
+        policy, public_key, attributes,
+    )?;
     let encapsulation = encapsulation.try_to_bytes()?;
 
     // Allocate enough space to the header bytes
@@ -81,7 +125,7 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
                 .lock()
                 .expect("Mutex lock failed!")
                 .deref_mut(),
-            &secret_key,
+            secret_key.as_slice(),
             None,
             &meta_data,
         )
@@ -89,7 +133,8 @@ pub fn encrypt_hybrid_header<DEM: Dem>(
     );
 
     Ok(EncryptedHeader {
-        symmetric_key: DEM::Key::try_from_bytes(&secret_key).map_err(Error::CryptoError)?,
+        symmetric_key: DEM::Key::try_from_bytes(secret_key.as_slice())
+            .map_err(Error::CryptoError)?,
         header_bytes,
     })
 }
@@ -122,16 +167,19 @@ pub fn decrypt_hybrid_header<DEM: Dem>(
     index += encapsulation_size;
 
     // decrypt the symmetric key
-    let secret_keys =
-        CoverCrypt::default().decaps_symmetric_key(user_decryption_key, &encapsulation)?;
+    let secret_keys = CoverCrypt::default()
+        .decaps_symmetric_key::<<<DEM as SymmetricCrypto>::Key as KeyTrait>::Length>(
+            user_decryption_key,
+            &encapsulation,
+        )?;
 
     // decrypt the metadata if any
     for key in &secret_keys {
         if let Ok(plaintext) =
-            DEM::decaps(key, None, &header_bytes[index..]).map_err(Error::CryptoError)
+            DEM::decaps(key.as_slice(), None, &header_bytes[index..]).map_err(Error::CryptoError)
         {
             return Ok(ClearTextHeader {
-                symmetric_key: DEM::Key::try_from_bytes(key).map_err(Error::CryptoError)?,
+                symmetric_key: DEM::Key::from_bytes(key.to_bytes()),
                 meta_data: Metadata::try_from_bytes(&plaintext)
                     .map_err(|_| Error::ConversionFailed)?,
             });
@@ -218,6 +266,7 @@ mod tests {
     use super::*;
     use abe_policy::{AccessPolicy, Attribute, PolicyAxis};
     use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]
     struct NonRegressionTestVector {

@@ -64,7 +64,8 @@ pub fn webassembly_encrypt_hybrid_header(
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
     Ok(Uint8Array::from(
-        serde_json::to_vec(&encrypted_header)
+        encrypted_header
+            .try_to_bytes()
             .map_err(|e| JsValue::from_str(&format!("Error serializing encrypted header: {e}")))?
             .as_slice(),
     ))
@@ -110,7 +111,8 @@ pub fn webassembly_decrypt_hybrid_header(
         .map_err(|e| JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
 
     Ok(Uint8Array::from(
-        serde_json::to_vec(&cleartext_header)
+        cleartext_header
+            .try_to_bytes()
             .map_err(|e| JsValue::from_str(&format!("Error serializing decrypted header: {e}")))?
             .as_slice(),
     ))

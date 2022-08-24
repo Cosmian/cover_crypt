@@ -4,12 +4,14 @@
 
 use crate::{
     cover_crypt_core::{
-        self, Encapsulation, MasterPrivateKey, Partition, PublicKey, SecretKey, UserPrivateKey,
+        self, Encapsulation, MasterPrivateKey, Partition, PublicKey, UserPrivateKey,
     },
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
-use cosmian_crypto_core::entropy::CsRng;
+use cosmian_crypto_core::{
+    entropy::CsRng, reexport::generic_array::ArrayLength, symmetric_crypto::key::Key,
+};
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,
@@ -120,27 +122,20 @@ impl CoverCrypt {
         cover_crypt_core::refresh(msk, usk, &current_partitions)
     }
 
-    /// Generate a random symmetric key of `sym_key_len` to be used in an
-    /// hybrid encryption scheme and generate its CoverCrypt encrypted version
-    /// with the supplied policy `attributes`.
+    /// Generate a random symmetric key to be used in an hybrid encryption
+    /// scheme and generate its CoverCrypt encrypted version with the supplied
+    /// policy `attributes`.
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
     /// - `attributes`      : the list of attributes to compose to generate the symmetric key
-    /// - `sym_key_len`     : length of the symmetric key to generate
-    pub fn generate_symmetric_key(
+    pub fn generate_symmetric_key<KeyLength: ArrayLength<u8>>(
         &self,
         policy: &Policy,
         pk: &PublicKey,
         attributes: &[Attribute],
-        sym_key_len: usize,
-    ) -> Result<(SecretKey, Encapsulation), Error> {
-        let bytes = self
-            .rng
-            .lock()
-            .expect("Mutex lock failed!")
-            .generate_random_bytes(sym_key_len);
-        let sym_key = SecretKey::from(bytes);
+    ) -> Result<(Key<KeyLength>, Encapsulation), Error> {
+        let sym_key = Key::new(self.rng.lock().expect("Mutex lock failed").deref_mut());
         let encapsulation = cover_crypt_core::encaps(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
@@ -154,11 +149,11 @@ impl CoverCrypt {
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    pub fn decaps_symmetric_key(
+    pub fn decaps_symmetric_key<KeyLength: ArrayLength<u8>>(
         &self,
         sk_u: &UserPrivateKey,
         encapsulation: &Encapsulation,
-    ) -> Result<Vec<SecretKey>, Error> {
+    ) -> Result<Vec<Key<KeyLength>>, Error> {
         cover_crypt_core::decaps(sk_u, encapsulation)
     }
 }
@@ -357,6 +352,7 @@ fn to_attribute_combinations(
 mod tests {
     use super::*;
     use abe_policy::{Attribute, PolicyAxis};
+    use cosmian_crypto_core::reexport::generic_array::typenum::U256;
 
     fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
@@ -521,7 +517,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        const KEY_LENGTH: usize = 256;
+        type KeyLength = U256;
         let mut policy = policy()?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         println!("{:?}", &policy);
@@ -530,14 +526,13 @@ mod tests {
             & AccessPolicy::new("Security Level", "Top Secret");
         let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let (sym_key, encrypted_key) = cc.generate_symmetric_key(
+        let (sym_key, encrypted_key) = cc.generate_symmetric_key::<KeyLength>(
             &policy,
             &mpk,
             &[
                 Attribute::new("Department", "R&D"),
                 Attribute::new("Security Level", "Top Secret"),
             ],
-            KEY_LENGTH,
         )?;
         let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
         let recovered_keys = cc.decaps_symmetric_key(&sk_u, &encrypted_key)?;

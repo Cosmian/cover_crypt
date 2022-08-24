@@ -89,7 +89,7 @@ pub fn encrypt_hybrid_header(
     )?;
 
     Ok((
-        encrypted_header.symmetric_key.to_bytes(),
+        encrypted_header.symmetric_key.to_bytes().to_vec(),
         encrypted_header.header_bytes,
     ))
 }
@@ -116,7 +116,7 @@ pub fn decrypt_hybrid_header(
         .try_to_bytes()
         .map_err(|e| PyTypeError::new_err(format!("Serialize metadata failed: {e}")))?;
 
-    Ok((cleartext_header.symmetric_key.to_bytes(), metadata))
+    Ok((cleartext_header.symmetric_key.to_bytes().to_vec(), metadata))
 }
 
 /// Encrypt data symmetrically in a block.
