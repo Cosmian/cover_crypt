@@ -1,6 +1,7 @@
 //! Implement the `Serializer` and `Deserializer` objects using LEB128.
 
 use crate::error::Error;
+use cosmian_crypto_core::reexport::generic_array::{ArrayLength, GenericArray};
 use std::io::{Read, Write};
 
 pub struct Deserializer<'a> {
@@ -21,7 +22,20 @@ impl<'a> Deserializer<'a> {
         })
     }
 
-    pub fn read_array(&mut self) -> Result<Vec<u8>, Error> {
+    pub fn read_array<Length: ArrayLength<u8>>(
+        &mut self,
+    ) -> Result<GenericArray<u8, Length>, Error> {
+        let mut buf = GenericArray::<u8, Length>::default();
+        self.readable.read_exact(&mut buf).map_err(|_| {
+            Error::InvalidSize(format!(
+                "Deserializer: failed reading array of: {} bytes",
+                Length::to_usize()
+            ))
+        })?;
+        Ok(buf)
+    }
+
+    pub fn read_vec(&mut self) -> Result<Vec<u8>, Error> {
         let len_u64 = self.read_u64()?;
         if len_u64 == 0 {
             return Ok(vec![]);
@@ -62,14 +76,18 @@ impl Serializer {
     }
 
     pub fn write_array(&mut self, array: &[u8]) -> Result<usize, Error> {
-        let mut len = self.write_u64(array.len() as u64)?;
-        len += self.writable.write(array).map_err(|e| {
+        self.writable.write(array).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected error writing {} bytes: {}",
                 array.len(),
                 e
             ))
-        })?;
+        })
+    }
+
+    pub fn write_vec(&mut self, array: &[u8]) -> Result<usize, Error> {
+        let mut len = self.write_u64(array.len() as u64)?;
+        len += self.write_array(array)?;
         Ok(len)
     }
 
@@ -96,17 +114,17 @@ mod tests {
         let a3 = "nbvcxwmlkjhgfdsqpoiuytreza)àç_è-('é&".as_bytes().to_vec();
 
         let mut ser = Serializer::new();
-        assert_eq!(7, ser.write_array(&a1)?);
-        assert_eq!(1, ser.write_array(&a2)?);
-        assert_eq!(41, ser.write_array(&a3)?);
+        assert_eq!(7, ser.write_vec(&a1)?);
+        assert_eq!(1, ser.write_vec(&a2)?);
+        assert_eq!(41, ser.write_vec(&a3)?);
         assert_eq!(49, ser.value().len());
 
         let mut de = Deserializer::new(ser.value());
-        let a1_ = de.read_array()?;
+        let a1_ = de.read_vec()?;
         assert_eq!(a1, a1_);
-        let a2_ = de.read_array()?;
+        let a2_ = de.read_vec()?;
         assert_eq!(a2, a2_);
-        let a3_ = de.read_array()?;
+        let a3_ = de.read_vec()?;
         assert_eq!(a3, a3_);
 
         Ok(())

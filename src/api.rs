@@ -134,7 +134,7 @@ impl CoverCrypt {
         policy: &Policy,
         pk: &PublicKey,
         attributes: &[Attribute],
-    ) -> Result<(Key<KeyLength>, Encapsulation), Error> {
+    ) -> Result<(Key<KeyLength>, Encapsulation<KeyLength>), Error> {
         let sym_key = Key::new(self.rng.lock().expect("Mutex lock failed").deref_mut());
         let encapsulation = cover_crypt_core::encaps(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
@@ -152,7 +152,7 @@ impl CoverCrypt {
     pub fn decaps_symmetric_key<KeyLength: ArrayLength<u8>>(
         &self,
         sk_u: &UserPrivateKey,
-        encapsulation: &Encapsulation,
+        encapsulation: &Encapsulation<KeyLength>,
     ) -> Result<Vec<Key<KeyLength>>, Error> {
         cover_crypt_core::decaps(sk_u, encapsulation)
     }

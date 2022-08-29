@@ -27,15 +27,16 @@ impl<DEM: Dem> EncryptedHeader<DEM> {
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
         serializer.write_array(self.symmetric_key.as_bytes())?;
-        serializer.write_array(self.header_bytes.as_slice())?;
+        serializer.write_vec(self.header_bytes.as_slice())?;
         Ok(serializer.value().to_vec())
     }
 
     /// Tries to deserialize the encrypted header.
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let mut de = Deserializer::new(bytes);
-        let symmetric_key = DEM::Key::try_from_bytes(&de.read_array()?)?;
-        let header_bytes = de.read_array()?;
+        let symmetric_key =
+            DEM::Key::from_bytes(de.read_array::<<DEM::Key as KeyTrait>::Length>()?);
+        let header_bytes = de.read_vec()?;
         Ok(Self {
             symmetric_key,
             header_bytes,
@@ -55,15 +56,16 @@ impl<DEM: Dem> ClearTextHeader<DEM> {
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
         serializer.write_array(self.symmetric_key.as_bytes())?;
-        serializer.write_array(&self.meta_data.try_to_bytes()?)?;
+        serializer.write_vec(&self.meta_data.try_to_bytes()?)?;
         Ok(serializer.value().to_vec())
     }
 
     /// Tries to deserialize the cleartext header.
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let mut de = Deserializer::new(bytes);
-        let symmetric_key = DEM::Key::try_from_bytes(&de.read_array()?)?;
-        let meta_data = Metadata::try_from_bytes(&de.read_array()?)?;
+        let symmetric_key =
+            DEM::Key::from_bytes(de.read_array::<<DEM::Key as KeyTrait>::Length>()?);
+        let meta_data = Metadata::try_from_bytes(&de.read_vec()?)?;
         Ok(Self {
             symmetric_key,
             meta_data,

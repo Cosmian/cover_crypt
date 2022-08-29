@@ -1,6 +1,6 @@
 [package]
 name = "cover_crypt"
-version = "5.0.0"
+version = "5.1.0"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
