@@ -91,8 +91,8 @@ impl Serializer {
         Ok(len)
     }
 
-    pub fn value(&self) -> &[u8] {
-        &self.writable
+    pub fn finalize(self) -> Vec<u8> {
+        self.writable
     }
 }
 
@@ -117,9 +117,9 @@ mod tests {
         assert_eq!(7, ser.write_vec(&a1)?);
         assert_eq!(1, ser.write_vec(&a2)?);
         assert_eq!(41, ser.write_vec(&a3)?);
-        assert_eq!(49, ser.value().len());
+        assert_eq!(49, ser.writable.len());
 
-        let mut de = Deserializer::new(ser.value());
+        let mut de = Deserializer::new(&ser.writable);
         let a1_ = de.read_vec()?;
         assert_eq!(a1, a1_);
         let a2_ = de.read_vec()?;

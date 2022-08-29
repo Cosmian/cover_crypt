@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - `read_array()` -> `read_vec()`
 - `write_array()` -> `write_vec()`
+- `bytes_ser_de` is now private
 ### Fixed
 ### Removed
 ---

@@ -128,7 +128,7 @@ impl MasterPrivateKey {
             serializer.write_vec(partition)?;
             serializer.write_array(x_i.as_bytes())?;
         }
-        Ok(serializer.value().to_vec())
+        Ok(serializer.finalize())
     }
 
     /// Deserialize the master private key from the given bytes.
@@ -208,7 +208,7 @@ impl UserPrivateKey {
             serializer.write_vec(partition)?;
             serializer.write_array(x_i.as_bytes())?;
         }
-        Ok(serializer.value().to_vec())
+        Ok(serializer.finalize())
     }
 
     /// Deserialize the user private key.
@@ -282,7 +282,7 @@ impl PublicKey {
             serializer.write_vec(partition)?;
             serializer.write_array(&H_i.to_bytes())?;
         }
-        Ok(serializer.value().to_vec())
+        Ok(serializer.finalize())
     }
 
     /// Deserialize the public key.
@@ -341,7 +341,7 @@ impl<KeyLength: ArrayLength<u8>> Encapsulation<KeyLength> {
         for K_i in &self.E {
             serializer.write_array(K_i)?;
         }
-        Ok(serializer.value().to_vec())
+        Ok(serializer.finalize())
     }
 
     /// Deserialize the encapsulation.

@@ -28,7 +28,7 @@ impl<DEM: Dem> EncryptedHeader<DEM> {
         let mut serializer = Serializer::new();
         serializer.write_array(self.symmetric_key.as_bytes())?;
         serializer.write_vec(self.header_bytes.as_slice())?;
-        Ok(serializer.value().to_vec())
+        Ok(serializer.finalize())
     }
 
     /// Tries to deserialize the encrypted header.
@@ -57,7 +57,7 @@ impl<DEM: Dem> ClearTextHeader<DEM> {
         let mut serializer = Serializer::new();
         serializer.write_array(self.symmetric_key.as_bytes())?;
         serializer.write_vec(&self.meta_data.try_to_bytes()?)?;
-        Ok(serializer.value().to_vec())
+        Ok(serializer.finalize())
     }
 
     /// Tries to deserialize the cleartext header.
