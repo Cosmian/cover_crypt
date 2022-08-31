@@ -9,7 +9,7 @@ use cosmian_crypto_core::{
     asymmetric_crypto::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
     reexport::generic_array::{ArrayLength, GenericArray},
-    symmetric_crypto::key::Key,
+    symmetric_crypto::{key::Key, SymKey},
     KeyTrait,
 };
 use rand_core::{CryptoRng, RngCore};
@@ -523,7 +523,7 @@ where
 ///
 /// - `sk_j`                : user private key
 /// - `encapsulation`       : symmetric key encapsulation
-pub fn decaps<KeyLength: ArrayLength<u8>>(
+pub fn decaps<KeyLength: Eq + ArrayLength<u8>>(
     sk_j: &UserPrivateKey,
     encapsulation: &Encapsulation<KeyLength>,
 ) -> Result<Vec<Key<KeyLength>>, Error> {
@@ -532,13 +532,12 @@ pub fn decaps<KeyLength: ArrayLength<u8>>(
     for E_i in &encapsulation.E {
         for x_k in sk_j.x.values() {
             let K_k = &precomp * x_k;
-            let K: GenericArray<u8, KeyLength> =
-                hkdf_256::<KeyLength>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
-                    .iter()
-                    .zip(E_i.iter())
-                    .map(|(e_1, e_2)| e_1 ^ e_2)
-                    .collect();
-            res.push(Key::from(K));
+            let K = hkdf_256::<KeyLength>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
+                .iter()
+                .zip(E_i.iter())
+                .map(|(e_1, e_2)| e_1 ^ e_2)
+                .collect();
+            res.push(Key::from_bytes(K));
         }
     }
     Ok(res)

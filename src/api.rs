@@ -149,7 +149,7 @@ impl CoverCrypt {
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    pub fn decaps_symmetric_key<KeyLength: ArrayLength<u8>>(
+    pub fn decaps_symmetric_key<KeyLength: Eq + ArrayLength<u8>>(
         &self,
         sk_u: &UserPrivateKey,
         encapsulation: &Encapsulation<KeyLength>,
