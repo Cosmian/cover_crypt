@@ -13,7 +13,11 @@ use crate::{
 };
 use abe_policy::{Attribute, Policy};
 use cosmian_crypto_core::{
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Block, Metadata, SymmetricCrypto},
+    symmetric_crypto::{
+        aes_256_gcm_pure::{Aes256GcmCrypto, KeyLength},
+        key::Key,
+        Block, Metadata, SymmetricCrypto,
+    },
     KeyTrait,
 };
 use lazy_static::lazy_static;
@@ -195,7 +199,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         additional_data,
     };
 
-    let encrypted_header = ffi_unwrap!(encrypt_hybrid_header::<Aes256GcmCrypto>(
+    let encrypted_header = ffi_unwrap!(encrypt_hybrid_header::<Key<KeyLength>, Aes256GcmCrypto>(
         &cache.policy,
         &cache.public_key,
         &attributes,
@@ -324,7 +328,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         additional_data,
     };
 
-    let encrypted_header = ffi_unwrap!(encrypt_hybrid_header::<Aes256GcmCrypto>(
+    let encrypted_header = ffi_unwrap!(encrypt_hybrid_header::<Key<KeyLength>, Aes256GcmCrypto>(
         &policy,
         &public_key,
         &attributes,
@@ -493,8 +497,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         return 1;
     };
 
-    let header: ClearTextHeader<Aes256GcmCrypto> =
-        ffi_unwrap!(decrypt_hybrid_header::<Aes256GcmCrypto>(
+    let header: ClearTextHeader<Key<KeyLength>> =
+        ffi_unwrap!(decrypt_hybrid_header::<Key<KeyLength>, Aes256GcmCrypto>(
             &cache.user_decryption_key,
             encrypted_header_bytes
         ));
@@ -628,8 +632,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     let user_decryption_key =
         ffi_unwrap!(UserPrivateKey::try_from_bytes(user_decryption_key_bytes));
 
-    let header: ClearTextHeader<Aes256GcmCrypto> =
-        ffi_unwrap!(decrypt_hybrid_header::<Aes256GcmCrypto>(
+    let header: ClearTextHeader<Key<KeyLength>> =
+        ffi_unwrap!(decrypt_hybrid_header::<Key<KeyLength>, Aes256GcmCrypto>(
             &user_decryption_key,
             encrypted_header_bytes
         ));

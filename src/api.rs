@@ -9,11 +9,10 @@ use crate::{
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
-use cosmian_crypto_core::{
-    entropy::CsRng, reexport::generic_array::ArrayLength, symmetric_crypto::key::Key,
-};
+use cosmian_crypto_core::{entropy::CsRng, symmetric_crypto::SymKey};
 use std::{
     collections::{HashMap, HashSet},
+    hash::Hash,
     ops::DerefMut,
     sync::Mutex,
 };
@@ -129,13 +128,18 @@ impl CoverCrypt {
     /// - `policy`          : global policy
     /// - `pk`              : public key
     /// - `attributes`      : the list of attributes to compose to generate the symmetric key
-    pub fn generate_symmetric_key<KeyLength: ArrayLength<u8>>(
+    pub fn generate_symmetric_key<KEY: SymKey + Hash>(
         &self,
         policy: &Policy,
         pk: &PublicKey,
         attributes: &[Attribute],
-    ) -> Result<(Key<KeyLength>, Encapsulation<KeyLength>), Error> {
-        let sym_key = Key::new(self.rng.lock().expect("Mutex lock failed").deref_mut());
+    ) -> Result<(KEY, Encapsulation<KEY>), Error> {
+        let sym_key = KEY::from_bytes(
+            self.rng
+                .lock()
+                .expect("Mutex lock failed")
+                .generate_random_bytes(),
+        );
         let encapsulation = cover_crypt_core::encaps(
             &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
@@ -149,11 +153,11 @@ impl CoverCrypt {
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    pub fn decaps_symmetric_key<KeyLength: Eq + ArrayLength<u8>>(
+    pub fn decaps_symmetric_key<KEY: SymKey + Hash>(
         &self,
         sk_u: &UserPrivateKey,
-        encapsulation: &Encapsulation<KeyLength>,
-    ) -> Result<Vec<Key<KeyLength>>, Error> {
+        encapsulation: &Encapsulation<KEY>,
+    ) -> Result<Vec<KEY>, Error> {
         cover_crypt_core::decaps(sk_u, encapsulation)
     }
 }
@@ -352,7 +356,7 @@ fn to_attribute_combinations(
 mod tests {
     use super::*;
     use abe_policy::{Attribute, PolicyAxis};
-    use cosmian_crypto_core::reexport::generic_array::typenum::U256;
+    use cosmian_crypto_core::{reexport::generic_array::typenum::U256, symmetric_crypto::key::Key};
 
     fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
@@ -517,7 +521,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        type KeyLength = U256;
+        type SymmetricKey = Key<U256>;
         let mut policy = policy()?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         println!("{:?}", &policy);
@@ -526,7 +530,7 @@ mod tests {
             & AccessPolicy::new("Security Level", "Top Secret");
         let cc = CoverCrypt::default();
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let (sym_key, encrypted_key) = cc.generate_symmetric_key::<KeyLength>(
+        let (sym_key, encrypted_key) = cc.generate_symmetric_key::<SymmetricKey>(
             &policy,
             &mpk,
             &[

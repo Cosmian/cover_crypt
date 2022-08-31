@@ -17,7 +17,11 @@ use crate::{
 };
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_crypto_core::{
-    symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata, SymmetricCrypto},
+    symmetric_crypto::{
+        aes_256_gcm_pure::{Aes256GcmCrypto, KeyLength},
+        key::Key,
+        Metadata, SymmetricCrypto,
+    },
     KeyTrait,
 };
 use std::{
@@ -30,7 +34,7 @@ unsafe fn encrypt_header(
     policy: &Policy,
     attributes: &[Attribute],
     public_key: &PublicKey,
-) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
+) -> Result<EncryptedHeader<Key<KeyLength>>, Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
     let mut symmetric_key_len = symmetric_key.len() as c_int;
@@ -88,7 +92,7 @@ struct DecryptedHeader {
 }
 
 unsafe fn decrypt_header(
-    header: &EncryptedHeader<Aes256GcmCrypto>,
+    header: &EncryptedHeader<Key<KeyLength>>,
     user_decryption_key: &UserPrivateKey,
 ) -> Result<DecryptedHeader, Error> {
     let mut symmetric_key = vec![0u8; 32];
@@ -226,7 +230,7 @@ unsafe fn encrypt_header_using_cache(
     public_key: &PublicKey,
     policy: &Policy,
     meta_data: &Metadata,
-) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
+) -> Result<EncryptedHeader<Key<KeyLength>>, Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
@@ -295,7 +299,7 @@ unsafe fn encrypt_header_using_cache(
 
 unsafe fn decrypt_header_using_cache(
     user_decryption_key: &UserPrivateKey,
-    header: &EncryptedHeader<Aes256GcmCrypto>,
+    header: &EncryptedHeader<Key<KeyLength>>,
 ) -> Result<DecryptedHeader, Error> {
     let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;

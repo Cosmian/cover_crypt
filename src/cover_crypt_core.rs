@@ -8,14 +8,15 @@ use crate::{
 use cosmian_crypto_core::{
     asymmetric_crypto::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
-    reexport::generic_array::{typenum, ArrayLength, GenericArray},
-    symmetric_crypto::{key::Key, SymKey},
+    reexport::generic_array::typenum,
+    symmetric_crypto::SymKey,
     KeyTrait,
 };
 use rand_core::{CryptoRng, RngCore};
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
+    hash::Hash,
     ops::Deref,
 };
 use zeroize::Zeroize;
@@ -296,13 +297,13 @@ impl PublicKey {
 /// `S_i` in the encryption set used to generate the encapsulation, and `K` is
 /// the randomly chosen symmetric key.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Encapsulation<KeyLength: ArrayLength<u8>> {
+pub struct Encapsulation<KEY: SymKey + Hash> {
     C: X25519PublicKey,
     D: X25519PublicKey,
-    E: HashSet<GenericArray<u8, KeyLength>>,
+    E: HashSet<KEY>,
 }
 
-impl<KeyLength: ArrayLength<u8>> Encapsulation<KeyLength> {
+impl<KEY: SymKey + Hash> Encapsulation<KEY> {
     /// Serialize the encapsulation.
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut serializer = Serializer::new();
@@ -310,7 +311,7 @@ impl<KeyLength: ArrayLength<u8>> Encapsulation<KeyLength> {
         serializer.write_array(&self.D.to_bytes())?;
         serializer.write_u64(self.E.len() as u64)?;
         for K_i in &self.E {
-            serializer.write_array(K_i)?;
+            serializer.write_array(K_i.as_bytes())?;
         }
         Ok(serializer.finalize())
     }
@@ -328,7 +329,7 @@ impl<KeyLength: ArrayLength<u8>> Encapsulation<KeyLength> {
         let K_len = de.read_u64()?.try_into()?;
         let mut K = HashSet::with_capacity(K_len);
         for _ in 0..K_len {
-            K.insert(de.read_array::<KeyLength>()?);
+            K.insert(KEY::from_bytes(de.read_array::<KEY::Length>()?));
         }
         Ok(Self { C, D, E: K })
     }
@@ -446,12 +447,12 @@ where
 /// - `mpk`             : master public key
 /// - `encyption_set`   : sets for which to generate a ciphertext
 /// - `K`               : secret key
-pub fn encaps<R, KeyLength: ArrayLength<u8>>(
+pub fn encaps<R, KEY: SymKey + Hash>(
     rng: &mut R,
     mpk: &PublicKey,
     encryption_set: &HashSet<Partition>,
-    K: &Key<KeyLength>,
-) -> Result<Encapsulation<KeyLength>, Error>
+    K: &KEY,
+) -> Result<Encapsulation<KEY>, Error>
 where
     R: CryptoRng + RngCore,
 {
@@ -461,13 +462,12 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let K_i = hkdf_256::<KeyLength>(&(H_i * &r).to_bytes(), KEY_GEN_INFO.as_bytes())?;
-            let E_i = K_i
+            let E_i = hkdf_256::<KEY::Length>(&(H_i * &r).to_bytes(), KEY_GEN_INFO.as_bytes())?
                 .iter()
-                .zip(K.iter())
+                .zip(K.as_bytes())
                 .map(|(e_1, e_2)| e_1 ^ e_2)
                 .collect();
-            E.insert(E_i);
+            E.insert(KEY::from_bytes(E_i));
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
@@ -490,21 +490,21 @@ where
 ///
 /// - `sk_j`                : user private key
 /// - `encapsulation`       : symmetric key encapsulation
-pub fn decaps<KeyLength: Eq + ArrayLength<u8>>(
+pub fn decaps<KEY: SymKey + Hash>(
     sk_j: &UserPrivateKey,
-    encapsulation: &Encapsulation<KeyLength>,
-) -> Result<Vec<Key<KeyLength>>, Error> {
+    encapsulation: &Encapsulation<KEY>,
+) -> Result<Vec<KEY>, Error> {
     let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
     let precomp = &encapsulation.C * &sk_j.a + &encapsulation.D * &sk_j.b;
     for E_i in &encapsulation.E {
         for x_k in sk_j.x.values() {
             let K_k = &precomp * x_k;
-            let K = hkdf_256::<KeyLength>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
+            let K = hkdf_256::<KEY::Length>(&K_k.to_bytes(), KEY_GEN_INFO.as_bytes())?
                 .iter()
-                .zip(E_i.iter())
+                .zip(E_i.as_bytes())
                 .map(|(e_1, e_2)| e_1 ^ e_2)
                 .collect();
-            res.push(Key::from_bytes(K));
+            res.push(KEY::from_bytes(K));
         }
     }
     Ok(res)

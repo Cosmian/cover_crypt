@@ -16,7 +16,11 @@ use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
-use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
+use cosmian_crypto_core::symmetric_crypto::{
+    aes_256_gcm_pure::{Aes256GcmCrypto, KeyLength},
+    key::Key,
+    Metadata,
+};
 use js_sys::Uint8Array;
 use serde_json::Value;
 use wasm_bindgen_test::*;
@@ -43,7 +47,7 @@ fn encrypt_header(
     policy: &Policy,
     attributes: &[Attribute],
     public_key: &PublicKey,
-) -> Result<EncryptedHeader<Aes256GcmCrypto>, Error> {
+) -> Result<EncryptedHeader<Key<KeyLength>>, Error> {
     let metadata_bytes = Uint8Array::from(serde_json::to_vec(metadata)?.as_slice());
     let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
     let attributes_bytes = Uint8Array::from(serde_json::to_vec(attributes)?.as_slice());
@@ -60,9 +64,9 @@ fn encrypt_header(
 }
 
 fn decrypt_header(
-    encrypted_header: &EncryptedHeader<Aes256GcmCrypto>,
+    encrypted_header: &EncryptedHeader<Key<KeyLength>>,
     user_decryption_key: &UserPrivateKey,
-) -> Result<ClearTextHeader<Aes256GcmCrypto>, Error> {
+) -> Result<ClearTextHeader<Key<KeyLength>>, Error> {
     let encrypted_header_bytes = Uint8Array::from(encrypted_header.header_bytes.as_slice());
     let sk_u = Uint8Array::from(user_decryption_key.try_to_bytes()?.as_slice());
     let decrypted_header_bytes = webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes)
@@ -128,8 +132,11 @@ fn test_non_reg_decrypt_hybrid_header() {
 
     let user_decryption_key_from_file =
         UserPrivateKey::try_from_bytes(&user_decryption_key).unwrap();
-    decrypt_hybrid_header::<Aes256GcmCrypto>(&user_decryption_key_from_file, &header_bytes)
-        .unwrap();
+    decrypt_hybrid_header::<Key<KeyLength>, Aes256GcmCrypto>(
+        &user_decryption_key_from_file,
+        &header_bytes,
+    )
+    .unwrap();
 }
 
 #[wasm_bindgen_test]
