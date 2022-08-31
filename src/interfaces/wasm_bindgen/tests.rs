@@ -13,7 +13,7 @@ use crate::{
     error::Error,
     interfaces::{
         statics::{
-            ClearTextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
+            CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
             UserSecretKey,
         },
         wasm_bindgen::{
@@ -71,7 +71,7 @@ fn decrypt_header(
     encrypted_header: &EncryptedHeader,
     user_decryption_key: &UserSecretKey,
     authentication_data: &[u8],
-) -> Result<ClearTextHeader, Error> {
+) -> Result<CleartextHeader, Error> {
     let authentication_data = Uint8Array::from(authentication_data);
     let encrypted_header_bytes =
         Uint8Array::from(encrypted_header.try_to_bytes().unwrap().as_slice());
@@ -79,7 +79,7 @@ fn decrypt_header(
     let decrypted_header_bytes =
         webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes, authentication_data)
             .map_err(|e| Error::Other(e.as_string().unwrap()))?;
-    ClearTextHeader::try_from_bytes(&decrypted_header_bytes.to_vec())
+    CleartextHeader::try_from_bytes(&decrypted_header_bytes.to_vec())
         .map_err(|e| Error::JsonParsing(e.to_string()))
 }
 

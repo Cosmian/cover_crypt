@@ -2,7 +2,7 @@
 //!
 //! The `CoverCrypt` trait is the main entry point for the core functionalities.
 
-use crate::error::Error;
+use crate::Error;
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
@@ -52,7 +52,7 @@ pub trait CoverCrypt<
 
     type Encapsulation: PartialEq + Eq + Serializable<Error = Error>;
 
-    type Dem: Dem<SYM_KEY_LENGTH>;
+    type SymmetricKey: SymKey<SYM_KEY_LENGTH>;
 
     /// Generate the master authority keys for supplied Policy
     ///

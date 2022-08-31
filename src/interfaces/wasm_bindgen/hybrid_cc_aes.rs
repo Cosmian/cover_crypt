@@ -5,14 +5,12 @@
 
 use crate::{
     api::CoverCrypt,
-    interfaces::statics::{
-        CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey, UserSecretKey,
-    },
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
 };
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    symmetric_crypto::SymKey,
+    symmetric_crypto::{Dem, SymKey},
     KeyTrait,
 };
 use js_sys::Uint8Array;
@@ -126,8 +124,9 @@ pub fn webassembly_encrypt_symmetric_block(
 
     //
     // Parse symmetric key
-    let symmetric_key = SymmetricKey::try_from_bytes(&symmetric_key_bytes.to_vec())
-        .map_err(|e| JsValue::from_str(&format!("Error parsing symmetric key: {e}")))?;
+    let symmetric_key =
+        <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(&symmetric_key_bytes.to_vec())
+            .map_err(|e| JsValue::from_str(&format!("Error parsing symmetric key: {e}")))?;
 
     //
     // Encrypt block
@@ -156,8 +155,9 @@ pub fn webassembly_decrypt_symmetric_block(
 ) -> Result<Uint8Array, JsValue> {
     //
     // Parse symmetric key
-    let symmetric_key = SymmetricKey::try_from_bytes(&symmetric_key_bytes.to_vec())
-        .map_err(|e| JsValue::from_str(&format!("Error parsing symmetric key: {e}")))?;
+    let symmetric_key =
+        <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(&symmetric_key_bytes.to_vec())
+            .map_err(|e| JsValue::from_str(&format!("Error parsing symmetric key: {e}")))?;
 
     //
     // Decrypt `blockKey<KeyLength>`

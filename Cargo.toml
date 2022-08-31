@@ -27,6 +27,7 @@ debug = true
 [features]
 ffi = ["lazy_static"]
 full_bench = []
+hybrid = ["pqc_kyber"]
 python = ["pyo3"]
 wasm_bindgen = ["js-sys", "wasm-bindgen"]
 
@@ -34,17 +35,19 @@ wasm_bindgen = ["js-sys", "wasm-bindgen"]
 abe_policy = "1.0"
 cosmian_crypto_core = "5.0.0"
 hex = "0.4"
-js-sys = { version = "0.3", optional = true }
-lazy_static = { version = "1.4", optional = true }
 leb128 = "0.2"
-pyo3 = { version = "0.17.3", features = ["extension-module", "abi3", "abi3-py37", "generate-import-lib"], optional = true }
-rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10"
 thiserror = "1.0"
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
 zeroize = "1.5"
+
+# Optional dependencies
+js-sys = { version = "0.3", optional = true }
+lazy_static = { version = "1.4", optional = true }
+pqc_kyber = { git = "https://github.com/tbrezot/kyber.git", branch = "feat/expose_indcpa_primitives", features = ["wasm", "hazmat"], optional = true }
+pyo3 = { version = "0.17.3", features = ["extension-module", "abi3", "abi3-py37"], optional = true }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
 
 [dev-dependencies]
 base64 = "0.13"

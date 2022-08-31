@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - non regression test vectors with different encryption policies
+- hybridized version of CoverCrypt using Kyber under the `hybrid` feature
 
 ### Changed
 
@@ -156,7 +157,6 @@ All notable changes to this project will be documented in this file.
 ---
 
 ---
-
 ## [6.0.4] - 2022-09-28
 
 ### Added
