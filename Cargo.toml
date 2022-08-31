@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "7.0.1"
+version = "8.0.0"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -35,6 +35,7 @@ abe_policy = "1.0"
 cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", rev = "03f24e5" }
 hex = "0.4"
 leb128 = "0.2"
+pqc_kyber = { git = "https://github.com/tbrezot/kyber.git", features = ["wasm", "ind_cpa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

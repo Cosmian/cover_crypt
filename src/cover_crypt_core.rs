@@ -12,6 +12,10 @@ use cosmian_crypto_core::{
     symmetric_crypto::SymKey,
     KeyTrait,
 };
+use pqc_kyber::{
+    indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
+    KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SSBYTES,
+};
 use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
     Shake256,
@@ -45,8 +49,28 @@ macro_rules! eakem_hash {
     };
 }
 
+/// Xor the two given byte arrays.
+#[inline]
+fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8]) {
+    assert_eq!(b.len(), LENGTH);
+    for (byte, other_byte) in a.iter_mut().zip(b) {
+        *byte ^= other_byte;
+    }
+}
+
+/// Length of the EAKEM tag
+type Tag<const LENGTH: usize> = [u8; LENGTH];
+
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &[u8] = b"key generation info";
+
+// Kyber public key length is 800
+type KyberPublicKey = [u8; KYBER_INDCPA_PUBLICKEYBYTES];
+
+// Kyber secret key length is 1632
+type KyberSecretKey = [u8; KYBER_INDCPA_SECRETKEYBYTES];
+
+type KyberCipherText = [u8; KYBER_INDCPA_BYTES];
 
 /// CoverCrypt master secret key.
 ///
@@ -60,7 +84,7 @@ pub struct MasterSecretKey<
     u: PrivateKey,
     v: PrivateKey,
     s: PrivateKey,
-    pub(crate) x: HashMap<Partition, PrivateKey>,
+    pub(crate) x: HashMap<Partition, (KyberSecretKey, PrivateKey)>,
 }
 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
@@ -87,8 +111,9 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
         n += ser.write_array(&self.v.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
         n += ser.write_u64(self.x.len() as u64)?;
-        for (partition, x_i) in &self.x {
+        for (partition, (sk_i, x_i)) in &self.x {
             n += ser.write_vec(partition)?;
+            n += ser.write_array(sk_i)?;
             n += ser.write_array(&x_i.to_bytes())?;
         }
         Ok(n)
@@ -105,10 +130,11 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
+            let sk_i = de.read_array::<KYBER_INDCPA_SECRETKEYBYTES>()?;
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
             x.insert(
                 Partition::from(partition),
-                PrivateKey::try_from_bytes(&x_i)?,
+                (sk_i, PrivateKey::try_from_bytes(&x_i)?),
             );
         }
         Ok(Self { u, v, s, x })
@@ -123,7 +149,8 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
         self.u.zeroize();
         self.v.zeroize();
         self.s.zeroize();
-        self.x.iter_mut().for_each(|(_, x_i)| {
+        self.x.iter_mut().for_each(|(_, (sk_i, x_i))| {
+            sk_i.zeroize();
             x_i.zeroize();
         });
     }
@@ -156,7 +183,7 @@ pub struct UserSecretKey<
 > {
     a: PrivateKey,
     b: PrivateKey,
-    pub(crate) x: HashSet<PrivateKey>,
+    pub(crate) x: HashSet<(KyberSecretKey, PrivateKey)>,
 }
 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Serializable
@@ -174,7 +201,8 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_u64(self.x.len() as u64)?;
-        for x_i in &self.x {
+        for (sk_i, x_i) in &self.x {
+            n += ser.write_array(sk_i)?;
             n += ser.write_array(&x_i.to_bytes())?;
         }
         Ok(n)
@@ -189,8 +217,9 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
         let x_len = <usize>::try_from(de.read_u64()?)?;
         let mut x = HashSet::with_capacity(x_len);
         for _ in 0..x_len {
+            let sk_i = de.read_array::<KYBER_INDCPA_SECRETKEYBYTES>()?;
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
-            x.insert(PrivateKey::try_from_bytes(&x_i)?);
+            x.insert((sk_i, PrivateKey::try_from_bytes(&x_i)?));
         }
         Ok(Self { a, b, x })
     }
@@ -229,7 +258,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> {
     U: DhPublicKey,
     V: DhPublicKey,
-    pub(crate) H: HashMap<Partition, DhPublicKey>,
+    pub(crate) H: HashMap<Partition, (KyberPublicKey, DhPublicKey)>,
 }
 
 impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializable
@@ -255,8 +284,9 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
         let mut n = ser.write_array(&self.U.to_bytes())?;
         n += ser.write_array(&self.V.to_bytes())?;
         n += ser.write_u64(self.H.len() as u64)?;
-        for (partition, H_i) in &self.H {
+        for (partition, (pk_i, H_i)) in &self.H {
             n += ser.write_vec(partition)?;
+            n += ser.write_array(pk_i)?;
             n += ser.write_array(&H_i.to_bytes())?;
         }
         Ok(n)
@@ -272,8 +302,12 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
         let mut H = HashMap::with_capacity(H_len);
         for _ in 0..H_len {
             let partition = de.read_vec()?;
+            let pk_i = de.read_array::<KYBER_INDCPA_PUBLICKEYBYTES>()?;
             let H_i = de.read_array::<PUBLIC_KEY_LENGTH>()?;
-            H.insert(Partition::from(partition), PK::try_from_bytes(&H_i)?);
+            H.insert(
+                Partition::from(partition),
+                (pk_i, PK::try_from_bytes(&H_i)?),
+            );
         }
         Ok(Self { U, V, H })
     }
@@ -295,22 +329,19 @@ pub struct Encapsulation<
     const TAG_LENGTH: usize,
     const KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
-    SymmetricKey: SymKey<KEY_LENGTH>,
     PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
 > {
     C: PublicKey,
     D: PublicKey,
-    E: HashSet<([u8; TAG_LENGTH], SymmetricKey)>,
+    E: HashSet<(Tag<TAG_LENGTH>, KyberCipherText)>,
 }
 
 impl<
         const TAG_LENGTH: usize,
         const SYM_KEY_LENGTH: usize,
         const PUBLIC_KEY_LENGTH: usize,
-        SymmetricKey: SymKey<SYM_KEY_LENGTH>,
         PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-    > Serializable
-    for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
+    > Serializable for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, PublicKey>
 {
     type Error = Error;
 
@@ -325,9 +356,9 @@ impl<
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_u64(self.E.len() as u64)?;
-        for (tag_i, E_i) in &self.E {
-            n += ser.write_array(tag_i.as_slice())?;
-            n += ser.write_array(E_i.as_bytes())?;
+        for (tag, EPQ_i) in &self.E {
+            n += ser.write_array(tag)?;
+            n += ser.write_array(EPQ_i)?;
         }
         Ok(n)
     }
@@ -341,9 +372,9 @@ impl<
         let E_len = <usize>::try_from(de.read_u64()?)?;
         let mut E = HashSet::with_capacity(E_len);
         for _ in 0..E_len {
-            let tag_i = de.read_array::<TAG_LENGTH>()?;
-            let E_i = de.read_array::<SYM_KEY_LENGTH>()?;
-            E.insert((tag_i, SymmetricKey::from_bytes(E_i)));
+            let tag = de.read_array::<TAG_LENGTH>()?;
+            let EPQ_i = de.read_array::<KYBER_INDCPA_BYTES>()?;
+            E.insert((tag, EPQ_i));
         }
         Ok(Self { C, D, E })
     }
@@ -398,10 +429,15 @@ where
     let mut H = HashMap::with_capacity(partitions.len());
 
     for partition in partitions {
+        let (mut sk_pq, mut pk_pq) = (
+            [0; KYBER_INDCPA_SECRETKEYBYTES],
+            [0; KYBER_INDCPA_PUBLICKEYBYTES],
+        );
+        pqc_kyber::indcpa::indcpa_keypair(&mut pk_pq, &mut sk_pq, None, rng);
         let x_i = KeyPair::PrivateKey::new(rng);
         let H_i = &S * &x_i;
-        x.insert(partition.clone(), x_i);
-        H.insert(partition.clone(), H_i);
+        x.insert(partition.clone(), (sk_pq, x_i));
+        H.insert(partition.clone(), (pk_pq, H_i));
     }
 
     (MasterSecretKey { u, v, s, x }, PublicKey { U, V, H })
@@ -503,10 +539,7 @@ pub fn encaps<
     mpk: &PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
     encryption_set: &HashSet<Partition>,
     K: &SymmetricKey,
-) -> Result<
-    Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, KeyPair::PublicKey>,
-    Error,
->
+) -> Result<Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, KeyPair::PublicKey>, Error>
 where
     R: CryptoRng + RngCore,
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
@@ -524,17 +557,14 @@ where
     let D = &mpk.V * &r;
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
-        if let Some(H_i) = mpk.H.get(partition) {
-            let (tag_i, mut K_i) = eakem_hash!(
-                TAG_LENGTH,
-                SYM_KEY_LENGTH,
-                &(H_i * &r).to_bytes(),
-                KEY_GEN_INFO
-            );
-            for (b_1, b_2) in K_i.iter_mut().zip(K.as_bytes()) {
-                *b_1 ^= b_2;
-            }
-            E.insert((tag_i.to_owned(), SymmetricKey::from_bytes(K_i)));
+        if let Some((pk, H_i)) = mpk.H.get(partition) {
+            let K_i = (H_i * &r).to_bytes();
+            // EAKEM is useless if we use CCA-Kyber
+            let (K1_i, mut K2_i) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_i, KEY_GEN_INFO);
+            xor_in_place(&mut K2_i, K.as_bytes());
+            let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
+            indcpa_enc(&mut EPQ_i, &K2_i, pk, &[0; KYBER_SSBYTES]);
+            E.insert((K1_i, EPQ_i));
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
@@ -580,7 +610,6 @@ pub fn decaps<
         TAG_LENGTH,
         SYM_KEY_LENGTH,
         PUBLIC_KEY_LENGTH,
-        SymmetricKey,
         KeyPair::PublicKey,
     >,
 ) -> Result<SymmetricKey, Error>
@@ -597,24 +626,17 @@ where
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
 {
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
-    for (tag_i, E_i) in &encapsulation.E {
-        for x_k in &sk_j.x {
-            let (tag_k, mut K_k) = eakem_hash!(
-                TAG_LENGTH,
-                SYM_KEY_LENGTH,
-                &(&precomp * x_k).to_bytes(),
-                KEY_GEN_INFO
-            );
-            // the tag is correctly generated if the encapsulation is
-            // associated to the user private key
-            if tag_i != &tag_k {
-                // this encapsulation cannot be decapsulated by the user
-                continue;
+    for (tag_i, EPQ_i) in &encapsulation.E {
+        for (sk_k, x_k) in &sk_j.x {
+            let K_k = (&precomp * x_k).to_bytes();
+            let (tag_k, mut Ki_k) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_k, KEY_GEN_INFO);
+            if tag_i == &tag_k {
+                let mut E_i = [0; KYBER_SSBYTES];
+                indcpa_dec(&mut E_i, EPQ_i, sk_k);
+                // TODO: `KYBER_SSBYTES` needs to be equal to `SYM_KEY_LENGTH`
+                xor_in_place(&mut Ki_k, &E_i);
+                return Ok(SymmetricKey::from_bytes(Ki_k));
             }
-            for (b1, b2) in K_k.iter_mut().zip(E_i.as_bytes()) {
-                *b1 ^= b2;
-            }
-            return Ok(SymmetricKey::from_bytes(K_k));
         }
     }
     Err(Error::InsufficientAccessPolicy)
@@ -659,8 +681,13 @@ where
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = KeyPair::PrivateKey::new(rng);
             let H_i = &S * &x_i;
-            msk.x.insert(partition.to_owned(), x_i);
-            mpk.H.insert(partition.to_owned(), H_i);
+            let (mut sk_pq, mut pk_pq) = (
+                [0; KYBER_INDCPA_SECRETKEYBYTES],
+                [0; KYBER_INDCPA_PUBLICKEYBYTES],
+            );
+            indcpa_keypair(&mut pk_pq, &mut sk_pq, None, rng);
+            msk.x.insert(partition.to_owned(), (sk_pq, x_i));
+            mpk.H.insert(partition.to_owned(), (pk_pq, H_i));
         }
     }
     // remove keys for partitions not in the list
@@ -781,6 +808,15 @@ mod tests {
             "Encapsulation comparison failed"
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_kyber() {
+        let mut rng = CsRng::from_entropy();
+        let keypair = pqc_kyber::keypair(&mut rng);
+        let (ct, ss) = pqc_kyber::encapsulate(&keypair.public, &mut rng).unwrap();
+        let res = pqc_kyber::decapsulate(&ct, &keypair.secret).unwrap();
+        assert_eq!(ss, res, "Decapsulation failed!");
     }
 
     #[test]

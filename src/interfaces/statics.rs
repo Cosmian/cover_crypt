@@ -69,7 +69,6 @@ impl
             TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
-            <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
             <X25519KeyPair as DhKeyPair<
                 { Self::PUBLIC_KEY_LENGTH },
                 { Self::PRIVATE_KEY_LENGTH },
@@ -211,7 +210,7 @@ impl
             plaintext,
             authenticated_data,
         )
-        .map_err(Error::CryptoError)
+        .map_err(|e| Error::CryptoError(e.to_string()))
     }
 
     fn decrypt(
@@ -225,7 +224,7 @@ impl
             ciphertext,
             authenticated_data,
         )
-        .map_err(Error::CryptoError)
+        .map_err(|e| Error::CryptoError(e.to_string()))
     }
 }
 

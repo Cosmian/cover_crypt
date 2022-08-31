@@ -3,6 +3,7 @@
 use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 
 use cosmian_crypto_core::CryptoCoreError;
+use pqc_kyber::KyberError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,7 +11,7 @@ pub enum Error {
     #[error("Unknown partition {0}")]
     UnknownPartition(String),
     #[error("{0}")]
-    CryptoError(CryptoCoreError),
+    CryptoError(String),
     #[error(transparent)]
     PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
@@ -62,6 +63,12 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
+impl From<KyberError> for Error {
+    fn from(e: KyberError) -> Self {
+        Self::CryptoError(e.to_string())
+    }
+}
+
 impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         match e {
@@ -69,7 +76,7 @@ impl From<CryptoCoreError> for Error {
                 Self::InvalidSize(format!("expected: {}, given: {}", expected, given))
             }
             CryptoCoreError::InvalidSize(e) => Self::InvalidSize(e),
-            e => Self::CryptoError(e),
+            e => Self::CryptoError(e.to_string()),
         }
     }
 }

@@ -379,7 +379,7 @@ unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterSecretKey, Publ
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
 
-    let mut master_keys_bytes = vec![0u8; 8192];
+    let mut master_keys_bytes = vec![0u8; 37696];
     let master_keys_ptr = master_keys_bytes.as_mut_ptr().cast();
     let mut master_keys_len = master_keys_bytes.len() as c_int;
 
@@ -425,7 +425,7 @@ unsafe fn generate_user_secret_key(
     let policy_ptr = policy_cs.as_ptr();
 
     // Prepare OUT buffer
-    let mut usk_bytes = vec![0u8; 8192];
+    let mut usk_bytes = vec![0u8; 37696];
     let usk_ptr = usk_bytes.as_mut_ptr().cast();
     let mut usk_len = usk_bytes.len() as c_int;
 
