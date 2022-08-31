@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [8.0.0] - 2022-10-17
+
+### Added
+
+### Changed
+
+- Scheme now hybrids with the post-quantic KEM Kyber
+
+### Fixed
+
+### Removed
+
+---
+
+---
 
 ## Unreleased
 
@@ -116,7 +131,6 @@ All notable changes to this project will be documented in this file.
 ---
 
 ---
-
 ## [6.0.4] - 2022-09-28
 
 ### Added
