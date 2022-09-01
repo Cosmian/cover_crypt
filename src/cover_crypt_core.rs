@@ -8,7 +8,7 @@ use crate::{
 use cosmian_crypto_core::{
     asymmetric_crypto::{X25519PrivateKey, X25519PublicKey},
     kdf::hkdf_256,
-    reexport::generic_array::{ArrayLength, GenericArray},
+    reexport::generic_array::{typenum, ArrayLength, GenericArray},
     symmetric_crypto::{key::Key, SymKey},
     KeyTrait,
 };
@@ -61,7 +61,7 @@ impl Partition {
 }
 
 impl Deref for Partition {
-    type Target = Vec<u8>;
+    type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -71,12 +71,6 @@ impl Deref for Partition {
 impl Display for Partition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", hex::encode(&self.0))
-    }
-}
-
-impl From<Partition> for String {
-    fn from(a: Partition) -> Self {
-        format!("{a}")
     }
 }
 
@@ -92,17 +86,8 @@ impl From<&[u8]> for Partition {
     }
 }
 
-impl From<Partition> for Vec<u8> {
-    fn from(p: Partition) -> Self {
-        p.0
-    }
-}
-
-impl From<&Partition> for Vec<u8> {
-    fn from(p: &Partition) -> Self {
-        p.0.clone()
-    }
-}
+type X25519PKLength = typenum::U32;
+type X25519SKLength = typenum::U32;
 
 /// CoverCrypt master private key.
 ///
@@ -139,20 +124,14 @@ impl MasterPrivateKey {
             return Err(Error::EmptyPrivateKey);
         }
         let mut de = Deserializer::new(bytes);
-        let u = X25519PrivateKey::try_from_bytes(
-            &de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?,
-        )?;
-        let v = X25519PrivateKey::try_from_bytes(
-            &de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?,
-        )?;
-        let s = X25519PrivateKey::try_from_bytes(
-            &de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?,
-        )?;
+        let u = X25519PrivateKey::try_from_bytes(&de.read_array::<X25519SKLength>()?)?;
+        let v = X25519PrivateKey::try_from_bytes(&de.read_array::<X25519SKLength>()?)?;
+        let s = X25519PrivateKey::try_from_bytes(&de.read_array::<X25519SKLength>()?)?;
         let x_len = de.read_u64()?.try_into()?;
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
-            let x_i = de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?;
+            let x_i = de.read_array::<X25519SKLength>()?;
             x.insert(
                 Partition::from(partition),
                 X25519PrivateKey::try_from_bytes(&x_i)?,
@@ -219,17 +198,13 @@ impl UserPrivateKey {
             return Err(Error::EmptyPrivateKey);
         }
         let mut de = Deserializer::new(bytes);
-        let a = X25519PrivateKey::try_from_bytes(
-            &de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?,
-        )?;
-        let b = X25519PrivateKey::try_from_bytes(
-            &de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?,
-        )?;
+        let a = X25519PrivateKey::try_from_bytes(&de.read_array::<X25519SKLength>()?)?;
+        let b = X25519PrivateKey::try_from_bytes(&de.read_array::<X25519SKLength>()?)?;
         let x_len = de.read_u64()?.try_into()?;
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
-            let x_i = de.read_array::<<X25519PrivateKey as KeyTrait>::Length>()?;
+            let x_i = de.read_array::<X25519SKLength>()?;
             x.insert(
                 Partition::from(partition),
                 X25519PrivateKey::try_from_bytes(&x_i)?,
@@ -293,17 +268,13 @@ impl PublicKey {
             return Err(Error::EmptyPrivateKey);
         }
         let mut de = Deserializer::new(bytes);
-        let U = X25519PublicKey::try_from_bytes(
-            &de.read_array::<<X25519PublicKey as KeyTrait>::Length>()?,
-        )?;
-        let V = X25519PublicKey::try_from_bytes(
-            &de.read_array::<<X25519PublicKey as KeyTrait>::Length>()?,
-        )?;
+        let U = X25519PublicKey::try_from_bytes(&de.read_array::<X25519PKLength>()?)?;
+        let V = X25519PublicKey::try_from_bytes(&de.read_array::<X25519PKLength>()?)?;
         let H_len = de.read_u64()?.try_into()?;
         let mut H = HashMap::with_capacity(H_len);
         for _ in 0..H_len {
             let partition = de.read_vec()?;
-            let H_i = de.read_array::<<X25519PublicKey as KeyTrait>::Length>()?;
+            let H_i = de.read_array::<X25519PKLength>()?;
             H.insert(
                 Partition::from(partition),
                 X25519PublicKey::try_from_bytes(&H_i)?,
@@ -352,12 +323,8 @@ impl<KeyLength: ArrayLength<u8>> Encapsulation<KeyLength> {
             return Err(Error::EmptyPrivateKey);
         }
         let mut de = Deserializer::new(bytes);
-        let C = X25519PublicKey::try_from_bytes(
-            &de.read_array::<<X25519PublicKey as KeyTrait>::Length>()?,
-        )?;
-        let D = X25519PublicKey::try_from_bytes(
-            &de.read_array::<<X25519PublicKey as KeyTrait>::Length>()?,
-        )?;
+        let C = X25519PublicKey::try_from_bytes(&de.read_array::<X25519PKLength>()?)?;
+        let D = X25519PublicKey::try_from_bytes(&de.read_array::<X25519PKLength>()?)?;
         let K_len = de.read_u64()?.try_into()?;
         let mut K = HashSet::with_capacity(K_len);
         for _ in 0..K_len {
@@ -566,10 +533,11 @@ pub fn update<R: CryptoRng + RngCore>(
     partitions_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     // add keys for partitions that do not exist in the master keys
+    let S = X25519PublicKey::from(&msk.s);
     for partition in partitions_set {
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = X25519PrivateKey::new(rng);
-            let H_i = X25519PublicKey::from(&msk.s) * &x_i;
+            let H_i = &S * &x_i;
             msk.x.insert(partition.to_owned(), x_i);
             mpk.H.insert(partition.to_owned(), H_i);
         }
