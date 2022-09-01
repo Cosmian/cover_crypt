@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ---
-## [5.1.0] - 2022-08-29
+## [6.0.0] - 2022-08-29
 ### Added
 - `write_array::<Length>()`
 - `read_array::<Length>()`
