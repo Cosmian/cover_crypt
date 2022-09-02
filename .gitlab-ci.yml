@@ -81,6 +81,7 @@ build_centos7:
 
 build_wasm32:
   <<: *base_compile
+  image: gitlab.cosmian.com:5000/core/ci-npm:latest
   stage: build
   script:
     - wasm-pack build --release --features wasm_bindgen

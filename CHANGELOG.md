@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [6.0.0] - 2022-08-29
+### Added
+- `write_array::<Length>()`
+- `read_array::<Length>()`
+### Changed
+- `read_array()` -> `read_vec()`
+- `write_array()` -> `write_vec()`
+- `bytes_ser_de` is now private
+### Fixed
+### Removed
+---
+
+---
 ## [5.0.0] - 2022-08-24
 ### Added
 ### Changed
