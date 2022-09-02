@@ -692,7 +692,7 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 #[no_mangle]
 ///
 /// # Safety
-pub const unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
+pub unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
     Block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>::ENCRYPTION_OVERHEAD as c_int
 }
 

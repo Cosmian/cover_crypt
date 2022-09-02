@@ -375,7 +375,7 @@ mod tests {
             uid: hex::encode(metadata.uid),
         };
         std::fs::write(
-            "non_regression_vector.json",
+            "target/non_regression_vector.json",
             serde_json::to_string(&reg_vectors).unwrap(),
         )
         .unwrap();

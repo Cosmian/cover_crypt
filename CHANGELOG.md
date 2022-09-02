@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [6.0.1] - 2022-09-05
+### Added
+- Enable tests on `cosmian_js_lib` and `cosmian_java_lib`
+- Auto NPM publish on tags
+### Changed
+### Fixed
+- Fix error message on invalid size errors.
+### Removed
+---
+
+---
 ## [6.0.0] - 2022-08-29
 ### Added
 - `write_array::<Length>()`
@@ -32,7 +43,7 @@ All notable changes to this project will be documented in this file.
 - Remove `Partition`s from `Encapsulation`s: now CoverCrypt returns a vector of
   symmetric keys when `decaps`. These keys should be tried on real symmetric
   ciphertexts in order to determine which is the good one. This works because
-  symmetric ciphertexts are autenticated.
+  symmetric ciphertexts are authenticated.
 ### Fixed
 - bug in public key rotation
 ### Removed

@@ -17,7 +17,7 @@ pub enum Error {
     AttributeNotFound(String),
     #[error("Combination {0} already exists")]
     ExistingCombination(String),
-    #[error("invalid size")]
+    #[error("invalid size: {0}")]
     InvalidSize(String),
     #[error("Empty private key")]
     EmptyPrivateKey,
