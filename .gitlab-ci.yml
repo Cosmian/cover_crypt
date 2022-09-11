@@ -125,7 +125,7 @@ test_cosmian_java_lib:
   image: gitlab.cosmian.com:5000/core/ci-java-8:latest
   stage: test
   services:
-    - name: gitlab.cosmian.com:5000/core/kms:2.1.0_ci
+    - name: gitlab.cosmian.com:5000/core/kms:2.2.0_ci
       alias: kms_ci
   script:
     - git clone https://github.com/Cosmian/cosmian_java_lib.git
