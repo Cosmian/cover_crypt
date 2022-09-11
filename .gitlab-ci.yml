@@ -128,7 +128,11 @@ test_cosmian_java_lib:
     - name: gitlab.cosmian.com:5000/core/kms:2.1.0_ci
       alias: kms_ci
   script:
-    - bash ci/cosmian_java_lib.sh
+    - git clone https://github.com/Cosmian/cosmian_java_lib.git
+    - cp target/x86_64-unknown-linux-gnu/release/libcover_crypt.so cosmian_java_lib/src/test/resources/linux-x86-64/
+    - cd cosmian_java_lib
+    - mvn package
+  allow_failure: true
 
 test_python:
   stage: test
@@ -144,7 +148,12 @@ test_cosmian_js_lib:
   image: node:16
   stage: test
   script:
-    - bash ci/cosmian_js_lib.sh
+    - git clone https://github.com/Cosmian/cosmian_js_lib.git
+    - cp -r pkg/* cosmian_js_lib/tests/wasm_lib/abe/cover_crypt/
+    - cd cosmian_js_lib
+    - npm install jest
+    - npm test
+  allow_failure: true
 
 publish:
   image: gitlab.cosmian.com:5000/core/ci-npm:latest

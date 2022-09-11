@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [6.0.2] - 2022-09-11
+### Added
+### Changed
+- Simplify CI tests on `cosmian_js_lib` and `cosmian_java_lib`
+### Fixed
+### Removed
+---
+
+---
 ## [6.0.1] - 2022-09-05
 ### Added
 - Enable tests on `cosmian_js_lib` and `cosmian_java_lib`
