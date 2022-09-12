@@ -130,6 +130,8 @@ test_cosmian_java_lib:
   script:
     - git clone https://github.com/Cosmian/cosmian_java_lib.git
     - cp target/x86_64-unknown-linux-gnu/release/libcover_crypt.so cosmian_java_lib/src/test/resources/linux-x86-64/
+    - ldd --version
+    - ldd -r -v cosmian_java_lib/src/test/resources/linux-x86-64/libcover_crypt.so
     - cd cosmian_java_lib
     - mvn package
   allow_failure: true
@@ -155,7 +157,7 @@ test_cosmian_js_lib:
     - npm test
   allow_failure: true
 
-publish:
+npm_publish:
   image: gitlab.cosmian.com:5000/core/ci-npm:latest
   stage: publish
   rules:
@@ -165,3 +167,12 @@ publish:
     - wasm-pack build --release --features wasm_bindgen
     - wasm-pack pack
     - wasm-pack publish
+
+cargo_publish:
+  stage: publish
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/'
+  script:
+    - echo "[registry]" > ~/.cargo/credentials
+    - echo "token = \"$CRATES_IO\"" >> ~/.cargo/credentials
+    - cargo publish
