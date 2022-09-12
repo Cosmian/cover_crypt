@@ -174,4 +174,4 @@ cargo_publish:
   script:
     - echo "[registry]" > ~/.cargo/credentials
     - echo "token = \"$CRATES_IO\"" >> ~/.cargo/credentials
-    - cargo publish
+    - cargo publish --token $CRATES_IO
