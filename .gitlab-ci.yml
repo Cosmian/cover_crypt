@@ -174,4 +174,6 @@ cargo_publish:
   script:
     - echo "[registry]" > ~/.cargo/credentials
     - echo "token = \"$CRATES_IO\"" >> ~/.cargo/credentials
+    - git reset --hard
+    - git clean -f -d -x
     - cargo publish --token $CRATES_IO
