@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 
 ---
+
+## [7.0.0] - 2022-10-17
+
+### Added
+
+- instantiated types in `statics.rs`
+- `Serializable` trait
+
+### Changed
+
+- use `SHA3-512` to derive keys
+- use constant generics instead of `GenericArray`
+- make `EncryptedHeader` generic
+- make `ClearTextHeader` generic
+
+### Fixed
+
+### Removed
+
+- `Metadata`
+
+---
+
+---
 ## [6.0.8] - 2022-10-17
 
 ### Added
@@ -14,7 +38,6 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 ### Removed
-
 ---
 
 ---

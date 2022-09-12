@@ -1,21 +1,19 @@
-//! Build a KEM based on CoverCypt.
+//! Build a KEM based on CoverCrypt.
 //!
-//! The `CoverCrypt` object is the main entry point for the core functionalities.
+//! The `CoverCrypt` trait is the main entry point for the core functionalities.
 
 use crate::{
-    cover_crypt_core::{
-        self, Encapsulation, MasterPrivateKey, Partition, PublicKey, UserPrivateKey,
-    },
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     error::Error,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_crypto_core::{
-    entropy::CsRng, reexport::generic_array::ArrayLength, symmetric_crypto::key::Key,
+    asymmetric_crypto::DhKeyPair,
+    symmetric_crypto::{Dem, SymKey},
 };
 use std::{
-    collections::{HashMap, HashSet},
-    ops::DerefMut,
-    sync::Mutex,
+    fmt::Debug,
+    ops::{Add, Div, Mul, Sub},
 };
 
 /// The engine is the main entry point for the core functionalities.
@@ -26,74 +24,75 @@ use std::{
 /// In addition, two methods are supplied to generate random symmetric keys and
 /// their corresponding cipher texts which are suitable for use in a hybrid
 /// encryption scheme.
-pub struct CoverCrypt {
-    pub(crate) rng: Mutex<CsRng>,
-}
+pub trait CoverCrypt<
+    const SYM_KEY_LENGTH: usize,
+    const PK_LENGTH: usize,
+    const SK_LENGTH: usize,
+    KeyPair,
+    DEM,
+>: Default + Debug + PartialEq where
+    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
+    DEM: Dem<SYM_KEY_LENGTH>,
+    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
+    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
+    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
+{
+    const SYM_KEY_LENGTH: usize = SYM_KEY_LENGTH;
+    const PUBLIC_KEY_LENGTH: usize = PK_LENGTH;
+    const PRIVATE_KEY_LENGTH: usize = SK_LENGTH;
 
-impl CoverCrypt {
-    /// Instantiate a new CoverCrypt object.
-    pub fn new() -> Self {
-        Self {
-            rng: Mutex::new(CsRng::new()),
-        }
-    }
+    type MasterSecretKey: Serializable;
+
+    type UserSecretKey: Serializable;
+
+    type PublicKey: Serializable;
+
+    type Encapsulation: PartialEq + Eq + Serializable;
+
+    type Dem: Dem<SYM_KEY_LENGTH>;
 
     /// Generate the master authority keys for supplied Policy
     ///
     ///  - `policy` : Policy to use to generate the keys
-    pub fn generate_master_keys(
+    fn generate_master_keys(
         &self,
         policy: &Policy,
-    ) -> Result<(MasterPrivateKey, PublicKey), Error> {
-        Ok(cover_crypt_core::setup::<CsRng>(
-            &mut self.rng.lock().expect("a mutex lock failed"),
-            &all_partitions(policy)?,
-        ))
-    }
+    ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error>;
 
     /// Update the master keys according to this new policy.
     ///
     /// When a partition exists in the new policy but not in the master keys,
-    /// a new keypair is added to the master keys for that partition.
+    /// a new key pair is added to the master keys for that partition.
     /// When a partition exists on the master keys, but not in the new policy,
     /// it is removed from the master keys.
     ///
     ///  - `policy` : Policy to use to generate the keys
     ///  - `msk`    : master secret key
     ///  - `mpk`    : master public key
-    pub fn update_master_keys(
+    fn update_master_keys(
         &self,
         policy: &Policy,
-        msk: &mut MasterPrivateKey,
-        mpk: &mut PublicKey,
-    ) -> Result<(), Error> {
-        cover_crypt_core::update(
-            &mut self.rng.lock().expect("a mutex lock failed").deref_mut(),
-            msk,
-            mpk,
-            &all_partitions(policy)?,
-        )
-    }
+        msk: &mut Self::MasterSecretKey,
+        mpk: &mut Self::PublicKey,
+    ) -> Result<(), Error>;
 
-    /// Generate a user private key.
+    /// Generate a user secret key.
     ///
-    /// A new user private key does NOT include to old (i.e. rotated) partitions
+    /// A new user secret key does NOT include to old (i.e. rotated) partitions
     ///
     /// - `msk`             : master secret key
     /// - `access_policy`   : user access policy
     /// - `policy`          : global policy
-    pub fn generate_user_private_key(
+    fn generate_user_secret_key(
         &self,
-        msk: &MasterPrivateKey,
+        msk: &Self::MasterSecretKey,
         access_policy: &AccessPolicy,
         policy: &Policy,
-    ) -> Result<UserPrivateKey, Error> {
-        cover_crypt_core::join(
-            self.rng.lock().expect("a mutex lock failed").deref_mut(),
-            msk,
-            &access_policy_to_current_partitions(access_policy, policy)?,
-        )
-    }
+    ) -> Result<Self::UserSecretKey, Error>;
 
     /// Refresh the user key according to the given master key and access policy.
     ///
@@ -105,495 +104,258 @@ impl CoverCrypt {
     /// - `msk`                 : master secret key
     /// - `policy`              : global policy of the master secret key
     /// - `keep_old_accesses`   : whether access to old partitions (i.e. before rotation) should be kept
-    pub fn refresh_user_private_key(
+    fn refresh_user_secret_key(
         &self,
-        usk: &mut UserPrivateKey,
+        usk: &mut Self::UserSecretKey,
         access_policy: &AccessPolicy,
-        msk: &MasterPrivateKey,
+        msk: &Self::MasterSecretKey,
         policy: &Policy,
         keep_old_accesses: bool,
-    ) -> Result<(), Error> {
-        let mut current_partitions = access_policy_to_current_partitions(access_policy, policy)?;
-        if keep_old_accesses {
-            for key_partition in usk.x.keys() {
-                current_partitions.insert(key_partition.to_owned());
-            }
-        }
-        cover_crypt_core::refresh(msk, usk, &current_partitions)
-    }
+    ) -> Result<(), Error>;
 
-    /// Generate a random symmetric key to be used in an hybrid encryption
-    /// scheme and generate its CoverCrypt encrypted version with the supplied
-    /// policy `attributes`.
+    /// Generates a random symmetric key to be used with a DEM scheme and
+    /// generates its CoverCrypt encapsulation for the given policy
+    /// `attributes`.
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
     /// - `attributes`      : the list of attributes to compose to generate the symmetric key
-    pub fn generate_symmetric_key<KeyLength: ArrayLength<u8>>(
+    fn encaps(
         &self,
         policy: &Policy,
-        pk: &PublicKey,
+        pk: &Self::PublicKey,
         attributes: &[Attribute],
-    ) -> Result<(Key<KeyLength>, Encapsulation<KeyLength>), Error> {
-        let sym_key = Key::new(self.rng.lock().expect("Mutex lock failed").deref_mut());
-        let encapsulation = cover_crypt_core::encaps(
-            &mut self.rng.lock().expect("Mutex lock failed!").deref_mut(),
-            pk,
-            &to_partitions(attributes, policy)?,
-            &sym_key,
-        )?;
-        Ok((sym_key, encapsulation))
-    }
+    ) -> Result<(DEM::Key, Self::Encapsulation), Error>;
 
-    /// Decapsulate a symmetric key generated with `generate_symmetric_key()`.
+    /// Decapsulates a symmetric key from the given CoverCrypt encapsulation.
+    /// This returns multiple key candidates. The use of an authenticated DEM
+    /// scheme allows to select valid ones.
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    pub fn decaps_symmetric_key<KeyLength: Eq + ArrayLength<u8>>(
+    fn decaps(
         &self,
-        sk_u: &UserPrivateKey,
-        encapsulation: &Encapsulation<KeyLength>,
-    ) -> Result<Vec<Key<KeyLength>>, Error> {
-        cover_crypt_core::decaps(sk_u, encapsulation)
-    }
+        sk_u: &Self::UserSecretKey,
+        encapsulation: &Self::Encapsulation,
+    ) -> Result<Vec<DEM::Key>, Error>;
+
+    /// Encrypts given plaintext using the given symmetric key.
+    ///
+    /// - `symmetric_key`       : symmetric key used to encrypt data
+    /// - `plaintext`           : data to be encrypted
+    /// - `authenticated_data`  : additional authenticated data
+    fn encrypt(
+        &self,
+        symmetric_key: &DEM::Key,
+        plaintext: &[u8],
+        authenticated_data: Option<&[u8]>,
+    ) -> Result<Vec<u8>, Error>;
+
+    /// Decrypts the given ciphertext using the given symmetric key.
+    ///
+    /// - `symmetric_key`       : symmetric key used to encrypt data
+    /// - `plaintext`           : data to be encrypted
+    /// - `authenticated_data`  : additional authenticated data
+    fn decrypt(
+        &self,
+        key: &DEM::Key,
+        ciphertext: &[u8],
+        authenticated_data: Option<&[u8]>,
+    ) -> Result<Vec<u8>, Error>;
 }
 
-impl Default for CoverCrypt {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Generate all possible partitions from the given policy.
+/// Encrypted header holding a CoverCrypt encapsulation of a symmetric key and
+/// additional data encrypted using the CoverCrypt DEM with the encapsulated key.
 ///
-/// - `policy`  : policy from which to generate partitions
-fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Error> {
-    // Build a map of all attribute values for all axes
-    let mut map = HashMap::with_capacity(policy.axes.len());
-    // We also a collect a Vec of axes which is used later
-    let mut axes = Vec::with_capacity(policy.axes.len());
-    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
-        axes.push(axis.to_owned());
-        let mut values: Vec<u32> = vec![];
-        for name in attribute_names {
-            let attribute = Attribute::new(axis, name);
-            let av = policy.attribute_values(&attribute)?;
-            values.extend(av);
-        }
-        map.insert(axis.to_owned(), values);
-    }
-
-    // perform all the combinations to get all the partitions
-    let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
-    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
-    for combination in combinations {
-        set.insert(Partition::from_attributes(combination)?);
-    }
-    Ok(set)
-}
-
-/// Convert a list of attributes used to encrypt ciphertexts into the
-/// corresponding list of CoverCrypt partitions; this only gets the current
-/// partitions, not the old ones
+/// *Note*: the DEM ciphertext is also used to select the correct symmetric key
+/// from the decapsulation.
 ///
-/// - `attributes`  : liste of attributes
-/// - `policy`      : security policy
-fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Partition>, Error> {
-    // First split the attributes per axis using their latest value and check that
-    // they exist
-    let mut map = HashMap::new();
-    for attribute in attributes.iter() {
-        let value = policy.attribute_current_value(attribute)?;
-        let entry: &mut Vec<u32> = map.entry(attribute.axis.to_owned()).or_default();
-        entry.push(value);
-    }
-
-    // when an axis is not mentioned in the attributes list,
-    // assume that the user wants to cover all the attribute names
-    // in this axis
-    // We also a collect a Vec of axes which is used later
-    let mut axes = Vec::with_capacity(policy.axes.len());
-    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
-        axes.push(axis.to_owned());
-        if !map.contains_key(axis) {
-            // gather all the latest value for that axis
-            let values = attribute_names
-                .iter()
-                .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
-                .collect::<Result<Vec<u32>, abe_policy::Error>>()?;
-            map.insert(axis.to_owned(), values);
-        }
-    }
-
-    let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
-    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
-    for combination in combinations {
-        set.insert(Partition::from_attributes(combination)?);
-    }
-    Ok(set)
+/// - `encapsulation`   : CoverCrypt encapsulation of a symmetric key
+/// - `ciphertext`      : CoverCrypt DEM encryption of additional data
+#[derive(Debug, PartialEq, Eq)]
+pub struct EncryptedHeader<
+    const SYM_KEY_LENGTH: usize,
+    const PK_LENGTH: usize,
+    const SK_LENGTH: usize,
+    KeyPair,
+    DEM,
+    CoverCryptScheme,
+> where
+    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
+    DEM: Dem<SYM_KEY_LENGTH>,
+    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
+    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
+    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
+    CoverCryptScheme: CoverCrypt<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
+{
+    pub encapsulation: CoverCryptScheme::Encapsulation,
+    pub ciphertext: Vec<u8>,
 }
 
-/// Generate all attribute values combinations from the given axes.
-///
-/// - `current_axis`    : axis from which to start to combine values with other axes
-/// - `axes`            : list of axes
-/// - `map`             : map axes with their associated attribute values
-fn combine_attribute_values(
-    current_axis: usize,
-    axes: &[String],
-    map: &HashMap<String, Vec<u32>>,
-) -> Result<Vec<Vec<u32>>, Error> {
-    // get the current axis or return if there is no more axis
-    let axis = match axes.get(current_axis) {
-        None => return Ok(vec![]),
-        Some(axis) => axis,
-    };
-    // get the axes attribute value, wrapped into a vec
-    let axis_values: &[u32] = map.get(axis).ok_or_else(|| {
-        Error::AttributeNotFound(format!(
-            "unexpected error: attribute values not found for axis: {}",
-            &axis
-        ))
-    })?;
-
-    // combine these values with all attribute values from the next axes
-    let other_values = combine_attribute_values(current_axis + 1, axes, map)?;
-    if other_values.is_empty() {
-        Ok(axis_values.iter().map(|v| vec![*v]).collect())
-    } else {
-        let mut combinations = Vec::with_capacity(axis_values.len() * other_values.len());
-        for av in axis_values {
-            for ov in &other_values {
-                let mut combined = Vec::with_capacity(1 + ov.len());
-                combined.push(*av);
-                combined.extend_from_slice(ov);
-                combinations.push(combined);
-            }
-        }
-        Ok(combinations)
-    }
-}
-
-/// Convert an access policy used to decrypt ciphertexts into the corresponding
-/// list of CoverCrypt current partitions that can be decrypted by that access policy
-fn access_policy_to_current_partitions(
-    access_policy: &AccessPolicy,
-    policy: &Policy,
-) -> Result<HashSet<Partition>, Error> {
-    let attr_combinations = to_attribute_combinations(access_policy, policy)?;
-    let mut set = HashSet::with_capacity(attr_combinations.len());
-    for attr_combination in &attr_combinations {
-        for partition in to_partitions(attr_combination, policy)? {
-            let is_unique = set.insert(partition);
-            if !is_unique {
-                return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
-            }
-        }
-    }
-    Ok(set)
-}
-
-/// Returns the list of attribute combinations that can be built using the
-/// values of each attribute in the given access policy. This corresponds to
-/// an OR expression of AND expressions.
-///
-/// - `access_policy`   : access policy to convert into attribute combinations
-/// - `policy`          : global policy
-fn to_attribute_combinations(
-    access_policy: &AccessPolicy,
-    policy: &Policy,
-) -> Result<Vec<Vec<Attribute>>, Error> {
-    match access_policy {
-        AccessPolicy::Attr(attr) => {
-            let (attribute_names, is_hierarchical) = policy
-                .axes
-                .get(&attr.axis)
-                .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
-            let mut res = vec![vec![attr.clone()]];
-            if *is_hierarchical {
-                // add attribute values for all attributes below the given one
-                for name in attribute_names.iter() {
-                    if *name == attr.name {
-                        break;
-                    }
-                    res.push(vec![Attribute::new(&attr.axis, name)]);
-                }
-            }
-            Ok(res)
-        }
-        AccessPolicy::And(ap_left, ap_right) => {
-            let combinations_left = to_attribute_combinations(ap_left, policy)?;
-            let combinations_right = to_attribute_combinations(ap_right, policy)?;
-            let mut res = Vec::with_capacity(combinations_left.len() * combinations_right.len());
-            for value_left in combinations_left {
-                for value_right in combinations_right.iter() {
-                    let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
-                    combined.extend_from_slice(&value_left);
-                    combined.extend_from_slice(value_right);
-                    res.push(combined)
-                }
-            }
-            Ok(res)
-        }
-        AccessPolicy::Or(ap_left, ap_right) => {
-            let combinations_left = to_attribute_combinations(ap_left, policy)?;
-            let combinations_right = to_attribute_combinations(ap_right, policy)?;
-            let mut res = Vec::with_capacity(combinations_left.len() + combinations_right.len());
-            res.extend(combinations_left);
-            res.extend(combinations_right);
-            Ok(res)
-        }
-        // TODO: check if this is correct
-        AccessPolicy::All => Ok(vec![vec![]]),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use abe_policy::{Attribute, PolicyAxis};
-    use cosmian_crypto_core::reexport::generic_array::typenum::U256;
-
-    fn policy() -> Result<Policy, Error> {
-        let sec_level = PolicyAxis::new(
-            "Security Level",
-            &["Protected", "Confidential", "Top Secret"],
-            true,
-        );
-        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
-        let mut policy = Policy::new(100);
-        policy.add_axis(&sec_level)?;
-        policy.add_axis(&department)?;
-        Ok(policy)
-    }
-
-    fn axes_attributes_from_policy(
-        axes: &[String],
+impl<
+        const SYM_KEY_LENGTH: usize,
+        const PK_LENGTH: usize,
+        const SK_LENGTH: usize,
+        KeyPair,
+        DEM,
+        CoverCryptScheme,
+    > EncryptedHeader<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM, CoverCryptScheme>
+where
+    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
+    DEM: Dem<SYM_KEY_LENGTH>,
+    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
+    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
+    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
+    CoverCryptScheme: CoverCrypt<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
+{
+    /// Generates new encrypted header and returns it, along with the symmetric
+    /// key encapsulated in this header.
+    ///
+    /// - `cover_crypt`         : CoverCrypt object
+    /// - `policy`              : global policy
+    /// - `public_key`          : CoverCrypt public key
+    /// - `attributes`          : attributes used for encapsulation
+    /// - `additional_data`     : additional data to encrypt in the header
+    /// - `authenticated_data`  : authenticated data used in the DEM encryption
+    pub fn generate(
+        cover_crypt: &CoverCryptScheme,
         policy: &Policy,
-    ) -> Result<Vec<Vec<(Attribute, u32)>>, Error> {
-        let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
-        for axis in axes {
-            let mut axis_attributes: Vec<(Attribute, u32)> = vec![];
-            let attribute_names = &policy.axes[axis].0;
-            for name in attribute_names {
-                let attribute = Attribute::new(axis, name);
-                let value = policy.attribute_current_value(&attribute)?;
-                axis_attributes.push((attribute, value));
-            }
-            axes_attributes.push(axis_attributes);
-        }
-        Ok(axes_attributes)
+        public_key: &CoverCryptScheme::PublicKey,
+        attributes: &[Attribute],
+        additional_data: Option<&[u8]>,
+        authenticated_data: Option<&[u8]>,
+    ) -> Result<(DEM::Key, Self), Error> {
+        // generate a symmetric key and its encapsulation
+        let (symmetric_key, encapsulation) = cover_crypt.encaps(policy, public_key, attributes)?;
+
+        // encrypt the additional data using the DEM with the encapsulated key
+        let ciphertext = cover_crypt.encrypt(
+            &symmetric_key,
+            additional_data.unwrap_or_default(),
+            authenticated_data,
+        )?;
+
+        Ok((
+            symmetric_key,
+            Self {
+                encapsulation,
+                ciphertext,
+            },
+        ))
     }
 
-    #[test]
-    fn test_combine_attribute_values() -> Result<(), Error> {
-        let mut policy = policy()?;
-        let axes: Vec<String> = policy.axes.keys().into_iter().cloned().collect();
+    /// Decrypt the header with the given user secret key.
+    ///
+    /// - `coveR_crypt`         : CoverCrypt scheme
+    /// - `usk`                 : CoverCrypt user secret key
+    /// - `authenticated_data`  : authenticated data used in the DEM encryption
+    pub fn decrypt(
+        &self,
+        cover_crypt: &CoverCryptScheme,
+        usk: &CoverCryptScheme::UserSecretKey,
+        authenticated_data: Option<&[u8]>,
+    ) -> Result<ClearTextHeader<SYM_KEY_LENGTH, DEM>, Error> {
+        // decapsulate the symmetric key
+        let secret_keys = cover_crypt.decaps(usk, &self.encapsulation)?;
 
-        let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
-
-        // this should create the combination of the first attribute
-        // with all those of the second axis
-        let partitions_0 = super::to_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
-        assert_eq!(axes_attributes[1].len(), partitions_0.len());
-        let att_0_0 = axes_attributes[0][0].1;
-        for (_attribute, value) in &axes_attributes[1] {
-            let partition = Partition::from_attributes(vec![att_0_0, *value])?;
-            assert!(partitions_0.contains(&partition));
-        }
-
-        // this should create the single combination of the first attribute
-        // of the first axis with that of the second axis
-        let partitions_1 = super::to_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-            ],
-            &policy,
-        )?;
-        assert_eq!(partitions_1.len(), 1);
-        let att_1_0 = axes_attributes[1][0].1;
-        assert!(partitions_1.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
-
-        // this should create the 2combination of the first attribute
-        // of the first axis with that the wo of the second axis
-        let partitions_2 = super::to_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-                axes_attributes[1][1].0.clone(),
-            ],
-            &policy,
-        )?;
-        assert_eq!(partitions_2.len(), 2);
-        let att_1_0 = axes_attributes[1][0].1;
-        let att_1_1 = axes_attributes[1][1].1;
-        assert!(partitions_2.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?,));
-        assert!(partitions_2.contains(&Partition::from_attributes(vec![att_0_0, att_1_1])?,));
-
-        // rotation
-        policy.rotate(&axes_attributes[0][0].0)?;
-        let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
-
-        // this should create the single combination of the first attribute
-        // of the first axis with that of the second axis
-        let partitions_3 = super::to_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-            ],
-            &policy,
-        )?;
-        assert_eq!(partitions_3.len(), 1);
-        let att_1_0 = axes_attributes[1][0].1;
-        let att_0_0_new = axes_attributes[0][0].1;
-        assert!(partitions_3.contains(&Partition::from_attributes(vec![att_0_0_new, att_1_0])?));
-        assert!(!partitions_3.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_update_master_keys() -> Result<(), Error> {
-        let mut policy = policy()?;
-        let cc = CoverCrypt::default();
-        let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
-        let partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
-        let partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
-        assert_eq!(partitions_msk.len(), partitions_mpk.len());
-        for p in &partitions_msk {
-            assert!(partitions_mpk.contains(p));
-        }
-        // rotate he FIN department
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
-        // update the master keys
-        cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
-        assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
-        for p in &new_partitions_msk {
-            assert!(new_partitions_mpk.contains(p));
-        }
-        // 3 is the size of the security level axis
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 3);
-        Ok(())
-    }
-
-    #[test]
-    fn test_refresh_user_key() -> Result<(), Error> {
-        let mut policy = policy()?;
-        let cc = CoverCrypt::default();
-        let (mut msk, mut mpk) = cc.generate_master_keys(&policy)?;
-        let access_policy = AccessPolicy::from_boolean_expression(
-            "Department::MKG && Security Level::Confidential",
-        )?;
-        let mut usk = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
-        // rotate he FIN department
-        policy.rotate(&Attribute::new("Department", "MKG"))?;
-        // update the master keys
-        cc.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        // refresh the user key and preserve access to old partitions
-        cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
-        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
-        assert_eq!(
-            new_user_partitions.len(),
-            original_user_partitions.len() + 2
-        );
-        for original_partition in &original_user_partitions {
-            assert!(new_user_partitions.contains(original_partition));
-        }
-        // refresh the user key but do NOT preserve access to old partitions
-        cc.refresh_user_private_key(&mut usk, &access_policy, &msk, &policy, false)?;
-        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
-        // the user should still have access to the same number of partitions
-        assert_eq!(new_user_partitions.len(), original_user_partitions.len());
-        for original_partition in &original_user_partitions {
-            assert!(!new_user_partitions.contains(original_partition));
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        type KeyLength = U256;
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
-        println!("{:?}", &policy);
-        let access_policy = (AccessPolicy::new("Department", "R&D")
-            | AccessPolicy::new("Department", "FIN"))
-            & AccessPolicy::new("Security Level", "Top Secret");
-        let cc = CoverCrypt::default();
-        let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let (sym_key, encrypted_key) = cc.generate_symmetric_key::<KeyLength>(
-            &policy,
-            &mpk,
-            &[
-                Attribute::new("Department", "R&D"),
-                Attribute::new("Security Level", "Top Secret"),
-            ],
-        )?;
-        let sk_u = cc.generate_user_private_key(&msk, &access_policy, &policy)?;
-        let recovered_keys = cc.decaps_symmetric_key(&sk_u, &encrypted_key)?;
-        let mut is_found = false;
-        for key in recovered_keys {
-            if key == sym_key {
-                is_found = true;
-                break;
+        // Try to decrypt the metadata: CoverCrypt decapsulates of all the keys
+        // contained in an encapsulation with the user secret key. If the user
+        // is allowed to decapsulate, at least one of the keys returned by the
+        // `decaps` will be correct. The DEM scheme will fail for all other
+        // keys since it is authenticated.
+        for symmetric_key in secret_keys {
+            if let Ok(additional_data) =
+                cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)
+            {
+                return Ok(ClearTextHeader {
+                    symmetric_key,
+                    additional_data,
+                });
             }
         }
-        assert!(is_found, "Wrong decryption of the key!");
-        Ok(())
+
+        // This point is reached if no key returned by the `decaps` could lead
+        // to a successful DEM decryption. This means the user secret key is
+        // not allowed to decapsulate the header.
+        Err(Error::InsufficientAccessPolicy)
+    }
+}
+
+impl<
+        const SYM_KEY_LENGTH: usize,
+        const PK_LENGTH: usize,
+        const SK_LENGTH: usize,
+        KeyPair,
+        DEM,
+        CoverCryptScheme,
+    > Serializable
+    for EncryptedHeader<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM, CoverCryptScheme>
+where
+    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
+    DEM: Dem<SYM_KEY_LENGTH>,
+    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
+    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
+    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
+        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
+    CoverCryptScheme: CoverCrypt<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
+{
+    /// Tries to serialize the encrypted header.
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+        let mut n = self.encapsulation.write(ser)?;
+        n += ser.write_vec(self.ciphertext.as_slice())?;
+        Ok(n)
     }
 
-    #[test]
-    fn test_access_policy_to_partition() -> Result<(), Error> {
-        //
-        // create policy
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+    /// Tries to deserialize the encrypted header.
+    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+        let encapsulation = CoverCryptScheme::Encapsulation::read(de)?;
+        let ciphertext = de.read_vec()?;
+        Ok(Self {
+            encapsulation,
+            ciphertext,
+        })
+    }
+}
 
-        //
-        // create access policy
-        let access_policy = AccessPolicy::new("Department", "HR")
-            | (AccessPolicy::new("Department", "FIN")
-                & AccessPolicy::new("Security Level", "Confidential"));
+/// A `ClearTextHeader` returned by the `decrypt_hybrid_header` function
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClearTextHeader<const KEY_LENGTH: usize, DEM>
+where
+    DEM: Dem<KEY_LENGTH>,
+{
+    pub symmetric_key: DEM::Key,
+    pub additional_data: Vec<u8>,
+}
 
-        //
-        // create partitions from access policy
-        let partitions = access_policy_to_current_partitions(&access_policy, &policy)?;
+impl<const KEY_LENGTH: usize, DEM> Serializable for ClearTextHeader<KEY_LENGTH, DEM>
+where
+    DEM: Dem<KEY_LENGTH>,
+{
+    /// Tries to serialize the cleartext header.
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+        let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
+        n += ser.write_vec(&self.additional_data)?;
+        Ok(n)
+    }
 
-        //
-        // manually create the partitions
-        let mut partitions_ = HashSet::new();
-        // add the partitions associated with the HR department: combine with
-        // all attributes of the Security Level axis
-        let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
-        let (security_levels, _) = policy.axes.get("Security Level").unwrap();
-        for attr_name in security_levels {
-            let attr_value =
-                policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
-            let mut partition = vec![hr_value, attr_value];
-            partition.sort_unstable();
-            partitions_.insert(Partition::from_attributes(partition)?);
-        }
-
-        // add the other attribute combination: FIN && Confidential
-        let fin_value = policy.attribute_current_value(&Attribute::new("Department", "FIN"))?;
-        let conf_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Confidential"))?;
-        let mut partition = vec![fin_value, conf_value];
-        partition.sort_unstable();
-        partitions_.insert(Partition::from_attributes(partition)?);
-        // since this is a hyerachical axis, add the lower values: here only protected
-        let prot_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
-        let mut partition = vec![fin_value, prot_value];
-        partition.sort_unstable();
-        partitions_.insert(Partition::from_attributes(partition)?);
-
-        assert_eq!(partitions, partitions_);
-        Ok(())
+    /// Tries to deserialize the cleartext header.
+    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+        let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
+        let additional_data = de.read_vec()?;
+        Ok(Self {
+            symmetric_key,
+            additional_data,
+        })
     }
 }
