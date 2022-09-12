@@ -128,10 +128,9 @@ test_cosmian_java_lib:
     - name: gitlab.cosmian.com:5000/core/kms:2.2.0_ci
       alias: kms_ci
   script:
+    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
     - git clone https://github.com/Cosmian/cosmian_java_lib.git
     - cp target/x86_64-unknown-linux-gnu/release/libcover_crypt.so cosmian_java_lib/src/test/resources/linux-x86-64/
-    - ldd --version
-    - ldd -r -v cosmian_java_lib/src/test/resources/linux-x86-64/libcover_crypt.so
     - cd cosmian_java_lib
     - mvn package
   allow_failure: true
