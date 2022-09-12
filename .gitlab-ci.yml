@@ -7,6 +7,18 @@ variables:
   KMS_PUBLIC_PATH: /tmp
   KMS_PRIVATE_PATH: /tmp
   KMS_SHARED_PATH: /tmp
+  # Postgres for `cosmian_js_lib` tests
+  POSTGRES_DB: app_db
+  POSTGRES_USER: app_user
+  POSTGRES_PASSWORD: password
+  PGPASSWORD: password
+  # Postgrest for `cosmian_js_lib` tests
+  PGRST_SERVER_HOST: localhost
+  PGRST_SERVER_PORT: 3000
+  PGRST_DB_URI: postgres://app_user:password@localhost:5432/app_db
+  PGRST_DB_SCHEMA: public
+  PGRST_DB_ANON_ROLE: app_user
+  PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
 
 stages:
   - prebuild
@@ -148,10 +160,18 @@ test_python:
 test_cosmian_js_lib:
   image: node:16
   stage: test
+  services:
+    - name: postgres
+      alias: db
+    - name: postgrest/postgrest
+      alias: server
+  before_script:
+    - apt update && apt install -y postgresql libpq-dev
   script:
     - git clone https://github.com/Cosmian/cosmian_js_lib.git
     - cp -r pkg/* cosmian_js_lib/tests/wasm_lib/abe/cover_crypt/
     - cd cosmian_js_lib
+    - psql -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f ./dump_db_demo.sql
     - npm install jest
     - npm test
   allow_failure: true

@@ -223,7 +223,7 @@ dependencies = [
 
 [[package]]
 name = "cover_crypt"
-version = "6.0.2"
+version = "6.0.3"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_core",
