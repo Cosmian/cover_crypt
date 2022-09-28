@@ -211,5 +211,6 @@ cargo_publish:
     - rm -rf /tmp/cover_crypt
     - cp -rf . /tmp/cover_crypt
     - cd /tmp/cover_crypt
+    - rm -rf jniLibs target
     - cargo publish --token $CRATES_IO
     - rm -rf /tmp/cover_crypt
