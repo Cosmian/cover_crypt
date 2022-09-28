@@ -54,6 +54,7 @@ cargo_security_check:
   script:
     - cargo outdated -wR
     - cargo audit --deny warnings
+  allow_failure: true
 
 #
 # Build base
@@ -79,7 +80,15 @@ build_x86_64:
   <<: *base_compile
   script:
     - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
-    - cargo test --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --all-features --target x86_64-unknown-linux-gnu
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+
+build_x86_64_centos7:
+  <<: *base_compile
+  image: gitlab.cosmian.com:5000/core/ci-rust-glibc-2.17
+  script:
+    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --all-features --target x86_64-unknown-linux-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
   artifacts:
     paths:
@@ -134,13 +143,15 @@ build_android:
     expire_in: 3 mos
 
 test_cosmian_java_lib:
-  image: gitlab.cosmian.com:5000/core/ci-java-8:latest
+  image: openjdk:8
   stage: test
   services:
     - name: gitlab.cosmian.com:5000/core/kms:2.2.0_ci
       alias: kms_ci
+    - redis:latest
+  before_script:
+    - apt update && apt install -y maven
   script:
-    - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
     - git clone https://github.com/Cosmian/cosmian_java_lib.git
     - cp target/x86_64-unknown-linux-gnu/release/libcover_crypt.so cosmian_java_lib/src/test/resources/linux-x86-64/
     - cd cosmian_java_lib
@@ -165,6 +176,7 @@ test_cosmian_js_lib:
       alias: db
     - name: postgrest/postgrest
       alias: server
+    - redis:latest
   before_script:
     - apt update && apt install -y postgresql libpq-dev
   script:
@@ -196,6 +208,8 @@ cargo_publish:
   script:
     - echo "[registry]" > ~/.cargo/credentials
     - echo "token = \"$CRATES_IO\"" >> ~/.cargo/credentials
-    - git reset --hard
-    - git clean -f -d -x
+    - rm -rf /tmp/cover_crypt
+    - cp -rf . /tmp/cover_crypt
+    - cd /tmp/cover_crypt
     - cargo publish --token $CRATES_IO
+    - rm -rf /tmp/cover_crypt
