@@ -88,7 +88,7 @@ build_x86_64_centos7:
   image: gitlab.cosmian.com:5000/core/ci-rust-glibc-2.17
   script:
     - cargo build --verbose --release --features ffi --target x86_64-unknown-linux-gnu
-    - cargo test --verbose --release --all-features --target x86_64-unknown-linux-gnu
+    - cargo test --verbose --release --features ffi --target x86_64-unknown-linux-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
   artifacts:
     paths:
