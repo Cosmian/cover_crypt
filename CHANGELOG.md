@@ -2,12 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+
+---
+## [6.0.4] - 2022-09-28
+### Added
+### Changed
+- Strip symbols on release for native library (libcover_crypt.so)
+### Fixed
+### Removed
+---
+
 ---
 ## [6.0.3] - 2022-09-12
 ### Added
 ### Changed
 - Adapt CI for `cosmian_js_lib` tests:
-  - populate postgres and postgrest docker containers
+- populate postgres and postgrest docker containers
 ### Fixed
 ### Removed
 ---
