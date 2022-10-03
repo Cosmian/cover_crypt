@@ -137,7 +137,7 @@ pub trait CoverCrypt<
         &self,
         sk_u: &Self::UserSecretKey,
         encapsulation: &Self::Encapsulation,
-    ) -> Result<Vec<DEM::Key>, Error>;
+    ) -> Result<DEM::Key, Error>;
 
     /// Encrypts given plaintext using the given symmetric key.
     ///
@@ -263,29 +263,13 @@ where
         usk: &CoverCryptScheme::UserSecretKey,
         authenticated_data: Option<&[u8]>,
     ) -> Result<ClearTextHeader<SYM_KEY_LENGTH, DEM>, Error> {
-        // decapsulate the symmetric key
-        let secret_keys = cover_crypt.decaps(usk, &self.encapsulation)?;
-
-        // Try to decrypt the metadata: CoverCrypt decapsulates of all the keys
-        // contained in an encapsulation with the user secret key. If the user
-        // is allowed to decapsulate, at least one of the keys returned by the
-        // `decaps` will be correct. The DEM scheme will fail for all other
-        // keys since it is authenticated.
-        for symmetric_key in secret_keys {
-            if let Ok(additional_data) =
-                cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)
-            {
-                return Ok(ClearTextHeader {
-                    symmetric_key,
-                    additional_data,
-                });
-            }
-        }
-
-        // This point is reached if no key returned by the `decaps` could lead
-        // to a successful DEM decryption. This means the user secret key is
-        // not allowed to decapsulate the header.
-        Err(Error::InsufficientAccessPolicy)
+        let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
+        let additional_data =
+            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)?;
+        Ok(ClearTextHeader {
+            symmetric_key,
+            additional_data,
+        })
     }
 }
 

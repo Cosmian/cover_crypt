@@ -185,7 +185,7 @@ impl
         &self,
         usk: &Self::UserSecretKey,
         encapsulation: &Self::Encapsulation,
-    ) -> Result<Vec<<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key>, Error> {
+    ) -> Result<<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key, Error> {
         cover_crypt_core::decaps::<
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
@@ -394,16 +394,9 @@ mod tests {
                 Attribute::new("Security Level", "Top Secret"),
             ],
         )?;
-        let sk_u = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
-        let recovered_keys = cover_crypt.decaps(&sk_u, &encrypted_key)?;
-        let mut is_found = false;
-        for key in recovered_keys {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(is_found, "Wrong decryption of the key!");
+        let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
+        assert_eq!(sym_key, recovered_key, "Wrong decryption of the key!");
         Ok(())
     }
 
@@ -466,7 +459,7 @@ mod tests {
         user_decryption_key_2: String,
         encrypted_bytes: String,
         plaintext: String,
-        uid: String,
+        additional_data: String,
     }
 
     #[test]
@@ -509,7 +502,7 @@ mod tests {
         //
         // Encrypt/decrypt header
         //
-        let additional_data = Some(1u32.to_be_bytes().to_vec());
+        let additional_data = 1u32.to_be_bytes().to_vec();
         let authenticated_data = None;
 
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
@@ -517,13 +510,13 @@ mod tests {
             &policy,
             &mpk,
             &attributes,
-            additional_data.as_deref(),
+            Some(&additional_data),
             authenticated_data,
         )?;
         let res =
             encrypted_header.decrypt(&cover_crypt, &top_secret_mkg_fin_user, authenticated_data)?;
 
-        assert_eq!(additional_data, Some(res.additional_data));
+        assert_eq!(additional_data, res.additional_data);
 
         let message = b"My secret message";
         // we need mut in the commented lines below
@@ -545,7 +538,7 @@ mod tests {
         //& AccessPolicy::new("Department", "MKG");
 
         //let medium_secret_mkg_user =
-        //cc.generate_user_secret_key(&msk, &access_policy_2, &policy)?;
+        //cover_crypt.generate_user_secret_key(&msk, &access_policy_2, &policy)?;
 
         //let reg_vectors = NonRegressionTestVector {
         //public_key: hex::encode(mpk.try_to_bytes()?),
@@ -555,7 +548,7 @@ mod tests {
         //user_decryption_key_2: hex::encode(medium_secret_mkg_user.try_to_bytes()?),
         //encrypted_bytes: hex::encode(encrypted_bytes),
         //plaintext: hex::encode(message),
-        //uid: hex::encode(additional_data),
+        //additional_data: hex::encode(additional_data),
         //};
 
         //std::fs::write(

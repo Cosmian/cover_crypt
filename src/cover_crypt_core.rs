@@ -6,12 +6,9 @@ use crate::{
     error::Error,
     partitions::Partition,
 };
-use cosmian_crypto_core::{asymmetric_crypto::DhKeyPair, kdf, symmetric_crypto::SymKey, KeyTrait};
+use cosmian_crypto_core::{asymmetric_crypto::DhKeyPair, symmetric_crypto::SymKey, KeyTrait};
 use rand_core::{CryptoRng, RngCore};
-use sha3::{
-    digest::{ExtendableOutput, Update, XofReader},
-    Shake256,
-};
+use sha3::{Digest, Sha3_512};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -227,7 +224,10 @@ pub struct Encapsulation<
 > {
     C: PublicKey,
     D: PublicKey,
-    E: HashSet<SymmetricKey>,
+    // TODO: use [u8; 2 * SYM_KEY_LENGTH] when const operations are allowed for
+    // const generics. This will remove 1 copy per partition (and anyway, we
+    // are not manipulating symmetric keys here).
+    E: HashSet<(SymmetricKey, SymmetricKey)>,
 }
 
 impl<
@@ -242,8 +242,9 @@ impl<
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_u64(self.E.len() as u64)?;
-        for K_i in &self.E {
-            n += ser.write_array(K_i.as_bytes())?;
+        for (tag_i, E_i) in &self.E {
+            n += ser.write_array(tag_i.as_bytes())?;
+            n += ser.write_array(E_i.as_bytes())?;
         }
         Ok(n)
     }
@@ -254,12 +255,17 @@ impl<
     fn read(de: &mut Deserializer) -> Result<Self, Error> {
         let C = PublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let D = PublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let K_len = de.read_u64()?.try_into()?;
-        let mut K = HashSet::with_capacity(K_len);
-        for _ in 0..K_len {
-            K.insert(SymmetricKey::from_bytes(de.read_array::<SYM_KEY_LENGTH>()?));
+        let E_len = de.read_u64()?.try_into()?;
+        let mut E = HashSet::with_capacity(E_len);
+        for _ in 0..E_len {
+            let tag_i = de.read_array::<SYM_KEY_LENGTH>()?;
+            let E_i = de.read_array::<SYM_KEY_LENGTH>()?;
+            E.insert((
+                SymmetricKey::from_bytes(tag_i),
+                SymmetricKey::from_bytes(E_i),
+            ));
         }
-        Ok(Self { C, D, E: K })
+        Ok(Self { C, D, E })
     }
 }
 
@@ -429,15 +435,17 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let mut E_i = kdf!(
-                SYM_KEY_LENGTH,
-                &(H_i * &r).to_bytes(),
-                KEY_GEN_INFO.as_bytes()
-            );
-            for (e_1, e_2) in E_i.iter_mut().zip(K.as_bytes()) {
-                *e_1 ^= e_2;
+            let mut hasher = Sha3_512::new();
+            hasher.update((H_i * &r).to_bytes());
+            hasher.update(KEY_GEN_INFO);
+            let mut bytes = hasher.finalize();
+            for (b_1, b_2) in bytes[SYM_KEY_LENGTH..].iter_mut().zip(K.as_bytes()) {
+                *b_1 ^= b_2;
             }
-            E.insert(SymmetricKey::from_bytes(E_i));
+            E.insert((
+                SymmetricKey::try_from_bytes(&bytes[..SYM_KEY_LENGTH])?,
+                SymmetricKey::try_from_bytes(&bytes[SYM_KEY_LENGTH..])?,
+            ));
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
@@ -474,7 +482,7 @@ pub fn decaps<
         SymmetricKey,
         KeyPair::PublicKey,
     >,
-) -> Result<Vec<SymmetricKey>, Error>
+) -> Result<SymmetricKey, Error>
 where
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
@@ -486,19 +494,23 @@ where
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
 {
-    let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
-    for E_i in &encapsulation.E {
+    for (tag_i, E_i) in &encapsulation.E {
         for x_k in sk_j.x.values() {
-            let K_k = &precomp * x_k;
-            let mut K = kdf!(SYM_KEY_LENGTH, &K_k.to_bytes(), KEY_GEN_INFO.as_bytes());
-            for (e_1, e_2) in K.iter_mut().zip(E_i.as_bytes()) {
-                *e_1 ^= e_2;
+            let mut hasher = Sha3_512::new();
+            hasher.update((&precomp * x_k).to_bytes());
+            hasher.update(KEY_GEN_INFO);
+            let mut bytes = hasher.finalize();
+            if tag_i.as_bytes() != &bytes[..SYM_KEY_LENGTH] {
+                continue;
             }
-            res.push(SymmetricKey::from_bytes(K));
+            for (b1, b2) in bytes[SYM_KEY_LENGTH..].iter_mut().zip(E_i.as_bytes()) {
+                *b1 ^= b2;
+            }
+            return Ok(SymmetricKey::try_from_bytes(&bytes[SYM_KEY_LENGTH..])?);
         }
     }
-    Ok(res)
+    Err(Error::InsufficientAccessPolicy)
 }
 
 /// Update the master secret key and master public key of the CoverCrypt
@@ -722,7 +734,10 @@ mod tests {
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
-        >(&sk0, &encapsulation)?;
+        >(&sk0, &encapsulation);
+
+        assert!(res0.is_err(), "User 0 shouldn't be able to decapsulate!");
+
         let res1 = decaps::<
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
@@ -730,21 +745,8 @@ mod tests {
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
         >(&sk1, &encapsulation)?;
-        let mut is_found = false;
-        for key in res0 {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(!is_found, "User 0 shouldn't be able to decapsulate!");
-        for key in res1 {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(is_found, "Wrong decapsulation for user 1!");
+
+        assert_eq!(sym_key, res1, "Wrong decapsulation for user 1!");
 
         // rotate and refresh keys
         println!("Rotate");
@@ -775,14 +777,7 @@ mod tests {
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
         >(&sk0, &new_encapsulation)?;
-        let mut is_found = false;
-        for key in res0 {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(is_found, "User 0 should be able to decapsulate!");
+        assert_eq!(sym_key, res0, "User 0 should be able to decapsulate!");
         Ok(())
     }
 
