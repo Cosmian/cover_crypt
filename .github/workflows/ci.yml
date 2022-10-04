@@ -3,86 +3,110 @@ name: CI checks
 on: [push, pull_request]
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
+#   lint:
+#     name: Lint
+#     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-        with:
-          # Using a rustfmt.toml with unstable features, need nightly
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
+#     steps:
+#       - uses: actions/checkout@v1
+#       - uses: actions-rs/toolchain@v1
+#         with:
+#           # Using a rustfmt.toml with unstable features, need nightly
+#           toolchain: stable
+#           override: true
+#           components: rustfmt, clippy
 
-      # Ensure all code has been formatted with rustfmt
-      - name: Check formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: -- --check --color always
-      - name: Static analysis
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+#       # Ensure all code has been formatted with rustfmt
+#       - name: Check formatting
+#         uses: actions-rs/cargo@v1
+#         with:
+#           command: fmt
+#           args: -- --check --color always
+#       - name: Static analysis
+#         uses: actions-rs/cargo@v1
+#         with:
+#           command: clippy
+#           args: -- -D warnings
 
-  test:
-    name: Test on ${{ matrix.os }}
+#   test:
+#     name: Test on ${{ matrix.os }}
+#     runs-on: ${{ matrix.os }}
+#     strategy:
+#       matrix:
+#         os: [ubuntu-latest]
+
+#     steps:
+#       - uses: actions/checkout@v1
+#       - uses: actions-rs/toolchain@v1
+#         with:
+#           toolchain: stable
+#           override: true
+#       - name: Run tests
+#         uses: actions-rs/cargo@v1
+#         with:
+#           command: test
+#           args: --verbose --release
+
+  build:
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [macos-latest]
 
     steps:
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          target: aarch64-apple-ios
           override: true
-      - name: Run tests
-        uses: actions-rs/cargo@v1
+      - uses: actions-rs/install@v0.1
         with:
-          command: test
-          args: --verbose --release
-
-  no-std:
-    name: Check no-std target ${{ matrix.target }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - wasm32-unknown-unknown
-
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - run: rustup target add ${{ matrix.target }}
+          crate: cargo-lipo
+          version: latest
       - name: Build
         uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: --verbose --target ${{ matrix.target }}
+          command: lipo
+          args: --release --features ffi
 
-  doc-links:
-    name: Nightly lint
-    runs-on: ubuntu-latest
+  # no-std:
+  #   name: Check no-std target ${{ matrix.target }}
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       target:
+  #         - wasm32-unknown-unknown
 
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
+  #   steps:
+  #     - uses: actions/checkout@v1
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         override: true
+  #     - run: rustup target add ${{ matrix.target }}
+  #     - name: Build
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: build
+  #         args: --verbose --target ${{ matrix.target }}
 
-      # Ensure intra-documentation links all resolve correctly
-      # Requires #![deny(intra_doc_link_resolution_failure)] in crate.
-      - name: Check intra-doc links
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --document-private-items
+  # doc-links:
+  #   name: Nightly lint
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     - uses: actions/checkout@v1
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: nightly
+  #         override: true
+
+  #     # Ensure intra-documentation links all resolve correctly
+  #     # Requires #![deny(intra_doc_link_resolution_failure)] in crate.
+  #     - name: Check intra-doc links
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: doc
+  #         args: --document-private-items
