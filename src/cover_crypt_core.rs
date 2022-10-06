@@ -1,4 +1,4 @@
-// Needed to use the paper naming conventions
+// Allows using the paper notations
 #![allow(non_snake_case)]
 
 use crate::{
@@ -15,6 +15,21 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 use zeroize::Zeroize;
+
+/// Hashes the given bytes using SHA3-256.
+///
+/// - `bytes`   : hash input
+macro_rules! hash {
+    ($($bytes: expr),+) => {
+        {
+            let mut hasher = Sha3_512::new();
+            $(
+                hasher.update($bytes);
+            )*
+            hasher.finalize()
+        }
+    };
+}
 
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &str = "key generation info";
@@ -381,7 +396,15 @@ where
     Ok(UserSecretKey { a, b, x })
 }
 
-/// Generate the secret key encapsulation.
+/// Generates the secret key encapsulation.
+///
+/// Implements the Early Abort KEM (EAKEM) encapsulation to filter
+/// encapsulations in the decapsulation phase.
+///
+/// Encaps(pk):
+///     (c, k) ← CCA-KEM.encaps(pk)
+///     (k1, k2) ← H(k)
+///     return (k1, k2, c)
 ///
 /// # Paper
 ///
@@ -435,10 +458,7 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let mut hasher = Sha3_512::new();
-            hasher.update((H_i * &r).to_bytes());
-            hasher.update(KEY_GEN_INFO);
-            let mut bytes = hasher.finalize();
+            let mut bytes = hash!((H_i * &r).to_bytes(), KEY_GEN_INFO);
             for (b_1, b_2) in bytes[SYM_KEY_LENGTH..].iter_mut().zip(K.as_bytes()) {
                 *b_1 ^= b_2;
             }
@@ -451,7 +471,17 @@ where
     Ok(Encapsulation { C, D, E })
 }
 
-/// Decapsulate the secret key if the given user ID is in the target set.
+/// Decapsulates the secret key if the given user ID is in the target set.
+///
+/// Implements the Early Abort KEM (EAKEM) decapsulation to filter
+/// encapsulations that do not correspond to the user secret key.
+///
+/// Decaps(sk, k1, c):
+///     k ← CCA-KEM.decaps(sk, c)
+///     (k1*, k2*) ← H(k)
+///     if k1 != k1':
+///         abort
+///     return k2*
 ///
 /// # Paper
 ///
@@ -497,11 +527,11 @@ where
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
     for (tag_i, E_i) in &encapsulation.E {
         for x_k in sk_j.x.values() {
-            let mut hasher = Sha3_512::new();
-            hasher.update((&precomp * x_k).to_bytes());
-            hasher.update(KEY_GEN_INFO);
-            let mut bytes = hasher.finalize();
+            let mut bytes = hash!((&precomp * x_k).to_bytes(), KEY_GEN_INFO);
+            // the tag is correctly generated if the encapsulation is
+            // associated to the user private key
             if tag_i.as_bytes() != &bytes[..SYM_KEY_LENGTH] {
+                // this encapsulation cannot be decapsulated by the user
                 continue;
             }
             for (b1, b2) in bytes[SYM_KEY_LENGTH..].iter_mut().zip(E_i.as_bytes()) {
