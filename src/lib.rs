@@ -19,7 +19,7 @@
 //! ```
 //! use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 //! use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
-//! use cover_crypt::{CoverCrypt, interfaces::statics::*};
+//! use cosmian_cover_crypt::{CoverCrypt, interfaces::statics::*};
 //!
 //! //
 //! // Declare a new policy
