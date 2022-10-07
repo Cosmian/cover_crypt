@@ -1,6 +1,6 @@
 [package]
-name = "cover_crypt"
-version = "6.0.4"
+name = "cosmian_cover_crypt"
+version = "6.0.5"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -13,7 +13,7 @@ repository = "https://github.com/Cosmian/cover_crypt"
 
 
 [lib]
-name = "cover_crypt"
+name = "cosmian_cover_crypt"
 crate-type = ["lib", "cdylib", "staticlib"]
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881

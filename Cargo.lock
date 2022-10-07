@@ -199,6 +199,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_cover_crypt"
+version = "6.0.5"
+dependencies = [
+ "abe_policy",
+ "cosmian_crypto_core",
+ "criterion",
+ "hex",
+ "js-sys",
+ "lazy_static",
+ "leb128",
+ "pyo3",
+ "rand_core 0.6.3",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_crypto_core"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -218,27 +239,6 @@ dependencies = [
  "serde",
  "sha2",
  "thiserror",
- "zeroize",
-]
-
-[[package]]
-name = "cover_crypt"
-version = "6.0.4"
-dependencies = [
- "abe_policy",
- "cosmian_crypto_core",
- "criterion",
- "hex",
- "js-sys",
- "lazy_static",
- "leb128",
- "pyo3",
- "rand_core 0.6.3",
- "serde",
- "serde_json",
- "thiserror",
- "wasm-bindgen",
- "wasm-bindgen-test",
  "zeroize",
 ]
 
