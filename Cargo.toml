@@ -14,7 +14,7 @@ repository = "https://github.com/Cosmian/cover_crypt"
 
 [lib]
 name = "cosmian_cover_crypt"
-crate-type = ["lib", "cdylib", "staticlib"]
+crate-type = ["rlib", "cdylib", "staticlib"]
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
