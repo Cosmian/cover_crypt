@@ -185,6 +185,7 @@ test_cloudproof_js:
     - apt update && apt install -y postgresql libpq-dev
   script:
     - git clone https://github.com/Cosmian/cloudproof_js.git
+    - mkdir -p cloudproof_js/tests/wasm_lib/${CI_PROJECT_NAME}
     - cp -r pkg/* cloudproof_js/tests/wasm_lib/${CI_PROJECT_NAME}/
     - cd cloudproof_js
     - psql -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f ./dump_db_demo.sql
