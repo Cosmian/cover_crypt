@@ -7,7 +7,7 @@ authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
 ]
 description = "Key Policy attribute encryption based on subset cover"
-documentation = "https://docs.rs/cover_crypt/"
+documentation = "https://docs.rs/cosmian_cover_crypt/"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/Cosmian/cover_crypt"
 
