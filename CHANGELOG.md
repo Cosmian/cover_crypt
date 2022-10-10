@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 
 ---
+## [6.0.5] - 2022-10-07
+### Added
+### Changed
+- Rename library `cover_crypt` to `cosmian_cover_crypt`
+### Fixed
+### Removed
+---
+
+---
 ## [6.0.4] - 2022-09-28
 ### Added
 ### Changed

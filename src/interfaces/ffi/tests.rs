@@ -616,8 +616,7 @@ unsafe fn refresh_user_private_key(
         .map_err(|e| Error::Other(e.to_string()))?;
     let access_policy_ptr = access_policy_cs.as_ptr();
 
-    let preserve_old_partitions_access_c: c_int =
-        if preserve_old_partitions_access { 1 } else { 0 };
+    let preserve_old_partitions_access_c: c_int = i32::from(preserve_old_partitions_access);
 
     // prepare updated user private key pointer
     let mut updated_user_private_key_bytes = vec![0u8; 64 * 1024];

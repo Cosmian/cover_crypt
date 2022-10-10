@@ -204,7 +204,7 @@ fn to_partitions(attributes: &[Attribute], policy: &Policy) -> Result<HashSet<Pa
     let mut map = HashMap::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
-        let entry = map.entry(attribute.axis.to_owned()).or_insert(Vec::new());
+        let entry: &mut Vec<u32> = map.entry(attribute.axis.to_owned()).or_default();
         entry.push(value);
     }
 
