@@ -71,12 +71,6 @@ cargo_security_check:
   before_script:
     - sccache -s
 
-benchmarks:
-  <<: *base_compile
-  script:
-    - cargo bench --all-features
-  when: manual
-
 build_x86_64:
   <<: *base_compile
   script:
@@ -230,3 +224,11 @@ cargo_publish:
     - rm -rf ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip jniLibs target
     - cargo publish --token $CRATES_IO
     - rm -rf /tmp/${CI_PROJECT_NAME}
+
+# Finally, run benchmarks at once
+benchmarks:
+  stage: publish
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/'
+  script:
+    - cargo bench --all-features
