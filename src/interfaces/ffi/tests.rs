@@ -22,7 +22,7 @@ use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_crypto_core::KeyTrait;
 use std::{
     ffi::{CStr, CString},
-    os::raw::{c_char, c_int},
+    os::raw::c_int,
 };
 
 unsafe fn encrypt_header(
@@ -73,11 +73,9 @@ unsafe fn encrypt_header(
     ))
     .map_err(|e| Error::Other(e.to_string()))?;
 
-    let encrypted_header_bytes_ = std::slice::from_raw_parts(
-        encrypted_header_ptr as *const u8,
-        encrypted_header_len as usize,
-    )
-    .to_vec();
+    let encrypted_header_bytes_ =
+        std::slice::from_raw_parts(encrypted_header_ptr.cast(), encrypted_header_len as usize)
+            .to_vec();
     Ok((
         symmetric_key_,
         EncryptedHeader::try_from_bytes(&encrypted_header_bytes_)?,
@@ -90,18 +88,18 @@ unsafe fn decrypt_header(
     authenticated_data: &[u8],
 ) -> Result<ClearTextHeader, Error> {
     let mut symmetric_key = vec![0u8; 32];
-    let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
+    let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-    let authenticated_data_ptr = authenticated_data.as_ptr() as *const c_char;
+    let authenticated_data_ptr = authenticated_data.as_ptr().cast();
     let authenticated_data_len = authenticated_data.len() as c_int;
 
     let mut additional_data = vec![0u8; 8128];
-    let additional_data_ptr = additional_data.as_mut_ptr() as *mut c_char;
+    let additional_data_ptr = additional_data.as_mut_ptr().cast();
     let mut additional_data_len = additional_data.len() as c_int;
 
     let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
-    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;
+    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
     let header_bytes = header.try_to_bytes()?;
@@ -111,7 +109,7 @@ unsafe fn decrypt_header(
         &mut symmetric_key_len,
         additional_data_ptr,
         &mut additional_data_len,
-        header_bytes.as_ptr() as *const c_char,
+        header_bytes.as_ptr().cast(),
         header_bytes.len() as c_int,
         authenticated_data_ptr,
         authenticated_data_len,
@@ -120,16 +118,14 @@ unsafe fn decrypt_header(
     ))?;
 
     let symmetric_key = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr as *const u8,
+        symmetric_key_ptr.cast(),
         symmetric_key_len as usize,
     ))
     .map_err(|e| Error::Other(e.to_string()))?;
 
-    let additional_data = std::slice::from_raw_parts(
-        additional_data_ptr as *const u8,
-        additional_data_len as usize,
-    )
-    .to_vec();
+    let additional_data =
+        std::slice::from_raw_parts(additional_data_ptr.cast(), additional_data_len as usize)
+            .to_vec();
 
     Ok(ClearTextHeader {
         symmetric_key,
@@ -140,7 +136,7 @@ unsafe fn decrypt_header(
 unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
     if val != 0 {
         let mut message_bytes_key = vec![0u8; 8128];
-        let message_bytes_ptr = message_bytes_key.as_mut_ptr() as *mut c_char;
+        let message_bytes_ptr = message_bytes_key.as_mut_ptr().cast();
         let mut message_bytes_len = message_bytes_key.len() as c_int;
         get_last_error(message_bytes_ptr, &mut message_bytes_len);
         let cstr = CStr::from_ptr(message_bytes_ptr);
@@ -226,7 +222,7 @@ unsafe fn encrypt_header_using_cache(
     let policy_ptr = policy_cs.as_ptr();
 
     let public_key_bytes = public_key.try_to_bytes()?;
-    let public_key_ptr = public_key_bytes.as_ptr() as *const c_char;
+    let public_key_ptr = public_key_bytes.as_ptr().cast();
     let public_key_len = public_key_bytes.len() as i32;
 
     let mut cache_handle: i32 = 0;
@@ -244,11 +240,11 @@ unsafe fn encrypt_header_using_cache(
     ];
 
     let mut symmetric_key = vec![0u8; 32];
-    let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
+    let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
     let mut encrypted_header_bytes = vec![0u8; 8128];
-    let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr() as *mut c_char;
+    let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr().cast();
     let mut encrypted_header_len = encrypted_header_bytes.len() as c_int;
 
     let attributes_json = CString::new(serde_json::to_string(&attributes)?.as_str())
@@ -262,23 +258,21 @@ unsafe fn encrypt_header_using_cache(
         &mut encrypted_header_len,
         cache_handle,
         attributes_ptr,
-        additional_data.as_ptr() as *const c_char,
+        additional_data.as_ptr().cast(),
         additional_data.len() as i32,
-        authenticated_data.as_ptr() as *const c_char,
+        authenticated_data.as_ptr().cast(),
         authenticated_data.len() as i32,
     ))?;
 
     let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr as *const u8,
+        symmetric_key_ptr.cast(),
         symmetric_key_len as usize,
     ))
     .map_err(|e| Error::Other(e.to_string()))?;
 
-    let encrypted_header_bytes_ = std::slice::from_raw_parts(
-        encrypted_header_ptr as *const u8,
-        encrypted_header_len as usize,
-    )
-    .to_vec();
+    let encrypted_header_bytes_ =
+        std::slice::from_raw_parts(encrypted_header_ptr.cast(), encrypted_header_len as usize)
+            .to_vec();
 
     unwrap_ffi_error(h_aes_destroy_encryption_cache(cache_handle))?;
 
@@ -294,7 +288,7 @@ unsafe fn decrypt_header_using_cache(
     authenticated_data: &[u8],
 ) -> Result<ClearTextHeader, Error> {
     let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
-    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr() as *const c_char;
+    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
     let mut cache_handle: i32 = 0;
@@ -306,11 +300,11 @@ unsafe fn decrypt_header_using_cache(
     ))?;
 
     let mut symmetric_key = vec![0u8; 32];
-    let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
+    let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
     let mut additional_data = vec![0u8; 8128];
-    let additional_data_ptr = additional_data.as_mut_ptr() as *mut c_char;
+    let additional_data_ptr = additional_data.as_mut_ptr().cast();
     let mut additional_data_len = additional_data.len() as c_int;
 
     let header_bytes = header.try_to_bytes()?;
@@ -320,24 +314,22 @@ unsafe fn decrypt_header_using_cache(
         &mut symmetric_key_len,
         additional_data_ptr,
         &mut additional_data_len,
-        header_bytes.as_ptr() as *const c_char,
+        header_bytes.as_ptr().cast(),
         header_bytes.len() as c_int,
-        authenticated_data.as_ptr() as *const c_char,
+        authenticated_data.as_ptr().cast(),
         authenticated_data.len() as c_int,
         cache_handle,
     ))?;
 
     let symmetric_key = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr as *const u8,
+        symmetric_key_ptr.cast(),
         symmetric_key_len as usize,
     ))
     .map_err(|e| Error::Other(e.to_string()))?;
 
-    let additional_data = std::slice::from_raw_parts(
-        additional_data_ptr as *const u8,
-        additional_data_len as usize,
-    )
-    .to_vec();
+    let additional_data =
+        std::slice::from_raw_parts(additional_data_ptr.cast(), additional_data_len as usize)
+            .to_vec();
 
     unwrap_ffi_error(h_aes_destroy_decryption_cache(cache_handle))?;
 
@@ -396,7 +388,7 @@ unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterSecretKey, Publ
     let policy_ptr = policy_cs.as_ptr();
 
     let mut master_keys_bytes = vec![0u8; 8192];
-    let master_keys_ptr = master_keys_bytes.as_mut_ptr() as *mut c_char;
+    let master_keys_ptr = master_keys_bytes.as_mut_ptr().cast();
     let mut master_keys_len = master_keys_bytes.len() as c_int;
 
     unwrap_ffi_error(h_generate_master_keys(
@@ -406,7 +398,7 @@ unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterSecretKey, Publ
     ))?;
 
     let master_keys_bytes =
-        std::slice::from_raw_parts(master_keys_ptr as *const u8, master_keys_len as usize).to_vec();
+        std::slice::from_raw_parts(master_keys_ptr.cast(), master_keys_len as usize).to_vec();
 
     let msk_size = u32::from_be_bytes(master_keys_bytes[0..4].try_into()?);
     let msk_bytes = &master_keys_bytes[4..4 + msk_size as usize];
@@ -426,7 +418,7 @@ unsafe fn generate_user_secret_key(
     //
     // Prepare secret key
     let msk_bytes = msk.try_to_bytes()?;
-    let msk_ptr = msk_bytes.as_ptr() as *const c_char;
+    let msk_ptr = msk_bytes.as_ptr().cast();
     let msk_len = msk_bytes.len() as i32;
 
     //
@@ -442,7 +434,7 @@ unsafe fn generate_user_secret_key(
 
     // Prepare OUT buffer
     let mut usk_bytes = vec![0u8; 8192];
-    let usk_ptr = usk_bytes.as_mut_ptr() as *mut c_char;
+    let usk_ptr = usk_bytes.as_mut_ptr().cast();
     let mut usk_len = usk_bytes.len() as c_int;
 
     unwrap_ffi_error(h_generate_user_secret_key(
@@ -454,8 +446,7 @@ unsafe fn generate_user_secret_key(
         policy_ptr,
     ))?;
 
-    let user_key_bytes =
-        std::slice::from_raw_parts(usk_ptr as *const u8, usk_len as usize).to_vec();
+    let user_key_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize).to_vec();
 
     // Check deserialization of secret key
     let user_key = UserSecretKey::try_from_bytes(&user_key_bytes)?;
@@ -496,7 +487,7 @@ unsafe fn rotate_policy(policy: &Policy, attributes: &[Attribute]) -> Result<Pol
 
     // prepare update policy pointer
     let mut updated_policy_bytes = vec![0u8; 64 * 1024];
-    let updated_policy_ptr = updated_policy_bytes.as_mut_ptr() as *mut c_char;
+    let updated_policy_ptr = updated_policy_bytes.as_mut_ptr().cast();
     let mut updated_policy_len = updated_policy_bytes.len() as c_int;
 
     unwrap_ffi_error(h_rotate_attributes(
@@ -507,8 +498,7 @@ unsafe fn rotate_policy(policy: &Policy, attributes: &[Attribute]) -> Result<Pol
     ))?;
 
     let updated_policy_bytes =
-        std::slice::from_raw_parts(updated_policy_ptr as *const u8, updated_policy_len as usize)
-            .to_vec();
+        std::slice::from_raw_parts(updated_policy_ptr.cast(), updated_policy_len as usize).to_vec();
     let updated_policy: Policy = serde_json::from_slice(&updated_policy_bytes)?;
 
     Ok(updated_policy)
@@ -554,7 +544,7 @@ unsafe fn update_master_keys(
     ))?;
 
     let updated_msk_bytes =
-        std::slice::from_raw_parts(updated_msk_ptr as *const u8, updated_msk_len as usize).to_vec();
+        std::slice::from_raw_parts(updated_msk_ptr.cast(), updated_msk_len as usize).to_vec();
     let updated_msk = MasterSecretKey::try_from_bytes(&updated_msk_bytes)?;
 
     let updated_master_public_key_bytes = std::slice::from_raw_parts(

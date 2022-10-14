@@ -559,10 +559,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         ffi_bail!("The user decryption key should not be empty");
     }
 
-    let encrypted_header_bytes = std::slice::from_raw_parts(
-        encrypted_header_ptr as *const u8,
-        encrypted_header_len as usize,
-    );
+    let encrypted_header_bytes =
+        std::slice::from_raw_parts(encrypted_header_ptr.cast(), encrypted_header_len as usize);
 
     let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
     let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
