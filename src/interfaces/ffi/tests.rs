@@ -621,7 +621,7 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
     let access_policy = AccessPolicy::new("Department", "MKG")
         & AccessPolicy::new("Security Level", "Confidential");
     let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
-    let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
+    let original_usk = usk.clone();
 
     unsafe {
         //rotate the policy
@@ -649,23 +649,18 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         // update the user key, preserving the accesses to the rotated partitions
         let updated_usk =
             refresh_user_secret_key(&usk, &access_policy, &updated_msk, &updated_policy, true)?;
-        let new_user_partitions: Vec<Partition> = updated_usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
-        assert_eq!(
-            new_user_partitions.len(),
-            original_user_partitions.len() + 2
-        );
-        for original_partition in &original_user_partitions {
-            assert!(new_user_partitions.contains(original_partition));
+        assert_eq!(updated_usk.x.len(), original_usk.x.len() + 2);
+        for x_i in &original_usk.x {
+            assert!(updated_usk.x.contains(x_i));
         }
         // update the user key, but do NOT preserve the accesses to the rotated partitions
         let updated_usk =
             refresh_user_secret_key(&usk, &access_policy, &updated_msk, &updated_policy, false)?;
-        let new_user_partitions: Vec<Partition> = updated_usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
-        assert_eq!(new_user_partitions.len(), original_user_partitions.len());
-        for original_partition in &original_user_partitions {
-            assert!(!new_user_partitions.contains(original_partition));
+        assert_eq!(updated_usk.x.len(), original_usk.x.len());
+        for x_i in &original_usk.x {
+            assert!(!updated_usk.x.contains(x_i));
         }
     }
     Ok(())
