@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [7.1.0] - 2022-10-17
+
+### Added
+
+### Changed
+
+- use EAKEM (cf [MR](https://github.com/Cosmian/cover_crypt/pull/39))
+
+### Fixed
+
+### Removed
+
+---
+
+---
+
 ## [7.0.0] - 2022-10-17
 
 ### Added
