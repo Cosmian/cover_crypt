@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 ### Changed
 - CI: use KMS version from Gitlab variable
+- Update license
 ### Fixed
 ### Removed
 ---
