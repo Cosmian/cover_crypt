@@ -138,20 +138,18 @@ impl
         policy: &Policy,
         keep_old_accesses: bool,
     ) -> Result<(), Error> {
-        let mut current_partitions =
-            partitions::access_policy_to_current_partitions(access_policy, policy)?;
-        if keep_old_accesses {
-            for key_partition in usk.x.keys() {
-                current_partitions.insert(key_partition.to_owned());
-            }
-        }
         cover_crypt_core::refresh::<
             { Self::PRIVATE_KEY_LENGTH },
             <X25519KeyPair as DhKeyPair<
                 { Self::PUBLIC_KEY_LENGTH },
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PrivateKey,
-        >(msk, usk, &current_partitions)
+        >(
+            msk,
+            usk,
+            &partitions::access_policy_to_current_partitions(access_policy, policy)?,
+            keep_old_accesses,
+        )
     }
 
     fn encaps(
@@ -361,29 +359,25 @@ mod tests {
             "Department::MKG && Security Level::Confidential",
         )?;
         let mut usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
-        let original_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
+        let original_usk = usk.clone();
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
-        assert_eq!(
-            new_user_partitions.len(),
-            original_user_partitions.len() + 2
-        );
-        for original_partition in &original_user_partitions {
-            assert!(new_user_partitions.contains(original_partition));
+        assert_eq!(usk.x.len(), original_usk.x.len() + 2);
+        for x_i in &original_usk.x {
+            assert!(usk.x.contains(x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, false)?;
-        let new_user_partitions: Vec<Partition> = usk.x.clone().into_keys().collect();
         // the user should still have access to the same number of partitions
-        assert_eq!(new_user_partitions.len(), original_user_partitions.len());
-        for original_partition in &original_user_partitions {
-            assert!(!new_user_partitions.contains(original_partition));
+        println!("{usk:?}");
+        assert_eq!(usk.x.len(), original_usk.x.len());
+        for x_i in &original_usk.x {
+            assert!(!usk.x.contains(x_i));
         }
         Ok(())
     }
