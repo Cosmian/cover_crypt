@@ -12,19 +12,29 @@ variables:
   POSTGRES_USER: app_user
   POSTGRES_PASSWORD: password
   PGPASSWORD: password
+  PGPORT: 5433
   # Postgrest for `cloudproof_js` tests
   PGRST_SERVER_HOST: localhost
   PGRST_SERVER_PORT: 3000
-  PGRST_DB_URI: postgres://app_user:password@localhost:5432/app_db
+  PGRST_DB_URI: postgres://app_user:password@localhost:5433/app_db
   PGRST_DB_SCHEMA: public
   PGRST_DB_ANON_ROLE: app_user
   PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
+
+services:
+  - name: postgres
+    alias: db
+  - name: postgrest/postgrest
+    alias: server
+  - name: gitlab.cosmian.com:5000/core/kms:2.3.0_ci
+    alias: kms_ci
+  - redis:latest
 
 stages:
   - prebuild
   - build
   - test
-  - package
+  - pack
   - publish
 
 rustfmt:
@@ -143,10 +153,6 @@ build_android:
 test_cloudproof_java:
   image: openjdk:8
   stage: test
-  services:
-    - name: gitlab.cosmian.com:5000/core/kms:2.2.0_ci
-      alias: kms_ci
-    - redis:latest
   before_script:
     - apt update && apt install -y maven
   script:
@@ -169,18 +175,12 @@ test_python:
 test_cloudproof_js:
   image: node:16
   stage: test
-  services:
-    - name: postgres
-      alias: db
-    - name: postgrest/postgrest
-      alias: server
-    - redis:latest
   before_script:
     - apt update && apt install -y postgresql libpq-dev
   script:
     - git clone https://github.com/Cosmian/cloudproof_js.git
-    - mkdir -p cloudproof_js/tests/wasm_lib/${CI_PROJECT_NAME}
-    - cp -r pkg/nodejs/* cloudproof_js/tests/wasm_lib/${CI_PROJECT_NAME}/
+    - mkdir -p cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}
+    - cp -r pkg/nodejs/* cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}/
     - cd cloudproof_js
     - psql -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f ./dump_db_demo.sql
     - npm install jest
@@ -188,12 +188,15 @@ test_cloudproof_js:
   allow_failure: true
 
 pack_all_artifacts:
-  stage: package
+  stage: pack
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/'
   before_script:
     - apt update && apt install -y zip
   script:
     - zip -r ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip pkg target jniLibs
   artifacts:
+    name: 'cosmian_${CI_PROJECT_NAME}_${CI_COMMIT_TAG}'
     paths:
       - ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip
     expire_in: 3 mos
@@ -221,7 +224,7 @@ cargo_publish:
     - rm -rf /tmp/${CI_PROJECT_NAME}
     - cp -rf . /tmp/${CI_PROJECT_NAME}
     - cd /tmp/${CI_PROJECT_NAME}
-    - rm -rf ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip jniLibs target
+    - rm -rf ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip cosmian_${CI_PROJECT_NAME}_${CI_COMMIT_TAG}.zip jniLibs target
     - cargo publish --token $CRATES_IO
     - rm -rf /tmp/${CI_PROJECT_NAME}
 
