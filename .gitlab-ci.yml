@@ -16,7 +16,7 @@ variables:
   # Postgrest for `cloudproof_js` tests
   PGRST_SERVER_HOST: localhost
   PGRST_SERVER_PORT: 3000
-  PGRST_DB_URI: postgres://app_user:password@localhost:5433/app_db
+  PGRST_DB_URI: postgres://app_user:password@localhost:${PGPORT}/app_db
   PGRST_DB_SCHEMA: public
   PGRST_DB_ANON_ROLE: app_user
   PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
