@@ -26,7 +26,7 @@ services:
     alias: db
   - name: postgrest/postgrest
     alias: server
-  - name: gitlab.cosmian.com:5000/core/kms:2.3.0_ci
+  - name: gitlab.cosmian.com:5000/core/kms:${KMS_VERSION}_ci
     alias: kms_ci
   - redis:latest
 
