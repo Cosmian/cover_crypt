@@ -75,7 +75,7 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
     let mut axes = Vec::with_capacity(policy.axes.len());
     for (axis, (attribute_names, _hierarchical)) in &policy.axes {
         axes.push(axis.to_owned());
-        let mut values: Vec<u32> = vec![];
+        let mut values = vec![];
         for name in attribute_names {
             let attribute = Attribute::new(axis, name);
             let av = policy.attribute_values(&attribute)?;
@@ -86,7 +86,7 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 
     // perform all the combinations to get all the partitions
     let combinations = combine_attribute_values(0, axes.as_slice(), &map)?;
-    let mut set: HashSet<Partition> = HashSet::with_capacity(combinations.len());
+    let mut set = HashSet::with_capacity(combinations.len());
     for combination in combinations {
         set.insert(Partition::from_attributes(combination)?);
     }
@@ -105,10 +105,10 @@ pub(crate) fn to_partitions(
 ) -> Result<HashSet<Partition>, Error> {
     // First split the attributes per axis using their latest value and check that
     // they exist
-    let mut map = HashMap::new();
+    let mut map = HashMap::<String, Vec<u32>>::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
-        let entry: &mut Vec<u32> = map.entry(attribute.axis.to_owned()).or_default();
+        let entry = map.entry(attribute.axis.to_owned()).or_default();
         entry.push(value);
     }
 
