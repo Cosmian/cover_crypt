@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 
 ---
+## [6.0.6] - 2022-10-14
+### Added
+### Changed
+- CI: bump KMS version to 2.3.0
+### Fixed
+### Removed
+---
+
+---
 ## [6.0.5] - 2022-10-07
 ### Added
 ### Changed
