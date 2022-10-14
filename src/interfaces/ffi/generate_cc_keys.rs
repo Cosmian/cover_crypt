@@ -75,7 +75,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(master_keys_ptr as *mut u8, master_keys_bytes.len())
+    std::slice::from_raw_parts_mut(master_keys_ptr.cast(), master_keys_bytes.len())
         .copy_from_slice(&master_keys_bytes);
 
     0
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
 
     //
     // Master secret key deserialization
-    let msk_bytes = std::slice::from_raw_parts(msk_ptr as *const u8, msk_len as usize);
+    let msk_bytes = std::slice::from_raw_parts(msk_ptr.cast(), msk_len as usize);
     let msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
 
     //
@@ -172,7 +172,7 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(usk_ptr as *mut u8, usk_bytes.len()).copy_from_slice(&usk_bytes);
+    std::slice::from_raw_parts_mut(usk_ptr.cast(), usk_bytes.len()).copy_from_slice(&usk_bytes);
 
     0
 }
@@ -249,7 +249,7 @@ pub unsafe extern "C" fn h_rotate_attributes(
             ,*updated_policy_len
         );
     }
-    std::slice::from_raw_parts_mut(updated_policy_ptr as *mut u8, updated_policy_string.len())
+    std::slice::from_raw_parts_mut(updated_policy_ptr.cast(), updated_policy_string.len())
         .copy_from_slice(updated_policy_string.as_bytes());
 
     0
@@ -318,12 +318,10 @@ pub unsafe extern "C" fn h_update_master_keys(
 
     //
     // Master secret key deserialization
-    let msk_bytes =
-        std::slice::from_raw_parts(current_msk_ptr as *const u8, current_msk_len as usize);
+    let msk_bytes = std::slice::from_raw_parts(current_msk_ptr.cast(), current_msk_len as usize);
     let mut msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
     // Master public key deserialization
-    let mpk_bytes =
-        std::slice::from_raw_parts(current_mpk_ptr as *const u8, current_mpk_len as usize);
+    let mpk_bytes = std::slice::from_raw_parts(current_mpk_ptr.cast(), current_mpk_len as usize);
     let mut mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes));
 
     //
@@ -357,7 +355,7 @@ pub unsafe extern "C" fn h_update_master_keys(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(updated_msk_ptr as *mut u8, msk_bytes.len())
+    std::slice::from_raw_parts_mut(updated_msk_ptr.cast(), msk_bytes.len())
         .copy_from_slice(&msk_bytes);
 
     //
@@ -374,7 +372,7 @@ pub unsafe extern "C" fn h_update_master_keys(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(updated_mpk_ptr as *mut u8, mpk_bytes.len())
+    std::slice::from_raw_parts_mut(updated_mpk_ptr.cast(), mpk_bytes.len())
         .copy_from_slice(&mpk_bytes);
 
     0
@@ -435,11 +433,10 @@ pub unsafe extern "C" fn h_refresh_user_secret_key(
 
     //
     // Master secret key deserialization
-    let msk_bytes = std::slice::from_raw_parts(msk_ptr as *const u8, msk_len as usize);
+    let msk_bytes = std::slice::from_raw_parts(msk_ptr.cast(), msk_len as usize);
     let msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
     // Master public key deserialization
-    let usk_bytes =
-        std::slice::from_raw_parts(current_usk_ptr as *const u8, current_usk_len as usize);
+    let usk_bytes = std::slice::from_raw_parts(current_usk_ptr.cast(), current_usk_len as usize);
     let mut usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
 
     //
@@ -493,7 +490,7 @@ pub unsafe extern "C" fn h_refresh_user_secret_key(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(updated_usk_ptr as *mut u8, usk_bytes.len())
+    std::slice::from_raw_parts_mut(updated_usk_ptr.cast(), usk_bytes.len())
         .copy_from_slice(&usk_bytes);
 
     0

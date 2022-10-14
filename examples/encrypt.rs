@@ -1,5 +1,8 @@
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-use cosmian_cover_crypt::{interfaces::statics::*, CoverCrypt, Error, Serializable};
+use cosmian_cover_crypt::{
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey},
+    CoverCrypt, Error, Serializable,
+};
 
 /// Policy settings
 fn policy() -> Result<Policy, Error> {

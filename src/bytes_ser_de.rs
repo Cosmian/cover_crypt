@@ -106,7 +106,7 @@ impl Serializer {
     ///
     /// - `n`   : `u64` to write
     pub fn write_u64(&mut self, n: u64) -> Result<usize, Error> {
-        leb128::write::unsigned(&mut self.writable, n as u64).map_err(|e| {
+        leb128::write::unsigned(&mut self.writable, n).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected LEB128 error writing {} bytes: {}",
                 n, e

@@ -33,11 +33,11 @@ unsafe fn encrypt_header(
     authenticated_data: &[u8],
 ) -> Result<(SymmetricKey, EncryptedHeader), Error> {
     let mut symmetric_key = vec![0u8; 32];
-    let symmetric_key_ptr = symmetric_key.as_mut_ptr() as *mut c_char;
+    let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
     let mut encrypted_header_bytes = vec![0u8; 8128];
-    let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr() as *mut c_char;
+    let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr().cast();
     let mut encrypted_header_len = encrypted_header_bytes.len() as c_int;
 
     let policy_cs = CString::new(serde_json::to_string(policy)?.as_str())
@@ -58,17 +58,17 @@ unsafe fn encrypt_header(
         encrypted_header_ptr,
         &mut encrypted_header_len,
         policy_ptr,
-        public_key_ptr as *const c_char,
+        public_key_ptr.cast(),
         public_key_len,
         attributes_ptr,
-        additional_data.as_ptr() as *const c_char,
+        additional_data.as_ptr().cast(),
         additional_data.len() as i32,
-        authenticated_data.as_ref().as_ptr() as *const c_char,
+        authenticated_data.as_ref().as_ptr().cast(),
         authenticated_data.as_ref().len() as i32,
     ))?;
 
     let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr as *const u8,
+        symmetric_key_ptr.cast(),
         symmetric_key_len as usize,
     ))
     .map_err(|e| Error::Other(e.to_string()))?;
@@ -524,21 +524,21 @@ unsafe fn update_master_keys(
     let policy_ptr = policy_cs.as_ptr();
 
     let msk_bytes = msk.try_to_bytes()?;
-    let msk_ptr = msk_bytes.as_ptr() as *const c_char;
+    let msk_ptr = msk_bytes.as_ptr().cast();
     let msk_len = msk_bytes.len() as i32;
 
     let master_public_key_bytes = master_public_key.try_to_bytes()?;
-    let master_public_key_ptr = master_public_key_bytes.as_ptr() as *const c_char;
+    let master_public_key_ptr = master_public_key_bytes.as_ptr().cast();
     let master_public_key_len = master_public_key_bytes.len() as i32;
 
     // prepare updated master secret key pointer
     let mut updated_msk_bytes = vec![0u8; 64 * 1024];
-    let updated_msk_ptr = updated_msk_bytes.as_mut_ptr() as *mut c_char;
+    let updated_msk_ptr = updated_msk_bytes.as_mut_ptr().cast();
     let mut updated_msk_len = updated_msk_bytes.len() as c_int;
 
     // prepare updated master public key pointer
     let mut updated_master_public_key_bytes = vec![0u8; 64 * 1024];
-    let updated_master_public_key_ptr = updated_master_public_key_bytes.as_mut_ptr() as *mut c_char;
+    let updated_master_public_key_ptr = updated_master_public_key_bytes.as_mut_ptr().cast();
     let mut updated_master_public_key_len = updated_master_public_key_bytes.len() as c_int;
 
     unwrap_ffi_error(h_update_master_keys(
@@ -558,7 +558,7 @@ unsafe fn update_master_keys(
     let updated_msk = MasterSecretKey::try_from_bytes(&updated_msk_bytes)?;
 
     let updated_master_public_key_bytes = std::slice::from_raw_parts(
-        updated_master_public_key_ptr as *const u8,
+        updated_master_public_key_ptr.cast(),
         updated_master_public_key_len as usize,
     )
     .to_vec();
@@ -579,11 +579,11 @@ unsafe fn refresh_user_secret_key(
     let policy_ptr = policy_cs.as_ptr();
 
     let msk_bytes = msk.try_to_bytes()?;
-    let msk_ptr = msk_bytes.as_ptr() as *const c_char;
+    let msk_ptr = msk_bytes.as_ptr().cast();
     let msk_len = msk_bytes.len() as i32;
 
     let usk_bytes = usk.try_to_bytes()?;
-    let usk_ptr = usk_bytes.as_ptr() as *const c_char;
+    let usk_ptr = usk_bytes.as_ptr().cast();
     let usk_len = usk_bytes.len() as i32;
 
     // Get pointer from access policy
@@ -595,7 +595,7 @@ unsafe fn refresh_user_secret_key(
 
     // prepare updated user secret key pointer
     let mut updated_usk_bytes = vec![0u8; 64 * 1024];
-    let updated_usk_ptr = updated_usk_bytes.as_mut_ptr() as *mut c_char;
+    let updated_usk_ptr = updated_usk_bytes.as_mut_ptr().cast();
     let mut updated_usk_len = updated_usk_bytes.len() as c_int;
 
     unwrap_ffi_error(h_refresh_user_secret_key(
@@ -611,7 +611,7 @@ unsafe fn refresh_user_secret_key(
     ))?;
 
     let updated_usk_bytes =
-        std::slice::from_raw_parts(updated_usk_ptr as *const u8, updated_usk_len as usize).to_vec();
+        std::slice::from_raw_parts(updated_usk_ptr.cast(), updated_usk_len as usize).to_vec();
     let updated_usk = UserSecretKey::try_from_bytes(&updated_usk_bytes)?;
 
     Ok(updated_usk)

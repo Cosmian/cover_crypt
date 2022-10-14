@@ -80,7 +80,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     };
 
     // Public Key
-    let pk_bytes = std::slice::from_raw_parts(pk_ptr as *const u8, pk_len as usize);
+    let pk_bytes = std::slice::from_raw_parts(pk_ptr.cast(), pk_len as usize);
     let pk = match PublicKey::try_from_bytes(pk_bytes) {
         Ok(key) => key,
         Err(e) => {
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         None
     } else {
         Some(std::slice::from_raw_parts(
-            additional_data_ptr as *const u8,
+            additional_data_ptr.cast(),
             additional_data_len as usize,
         ))
     };
@@ -185,7 +185,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr as *const u8,
+            authenticated_data_ptr.cast(),
             authenticated_data_len as usize,
         ))
     };
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     // serialize symmetric key
     let symmetric_key_bytes = symmetric_key.to_bytes();
     *symmetric_key_len = CoverCryptDem::KEY_LENGTH as c_int;
-    std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, symmetric_key_bytes.len())
+    std::slice::from_raw_parts_mut(symmetric_key_ptr.cast(), symmetric_key_bytes.len())
         .copy_from_slice(&symmetric_key_bytes);
 
     // serialize encrypted header
@@ -214,7 +214,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         );
     }
     *header_bytes_len = encrypted_header_bytes.len() as c_int;
-    std::slice::from_raw_parts_mut(header_bytes_ptr as *mut u8, encrypted_header_bytes.len())
+    std::slice::from_raw_parts_mut(header_bytes_ptr.cast(), encrypted_header_bytes.len())
         .copy_from_slice(&encrypted_header_bytes);
 
     0
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let policy: Policy = ffi_unwrap!(serde_json::from_str(&policy));
 
     // Public Key
-    let pk_bytes = std::slice::from_raw_parts(pk_ptr as *const u8, pk_len as usize);
+    let pk_bytes = std::slice::from_raw_parts(pk_ptr.cast(), pk_len as usize);
     let pk = ffi_unwrap!(PublicKey::try_from_bytes(pk_bytes));
 
     // Attributes
@@ -294,7 +294,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         None
     } else {
         Some(std::slice::from_raw_parts(
-            additional_data_ptr as *const u8,
+            additional_data_ptr.cast(),
             additional_data_len as usize,
         ))
     };
@@ -304,7 +304,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr as *const u8,
+            authenticated_data_ptr.cast(),
             authenticated_data_len as usize,
         ))
     };
@@ -328,7 +328,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, symmetric_key_bytes.len())
+    std::slice::from_raw_parts_mut(symmetric_key_ptr.cast(), symmetric_key_bytes.len())
         .copy_from_slice(&symmetric_key_bytes);
 
     let encrypted_header_bytes = ffi_unwrap!(encrypted_header.try_to_bytes());
@@ -341,7 +341,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(header_bytes_ptr as *mut u8, encrypted_header_bytes.len())
+    std::slice::from_raw_parts_mut(header_bytes_ptr.cast(), encrypted_header_bytes.len())
         .copy_from_slice(&encrypted_header_bytes);
 
     0
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn h_aes_create_decryption_cache(
     }
 
     // User decryption key
-    let usk_bytes = std::slice::from_raw_parts(usk_ptr as *const u8, usk_len as usize);
+    let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
     let usk = match UserSecretKey::try_from_bytes(usk_bytes) {
         Ok(key) => key,
         Err(e) => {
@@ -452,10 +452,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         ffi_bail!("The encrypted header bytes size should be greater than zero");
     }
 
-    let encrypted_header_bytes = std::slice::from_raw_parts(
-        encrypted_header_ptr as *const u8,
-        encrypted_header_len as usize,
-    );
+    let encrypted_header_bytes =
+        std::slice::from_raw_parts(encrypted_header_ptr.cast(), encrypted_header_len as usize);
 
     let map = DECRYPTION_CACHE_MAP
         .read()
@@ -475,7 +473,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr as *const u8,
+            authenticated_data_ptr.cast(),
             authenticated_data_len as usize,
         ))
     };
@@ -498,7 +496,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
             *symmetric_key_len
         );
     }
-    std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, symmetric_key_bytes.len())
+    std::slice::from_raw_parts_mut(symmetric_key_ptr.cast(), symmetric_key_bytes.len())
         .copy_from_slice(&symmetric_key_bytes);
 
     // serialize additional data
@@ -510,11 +508,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
             );
         }
         *additional_data_len = header.additional_data.len() as c_int;
-        std::slice::from_raw_parts_mut(
-            additional_data_ptr as *mut u8,
-            header.additional_data.len(),
-        )
-        .copy_from_slice(&header.additional_data);
+        std::slice::from_raw_parts_mut(additional_data_ptr.cast(), header.additional_data.len())
+            .copy_from_slice(&header.additional_data);
     }
 
     0
@@ -569,7 +564,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         encrypted_header_len as usize,
     );
 
-    let usk_bytes = std::slice::from_raw_parts(usk_ptr as *const u8, usk_len as usize);
+    let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
     let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
 
     // Authenticated Data
@@ -577,7 +572,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr as *const u8,
+            authenticated_data_ptr.cast(),
             authenticated_data_len as usize,
         ))
     };
@@ -600,7 +595,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
             *symmetric_key_len
         );
     }
-    std::slice::from_raw_parts_mut(symmetric_key_ptr as *mut u8, symmetric_key_bytes.len())
+    std::slice::from_raw_parts_mut(symmetric_key_ptr.cast(), symmetric_key_bytes.len())
         .copy_from_slice(&symmetric_key_bytes);
 
     // additional data
@@ -613,7 +608,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         }
         *additional_data_len = decrypted_header.additional_data.len() as c_int;
         std::slice::from_raw_parts_mut(
-            additional_data_ptr as *mut u8,
+            additional_data_ptr.cast(),
             decrypted_header.additional_data.len(),
         )
         .copy_from_slice(&decrypted_header.additional_data);
@@ -659,17 +654,13 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
         ffi_bail!("The Symmetric Key should not be empty");
     }
     let symmetric_key =
-        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-            .to_vec();
+        std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize).to_vec();
 
     //
     // Associated Data
     let associated_data = if !associated_data_ptr.is_null() && associated_data_len > 0 {
-        std::slice::from_raw_parts(
-            associated_data_ptr as *const u8,
-            associated_data_len as usize,
-        )
-        .to_vec()
+        std::slice::from_raw_parts(associated_data_ptr.cast(), associated_data_len as usize)
+            .to_vec()
     } else {
         vec![]
     };
@@ -686,7 +677,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     }
 
     let plaintext =
-        std::slice::from_raw_parts(plaintext_ptr as *const u8, plaintext_len as usize).to_vec();
+        std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
 
     let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
     let ciphertext =
@@ -700,7 +691,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
             *ciphertext_len
         );
     }
-    std::slice::from_raw_parts_mut(ciphertext_ptr as *mut u8, ciphertext.len())
+    std::slice::from_raw_parts_mut(ciphertext_ptr.cast(), ciphertext.len())
         .copy_from_slice(&ciphertext);
 
     0
@@ -736,30 +727,24 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
         ffi_bail!("The Symmetric Key should not be empty");
     }
     let symmetric_key =
-        std::slice::from_raw_parts(symmetric_key_ptr as *const u8, symmetric_key_len as usize)
-            .to_vec();
+        std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize).to_vec();
 
     // Data
     ffi_not_null!(encrypted_bytes_ptr, "Data pointer should not be null");
     if encrypted_bytes_len == 0 {
         ffi_bail!("The data should not be empty");
     }
-    let ciphertext = std::slice::from_raw_parts(
-        encrypted_bytes_ptr as *const u8,
-        encrypted_bytes_len as usize,
-    )
-    .to_vec();
+    let ciphertext =
+        std::slice::from_raw_parts(encrypted_bytes_ptr.cast(), encrypted_bytes_len as usize)
+            .to_vec();
 
     let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
 
     //
     // Associated Data
     let associated_data = if !associated_data_ptr.is_null() && associated_data_len > 0 {
-        std::slice::from_raw_parts(
-            associated_data_ptr as *const u8,
-            associated_data_len as usize,
-        )
-        .to_vec()
+        std::slice::from_raw_parts(associated_data_ptr.cast(), associated_data_len as usize)
+            .to_vec()
     } else {
         vec![]
     };
@@ -783,7 +768,7 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
             *cleartext_len
         );
     }
-    std::slice::from_raw_parts_mut(cleartext_ptr as *mut u8, cleartext.len())
+    std::slice::from_raw_parts_mut(cleartext_ptr.cast(), cleartext.len())
         .copy_from_slice(&cleartext);
 
     0

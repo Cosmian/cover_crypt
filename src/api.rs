@@ -219,7 +219,7 @@ where
     /// Generates new encrypted header and returns it, along with the symmetric
     /// key encapsulated in this header.
     ///
-    /// - `cover_crypt`         : CoverCrypt object
+    /// - `cover_crypt`         : `CoverCrypt` object
     /// - `policy`              : global policy
     /// - `public_key`          : CoverCrypt public key
     /// - `attributes`          : attributes used for encapsulation
@@ -254,7 +254,7 @@ where
 
     /// Decrypt the header with the given user secret key.
     ///
-    /// - `coveR_crypt`         : CoverCrypt scheme
+    /// - `cover_crypt`         : `CoverCrypt` object
     /// - `usk`                 : CoverCrypt user secret key
     /// - `authenticated_data`  : authenticated data used in the DEM encryption
     pub fn decrypt(

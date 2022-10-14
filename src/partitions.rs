@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{bytes_ser_de::Serializer, Error};
 use abe_policy::{AccessPolicy, Attribute, Policy};
 use std::{
     collections::{HashMap, HashSet},
@@ -31,15 +31,11 @@ impl Partition {
         // and
         // `Level::Secret || Department::HR`
         attribute_values.sort_unstable();
-        let mut buf = [0; 1024];
-        let mut writable = &mut buf[..];
-
-        let mut len = 0;
+        let mut ser = Serializer::new();
         for value in attribute_values {
-            len += leb128::write::unsigned(&mut writable, value as u64)
-                .map_err(|e| Error::Other(format!("Unexpected LEB128 write issue: {}", e)))?;
+            ser.write_u64(value as u64)?;
         }
-        Ok(Self(buf[0..len].to_vec()))
+        Ok(Self(ser.finalize()))
     }
 }
 
