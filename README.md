@@ -24,13 +24,13 @@ CoverCrypt has been designed as a fast alternative to Key Policy Attribute Based
 It is typically used in a hybrid encryption scheme as a KEM to encapsulate the symmetric key of a DEM (AES 256 GCM in the provided hybrid implementation)
 
 ```
-CoverCrypt encryption over 1 partition: 
+CoverCrypt encryption over 1 partition:
                         time:   [156.28 µs 156.73 µs 157.21 µs]
 Found 538 outliers among 5000 measurements (10.76%)
   207 (4.14%) high mild
   331 (6.62%) high severe
 
-CoverCrypt encryption over 3 partitions                                                                             
+CoverCrypt encryption over 3 partitions
                         time:   [255.07 µs 255.70 µs 256.36 µs]
 Found 364 outliers among 5000 measurements (7.28%)
   135 (2.70%) high mild
@@ -58,7 +58,7 @@ Run `cargo bench` to get the details (see below)
 
 The crate is separated in 3 main modules:
 
-- `cover_crypt_core`: contains the cryptographic code for CoverCrypt. 
+- `cover_crypt_core`: contains the cryptographic code for CoverCrypt.
 - `api.rs`: exposes the public API with policy management
 - `interfaces`: contains interfaces useful for Cosmian matching those in [crypto_base](https://github.com/Cosmian/crypto_base) as well as a Foreign Function Interface (FFI) useful to integrate with other languages. In particular, the code in this module demonstrates the use of hybrid cryptography involving ABE and AES and exposes it as a FFI.
 
@@ -80,7 +80,7 @@ cargo build --release --all-features
 
 The latter will build a shared library and one can verify that the FFI symbols are present using (linux)
 ```bash
-objdump -T  target/release/libcover_crypt.so
+objdump -T  target/release/libcosmian_cover_crypt.so
 ```
 
 The code contains numerous tests that you can run using

@@ -100,3 +100,15 @@ pub fn webassembly_rotate_attributes(
 
     Ok(policy.to_string())
 }
+
+/// Converts a boolean expression containing an access policy
+/// into a JSON access policy which can be used in Vendor Attributes
+#[wasm_bindgen]
+pub fn webassembly_parse_boolean_access_policy(
+    boolean_expression: &str,
+) -> Result<String, JsValue> {
+    let access_policy = AccessPolicy::from_boolean_expression(boolean_expression)
+        .map_err(|e| JsValue::from_str(&format!("Error parsing the access policy: {e}")))?;
+    serde_json::to_string(&access_policy)
+        .map_err(|e| JsValue::from_str(&format!("Error serializing the access policy: {e}")))
+}

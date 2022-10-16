@@ -1,17 +1,17 @@
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-#[cfg(feature = "ffi")]
-use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure;
-use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
-use cover_crypt::{
+use cosmian_cover_crypt::{
     api::CoverCrypt,
     error::Error,
     interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
     PublicKey,
 };
+#[cfg(feature = "ffi")]
+use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure;
+use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {
-    cover_crypt::interfaces::ffi::{
+    cosmian_cover_crypt::interfaces::ffi::{
         error::get_last_error,
         hybrid_cc_aes::{
             h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,

@@ -1,20 +1,19 @@
 [package]
-name = "cover_crypt"
-version = "6.0.4"
+name = "cosmian_cover_crypt"
+version = "6.0.7"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
 ]
 description = "Key Policy attribute encryption based on subset cover"
-documentation = "https://docs.rs/cover_crypt/"
+documentation = "https://docs.rs/cosmian_cover_crypt/"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/Cosmian/cover_crypt"
 
-
 [lib]
-name = "cover_crypt"
-crate-type = ["lib", "cdylib", "staticlib"]
+name = "cosmian_cover_crypt"
+crate-type = ["rlib", "cdylib", "staticlib"]
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
@@ -52,4 +51,6 @@ wasm-bindgen = { version = "0.2", features = [
 wasm-bindgen-test = { version = "0.3" }
 # Criterion used on branch "version-0.4"
 # serde_cbor is unmaintained: https://rustsec.org/advisories/RUSTSEC-2021-0127
-criterion = {git = "https://github.com/bheisler/criterion.rs", branch = "version-0.4", features = ["html_reports"], default_features = false}
+criterion = { git = "https://github.com/bheisler/criterion.rs", branch = "version-0.4", features = [
+  "html_reports",
+], default_features = false }

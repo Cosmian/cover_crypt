@@ -19,7 +19,7 @@ impl From<Error> for pyo3::PyErr {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn cover_crypt(_py: Python, m: &PyModule) -> PyResult<()> {
+fn cosmian_cover_crypt(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(generate_master_keys, m)?)?;
     m.add_function(wrap_pyfunction!(generate_user_private_key, m)?)?;
     m.add_function(wrap_pyfunction!(generate_policy, m)?)?;

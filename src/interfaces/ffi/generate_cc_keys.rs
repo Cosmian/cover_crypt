@@ -6,7 +6,7 @@ use crate::{
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     os::raw::{c_char, c_int},
 };
 
@@ -525,6 +525,70 @@ pub unsafe extern "C" fn h_refresh_user_private_key(
     std::slice::from_raw_parts_mut(updated_user_private_key_ptr as *mut u8, len)
         .copy_from_slice(&user_private_key_bytes);
     *updated_user_private_key_len = len as c_int;
+
+    0
+}
+
+#[no_mangle]
+/// Converts a boolean expression containing an access policy
+/// into a JSON access policy which can be used in Vendor Attributes
+///
+/// Note: the return string is NULL terminated
+///
+/// - `json_access_policy_ptr`: Output buffer containing a null terminated string with the JSON access policy
+/// - `json_access_policy_len`: Size of the output buffer
+/// - `boolean_access_policy_ptr`: boolean access policy string
+/// # Safety
+pub unsafe extern "C" fn h_parse_boolean_access_policy(
+    json_access_policy_ptr: *mut c_char,
+    json_access_policy_len: *mut c_int,
+    boolean_access_policy_ptr: *const c_char,
+) -> c_int {
+    //
+    // Checks inputs
+    ffi_not_null!(
+        json_access_policy_ptr,
+        "The JSON access policy pointer should point to pre-allocated memory"
+    );
+    if *json_access_policy_len == 0 {
+        ffi_bail!("The JSON access policy buffer should not be empty");
+    }
+    ffi_not_null!(
+        boolean_access_policy_ptr,
+        "Policy pointer should not be null"
+    );
+
+    //
+    // Policy
+    let boolean_access_policy = match CStr::from_ptr(boolean_access_policy_ptr).to_str() {
+        Ok(msg) => msg.to_owned(),
+        Err(e) => {
+            set_last_error(FfiError::Generic(format!(
+                "CoverCrypt keys generation: invalid Policy: {e}"
+            )));
+            return 1;
+        }
+    };
+
+    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
+        &boolean_access_policy
+    ));
+    let json_access_policy = ffi_unwrap!(serde_json::to_string(&access_policy));
+    let json_access_policy_cstr = ffi_unwrap!(CString::new(json_access_policy));
+    let json_access_policy_bytes = json_access_policy_cstr.as_bytes_with_nul();
+
+    //
+    // Prepare output
+    let allocated = *json_access_policy_len;
+    let len = json_access_policy_bytes.len();
+    if (allocated as usize) < len {
+        ffi_bail!(
+            "The pre-allocated output JSON access policy buffer is too small; need {len} bytes, allocated {allocated}"
+        );
+    }
+    std::slice::from_raw_parts_mut(json_access_policy_ptr as *mut u8, len)
+        .copy_from_slice(json_access_policy_bytes);
+    *json_access_policy_len = len as c_int;
 
     0
 }
