@@ -1,4 +1,7 @@
-// Needed to use the paper naming conventions
+//! Implements the cryptographic primitives of CoverCrypt, based on
+//! `../bib/CoverCrypt.pdf`.
+
+// Allows using the paper notations
 #![allow(non_snake_case)]
 
 use crate::{
@@ -6,7 +9,7 @@ use crate::{
     error::Error,
     partitions::Partition,
 };
-use cosmian_crypto_core::{asymmetric_crypto::DhKeyPair, kdf, symmetric_crypto::SymKey, KeyTrait};
+use cosmian_crypto_core::{asymmetric_crypto::DhKeyPair, symmetric_crypto::SymKey, KeyTrait};
 use rand_core::{CryptoRng, RngCore};
 use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
@@ -19,8 +22,29 @@ use std::{
 };
 use zeroize::Zeroize;
 
+/// Hashes and extends the given bytes into a tag of size `TAG_LENGTH` and a
+/// key of size `KEY_LENGTH`.
+///
+/// - `bytes`   : input bytes
+macro_rules! eakem_hash {
+    ($TAG_LENGTH: ident, $KEY_LENGTH: ident, $($bytes: expr),+) => {
+        {
+            let mut hasher = Shake256::default();
+            $(
+                hasher.update($bytes);
+            )*
+            let mut reader = hasher.finalize_xof();
+            let mut tag = [0; $TAG_LENGTH];
+            let mut key = [0; $KEY_LENGTH];
+            reader.read(&mut tag);
+            reader.read(&mut key);
+            (tag, key)
+        }
+    };
+}
+
 /// Additional information to generate symmetric key using the KDF.
-const KEY_GEN_INFO: &str = "key generation info";
+const KEY_GEN_INFO: &[u8] = b"key generation info";
 
 /// CoverCrypt master secret key.
 ///
@@ -220,6 +244,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
 /// the randomly chosen symmetric key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encapsulation<
+    const TAG_LENGTH: usize,
     const KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     SymmetricKey: SymKey<KEY_LENGTH>,
@@ -227,43 +252,48 @@ pub struct Encapsulation<
 > {
     C: PublicKey,
     D: PublicKey,
-    E: HashSet<SymmetricKey>,
+    E: HashSet<([u8; TAG_LENGTH], SymmetricKey)>,
 }
 
 impl<
+        const TAG_LENGTH: usize,
         const SYM_KEY_LENGTH: usize,
         const PUBLIC_KEY_LENGTH: usize,
         SymmetricKey: SymKey<SYM_KEY_LENGTH>,
         PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-    > Serializable for Encapsulation<SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
+    > Serializable
+    for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
 {
-    /// Serialize the encapsulation.
+    /// Serializes the encapsulation.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_u64(self.E.len() as u64)?;
-        for K_i in &self.E {
-            n += ser.write_array(K_i.as_bytes())?;
+        for (tag_i, E_i) in &self.E {
+            n += ser.write_array(tag_i.as_slice())?;
+            n += ser.write_array(E_i.as_bytes())?;
         }
         Ok(n)
     }
 
-    /// Deserialize the encapsulation.
+    /// Deserializes the encapsulation.
     ///
     /// - `bytes`   : bytes from which to read the encapsulation
     fn read(de: &mut Deserializer) -> Result<Self, Error> {
         let C = PublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let D = PublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let K_len = de.read_u64()?.try_into()?;
-        let mut K = HashSet::with_capacity(K_len);
-        for _ in 0..K_len {
-            K.insert(SymmetricKey::from_bytes(de.read_array::<SYM_KEY_LENGTH>()?));
+        let E_len = de.read_u64()?.try_into()?;
+        let mut E = HashSet::with_capacity(E_len);
+        for _ in 0..E_len {
+            let tag_i = de.read_array::<TAG_LENGTH>()?;
+            let E_i = de.read_array::<SYM_KEY_LENGTH>()?;
+            E.insert((tag_i, SymmetricKey::from_bytes(E_i)));
         }
-        Ok(Self { C, D, E: K })
+        Ok(Self { C, D, E })
     }
 }
 
-/// Generate the master secret key and master public key of the CoverCrypt
+/// Generates the master secret key and master public key of the CoverCrypt
 /// scheme.
 ///
 /// # Paper
@@ -375,7 +405,15 @@ where
     Ok(UserSecretKey { a, b, x })
 }
 
-/// Generate the secret key encapsulation.
+/// Generates the secret key encapsulation.
+///
+/// Implements the Early Abort KEM (EAKEM) encapsulation to filter
+/// encapsulations in the decapsulation phase.
+///
+/// Encaps(pk):
+///     (c, k) ← KEM.encaps(pk)
+///     (k1, k2) ← H(k)
+///     return (k1, k2, c)
 ///
 /// # Paper
 ///
@@ -399,6 +437,7 @@ where
 /// - `encryption_set`  : sets for which to generate a ciphertext
 /// - `K`               : secret key
 pub fn encaps<
+    const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     const PRIVATE_KEY_LENGTH: usize,
@@ -410,7 +449,10 @@ pub fn encaps<
     mpk: &PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
     encryption_set: &HashSet<Partition>,
     K: &SymmetricKey,
-) -> Result<Encapsulation<SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, KeyPair::PublicKey>, Error>
+) -> Result<
+    Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, KeyPair::PublicKey>,
+    Error,
+>
 where
     R: CryptoRng + RngCore,
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
@@ -429,21 +471,32 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let mut E_i = kdf!(
+            let (tag_i, mut K_i) = eakem_hash!(
+                TAG_LENGTH,
                 SYM_KEY_LENGTH,
                 &(H_i * &r).to_bytes(),
-                KEY_GEN_INFO.as_bytes()
+                KEY_GEN_INFO
             );
-            for (e_1, e_2) in E_i.iter_mut().zip(K.as_bytes()) {
-                *e_1 ^= e_2;
+            for (b_1, b_2) in K_i.iter_mut().zip(K.as_bytes()) {
+                *b_1 ^= b_2;
             }
-            E.insert(SymmetricKey::from_bytes(E_i));
+            E.insert((tag_i.to_owned(), SymmetricKey::from_bytes(K_i)));
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
 }
 
-/// Decapsulate the secret key if the given user ID is in the target set.
+/// Decapsulates the secret key if the given user ID is in the target set.
+///
+/// Implements the Early Abort KEM (EAKEM) decapsulation to filter
+/// encapsulations that do not correspond to the user secret key.
+///
+/// Decaps(sk, k1, c):
+///     k ← KEM.decaps(sk, c)
+///     (k1*, k2*) ← H(k)
+///     if k1 != k1':
+///         abort
+///     return k2*
 ///
 /// # Paper
 ///
@@ -461,6 +514,7 @@ where
 /// - `sk_j`                : user secret key
 /// - `encapsulation`       : symmetric key encapsulation
 pub fn decaps<
+    const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     const PRIVATE_KEY_LENGTH: usize,
@@ -469,12 +523,13 @@ pub fn decaps<
 >(
     sk_j: &UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     encapsulation: &Encapsulation<
+        TAG_LENGTH,
         SYM_KEY_LENGTH,
         PUBLIC_KEY_LENGTH,
         SymmetricKey,
         KeyPair::PublicKey,
     >,
-) -> Result<Vec<SymmetricKey>, Error>
+) -> Result<SymmetricKey, Error>
 where
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
@@ -486,19 +541,28 @@ where
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
 {
-    let mut res = Vec::with_capacity(sk_j.x.len() * encapsulation.E.len());
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
-    for E_i in &encapsulation.E {
+    for (tag_i, E_i) in &encapsulation.E {
         for x_k in sk_j.x.values() {
-            let K_k = &precomp * x_k;
-            let mut K = kdf!(SYM_KEY_LENGTH, &K_k.to_bytes(), KEY_GEN_INFO.as_bytes());
-            for (e_1, e_2) in K.iter_mut().zip(E_i.as_bytes()) {
-                *e_1 ^= e_2;
+            let (tag_k, mut K_k) = eakem_hash!(
+                TAG_LENGTH,
+                SYM_KEY_LENGTH,
+                &(&precomp * x_k).to_bytes(),
+                KEY_GEN_INFO
+            );
+            // the tag is correctly generated if the encapsulation is
+            // associated to the user private key
+            if tag_i != &tag_k {
+                // this encapsulation cannot be decapsulated by the user
+                continue;
             }
-            res.push(SymmetricKey::from_bytes(K));
+            for (b1, b2) in K_k.iter_mut().zip(E_i.as_bytes()) {
+                *b1 ^= b2;
+            }
+            return Ok(SymmetricKey::from_bytes(K_k));
         }
     }
-    Ok(res)
+    Err(Error::InsufficientAccessPolicy)
 }
 
 /// Update the master secret key and master public key of the CoverCrypt
@@ -606,6 +670,7 @@ mod tests {
 
     /// Length of the desired symmetric key
     const SYM_KEY_LENGTH: usize = 32;
+    const TAG_LENGTH: usize = 32;
 
     #[test]
     fn test_partitions() -> Result<(), Error> {
@@ -655,6 +720,7 @@ mod tests {
         assert_eq!(usk, usk_, "User secret key comparison failed");
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -708,6 +774,7 @@ mod tests {
         // encapsulate for the target set
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -717,34 +784,26 @@ mod tests {
         >(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
         let res0 = decaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
-        >(&sk0, &encapsulation)?;
+        >(&sk0, &encapsulation);
+
+        assert!(res0.is_err(), "User 0 shouldn't be able to decapsulate!");
+
         let res1 = decaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
         >(&sk1, &encapsulation)?;
-        let mut is_found = false;
-        for key in res0 {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(!is_found, "User 0 shouldn't be able to decapsulate!");
-        for key in res1 {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(is_found, "Wrong decapsulation for user 1!");
+
+        assert_eq!(sym_key, res1, "Wrong decapsulation for user 1!");
 
         // rotate and refresh keys
         println!("Rotate");
@@ -761,6 +820,7 @@ mod tests {
         println!("usk: {:?}", sk0.x);
         println!("{sym_key:?}");
         let new_encapsulation = encaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -769,20 +829,14 @@ mod tests {
             X25519KeyPair,
         >(&mut rng, &mpk, &new_partitions_set, &sym_key)?;
         let res0 = decaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
         >(&sk0, &new_encapsulation)?;
-        let mut is_found = false;
-        for key in res0 {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(is_found, "User 0 should be able to decapsulate!");
+        assert_eq!(sym_key, res0, "User 0 should be able to decapsulate!");
         Ok(())
     }
 

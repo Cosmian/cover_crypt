@@ -25,6 +25,7 @@ use std::{
 /// their corresponding cipher texts which are suitable for use in a hybrid
 /// encryption scheme.
 pub trait CoverCrypt<
+    const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
     const PK_LENGTH: usize,
     const SK_LENGTH: usize,
@@ -137,7 +138,7 @@ pub trait CoverCrypt<
         &self,
         sk_u: &Self::UserSecretKey,
         encapsulation: &Self::Encapsulation,
-    ) -> Result<Vec<DEM::Key>, Error>;
+    ) -> Result<DEM::Key, Error>;
 
     /// Encrypts given plaintext using the given symmetric key.
     ///
@@ -174,6 +175,7 @@ pub trait CoverCrypt<
 /// - `ciphertext`      : CoverCrypt DEM encryption of additional data
 #[derive(Debug, PartialEq, Eq)]
 pub struct EncryptedHeader<
+    const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
     const PK_LENGTH: usize,
     const SK_LENGTH: usize,
@@ -190,20 +192,30 @@ pub struct EncryptedHeader<
         + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-    CoverCryptScheme: CoverCrypt<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
+    CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
 {
     pub encapsulation: CoverCryptScheme::Encapsulation,
     pub ciphertext: Vec<u8>,
 }
 
 impl<
+        const TAG_LENGTH: usize,
         const SYM_KEY_LENGTH: usize,
         const PK_LENGTH: usize,
         const SK_LENGTH: usize,
         KeyPair,
         DEM,
         CoverCryptScheme,
-    > EncryptedHeader<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM, CoverCryptScheme>
+    >
+    EncryptedHeader<
+        TAG_LENGTH,
+        SYM_KEY_LENGTH,
+        PK_LENGTH,
+        SK_LENGTH,
+        KeyPair,
+        DEM,
+        CoverCryptScheme,
+    >
 where
     KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
     DEM: Dem<SYM_KEY_LENGTH>,
@@ -214,7 +226,7 @@ where
         + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-    CoverCryptScheme: CoverCrypt<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
+    CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
 {
     /// Generates new encrypted header and returns it, along with the symmetric
     /// key encapsulated in this header.
@@ -263,33 +275,18 @@ where
         usk: &CoverCryptScheme::UserSecretKey,
         authenticated_data: Option<&[u8]>,
     ) -> Result<ClearTextHeader<SYM_KEY_LENGTH, DEM>, Error> {
-        // decapsulate the symmetric key
-        let secret_keys = cover_crypt.decaps(usk, &self.encapsulation)?;
-
-        // Try to decrypt the metadata: CoverCrypt decapsulates of all the keys
-        // contained in an encapsulation with the user secret key. If the user
-        // is allowed to decapsulate, at least one of the keys returned by the
-        // `decaps` will be correct. The DEM scheme will fail for all other
-        // keys since it is authenticated.
-        for symmetric_key in secret_keys {
-            if let Ok(additional_data) =
-                cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)
-            {
-                return Ok(ClearTextHeader {
-                    symmetric_key,
-                    additional_data,
-                });
-            }
-        }
-
-        // This point is reached if no key returned by the `decaps` could lead
-        // to a successful DEM decryption. This means the user secret key is
-        // not allowed to decapsulate the header.
-        Err(Error::InsufficientAccessPolicy)
+        let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
+        let additional_data =
+            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)?;
+        Ok(ClearTextHeader {
+            symmetric_key,
+            additional_data,
+        })
     }
 }
 
 impl<
+        const TAG_LENGTH: usize,
         const SYM_KEY_LENGTH: usize,
         const PK_LENGTH: usize,
         const SK_LENGTH: usize,
@@ -297,7 +294,15 @@ impl<
         DEM,
         CoverCryptScheme,
     > Serializable
-    for EncryptedHeader<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM, CoverCryptScheme>
+    for EncryptedHeader<
+        TAG_LENGTH,
+        SYM_KEY_LENGTH,
+        PK_LENGTH,
+        SK_LENGTH,
+        KeyPair,
+        DEM,
+        CoverCryptScheme,
+    >
 where
     KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
     DEM: Dem<SYM_KEY_LENGTH>,
@@ -308,7 +313,7 @@ where
         + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-    CoverCryptScheme: CoverCrypt<SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
+    CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
 {
     /// Tries to serialize the encrypted header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {

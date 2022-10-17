@@ -13,6 +13,8 @@ use cosmian_crypto_core::{
 };
 use std::{ops::DerefMut, sync::Mutex};
 
+const TAG_LENGTH: usize = 32;
+
 /// Instantiate a CoverCrypt type with AES GCM 256 as DEM
 #[derive(Debug)]
 pub struct CoverCryptX25519Aes256 {
@@ -27,6 +29,7 @@ impl PartialEq for CoverCryptX25519Aes256 {
 
 impl
     CoverCrypt<
+        TAG_LENGTH,
         { Aes256GcmCrypto::KEY_LENGTH },
         { X25519KeyPair::PUBLIC_KEY_LENGTH },
         { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -63,6 +66,7 @@ impl
 
     type Encapsulation =
         cover_crypt_core::Encapsulation<
+            TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
             <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
@@ -166,6 +170,7 @@ impl
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
         );
         let encapsulation = cover_crypt_core::encaps::<
+            TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
             { Self::PRIVATE_KEY_LENGTH },
@@ -185,8 +190,9 @@ impl
         &self,
         usk: &Self::UserSecretKey,
         encapsulation: &Self::Encapsulation,
-    ) -> Result<Vec<<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key>, Error> {
+    ) -> Result<<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key, Error> {
         cover_crypt_core::decaps::<
+            TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
             { Self::PRIVATE_KEY_LENGTH },
@@ -235,6 +241,7 @@ impl Default for CoverCryptX25519Aes256 {
 
 /// Convenience type
 pub type EncryptedHeader = api::EncryptedHeader<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -247,6 +254,7 @@ pub type ClearTextHeader = api::ClearTextHeader<{ Aes256GcmCrypto::KEY_LENGTH },
 
 /// Convenience type: CoverCryptX25519Aes256 master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -256,6 +264,7 @@ pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
 
 /// Convenience type: CoverCryptX25519Aes256 public key
 pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -265,6 +274,7 @@ pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
 
 /// Convenience type: CoverCryptX25519Aes256 user secret key
 pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -274,6 +284,7 @@ pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
 
 /// Convenience type: CoverCryptX25519Aes256 encapsulation
 pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -282,6 +293,7 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
 >>::Encapsulation;
 
 pub type CoverCryptDem = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -394,16 +406,9 @@ mod tests {
                 Attribute::new("Security Level", "Top Secret"),
             ],
         )?;
-        let sk_u = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
-        let recovered_keys = cover_crypt.decaps(&sk_u, &encrypted_key)?;
-        let mut is_found = false;
-        for key in recovered_keys {
-            if key == sym_key {
-                is_found = true;
-                break;
-            }
-        }
-        assert!(is_found, "Wrong decryption of the key!");
+        let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
+        assert_eq!(sym_key, recovered_key, "Wrong decryption of the key!");
         Ok(())
     }
 
@@ -466,7 +471,7 @@ mod tests {
         user_decryption_key_2: String,
         encrypted_bytes: String,
         plaintext: String,
-        uid: String,
+        additional_data: String,
     }
 
     #[test]
@@ -509,7 +514,7 @@ mod tests {
         //
         // Encrypt/decrypt header
         //
-        let additional_data = Some(1u32.to_be_bytes().to_vec());
+        let additional_data = 1u32.to_be_bytes().to_vec();
         let authenticated_data = None;
 
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
@@ -517,13 +522,13 @@ mod tests {
             &policy,
             &mpk,
             &attributes,
-            additional_data.as_deref(),
+            Some(&additional_data),
             authenticated_data,
         )?;
         let res =
             encrypted_header.decrypt(&cover_crypt, &top_secret_mkg_fin_user, authenticated_data)?;
 
-        assert_eq!(additional_data, Some(res.additional_data));
+        assert_eq!(additional_data, res.additional_data);
 
         let message = b"My secret message";
         // we need mut in the commented lines below
@@ -545,7 +550,7 @@ mod tests {
         //& AccessPolicy::new("Department", "MKG");
 
         //let medium_secret_mkg_user =
-        //cc.generate_user_secret_key(&msk, &access_policy_2, &policy)?;
+        //cover_crypt.generate_user_secret_key(&msk, &access_policy_2, &policy)?;
 
         //let reg_vectors = NonRegressionTestVector {
         //public_key: hex::encode(mpk.try_to_bytes()?),
@@ -555,7 +560,7 @@ mod tests {
         //user_decryption_key_2: hex::encode(medium_secret_mkg_user.try_to_bytes()?),
         //encrypted_bytes: hex::encode(encrypted_bytes),
         //plaintext: hex::encode(message),
-        //uid: hex::encode(additional_data),
+        //additional_data: hex::encode(additional_data),
         //};
 
         //std::fs::write(

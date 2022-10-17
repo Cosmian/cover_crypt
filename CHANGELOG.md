@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - use constant generics instead of `GenericArray`
 - make `EncryptedHeader` generic
 - make `ClearTextHeader` generic
+- use EAKEM (cf [MR](https://github.com/Cosmian/cover_crypt/pull/39))
 
 ### Fixed
 
