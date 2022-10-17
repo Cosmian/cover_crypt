@@ -1,13 +1,8 @@
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
-    api::CoverCrypt,
-    error::Error,
-    interfaces::statics::{decrypt_hybrid_header, encrypt_hybrid_header, EncryptedHeader},
-    PublicKey,
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey},
+    CoverCrypt, Error, Serializable,
 };
-#[cfg(feature = "ffi")]
-use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure;
-use cosmian_crypto_core::symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Metadata};
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {
@@ -40,32 +35,35 @@ fn policy() -> Result<Policy, Error> {
     Ok(policy)
 }
 
-/// Generate encrypted header with some metadata
-fn generate_encrypted_header(public_key: &PublicKey) -> EncryptedHeader<Aes256GcmCrypto> {
+/// Generate encrypted header with some additional data
+fn generate_encrypted_header(
+    cover_crypt: &CoverCryptX25519Aes256,
+    public_key: &PublicKey,
+    authenticated_data: &[u8],
+) -> EncryptedHeader {
     let policy = policy().expect("cannot generate policy");
     let policy_attributes = vec![
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Confidential"),
     ];
-    let metadata = Metadata {
-        uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-        additional_data: Some(vec![10, 11, 12, 13, 14]),
-    };
 
-    encrypt_hybrid_header::<Aes256GcmCrypto>(
+    let (_, ctx) = EncryptedHeader::generate(
+        cover_crypt,
         &policy,
         public_key,
         &policy_attributes,
-        Some(&metadata),
+        None,
+        Some(authenticated_data),
     )
-    .expect("cannot encrypt header 1")
+    .expect("cannot encrypt header 1");
+    ctx
 }
 
 fn bench_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::default();
-    let (_msk, mpk) = cc
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (_msk, mpk) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
 
@@ -73,51 +71,78 @@ fn bench_header_encryption(c: &mut Criterion) {
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Confidential"),
     ];
-    let encrypted_header_1 =
-        encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_1, None)
-            .expect("cannot encrypt header 1");
+    let (_, encrypted_header_1) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &policy_attributes_1,
+        None,
+        None,
+    )
+    .expect("cannot encrypt header 1");
     let policy_attributes_3 = vec![
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Top Secret"),
         Attribute::new("Security Level", "Confidential"),
         Attribute::new("Security Level", "Protected"),
     ];
-    let encrypted_header_3 =
-        encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_3, None)
-            .expect("cannot encrypt header 3");
+    let (_, encrypted_header_3) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &policy_attributes_3,
+        None,
+        None,
+    )
+    .expect("cannot encrypt header 3");
 
     print!("Bench header encryption size: ");
     println!(
         "1 partition: {} bytes, 3 partitions: {} bytes",
-        encrypted_header_1.header_bytes.len(),
-        encrypted_header_3.header_bytes.len(),
+        encrypted_header_1.try_to_bytes().unwrap().len(),
+        encrypted_header_3.try_to_bytes().unwrap().len(),
     );
 
     let mut group = c.benchmark_group("Header encryption");
     group.bench_function("1 partition", |b| {
         b.iter(|| {
-            encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_1, None)
-                .expect("cannot encrypt header 1")
+            EncryptedHeader::generate(
+                &cover_crypt,
+                &policy,
+                &mpk,
+                &policy_attributes_1,
+                None,
+                None,
+            )
+            .expect("cannot encrypt header 1")
         })
     });
     group.bench_function("3 partitions", |b| {
         b.iter(|| {
-            encrypt_hybrid_header::<Aes256GcmCrypto>(&policy, &mpk, &policy_attributes_3, None)
-                .expect("cannot encrypt header 3")
+            EncryptedHeader::generate(
+                &cover_crypt,
+                &policy,
+                &mpk,
+                &policy_attributes_3,
+                None,
+                None,
+            )
+            .expect("cannot encrypt header 3")
         })
     });
 
-    let metadata = Metadata {
-        uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-        additional_data: Some(vec![10, 11, 12, 13, 14]),
-    };
-    group.bench_function("speed with metadata", |b| {
+    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let authenticated_data = vec![10, 11, 12, 13, 14];
+
+    group.bench_function("speed with additional data", |b| {
         b.iter(|| {
-            encrypt_hybrid_header::<Aes256GcmCrypto>(
+            EncryptedHeader::generate(
+                &cover_crypt,
                 &policy,
                 &mpk,
                 &policy_attributes_1,
-                Some(&metadata),
+                Some(&additional_data),
+                Some(&authenticated_data),
             )
             .expect("cannot encrypt header 1")
         })
@@ -126,12 +151,10 @@ fn bench_header_encryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_encryption(c: &mut Criterion) {
-    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
-
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::default();
-    let (_msk, public_key) = cc
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (_msk, public_key) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
 
@@ -139,12 +162,11 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Confidential"),
     ];
-    let metadata = Metadata {
-        uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-        additional_data: Some(vec![10, 11, 12, 13, 14]),
-    };
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
+    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let authenticated_data = vec![10, 11, 12, 13, 14];
+
+    let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
@@ -184,15 +206,10 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
                 public_key_ptr.cast::<i8>(),
                 public_key_bytes.len() as i32,
                 attributes_ptr,
-                metadata.uid.as_ptr().cast::<i8>(),
-                metadata.uid.len() as i32,
-                metadata
-                    .additional_data
-                    .as_ref()
-                    .unwrap()
-                    .as_ptr()
-                    .cast::<i8>(),
-                metadata.additional_data.as_ref().unwrap().len() as i32,
+                additional_data.as_ptr().cast::<i8>(),
+                additional_data.len() as i32,
+                authenticated_data.as_ptr().cast::<i8>(),
+                authenticated_data.len() as i32,
             ))
             .expect("Failed unwrapping aes encrypt header FFI operation")
         })
@@ -201,12 +218,10 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
-    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
-
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::default();
-    let (_msk, public_key) = cc
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (_msk, public_key) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
 
@@ -214,10 +229,8 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
         Attribute::new("Department", "FIN"),
         Attribute::new("Security Level", "Confidential"),
     ];
-    let meta_data = Metadata {
-        uid: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-        additional_data: Some(vec![10, 11, 12, 13, 14]),
-    };
+    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let authenticated_data = vec![10, 11, 12, 13, 14];
 
     let policy_cs = CString::new(
         serde_json::to_string(&policy)
@@ -243,7 +256,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
         .expect("cannot create aes encryption cache");
     }
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
+    let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
@@ -268,15 +281,10 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
                 &mut header_bytes_len,
                 cache_handle,
                 attributes_ptr,
-                meta_data.uid.as_ptr().cast::<i8>(),
-                meta_data.uid.len() as i32,
-                meta_data
-                    .additional_data
-                    .as_ref()
-                    .unwrap()
-                    .as_ptr()
-                    .cast::<i8>(),
-                meta_data.additional_data.as_ref().unwrap().len() as i32,
+                additional_data.as_ptr().cast::<i8>(),
+                additional_data.len() as i32,
+                authenticated_data.as_ptr().cast::<i8>(),
+                authenticated_data.len() as i32,
             ))
             .expect("Failed unwrapping FFI AES encrypt header operation")
         })
@@ -304,71 +312,74 @@ unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
 
 fn bench_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
+    let authenticated_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-    let cc = CoverCrypt::default();
-    let (msk, public_key) = cc
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (msk, public_key) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
-    let encrypted_header = generate_encrypted_header(&public_key);
+    let encrypted_header =
+        generate_encrypted_header(&cover_crypt, &public_key, &authenticated_data);
 
     let access_policy_1 = AccessPolicy::new("Department", "FIN")
         & AccessPolicy::new("Security Level", "Confidential");
-    let user_decryption_key_1 = cc
-        .generate_user_private_key(&msk, &access_policy_1, &policy)
+    let user_decryption_key_1 = cover_crypt
+        .generate_user_secret_key(&msk, &access_policy_1, &policy)
         .expect("cannot generate user private key");
 
     c.bench_function("Header decryption/1 partition access", |b| {
         b.iter(|| {
-            decrypt_hybrid_header::<Aes256GcmCrypto>(
-                &user_decryption_key_1,
-                &encrypted_header.header_bytes,
-            )
-            .expect("cannot decrypt hybrid header")
+            encrypted_header
+                .decrypt(
+                    &cover_crypt,
+                    &user_decryption_key_1,
+                    Some(&authenticated_data),
+                )
+                .expect("cannot decrypt hybrid header")
         })
     });
 
     let access_policy_3 =
         AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
-    let user_decryption_key_3 = cc
-        .generate_user_private_key(&msk, &access_policy_3, &policy)
+    let user_decryption_key_3 = cover_crypt
+        .generate_user_secret_key(&msk, &access_policy_3, &policy)
         .expect("cannot generate user private key");
 
     c.bench_function("Header decryption/3 partition access", |b| {
         b.iter(|| {
-            decrypt_hybrid_header::<Aes256GcmCrypto>(
-                &user_decryption_key_3,
-                &encrypted_header.header_bytes,
-            )
-            .expect("cannot decrypt hybrid header")
+            encrypted_header
+                .decrypt(
+                    &cover_crypt,
+                    &user_decryption_key_3,
+                    Some(&authenticated_data),
+                )
+                .expect("cannot decrypt hybrid header")
         })
     });
 }
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_decryption(c: &mut Criterion) {
-    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
-
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::default();
-    let (msk, public_key) = cc
+    let authenticated_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (msk, public_key) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
-    let encrypted_header = generate_encrypted_header(&public_key);
+    let encrypted_header =
+        generate_encrypted_header(&cover_crypt, &public_key, &authenticated_data);
 
     let access_policy =
         AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
-    let user_decryption_key = cc
-        .generate_user_private_key(&msk, &access_policy, &policy)
+    let user_decryption_key = cover_crypt
+        .generate_user_secret_key(&msk, &access_policy, &policy)
         .expect("cannot generate user decryption key");
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
+    let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
-
-    let mut uid = vec![0u8; 4096];
-    let uid_ptr = uid.as_mut_ptr().cast::<i8>();
-    let mut uid_len = uid.len() as c_int;
 
     let mut additional_data = vec![0u8; 4096];
     let additional_data_ptr = additional_data.as_mut_ptr().cast::<i8>();
@@ -380,17 +391,19 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast::<i8>();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
 
+    let header_bytes = encrypted_header.try_to_bytes().unwrap();
+
     c.bench_function("FFI AES header decryption", |b| {
         b.iter(|| unsafe {
             unwrap_ffi_error(h_aes_decrypt_header(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
-                uid_ptr,
-                &mut uid_len,
                 additional_data_ptr,
                 &mut additional_data_len,
-                encrypted_header.header_bytes.as_ptr().cast::<i8>(),
-                encrypted_header.header_bytes.len() as c_int,
+                header_bytes.as_ptr().cast::<i8>(),
+                header_bytes.len() as c_int,
+                authenticated_data.as_ptr().cast::<i8>(),
+                authenticated_data.len() as c_int,
                 user_decryption_key_ptr,
                 user_decryption_key_len,
             ))
@@ -401,29 +414,26 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
-    use cosmian_crypto_core::reexport::generic_array::typenum::Unsigned;
-
     let policy = policy().expect("cannot generate policy");
 
-    let cc = CoverCrypt::default();
-    let (msk, public_key) = cc
+    let authenticated_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (msk, public_key) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
-    let encrypted_header = generate_encrypted_header(&public_key);
+    let encrypted_header =
+        generate_encrypted_header(&cover_crypt, &public_key, &authenticated_data);
 
     let access_policy =
         AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
-    let user_decryption_key = cc
-        .generate_user_private_key(&msk, &access_policy, &policy)
+    let user_decryption_key = cover_crypt
+        .generate_user_secret_key(&msk, &access_policy, &policy)
         .expect("cannot generate user private key");
 
-    let mut symmetric_key = vec![0u8; aes_256_gcm_pure::KeyLength::to_usize()];
+    let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
-
-    let mut uid = vec![0u8; 4096];
-    let uid_ptr = uid.as_mut_ptr().cast::<i8>();
-    let mut uid_len = uid.len() as c_int;
 
     let mut additional_data = vec![0u8; 4096];
     let additional_data_ptr = additional_data.as_mut_ptr().cast::<i8>();
@@ -444,17 +454,19 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
         .expect("cannot create aes decryption cache");
     }
 
+    let header_bytes = encrypted_header.try_to_bytes().unwrap();
+
     c.bench_function("FFI AES header decryption using cache", |b| {
         b.iter(|| unsafe {
             unwrap_ffi_error(h_aes_decrypt_header_using_cache(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
-                uid_ptr,
-                &mut uid_len,
                 additional_data_ptr,
                 &mut additional_data_len,
-                encrypted_header.header_bytes.as_ptr().cast::<i8>(),
-                encrypted_header.header_bytes.len() as c_int,
+                header_bytes.as_ptr().cast::<i8>(),
+                header_bytes.len() as c_int,
+                authenticated_data.as_ptr().cast::<i8>(),
+                authenticated_data.len() as c_int,
                 cache_handle,
             ))
             .expect("Failed unwrapping FFI AES encrypt header operation")

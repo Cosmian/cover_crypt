@@ -19,8 +19,8 @@ pub enum Error {
     ExistingCombination(String),
     #[error("invalid size: {0}")]
     InvalidSize(String),
-    #[error("Empty private key")]
-    EmptyPrivateKey,
+    #[error("Empty secret key")]
+    EmptySecretKey,
     #[error("Empty ciphertext")]
     EmptyCiphertext,
     #[error("Empty plaintext")]

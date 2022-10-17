@@ -1,18 +1,45 @@
 //! Implement the `Serializer` and `Deserializer` objects using LEB128.
 
 use crate::error::Error;
-use cosmian_crypto_core::reexport::generic_array::{ArrayLength, GenericArray};
 use std::io::{Read, Write};
+
+pub trait Serializable: Sized {
+    /// Writes to the given `Serializer`.
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Error>;
+
+    /// Reads from the given `Deserializer`.
+    fn read(de: &mut Deserializer) -> Result<Self, Error>;
+
+    /// Serializes the object.
+    fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut ser = Serializer::new();
+        self.write(&mut ser)?;
+        Ok(ser.finalize())
+    }
+
+    /// Deserializes the object.
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.is_empty() {
+            return Err(Error::InvalidSize("Given byte string is empty".to_string()));
+        }
+        let mut de = Deserializer::new(bytes);
+        Self::read(&mut de)
+    }
+}
 
 pub struct Deserializer<'a> {
     readable: &'a [u8],
 }
 
 impl<'a> Deserializer<'a> {
+    /// Generates a new `Deserializer` from the given bytes.
+    ///
+    /// - `bytes`   : bytes to deserialize
     pub const fn new(bytes: &'a [u8]) -> Deserializer<'a> {
         Deserializer { readable: bytes }
     }
 
+    /// Reads a `u64` from the `Deserializer`.
     pub fn read_u64(&mut self) -> Result<u64, Error> {
         leb128::read::unsigned(&mut self.readable).map_err(|e| {
             Error::InvalidSize(format!(
@@ -22,20 +49,23 @@ impl<'a> Deserializer<'a> {
         })
     }
 
-    pub fn read_array<Length: ArrayLength<u8>>(
-        &mut self,
-    ) -> Result<GenericArray<u8, Length>, Error> {
-        let mut buf = GenericArray::<u8, Length>::default();
+    /// Reads an array of bytes of length `LENGTH` from the `Deserializer`.
+    pub fn read_array<const LENGTH: usize>(&mut self) -> Result<[u8; LENGTH], Error> {
+        let mut buf = [0; LENGTH];
         self.readable.read_exact(&mut buf).map_err(|_| {
             Error::InvalidSize(format!(
-                "Deserializer: failed reading array of: {} bytes",
-                Length::to_usize()
+                "Deserializer: failed reading array of: {LENGTH} bytes",
             ))
         })?;
         Ok(buf)
     }
 
+    /// Reads a vector of bytes from the `Deserializer`.
+    ///
+    /// Vectors serialization overhead is `size_of(LEB128(vector_size))`, where
+    /// `LEB128()` is the LEB128 serialization function.
     pub fn read_vec(&mut self) -> Result<Vec<u8>, Error> {
+        // the size of the vector is written is prefixed to the serialization
         let len_u64 = self.read_u64()?;
         if len_u64 == 0 {
             return Ok(vec![]);
@@ -55,6 +85,11 @@ impl<'a> Deserializer<'a> {
         })?;
         Ok(buf)
     }
+
+    /// Consumes the `Deserializer` and returns the remaining bytes.
+    pub fn finalize(self) -> Vec<u8> {
+        self.readable.to_vec()
+    }
 }
 
 pub struct Serializer {
@@ -62,12 +97,16 @@ pub struct Serializer {
 }
 
 impl Serializer {
+    /// Generates a new `Serializer`.
     pub const fn new() -> Self {
         Self { writable: vec![] }
     }
 
+    /// Writes a `u64` to the `Serializer`.
+    ///
+    /// - `n`   : `u64` to write
     pub fn write_u64(&mut self, n: u64) -> Result<usize, Error> {
-        leb128::write::unsigned(&mut self.writable, n as u64).map_err(|e| {
+        leb128::write::unsigned(&mut self.writable, n).map_err(|e| {
             Error::InvalidSize(format!(
                 "Serializer: unexpected LEB128 error writing {} bytes: {}",
                 n, e
@@ -75,6 +114,9 @@ impl Serializer {
         })
     }
 
+    /// Writes an array of bytes to the `Serializer`.
+    ///
+    /// - `array`   : array of bytes to write
     pub fn write_array(&mut self, array: &[u8]) -> Result<usize, Error> {
         self.writable.write(array).map_err(|e| {
             Error::InvalidSize(format!(
@@ -85,12 +127,19 @@ impl Serializer {
         })
     }
 
-    pub fn write_vec(&mut self, array: &[u8]) -> Result<usize, Error> {
-        let mut len = self.write_u64(array.len() as u64)?;
-        len += self.write_array(array)?;
+    /// Writes a vector of bytes to the `Serializer`.
+    ///
+    /// Vectors serialization overhead is `size_of(LEB128(vector_size))`, where
+    /// `LEB128()` is the LEB128 serialization function.
+    ///
+    /// - `vector`  : vector of bytes to write
+    pub fn write_vec(&mut self, vector: &[u8]) -> Result<usize, Error> {
+        let mut len = self.write_u64(vector.len() as u64)?;
+        len += self.write_array(vector)?;
         Ok(len)
     }
 
+    /// Consumes the `Serializer` and returns the serialized bytes.
     pub fn finalize(self) -> Vec<u8> {
         self.writable
     }

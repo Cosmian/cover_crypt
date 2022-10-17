@@ -1,8 +1,11 @@
 use crate::{
     api::CoverCrypt,
     ffi_bail, ffi_not_null, ffi_unwrap,
-    interfaces::ffi::error::{set_last_error, FfiError},
-    MasterPrivateKey, PublicKey, UserPrivateKey,
+    interfaces::{
+        ffi::error::{set_last_error, FfiError},
+        statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
+    },
+    Serializable,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
 use std::{
@@ -49,75 +52,65 @@ pub unsafe extern "C" fn h_generate_master_keys(
 
     //
     // Generate master keys
-    let (master_private_key, master_public_key) =
-        ffi_unwrap!(CoverCrypt::default().generate_master_keys(&policy));
+    let (msk, mpk) = ffi_unwrap!(CoverCryptX25519Aes256::default().generate_master_keys(&policy));
 
     //
     // Serialize master keys
-    let master_private_key_bytes = ffi_unwrap!(master_private_key.try_to_bytes());
-    let master_public_key_bytes = ffi_unwrap!(master_public_key.try_to_bytes());
+    let msk_bytes = ffi_unwrap!(msk.try_to_bytes());
+    let mpk_bytes = ffi_unwrap!(mpk.try_to_bytes());
 
-    let mut master_keys_bytes = Vec::<u8>::with_capacity(
-        4 + master_private_key_bytes.len() + master_public_key_bytes.len(),
-    );
-    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(ffi_unwrap!(master_private_key_bytes
-        .len()
-        .try_into())));
-    master_keys_bytes.extend_from_slice(&master_private_key_bytes);
-    master_keys_bytes.extend_from_slice(&master_public_key_bytes);
+    let mut master_keys_bytes = Vec::<u8>::with_capacity(4 + msk_bytes.len() + mpk_bytes.len());
+    master_keys_bytes.extend_from_slice(&u32::to_be_bytes(ffi_unwrap!(msk_bytes.len().try_into())));
+    master_keys_bytes.extend_from_slice(&msk_bytes);
+    master_keys_bytes.extend_from_slice(&mpk_bytes);
 
     //
-    // Prepare output
+    // Write output
     let allocated = *master_keys_len;
-    let len = master_keys_bytes.len();
-    *master_keys_len = len as c_int;
-    if (allocated as usize) < len {
+    *master_keys_len = master_keys_bytes.len() as c_int;
+    if allocated < *master_keys_len {
         ffi_bail!(
             "The pre-allocated master keys buffer is too small; need {} bytes, allocated {}",
-            len,
+            *master_keys_len,
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(master_keys_ptr as *mut u8, len)
+    std::slice::from_raw_parts_mut(master_keys_ptr.cast(), master_keys_bytes.len())
         .copy_from_slice(&master_keys_bytes);
 
     0
 }
 
 #[no_mangle]
-/// Generate the user private key matching the given access policy
+/// Generate the user secret key matching the given access policy
 ///
-/// - `user_private_key_ptr`: Output buffer containing user private key
-/// - `user_private_key_len`: Size of the output buffer
-/// - `master_private_key_ptr`: Master private key (required for this
-///   generation)
-/// - `master_private_key_len`: Master private key length
-/// - `access_policy_ptr`: Access policy of the user private key (JSON)
-/// - `policy_ptr`: Policy to use to generate the keys (JSON)
+/// - `usk_ptr`             : Output buffer containing user secret key
+/// - `usk_len`             : Size of the output buffer
+/// - `msk_ptr`             : Master secret key (required for this generation)
+/// - `msk_len`             : Master secret key length
+/// - `access_policy_ptr`   : Access policy of the user secret key (JSON)
+/// - `policy_ptr`          : Policy to use to generate the keys (JSON)
 /// # Safety
-pub unsafe extern "C" fn h_generate_user_private_key(
-    user_private_key_ptr: *mut c_char,
-    user_private_key_len: *mut c_int,
-    master_private_key_ptr: *const c_char,
-    master_private_key_len: c_int,
+pub unsafe extern "C" fn h_generate_user_secret_key(
+    usk_ptr: *mut c_char,
+    usk_len: *mut c_int,
+    msk_ptr: *const c_char,
+    msk_len: c_int,
     access_policy_ptr: *const c_char,
     policy_ptr: *const c_char,
 ) -> c_int {
     //
     // Checks inputs
     ffi_not_null!(
-        user_private_key_ptr,
-        "User private key pointer should point to pre-allocated memory"
+        usk_ptr,
+        "User secret key pointer should point to pre-allocated memory"
     );
-    if *user_private_key_len == 0 {
-        ffi_bail!("The user private key buffer should not be empty");
+    if *usk_len == 0 {
+        ffi_bail!("The user secret key buffer should not be empty");
     }
-    ffi_not_null!(
-        master_private_key_ptr,
-        "Master private key pointer should not be null"
-    );
-    if master_private_key_len == 0 {
-        ffi_bail!("The master private key should not be empty");
+    ffi_not_null!(msk_ptr, "Master secret key pointer should not be null");
+    if msk_len == 0 {
+        ffi_bail!("The master secret key should not be empty");
     }
     ffi_not_null!(
         access_policy_ptr,
@@ -126,13 +119,9 @@ pub unsafe extern "C" fn h_generate_user_private_key(
     ffi_not_null!(policy_ptr, "Policy pointer should not be null");
 
     //
-    // Master private key deserialization
-    let master_private_key_bytes = std::slice::from_raw_parts(
-        master_private_key_ptr as *const u8,
-        master_private_key_len as usize,
-    );
-    let master_private_key =
-        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
+    // Master secret key deserialization
+    let msk_bytes = std::slice::from_raw_parts(msk_ptr.cast(), msk_len as usize);
+    let msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
 
     //
     // Access Policy
@@ -161,31 +150,29 @@ pub unsafe extern "C" fn h_generate_user_private_key(
     let policy: Policy = ffi_unwrap!(serde_json::from_str(&policy));
 
     //
-    // Generate user private key
-    let user_private_key = ffi_unwrap!(CoverCrypt::default().generate_user_private_key(
-        &master_private_key,
+    // Generate user secret key
+    let usk = ffi_unwrap!(CoverCryptX25519Aes256::default().generate_user_secret_key(
+        &msk,
         &access_policy,
         &policy
     ));
 
     //
-    // Serialize user private key
-    let user_private_key_bytes = ffi_unwrap!(user_private_key.try_to_bytes());
+    // Serialize user secret key
+    let usk_bytes = ffi_unwrap!(usk.try_to_bytes());
 
     //
-    // Prepare output
-    let allocated = *user_private_key_len;
-    let len = user_private_key_bytes.len();
-    *user_private_key_len = len as c_int;
-    if (allocated as usize) < len {
+    // Write output
+    let allocated = *usk_len;
+    *usk_len = usk_bytes.len() as c_int;
+    if allocated < *usk_len {
         ffi_bail!(
-            "The pre-allocated user private key buffer is too small; need {} bytes, allocated {}",
-            len,
+            "The pre-allocated user secret key buffer is too small; need {} bytes, allocated {}",
+            *usk_len,
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(user_private_key_ptr as *mut u8, len)
-        .copy_from_slice(&user_private_key_bytes);
+    std::slice::from_raw_parts_mut(usk_ptr.cast(), usk_bytes.len()).copy_from_slice(&usk_bytes);
 
     0
 }
@@ -193,10 +180,10 @@ pub unsafe extern "C" fn h_generate_user_private_key(
 #[no_mangle]
 /// Rotate the attributes of the given policy
 ///
-/// - `updated_policy_ptr`: Output buffer containing new policy
-/// - `updated_policy_len`: Size of the output buffer
-/// - `attributes_ptr`: Attributes to rotate (JSON)
-/// - `policy_ptr`: Policy to use to generate the keys (JSON)
+/// - `updated_policy_ptr`  : Output buffer containing new policy
+/// - `updated_policy_len`  : Size of the output buffer
+/// - `attributes_ptr`      : Attributes to rotate (JSON)
+/// - `policy_ptr`          : Policy to use to generate the keys (JSON)
 /// # Safety
 pub unsafe extern "C" fn h_rotate_attributes(
     updated_policy_ptr: *mut c_char,
@@ -253,17 +240,17 @@ pub unsafe extern "C" fn h_rotate_attributes(
     let updated_policy_string = policy.to_string();
 
     //
-    // Prepare output
+    // Write output
     let allocated = *updated_policy_len;
-    let len = updated_policy_string.len();
-    if (allocated as usize) < len {
+    *updated_policy_len = updated_policy_string.len() as c_int;
+    if allocated < *updated_policy_len {
         ffi_bail!(
-            "The pre-allocated output policy buffer is too small; need {len} bytes, allocated {allocated}"
+            "The pre-allocated output policy buffer is too small; need {} bytes, allocated {allocated}"
+            ,*updated_policy_len
         );
     }
-    std::slice::from_raw_parts_mut(updated_policy_ptr as *mut u8, len)
+    std::slice::from_raw_parts_mut(updated_policy_ptr.cast(), updated_policy_string.len())
         .copy_from_slice(updated_policy_string.as_bytes());
-    *updated_policy_len = len as c_int;
 
     0
 }
@@ -272,77 +259,70 @@ pub unsafe extern "C" fn h_rotate_attributes(
 /// Update the master keys according to this new policy.
 ///
 /// When a partition exists in the new policy but not in the master keys,
-/// a new keypair is added to the master keys for that partition.
+/// a new key pair is added to the master keys for that partition.
 /// When a partition exists on the master keys, but not in the new policy,
 /// it is removed from the master keys.
 ///
-/// - `updated_master_private_key_ptr`: Output buffer containing the updated master private key
-/// - `updated_master_private_key_len`: Size of the updated master private key output buffer
-/// - `updated_master_public_key_ptr`: Output buffer containing the updated master public key
-/// - `updated_master_public_key_len`: Size of the updated master public key output buffer
-/// - `current_master_private_key_ptr`: current master private key
-/// - `current_master_private_key_len`: current master private key length
-/// - `current_master_public_key_ptr`: current master public key
-/// - `current_master_public_key_len`: current master public key length
-/// - `policy_ptr`: Policy to use to update the master keys (JSON)
+/// - `updated_msk_ptr` : Output buffer containing the updated master secret key
+/// - `updated_msk_len` : Size of the updated master secret key output buffer
+/// - `updated_mpk_ptr` : Output buffer containing the updated master public key
+/// - `updated_mpk_len` : Size of the updated master public key output buffer
+/// - `current_msk_ptr` : current master secret key
+/// - `current_msk_len` : current master secret key length
+/// - `current_mpk_ptr` : current master public key
+/// - `current_mpk_len` : current master public key length
+/// - `policy_ptr`      : Policy to use to update the master keys (JSON)
 /// # Safety
 pub unsafe extern "C" fn h_update_master_keys(
-    updated_master_private_key_ptr: *mut c_char,
-    updated_master_private_key_len: *mut c_int,
-    updated_master_public_key_ptr: *mut c_char,
-    updated_master_public_key_len: *mut c_int,
-    current_master_private_key_ptr: *const c_char,
-    current_master_private_key_len: c_int,
-    current_master_public_key_ptr: *const c_char,
-    current_master_public_key_len: c_int,
+    updated_msk_ptr: *mut c_char,
+    updated_msk_len: *mut c_int,
+    updated_mpk_ptr: *mut c_char,
+    updated_mpk_len: *mut c_int,
+    current_msk_ptr: *const c_char,
+    current_msk_len: c_int,
+    current_mpk_ptr: *const c_char,
+    current_mpk_len: c_int,
     policy_ptr: *const c_char,
 ) -> c_int {
     //
     // Checks inputs
     ffi_not_null!(
-        updated_master_private_key_ptr,
-        "User private key pointer should point to pre-allocated memory"
+        updated_msk_ptr,
+        "User secret key pointer should point to pre-allocated memory"
     );
-    if *updated_master_private_key_len == 0 {
-        ffi_bail!("The user private key buffer should not be empty");
+    if *updated_msk_len == 0 {
+        ffi_bail!("The user secret key buffer should not be empty");
     }
     ffi_not_null!(
-        updated_master_public_key_ptr,
+        updated_mpk_ptr,
         "User public key pointer should point to pre-allocated memory"
     );
-    if *updated_master_public_key_len == 0 {
+    if *updated_mpk_len == 0 {
         ffi_bail!("The user public key buffer should not be empty");
     }
     ffi_not_null!(
-        current_master_private_key_ptr,
-        "Master private key pointer should not be null"
+        current_msk_ptr,
+        "Master secret key pointer should not be null"
     );
-    if current_master_private_key_len == 0 {
-        ffi_bail!("The master private key should not be empty");
+    if current_msk_len == 0 {
+        ffi_bail!("The master secret key should not be empty");
     }
     ffi_not_null!(
-        current_master_public_key_ptr,
+        current_mpk_ptr,
         "Master public key pointer should not be null"
     );
-    if current_master_public_key_len == 0 {
+    if current_mpk_len == 0 {
         ffi_bail!("The master public key should not be empty");
     }
     ffi_not_null!(policy_ptr, "Policy pointer should not be null");
 
     //
-    // Master private key deserialization
-    let master_private_key_bytes = std::slice::from_raw_parts(
-        current_master_private_key_ptr as *const u8,
-        current_master_private_key_len as usize,
-    );
-    let mut master_private_key =
-        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
+    // Master secret key deserialization
+    let msk_bytes = std::slice::from_raw_parts(current_msk_ptr.cast(), current_msk_len as usize);
+    let mut msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
     // Master public key deserialization
-    let master_public_key_bytes = std::slice::from_raw_parts(
-        current_master_public_key_ptr as *const u8,
-        current_master_public_key_len as usize,
-    );
-    let mut master_public_key = ffi_unwrap!(PublicKey::try_from_bytes(master_public_key_bytes));
+    let mpk_bytes = std::slice::from_raw_parts(current_mpk_ptr.cast(), current_mpk_len as usize);
+    let mut mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes));
 
     //
     // Policy
@@ -359,45 +339,41 @@ pub unsafe extern "C" fn h_update_master_keys(
 
     //
     // update the master keys
-    ffi_unwrap!(CoverCrypt::default().update_master_keys(
-        &policy,
-        &mut master_private_key,
-        &mut master_public_key
-    ));
+    ffi_unwrap!(CoverCryptX25519Aes256::default().update_master_keys(&policy, &mut msk, &mut mpk));
 
     //
-    // Serialize the master private key
-    let master_private_key_bytes = ffi_unwrap!(master_private_key.try_to_bytes());
-    // Prepare output
-    let allocated = *updated_master_private_key_len;
-    let len = master_private_key_bytes.len();
-    if (allocated as usize) < len {
+    // Serialize the master secret key
+    let msk_bytes = ffi_unwrap!(msk.try_to_bytes());
+
+    // Write msk
+    let allocated = *updated_msk_len;
+    *updated_msk_len = msk_bytes.len() as c_int;
+    if allocated < *updated_msk_len {
         ffi_bail!(
-            "The pre-allocated user private key buffer is too small; need {} bytes, allocated {}",
-            len,
+            "The pre-allocated user secret key buffer is too small; need {} bytes, allocated {}",
+            *updated_msk_len,
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(updated_master_private_key_ptr as *mut u8, len)
-        .copy_from_slice(&master_private_key_bytes);
-    *updated_master_private_key_len = len as c_int;
+    std::slice::from_raw_parts_mut(updated_msk_ptr.cast(), msk_bytes.len())
+        .copy_from_slice(&msk_bytes);
 
     //
     // Serialize the master public key
-    let master_public_key_bytes = ffi_unwrap!(master_public_key.try_to_bytes());
-    // Prepare output
-    let allocated = *updated_master_public_key_len;
-    let len = master_public_key_bytes.len();
-    if (allocated as usize) < len {
+    let mpk_bytes = ffi_unwrap!(mpk.try_to_bytes());
+
+    // Write mpk
+    let allocated = *updated_mpk_len;
+    *updated_mpk_len = mpk_bytes.len() as c_int;
+    if allocated < *updated_mpk_len {
         ffi_bail!(
             "The pre-allocated user public key buffer is too small; need {} bytes, allocated {}",
-            len,
+            *updated_mpk_len,
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(updated_master_public_key_ptr as *mut u8, len)
-        .copy_from_slice(&master_public_key_bytes);
-    *updated_master_public_key_len = len as c_int;
+    std::slice::from_raw_parts_mut(updated_mpk_ptr.cast(), mpk_bytes.len())
+        .copy_from_slice(&mpk_bytes);
 
     0
 }
@@ -408,23 +384,23 @@ pub unsafe extern "C" fn h_update_master_keys(
 /// The user key will be granted access to the current partitions, as determined by its access policy.
 /// If preserve_old_partitions is set, the user access to rotated partitions will be preserved
 ///
-/// - `updated_user_private_key_ptr`: Output buffer containing the updated user private key
-/// - `updated_user_private_key_len`: Size of the updated user private key output buffer
-/// - `master_private_key_ptr`: master private key
-/// - `master_private_key_len`: master private key length
-/// - `current_user_private_key_ptr`: current user private key
-/// - `current_user_private_key_len`: current user private key length
-/// - `access_policy_ptr`: Access policy of the user private key (JSON)
-/// - `policy_ptr`: Policy to use to update the master keys (JSON)
-/// - `preserve_old_partitions_access`: set to 1 to preserve the user access to the rotated partitions
+/// - `updated_usk_ptr`                 : Output buffer containing the updated user secret key
+/// - `updated_usk_len`                 : Size of the updated user secret key output buffer
+/// - `msk_ptr`                         : master secret key
+/// - `msk_len`                         : master secret key length
+/// - `current_usk_ptr`                 : current user secret key
+/// - `current_usk_len`                 : current user secret key length
+/// - `access_policy_ptr`               : Access policy of the user secret key (JSON)
+/// - `policy_ptr`                      : Policy to use to update the master keys (JSON)
+/// - `preserve_old_partitions_access`  : set to 1 to preserve the user access to the rotated partitions
 /// # Safety
-pub unsafe extern "C" fn h_refresh_user_private_key(
-    updated_user_private_key_ptr: *mut c_char,
-    updated_user_private_key_len: *mut c_int,
-    master_private_key_ptr: *const c_char,
-    master_private_key_len: c_int,
-    current_user_private_key_ptr: *const c_char,
-    current_user_private_key_len: c_int,
+pub unsafe extern "C" fn h_refresh_user_secret_key(
+    updated_usk_ptr: *mut c_char,
+    updated_usk_len: *mut c_int,
+    msk_ptr: *const c_char,
+    msk_len: c_int,
+    current_usk_ptr: *const c_char,
+    current_usk_len: c_int,
     access_policy_ptr: *const c_char,
     policy_ptr: *const c_char,
     preserve_old_partitions_access: c_int,
@@ -432,25 +408,22 @@ pub unsafe extern "C" fn h_refresh_user_private_key(
     //
     // Checks inputs
     ffi_not_null!(
-        updated_user_private_key_ptr,
-        "User private key pointer should point to pre-allocated memory"
+        updated_usk_ptr,
+        "User secret key pointer should point to pre-allocated memory"
     );
-    if *updated_user_private_key_len == 0 {
-        ffi_bail!("The user private key buffer should not be empty");
+    if *updated_usk_len == 0 {
+        ffi_bail!("The user secret key buffer should not be empty");
+    }
+    ffi_not_null!(msk_ptr, "Master secret key pointer should not be null");
+    if msk_len == 0 {
+        ffi_bail!("The master secret key should not be empty");
     }
     ffi_not_null!(
-        master_private_key_ptr,
-        "Master private key pointer should not be null"
+        current_usk_ptr,
+        "User secret key pointer should not be null"
     );
-    if master_private_key_len == 0 {
-        ffi_bail!("The master private key should not be empty");
-    }
-    ffi_not_null!(
-        current_user_private_key_ptr,
-        "User private key pointer should not be null"
-    );
-    if current_user_private_key_len == 0 {
-        ffi_bail!("The user private key should not be empty");
+    if current_usk_len == 0 {
+        ffi_bail!("The user secret key should not be empty");
     }
     ffi_not_null!(
         access_policy_ptr,
@@ -459,19 +432,12 @@ pub unsafe extern "C" fn h_refresh_user_private_key(
     ffi_not_null!(policy_ptr, "The policy pointer should not be null");
 
     //
-    // Master private key deserialization
-    let master_private_key_bytes = std::slice::from_raw_parts(
-        master_private_key_ptr as *const u8,
-        master_private_key_len as usize,
-    );
-    let master_private_key =
-        ffi_unwrap!(MasterPrivateKey::try_from_bytes(master_private_key_bytes));
+    // Master secret key deserialization
+    let msk_bytes = std::slice::from_raw_parts(msk_ptr.cast(), msk_len as usize);
+    let msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
     // Master public key deserialization
-    let user_private_key_bytes = std::slice::from_raw_parts(
-        current_user_private_key_ptr as *const u8,
-        current_user_private_key_len as usize,
-    );
-    let mut user_private_key = ffi_unwrap!(UserPrivateKey::try_from_bytes(user_private_key_bytes));
+    let usk_bytes = std::slice::from_raw_parts(current_usk_ptr.cast(), current_usk_len as usize);
+    let mut usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
 
     //
     // Access Policy
@@ -500,31 +466,32 @@ pub unsafe extern "C" fn h_refresh_user_private_key(
     let policy: Policy = ffi_unwrap!(serde_json::from_str(&policy));
 
     //
-    // update the master keys
-    ffi_unwrap!(CoverCrypt::default().refresh_user_private_key(
-        &mut user_private_key,
+    // update the user secret key
+    ffi_unwrap!(CoverCryptX25519Aes256::default().refresh_user_secret_key(
+        &mut usk,
         &access_policy,
-        &master_private_key,
+        &msk,
         &policy,
         preserve_old_partitions_access != 0
     ));
 
     //
-    // Serialize the master public key
-    let user_private_key_bytes = ffi_unwrap!(user_private_key.try_to_bytes());
-    // Prepare output
-    let allocated = *updated_user_private_key_len;
-    let len = user_private_key_bytes.len();
-    if (allocated as usize) < len {
+    // Serialize the user secret key
+    let usk_bytes = ffi_unwrap!(usk.try_to_bytes());
+
+    // Write output
+    let allocated = *updated_usk_len;
+
+    *updated_usk_len = usk_bytes.len() as c_int;
+    if allocated < *updated_usk_len {
         ffi_bail!(
             "The pre-allocated user public key buffer is too small; need {} bytes, allocated {}",
-            len,
+            *updated_usk_len,
             allocated
         );
     }
-    std::slice::from_raw_parts_mut(updated_user_private_key_ptr as *mut u8, len)
-        .copy_from_slice(&user_private_key_bytes);
-    *updated_user_private_key_len = len as c_int;
+    std::slice::from_raw_parts_mut(updated_usk_ptr.cast(), usk_bytes.len())
+        .copy_from_slice(&usk_bytes);
 
     0
 }

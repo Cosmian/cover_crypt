@@ -198,7 +198,7 @@ pub unsafe extern "C" fn get_last_error(
     }
 
     //copy the result in the OUT array
-    std::slice::from_raw_parts_mut(error_msg_ptr as *mut u8, *error_len as usize)
+    std::slice::from_raw_parts_mut(error_msg_ptr.cast(), *error_len as usize)
         .copy_from_slice(&result);
 
     *error_len = actual_len as i32;
