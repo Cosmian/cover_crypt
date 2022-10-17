@@ -1,3 +1,6 @@
+//! Implements the cryptographic primitives of CoverCrypt, based on
+//! `../bib/CoverCrypt.pdf`.
+
 // Allows using the paper notations
 #![allow(non_snake_case)]
 
@@ -8,7 +11,10 @@ use crate::{
 };
 use cosmian_crypto_core::{asymmetric_crypto::DhKeyPair, symmetric_crypto::SymKey, KeyTrait};
 use rand_core::{CryptoRng, RngCore};
-use sha3::{Digest, Sha3_512};
+use sha3::{
+    digest::{ExtendableOutput, Update, XofReader},
+    Shake256,
+};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -16,23 +22,29 @@ use std::{
 };
 use zeroize::Zeroize;
 
-/// Hashes the given bytes using SHA3-256.
+/// Hashes and extends the given bytes into a tag of size `TAG_LENGTH` and a
+/// key of size `KEY_LENGTH`.
 ///
-/// - `bytes`   : hash input
-macro_rules! hash {
-    ($($bytes: expr),+) => {
+/// - `bytes`   : input bytes
+macro_rules! eakem_hash {
+    ($TAG_LENGTH: ident, $KEY_LENGTH: ident, $($bytes: expr),+) => {
         {
-            let mut hasher = Sha3_512::new();
+            let mut hasher = Shake256::default();
             $(
                 hasher.update($bytes);
             )*
-            hasher.finalize()
+            let mut reader = hasher.finalize_xof();
+            let mut tag = [0; $TAG_LENGTH];
+            let mut key = [0; $KEY_LENGTH];
+            reader.read(&mut tag);
+            reader.read(&mut key);
+            (tag, key)
         }
     };
 }
 
 /// Additional information to generate symmetric key using the KDF.
-const KEY_GEN_INFO: &str = "key generation info";
+const KEY_GEN_INFO: &[u8] = b"key generation info";
 
 /// CoverCrypt master secret key.
 ///
@@ -232,6 +244,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
 /// the randomly chosen symmetric key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encapsulation<
+    const TAG_LENGTH: usize,
     const KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     SymmetricKey: SymKey<KEY_LENGTH>,
@@ -239,32 +252,31 @@ pub struct Encapsulation<
 > {
     C: PublicKey,
     D: PublicKey,
-    // TODO: use [u8; 2 * SYM_KEY_LENGTH] when const operations are allowed for
-    // const generics. This will remove 1 copy per partition (and anyway, we
-    // are not manipulating symmetric keys here).
-    E: HashSet<(SymmetricKey, SymmetricKey)>,
+    E: HashSet<([u8; TAG_LENGTH], SymmetricKey)>,
 }
 
 impl<
+        const TAG_LENGTH: usize,
         const SYM_KEY_LENGTH: usize,
         const PUBLIC_KEY_LENGTH: usize,
         SymmetricKey: SymKey<SYM_KEY_LENGTH>,
         PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-    > Serializable for Encapsulation<SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
+    > Serializable
+    for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
 {
-    /// Serialize the encapsulation.
+    /// Serializes the encapsulation.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_u64(self.E.len() as u64)?;
         for (tag_i, E_i) in &self.E {
-            n += ser.write_array(tag_i.as_bytes())?;
+            n += ser.write_array(tag_i.as_slice())?;
             n += ser.write_array(E_i.as_bytes())?;
         }
         Ok(n)
     }
 
-    /// Deserialize the encapsulation.
+    /// Deserializes the encapsulation.
     ///
     /// - `bytes`   : bytes from which to read the encapsulation
     fn read(de: &mut Deserializer) -> Result<Self, Error> {
@@ -273,18 +285,15 @@ impl<
         let E_len = de.read_u64()?.try_into()?;
         let mut E = HashSet::with_capacity(E_len);
         for _ in 0..E_len {
-            let tag_i = de.read_array::<SYM_KEY_LENGTH>()?;
+            let tag_i = de.read_array::<TAG_LENGTH>()?;
             let E_i = de.read_array::<SYM_KEY_LENGTH>()?;
-            E.insert((
-                SymmetricKey::from_bytes(tag_i),
-                SymmetricKey::from_bytes(E_i),
-            ));
+            E.insert((tag_i, SymmetricKey::from_bytes(E_i)));
         }
         Ok(Self { C, D, E })
     }
 }
 
-/// Generate the master secret key and master public key of the CoverCrypt
+/// Generates the master secret key and master public key of the CoverCrypt
 /// scheme.
 ///
 /// # Paper
@@ -402,7 +411,7 @@ where
 /// encapsulations in the decapsulation phase.
 ///
 /// Encaps(pk):
-///     (c, k) ← CCA-KEM.encaps(pk)
+///     (c, k) ← KEM.encaps(pk)
 ///     (k1, k2) ← H(k)
 ///     return (k1, k2, c)
 ///
@@ -428,6 +437,7 @@ where
 /// - `encryption_set`  : sets for which to generate a ciphertext
 /// - `K`               : secret key
 pub fn encaps<
+    const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     const PRIVATE_KEY_LENGTH: usize,
@@ -439,7 +449,10 @@ pub fn encaps<
     mpk: &PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
     encryption_set: &HashSet<Partition>,
     K: &SymmetricKey,
-) -> Result<Encapsulation<SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, KeyPair::PublicKey>, Error>
+) -> Result<
+    Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, KeyPair::PublicKey>,
+    Error,
+>
 where
     R: CryptoRng + RngCore,
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
@@ -458,14 +471,16 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some(H_i) = mpk.H.get(partition) {
-            let mut bytes = hash!((H_i * &r).to_bytes(), KEY_GEN_INFO);
-            for (b_1, b_2) in bytes[SYM_KEY_LENGTH..].iter_mut().zip(K.as_bytes()) {
+            let (tag_i, mut K_i) = eakem_hash!(
+                TAG_LENGTH,
+                SYM_KEY_LENGTH,
+                &(H_i * &r).to_bytes(),
+                KEY_GEN_INFO
+            );
+            for (b_1, b_2) in K_i.iter_mut().zip(K.as_bytes()) {
                 *b_1 ^= b_2;
             }
-            E.insert((
-                SymmetricKey::try_from_bytes(&bytes[..SYM_KEY_LENGTH])?,
-                SymmetricKey::try_from_bytes(&bytes[SYM_KEY_LENGTH..])?,
-            ));
+            E.insert((tag_i.to_owned(), SymmetricKey::from_bytes(K_i)));
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
@@ -477,7 +492,7 @@ where
 /// encapsulations that do not correspond to the user secret key.
 ///
 /// Decaps(sk, k1, c):
-///     k ← CCA-KEM.decaps(sk, c)
+///     k ← KEM.decaps(sk, c)
 ///     (k1*, k2*) ← H(k)
 ///     if k1 != k1':
 ///         abort
@@ -499,6 +514,7 @@ where
 /// - `sk_j`                : user secret key
 /// - `encapsulation`       : symmetric key encapsulation
 pub fn decaps<
+    const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     const PRIVATE_KEY_LENGTH: usize,
@@ -507,6 +523,7 @@ pub fn decaps<
 >(
     sk_j: &UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     encapsulation: &Encapsulation<
+        TAG_LENGTH,
         SYM_KEY_LENGTH,
         PUBLIC_KEY_LENGTH,
         SymmetricKey,
@@ -527,17 +544,22 @@ where
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
     for (tag_i, E_i) in &encapsulation.E {
         for x_k in sk_j.x.values() {
-            let mut bytes = hash!((&precomp * x_k).to_bytes(), KEY_GEN_INFO);
+            let (tag_k, mut K_k) = eakem_hash!(
+                TAG_LENGTH,
+                SYM_KEY_LENGTH,
+                &(&precomp * x_k).to_bytes(),
+                KEY_GEN_INFO
+            );
             // the tag is correctly generated if the encapsulation is
             // associated to the user private key
-            if tag_i.as_bytes() != &bytes[..SYM_KEY_LENGTH] {
+            if tag_i != &tag_k {
                 // this encapsulation cannot be decapsulated by the user
                 continue;
             }
-            for (b1, b2) in bytes[SYM_KEY_LENGTH..].iter_mut().zip(E_i.as_bytes()) {
+            for (b1, b2) in K_k.iter_mut().zip(E_i.as_bytes()) {
                 *b1 ^= b2;
             }
-            return Ok(SymmetricKey::try_from_bytes(&bytes[SYM_KEY_LENGTH..])?);
+            return Ok(SymmetricKey::from_bytes(K_k));
         }
     }
     Err(Error::InsufficientAccessPolicy)
@@ -648,6 +670,7 @@ mod tests {
 
     /// Length of the desired symmetric key
     const SYM_KEY_LENGTH: usize = 32;
+    const TAG_LENGTH: usize = 32;
 
     #[test]
     fn test_partitions() -> Result<(), Error> {
@@ -697,6 +720,7 @@ mod tests {
         assert_eq!(usk, usk_, "User secret key comparison failed");
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -750,6 +774,7 @@ mod tests {
         // encapsulate for the target set
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -759,6 +784,7 @@ mod tests {
         >(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
         let res0 = decaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -769,6 +795,7 @@ mod tests {
         assert!(res0.is_err(), "User 0 shouldn't be able to decapsulate!");
 
         let res1 = decaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -793,6 +820,7 @@ mod tests {
         println!("usk: {:?}", sk0.x);
         println!("{sym_key:?}");
         let new_encapsulation = encaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -801,6 +829,7 @@ mod tests {
             X25519KeyPair,
         >(&mut rng, &mpk, &new_partitions_set, &sym_key)?;
         let res0 = decaps::<
+            TAG_LENGTH,
             { Aes256GcmCrypto::KEY_LENGTH },
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },

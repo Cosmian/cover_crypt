@@ -34,9 +34,9 @@ pub enum Error {
          decrypt this input."
     )]
     InsufficientAccessPolicy,
-    #[error("conversion failed")]
-    ConversionFailed,
-    #[error("invalid boolean expression: {0}")]
+    #[error("Conversion failed: {0}")]
+    ConversionFailed(String),
+    #[error("Invalid boolean expression: {0}")]
     InvalidAttribute(String),
     #[error("json parsing error: {0}")]
     JsonParsing(String),
@@ -45,8 +45,8 @@ pub enum Error {
 }
 
 impl From<TryFromIntError> for Error {
-    fn from(_e: TryFromIntError) -> Self {
-        Self::ConversionFailed
+    fn from(e: TryFromIntError) -> Self {
+        Self::ConversionFailed(e.to_string())
     }
 }
 
@@ -57,8 +57,8 @@ impl From<serde_json::Error> for Error {
 }
 
 impl From<TryFromSliceError> for Error {
-    fn from(_e: TryFromSliceError) -> Self {
-        Self::ConversionFailed
+    fn from(e: TryFromSliceError) -> Self {
+        Self::ConversionFailed(e.to_string())
     }
 }
 

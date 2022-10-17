@@ -13,6 +13,8 @@ use cosmian_crypto_core::{
 };
 use std::{ops::DerefMut, sync::Mutex};
 
+const TAG_LENGTH: usize = 32;
+
 /// Instantiate a CoverCrypt type with AES GCM 256 as DEM
 #[derive(Debug)]
 pub struct CoverCryptX25519Aes256 {
@@ -27,6 +29,7 @@ impl PartialEq for CoverCryptX25519Aes256 {
 
 impl
     CoverCrypt<
+        TAG_LENGTH,
         { Aes256GcmCrypto::KEY_LENGTH },
         { X25519KeyPair::PUBLIC_KEY_LENGTH },
         { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -63,6 +66,7 @@ impl
 
     type Encapsulation =
         cover_crypt_core::Encapsulation<
+            TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
             <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
@@ -166,6 +170,7 @@ impl
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
         );
         let encapsulation = cover_crypt_core::encaps::<
+            TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
             { Self::PRIVATE_KEY_LENGTH },
@@ -187,6 +192,7 @@ impl
         encapsulation: &Self::Encapsulation,
     ) -> Result<<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key, Error> {
         cover_crypt_core::decaps::<
+            TAG_LENGTH,
             { Self::SYM_KEY_LENGTH },
             { Self::PUBLIC_KEY_LENGTH },
             { Self::PRIVATE_KEY_LENGTH },
@@ -235,6 +241,7 @@ impl Default for CoverCryptX25519Aes256 {
 
 /// Convenience type
 pub type EncryptedHeader = api::EncryptedHeader<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -247,6 +254,7 @@ pub type ClearTextHeader = api::ClearTextHeader<{ Aes256GcmCrypto::KEY_LENGTH },
 
 /// Convenience type: CoverCryptX25519Aes256 master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -256,6 +264,7 @@ pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
 
 /// Convenience type: CoverCryptX25519Aes256 public key
 pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -265,6 +274,7 @@ pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
 
 /// Convenience type: CoverCryptX25519Aes256 user secret key
 pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -274,6 +284,7 @@ pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
 
 /// Convenience type: CoverCryptX25519Aes256 encapsulation
 pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -282,6 +293,7 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
 >>::Encapsulation;
 
 pub type CoverCryptDem = <CoverCryptX25519Aes256 as CoverCrypt<
+    TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
     { X25519KeyPair::PUBLIC_KEY_LENGTH },
     { X25519KeyPair::PRIVATE_KEY_LENGTH },
