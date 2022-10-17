@@ -46,15 +46,15 @@ let cover_crypt = CoverCrypt::default();
 
 // Generate master keys.
 let (mut master_private_key, mut master_public_key) =
-	cover_crypt.generate_master_keys(&policy).unwrap();
+    cover_crypt.generate_master_keys(&policy).unwrap();
 
 // Create a user secret key for a user in the finance department with a top
 // secret security clearance.
 let mut user_key = cover_crypt.generate_user_private_key(
-	&master_private_key,
-	&AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")
-		.unwrap(),
-	&policy
+    &master_private_key,
+    &AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")
+        .unwrap(),
+    &policy
 ).unwrap();
 
 // Encrypt a header for top level security clearance.
@@ -108,7 +108,7 @@ cargo bench
 
 ### Building the library for a different glibc
 
-Go to the [build](build/glibc-2.17/) directory for an example on hw to build for GLIBC 2.17
+Go to the [build](build/glibc-2.17/) directory for an example on how to build for GLIBC 2.17
 
 ### Building for Pyo3
 
@@ -138,14 +138,14 @@ i7-10750H CPU @ 3.20GHz.
 
 Asymmetric keys must be generated beforehand. This is the role of a central
 authority, which is in charge of:
-- generating and updating the master keys inaccordance with the right policy;
+- generating and updating the master keys according to the right policy;
 - generate and update user secret keys.
 
 The CoverCrypt APIs exposes everything that is needed:
-- `CoverCrypt::setup`	: generate master keys
-- `CoverCrypt::join`	: create a user secret key for the given rights
-- `CoverCrypt::update`	: update the master keys for the given policy
-- `CoverCrypt::refresh`	: refresh a user secret key from the master secret key
+- `CoverCrypt::setup`   : generate master keys
+- `CoverCrypt::join`    : create a user secret key for the given rights
+- `CoverCrypt::update`  : update the master keys for the given policy
+- `CoverCrypt::refresh` : refresh a user secret key from the master secret key
 
 The key generations may be long if the policy contains many rights or if there
 are many users. But this is usually run once at setup. Key updates and refresh
@@ -179,7 +179,7 @@ Header encryption/3 partitions
 ### Secret key decapsulation
 
 A user can retrieve the symmetric key needed to decrypt a CoverCrypt ciphertext
-by decryting the associated `EncryptedHeader`. This is only possible if the
+by decrypting the associated `EncryptedHeader`. This is only possible if the
 user secret keys contains the appropriate rights.
 
 ```
@@ -196,5 +196,5 @@ A formal description and proof of the CoverCrypt scheme is given in
 [this paper](./bib/CoverCrypt.pdf).
 It also contains an interesting discussion about the implementation.
 
-The developper documentation can be found on
-[doc.rs](https://docs.rs/cosmian_cover_crypt/6.0.5/cosmian_cover_crypt/index.html)
+The developer documentation can be found on
+[doc.rs](https://docs.rs/cosmian_cover_crypt/latest/cosmian_cover_crypt/index.html)
