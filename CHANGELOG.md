@@ -3,15 +3,26 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [6.0.8] - 2022-10-17
 
+### Added
+
+### Changed
+
+- `README.md`
+
+### Fixed
+
+### Removed
+
+---
+
+---
 ## [6.0.7] - 2022-10-14
 
 ### Added
 
 - expose boolean Access Policy parsing in WASM
-
-### Changed
-
 ### Fixed
 
 ### Removed
