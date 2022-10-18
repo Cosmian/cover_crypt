@@ -10,7 +10,7 @@ use crate::{
     },
     Serializable,
 };
-use abe_policy::Attribute;
+use abe_policy::AccessPolicy;
 use cosmian_crypto_core::KeyTrait;
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 
@@ -30,7 +30,7 @@ use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 #[pyfunction]
 pub fn encrypt_hybrid_header(
     policy_bytes: Vec<u8>,
-    attributes_bytes: Vec<u8>,
+    access_policy: String,
     public_key_bytes: Vec<u8>,
     additional_data: Vec<u8>,
     authenticated_data: Vec<u8>,
@@ -39,7 +39,7 @@ pub fn encrypt_hybrid_header(
     // Deserialize inputs
     let policy = serde_json::from_slice(&policy_bytes)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing policy: {e}")))?;
-    let attributes: Vec<Attribute> = serde_json::from_slice(&attributes_bytes)
+    let access_policy = AccessPolicy::from_boolean_expression(&access_policy)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
     let public_key = PublicKey::try_from_bytes(&public_key_bytes)?;
 
@@ -61,7 +61,7 @@ pub fn encrypt_hybrid_header(
         &CoverCryptX25519Aes256::default(),
         &policy,
         &public_key,
-        &attributes,
+        &access_policy,
         additional_data.as_deref(),
         authenticated_data.as_deref(),
     )?;
@@ -177,7 +177,7 @@ pub fn decrypt_symmetric_block(
 #[pyfunction]
 pub fn encrypt(
     policy_bytes: Vec<u8>,
-    attributes_bytes: Vec<u8>,
+    access_policy: String,
     pk: Vec<u8>,
     plaintext: Vec<u8>,
     additional_data: Vec<u8>,
@@ -197,7 +197,7 @@ pub fn encrypt(
 
     let policy = serde_json::from_slice(&policy_bytes)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing policy: {e}")))?;
-    let attributes: Vec<Attribute> = serde_json::from_slice(&attributes_bytes)
+    let access_policy = AccessPolicy::from_boolean_expression(&access_policy)
         .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
     let pk = PublicKey::try_from_bytes(&pk)?;
 
@@ -209,7 +209,7 @@ pub fn encrypt(
         &cover_crypt,
         &policy,
         &pk,
-        &attributes,
+        &access_policy,
         additional_data.as_deref(),
         authenticated_data.as_deref(),
     )?;

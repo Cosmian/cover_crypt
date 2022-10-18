@@ -1,4 +1,3 @@
-//! Implements the cryptographic primitives of CoverCrypt, based on
 //! `../bib/CoverCrypt.pdf`.
 
 // Allows using the paper notations

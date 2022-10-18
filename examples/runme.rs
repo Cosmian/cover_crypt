@@ -42,15 +42,8 @@ fn main() {
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) = EncryptedHeader::generate(
-        &cover_crypt,
-        &policy,
-        &mpk,
-        &access_policy.attributes(),
-        None,
-        None,
-    )
-    .unwrap();
+    let (_, encrypted_header) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy, None, None).unwrap();
 
     // The user is able to decrypt the encrypted header.
     assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_ok());
@@ -67,15 +60,8 @@ fn main() {
         .unwrap();
 
     // Encrypt with rotated attribute
-    let (_, new_encrypted_header) = EncryptedHeader::generate(
-        &cover_crypt,
-        &policy,
-        &mpk,
-        &[Attribute::from(("Security Level", "Top Secret"))],
-        None,
-        None,
-    )
-    .unwrap();
+    let (_, new_encrypted_header) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
     assert!(new_encrypted_header
