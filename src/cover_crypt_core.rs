@@ -177,7 +177,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
     fn zeroize(&mut self) {
         self.a.zeroize();
         self.b.zeroize();
-        // TODO: zeroize `self.x` here?
+        self.x.clear();
     }
 }
 
