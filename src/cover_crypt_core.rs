@@ -336,27 +336,24 @@ where
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
 {
-    let msk = MasterSecretKey {
-        u: KeyPair::PrivateKey::new(rng),
-        v: KeyPair::PrivateKey::new(rng),
-        s: KeyPair::PrivateKey::new(rng),
-        x: partitions
-            .iter()
-            .map(|partition| (partition.clone(), KeyPair::PrivateKey::new(rng)))
-            .collect(),
-    };
+    let u = KeyPair::PrivateKey::new(rng);
+    let v = KeyPair::PrivateKey::new(rng);
+    let s = KeyPair::PrivateKey::new(rng);
+    let U = KeyPair::PublicKey::from(u.clone());
+    let V = KeyPair::PublicKey::from(v.clone());
+    let S = KeyPair::PublicKey::from(s.clone());
 
-    let S = KeyPair::PublicKey::from(msk.s.clone());
-    let mpk = PublicKey {
-        U: KeyPair::PublicKey::from(msk.u.clone()),
-        V: KeyPair::PublicKey::from(msk.v.clone()),
-        H: msk
-            .x
-            .iter()
-            .map(|(partition, x_i)| (partition.clone(), &S * x_i))
-            .collect(),
-    };
-    (msk, mpk)
+    let mut x = HashMap::with_capacity(partitions.len());
+    let mut H = HashMap::with_capacity(partitions.len());
+
+    for partition in partitions {
+        let x_i = KeyPair::PrivateKey::new(rng);
+        let H_i = &S * &x_i;
+        x.insert(partition.clone(), x_i);
+        H.insert(partition.clone(), H_i);
+    }
+
+    (MasterSecretKey { u, v, s, x }, PublicKey { U, V, H })
 }
 
 /// Generate a user secret key for the given decryption sets.
