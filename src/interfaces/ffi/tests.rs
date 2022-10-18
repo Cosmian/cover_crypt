@@ -27,7 +27,7 @@ use std::{
 
 unsafe fn encrypt_header(
     policy: &Policy,
-    attributes: &[Attribute],
+    target_access_policy: &str,
     public_key: &PublicKey,
     additional_data: &[u8],
     authenticated_data: &[u8],
@@ -48,8 +48,8 @@ unsafe fn encrypt_header(
     let public_key_ptr = public_key_bytes.as_ptr();
     let public_key_len = public_key_bytes.len() as i32;
 
-    let attributes_json = CString::new(serde_json::to_string(&attributes)?.as_str())
-        .map_err(|e| Error::Other(e.to_string()))?;
+    let attributes_json =
+        CString::new(target_access_policy).map_err(|e| Error::Other(e.to_string()))?;
     let attributes_ptr = attributes_json.as_ptr();
 
     unwrap_ffi_error(h_aes_encrypt_header(
@@ -174,20 +174,17 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         // Policy settings
         //
         let policy = policy()?;
-        let attributes = vec![
-            Attribute::new("Security Level", "Confidential"),
-            Attribute::new("Department", "HR"),
-            Attribute::new("Department", "FIN"),
-        ];
+        let target_access_policy =
+            "(Department::HR || Department::FIN) && Security Level::Confidential";
 
         //
         // CoverCrypt setup
         //
         let cover_crypt = CoverCryptX25519Aes256::default();
         let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
-        let access_policy = AccessPolicy::new("Department", "FIN")
-            & AccessPolicy::new("Security Level", "Top Secret");
-        let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let user_access_policy =
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Top Secret")?;
+        let usk = cover_crypt.generate_user_secret_key(&msk, &user_access_policy, &policy)?;
 
         //
         // Encrypt / decrypt
@@ -197,7 +194,7 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
 
         let (sym_key, encrypted_header) = encrypt_header(
             &policy,
-            &attributes,
+            target_access_policy,
             &mpk,
             &additional_data,
             &authenticated_data,
@@ -234,10 +231,7 @@ unsafe fn encrypt_header_using_cache(
         public_key_len,
     ))?;
 
-    let attributes = vec![
-        Attribute::new("Department", "FIN"),
-        Attribute::new("Security Level", "Confidential"),
-    ];
+    let target_access_policy = "Department::FIN && Security Level::Confidential";
 
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
@@ -247,9 +241,8 @@ unsafe fn encrypt_header_using_cache(
     let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr().cast();
     let mut encrypted_header_len = encrypted_header_bytes.len() as c_int;
 
-    let attributes_json = CString::new(serde_json::to_string(&attributes)?.as_str())
-        .map_err(|e| Error::Other(e.to_string()))?;
-    let attributes_ptr = attributes_json.as_ptr();
+    let target_access_policy =
+        CString::new(target_access_policy).map_err(|e| Error::Other(e.to_string()))?;
 
     unwrap_ffi_error(h_aes_encrypt_header_using_cache(
         symmetric_key_ptr,
@@ -257,7 +250,7 @@ unsafe fn encrypt_header_using_cache(
         encrypted_header_ptr,
         &mut encrypted_header_len,
         cache_handle,
-        attributes_ptr,
+        target_access_policy.as_ptr(),
         additional_data.as_ptr().cast(),
         additional_data.len() as i32,
         authenticated_data.as_ptr().cast(),

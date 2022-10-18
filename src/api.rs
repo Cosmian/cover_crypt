@@ -6,7 +6,7 @@ use crate::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     error::Error,
 };
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     symmetric_crypto::{Dem, SymKey},
@@ -120,12 +120,12 @@ pub trait CoverCrypt<
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
-    /// - `attributes`      : the list of attributes to compose to generate the symmetric key
+    /// - `access_policy`   : access policy used for the encapsulation
     fn encaps(
         &self,
         policy: &Policy,
         pk: &Self::PublicKey,
-        attributes: &[Attribute],
+        access_policy: &AccessPolicy,
     ) -> Result<(DEM::Key, Self::Encapsulation), Error>;
 
     /// Decapsulates a symmetric key from the given CoverCrypt encapsulation.
@@ -234,19 +234,20 @@ where
     /// - `cover_crypt`         : `CoverCrypt` object
     /// - `policy`              : global policy
     /// - `public_key`          : CoverCrypt public key
-    /// - `attributes`          : attributes used for encapsulation
+    /// - `access_policy`       : access policy used for the encapsulation
     /// - `additional_data`     : additional data to encrypt in the header
     /// - `authenticated_data`  : authenticated data used in the DEM encryption
     pub fn generate(
         cover_crypt: &CoverCryptScheme,
         policy: &Policy,
         public_key: &CoverCryptScheme::PublicKey,
-        attributes: &[Attribute],
+        access_policy: &AccessPolicy,
         additional_data: Option<&[u8]>,
         authenticated_data: Option<&[u8]>,
     ) -> Result<(DEM::Key, Self), Error> {
         // generate a symmetric key and its encapsulation
-        let (symmetric_key, encapsulation) = cover_crypt.encaps(policy, public_key, attributes)?;
+        let (symmetric_key, encapsulation) =
+            cover_crypt.encaps(policy, public_key, access_policy)?;
 
         // encrypt the additional data using the DEM with the encapsulated key
         let ciphertext = cover_crypt.encrypt(

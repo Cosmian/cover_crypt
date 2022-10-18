@@ -43,7 +43,7 @@ fn create_test_policy() -> Policy {
 
 fn encrypt_header(
     policy: &Policy,
-    attributes: &[Attribute],
+    access_policy_string: String,
     public_key: &PublicKey,
     additional_data: &[u8],
     authenticated_data: &[u8],
@@ -51,11 +51,10 @@ fn encrypt_header(
     let additional_data = Uint8Array::from(additional_data);
     let authenticated_data = Uint8Array::from(authenticated_data);
     let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
-    let attributes_bytes = Uint8Array::from(serde_json::to_vec(attributes)?.as_slice());
     let public_key_bytes = Uint8Array::from(public_key.try_to_bytes()?.as_slice());
     let encrypted_header = webassembly_encrypt_hybrid_header(
         policy_bytes,
-        attributes_bytes,
+        access_policy_string,
         public_key_bytes,
         additional_data,
         authenticated_data,
@@ -89,11 +88,10 @@ pub fn test_decrypt_hybrid_header() {
     // Policy settings
     //
     let policy = create_test_policy();
-    let attributes = vec![
-        Attribute::new("Security Level", "Confidential"),
-        Attribute::new("Department", "HR"),
-        Attribute::new("Department", "FIN"),
-    ];
+    let target_access_policy = AccessPolicy::from_boolean_expression(
+        "(Department::FIN || Department::HR) && Security Level::Confidential",
+    )
+    .unwrap();
 
     //
     // CoverCrypt setup
@@ -101,10 +99,10 @@ pub fn test_decrypt_hybrid_header() {
     let cover_crypt = CoverCryptX25519Aes256::default();
     let (msk, mpk) = cover_crypt.generate_master_keys(&policy).unwrap();
 
-    let access_policy =
+    let user_access_policy =
         AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
     let sk_u = cover_crypt
-        .generate_user_secret_key(&msk, &access_policy, &policy)
+        .generate_user_secret_key(&msk, &user_access_policy, &policy)
         .unwrap();
 
     //
@@ -117,7 +115,7 @@ pub fn test_decrypt_hybrid_header() {
         &cover_crypt,
         &policy,
         &mpk,
-        &attributes,
+        &target_access_policy,
         Some(&additional_data),
         Some(&authenticated_data),
     )
@@ -135,7 +133,7 @@ fn test_encrypt_decrypt() {
     // Policy settings
     //
     let policy = create_test_policy();
-    let access_policy = "Department::FIN && Security Level::Top Secret";
+    let access_policy_string = "Department::FIN && Security Level::Top Secret";
 
     //
     // CoverCrypt setup
@@ -149,7 +147,7 @@ fn test_encrypt_decrypt() {
     let msk_len = u32::from_be_bytes(<[u8; 4]>::try_from(&master_keys[..4]).unwrap()) as usize;
     let usk = webassembly_generate_user_secret_key(
         Uint8Array::from(&master_keys[4..msk_len + 4]),
-        access_policy,
+        access_policy_string,
         Uint8Array::from(serialized_policy.as_slice()),
     )
     .unwrap()
@@ -165,15 +163,7 @@ fn test_encrypt_decrypt() {
 
     let res = webassembly_hybrid_encrypt(
         Uint8Array::from(serialized_policy.as_slice()),
-        Uint8Array::from(
-            serde_json::to_vec(
-                &AccessPolicy::from_boolean_expression(access_policy)
-                    .unwrap()
-                    .attributes(),
-            )
-            .unwrap()
-            .as_slice(),
-        ),
+        access_policy_string.to_string(),
         Uint8Array::from(&master_keys[4 + msk_len..]),
         Uint8Array::from(plaintext.as_bytes()),
         Uint8Array::from(additional_data.as_slice()),
@@ -253,8 +243,13 @@ fn test_generate_keys() {
     .to_vec();
     let usk = UserSecretKey::try_from_bytes(&usk_bytes).unwrap();
 
-    let attributes = vec![Attribute::new("Security Level", "Confidential")];
-    let serialized_attributes = serde_json::to_vec(&attributes).unwrap();
+    let access_policy_string = "Security Level::Confidential".to_string();
+    let serialized_attributes = serde_json::to_vec(
+        &AccessPolicy::from_boolean_expression(&access_policy_string)
+            .unwrap()
+            .attributes(),
+    )
+    .unwrap();
 
     let new_policy = webassembly_rotate_attributes(
         Uint8Array::from(serialized_attributes.as_slice()),
@@ -282,7 +277,7 @@ fn test_generate_keys() {
 
     let encrypted_header = encrypt_header(
         &policy,
-        &attributes,
+        access_policy_string,
         &master_public_key,
         &additional_data,
         &authenticated_data,

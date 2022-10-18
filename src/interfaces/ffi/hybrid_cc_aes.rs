@@ -12,7 +12,7 @@ use crate::{
     },
     Serializable,
 };
-use abe_policy::{Attribute, Policy};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{symmetric_crypto::Dem, KeyTrait};
 use lazy_static::lazy_static;
 use std::{
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     header_bytes_ptr: *mut c_char,
     header_bytes_len: *mut c_int,
     cache_handle: c_int,
-    attributes_ptr: *const c_char,
+    access_policy_ptr: *const c_char,
     additional_data_ptr: *const c_char,
     additional_data_len: c_int,
     authenticated_data_ptr: *const c_char,
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     if *header_bytes_len == 0 {
         ffi_bail!("The header bytes buffer should have a size greater than zero");
     }
-    ffi_not_null!(attributes_ptr, "Attributes pointer should not be null");
+    ffi_not_null!(access_policy_ptr, "Attributes pointer should not be null");
 
     let map = ENCRYPTION_CACHE_MAP
         .read()
@@ -158,8 +158,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         return 1;
     };
 
-    // Attributes
-    let attributes = match CStr::from_ptr(attributes_ptr).to_str() {
+    // Access policy
+    let access_policy = match CStr::from_ptr(access_policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
         Err(_e) => {
             set_last_error(FfiError::Generic(
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
             return 1;
         }
     };
-    let attributes: Vec<Attribute> = ffi_unwrap!(serde_json::from_str(&attributes));
+    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
 
     // Additional Data
     let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
@@ -194,7 +194,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         &CoverCryptX25519Aes256::default(),
         &cache.policy,
         &cache.pk,
-        &attributes,
+        &access_policy,
         additional_data,
         authenticated_data,
     ));
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     policy_ptr: *const c_char,
     pk_ptr: *const c_char,
     pk_len: c_int,
-    attributes_ptr: *const c_char,
+    access_policy_ptr: *const c_char,
     additional_data_ptr: *const c_char,
     additional_data_len: c_int,
     authenticated_data_ptr: *const c_char,
@@ -259,7 +259,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     if pk_len == 0 {
         ffi_bail!("The public key should not be empty");
     }
-    ffi_not_null!(attributes_ptr, "Attributes pointer should not be null");
+    ffi_not_null!(access_policy_ptr, "Attributes pointer should not be null");
 
     // Policy
     let policy = match CStr::from_ptr(policy_ptr).to_str() {
@@ -277,8 +277,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let pk_bytes = std::slice::from_raw_parts(pk_ptr.cast(), pk_len as usize);
     let pk = ffi_unwrap!(PublicKey::try_from_bytes(pk_bytes));
 
-    // Attributes
-    let attributes = match CStr::from_ptr(attributes_ptr).to_str() {
+    // Access policy
+    let access_policy = match CStr::from_ptr(access_policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
         Err(_e) => {
             set_last_error(FfiError::Generic(
@@ -287,7 +287,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
             return 1;
         }
     };
-    let attributes: Vec<Attribute> = ffi_unwrap!(serde_json::from_str(&attributes));
+    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
 
     // Additional Data
     let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
@@ -313,7 +313,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         &CoverCryptX25519Aes256::default(),
         &policy,
         &pk,
-        &attributes,
+        &access_policy,
         additional_data,
         authenticated_data
     ));
