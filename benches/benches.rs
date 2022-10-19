@@ -365,25 +365,55 @@ fn bench_header_decryption(c: &mut Criterion) {
     .unwrap();
 
     // Get ready ciphertexts for size benchmark
-    let (_, encrypted_header_1) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_1, None, None)
-            .expect("cannot encrypt header 1");
+    let (_, encrypted_header_1) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy_1,
+        None,
+        Some(&authenticated_data),
+    )
+    .expect("cannot encrypt header 1");
 
-    let (_, encrypted_header_2) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_2, None, None)
-            .expect("cannot encrypt header 2");
+    let (_, encrypted_header_2) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy_2,
+        None,
+        Some(&authenticated_data),
+    )
+    .expect("cannot encrypt header 2");
 
-    let (_, encrypted_header_3) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_3, None, None)
-            .expect("cannot encrypt header 3");
+    let (_, encrypted_header_3) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy_3,
+        None,
+        Some(&authenticated_data),
+    )
+    .expect("cannot encrypt header 3");
 
-    let (_, encrypted_header_4) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_4, None, None)
-            .expect("cannot encrypt header 4");
+    let (_, encrypted_header_4) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy_4,
+        None,
+        Some(&authenticated_data),
+    )
+    .expect("cannot encrypt header 4");
 
-    let (_, encrypted_header_5) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_5, None, None)
-            .expect("cannot encrypt header 5");
+    let (_, encrypted_header_5) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy_5,
+        None,
+        Some(&authenticated_data),
+    )
+    .expect("cannot encrypt header 5");
 
     let user_access_policy =
         AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
