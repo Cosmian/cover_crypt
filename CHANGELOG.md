@@ -13,13 +13,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- use `SHA3-512` to derive keys
+- use `Shake256` to derive keys
 - use constant generics instead of `GenericArray`
 - make `EncryptedHeader` generic
 - make `ClearTextHeader` generic
 - use EAKEM (cf [MR](https://github.com/Cosmian/cover_crypt/pull/39))
 - `UserSecretKey::x` is now a `HashSet` (`Partition`s are removed)
 - `CoverCrypt::encaps()` now takes an `AccessPolicy`
+- replace `Hc128` by `ChaCha12Rng` as RNG
 
 ### Fixed
 

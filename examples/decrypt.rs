@@ -1,6 +1,7 @@
 use cosmian_cover_crypt::{
-    api::EncryptedHeader, interfaces::statics::UserSecretKey, CoverCryptStruct, Serializable,
+    api::EncryptedHeader, interfaces::statics::UserSecretKey, CoverCryptStruct,
 };
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 
 const USK: &str = "6f66df35eee5cabbff488b84fd7c42c947ab69a773ad32fe849506b7ce09c601f71ae4ee445046381dd7e24ae12546ab6749a2fae2de8c52908075ced96e1200030201084f6a28c52be77bcb09c2552f50efe2e7ac75d9fdf9790379e26b1ce7f6c0e70f0202088f8b985e341d8cf58abfea93008bd2ddae8856e3812c1f6a6a45deacc82d490402030845bae75126228b245c250a2b99c371828498b635e6d9a954c333ae1ef2af0609";
 

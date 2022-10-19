@@ -1,9 +1,9 @@
 use crate::{
     api::CoverCrypt,
     interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey},
-    Serializable,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use pyo3::{exceptions::PyTypeError, prelude::*};
 
 /// Generate the master authority keys for supplied Policy

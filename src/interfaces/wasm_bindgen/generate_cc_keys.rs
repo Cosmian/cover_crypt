@@ -6,9 +6,9 @@
 use crate::{
     api::CoverCrypt,
     interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey},
-    Serializable,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 

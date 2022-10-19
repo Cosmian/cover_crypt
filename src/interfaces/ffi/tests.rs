@@ -16,10 +16,9 @@ use crate::{
         },
     },
     partitions::Partition,
-    Serializable,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-use cosmian_crypto_core::KeyTrait;
+use cosmian_crypto_core::{bytes_ser_de::Serializable, KeyTrait};
 use std::{
     ffi::{CStr, CString},
     os::raw::c_int,
