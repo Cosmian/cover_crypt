@@ -1,18 +1,22 @@
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
-    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey},
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader},
     CoverCrypt, Error, Serializable,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {
-    cosmian_cover_crypt::interfaces::ffi::{
-        error::get_last_error,
-        hybrid_cc_aes::{
-            h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,
-            h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
-            h_aes_destroy_encryption_cache, h_aes_encrypt_header, h_aes_encrypt_header_using_cache,
+    cosmian_cover_crypt::interfaces::{
+        ffi::{
+            error::get_last_error,
+            hybrid_cc_aes::{
+                h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,
+                h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
+                h_aes_destroy_encryption_cache, h_aes_encrypt_header,
+                h_aes_encrypt_header_using_cache,
+            },
         },
+        statics::PublicKey,
     },
     std::{
         ffi::{CStr, CString},
@@ -36,6 +40,7 @@ fn policy() -> Result<Policy, Error> {
 }
 
 /// Generate encrypted header with some additional data
+#[cfg(feature = "ffi")]
 fn generate_encrypted_header(
     cover_crypt: &CoverCryptX25519Aes256,
     public_key: &PublicKey,
