@@ -4,14 +4,15 @@
 
 use crate::{
     api::CoverCrypt,
-    bytes_ser_de::Deserializer,
     interfaces::statics::{
         CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey, UserSecretKey,
     },
-    Serializable,
 };
 use abe_policy::AccessPolicy;
-use cosmian_crypto_core::KeyTrait;
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable},
+    KeyTrait,
+};
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 
 /// Generate an encrypted header. A header contains the following elements:

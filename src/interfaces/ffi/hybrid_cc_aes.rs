@@ -10,10 +10,9 @@ use crate::{
             UserSecretKey,
         },
     },
-    Serializable,
 };
 use abe_policy::{AccessPolicy, Policy};
-use cosmian_crypto_core::{symmetric_crypto::Dem, KeyTrait};
+use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap,

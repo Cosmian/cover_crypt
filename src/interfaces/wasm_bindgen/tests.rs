@@ -1,7 +1,6 @@
 use super::generate_cc_keys::webassembly_rotate_attributes;
 use crate::{
     api::CoverCrypt,
-    bytes_ser_de::Deserializer,
     error::Error,
     interfaces::{
         statics::{
@@ -13,9 +12,9 @@ use crate::{
         },
         wasm_bindgen::hybrid_cc_aes::*,
     },
-    Serializable,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 /// Test WASM bindgen functions prerequisites:
 /// - `cargo install wasm-bindgen-cli`
 /// - `cargo test --target wasm32-unknown-unknown --release --features

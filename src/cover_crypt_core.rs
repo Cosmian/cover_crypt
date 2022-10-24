@@ -4,13 +4,14 @@
 // Allows using the paper notations
 #![allow(non_snake_case)]
 
-use crate::{
+use crate::{error::Error, partitions::Partition};
+use cosmian_crypto_core::{
+    asymmetric_crypto::DhKeyPair,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    error::Error,
-    partitions::Partition,
+    reexport::rand_core::{CryptoRng, RngCore},
+    symmetric_crypto::SymKey,
+    KeyTrait,
 };
-use cosmian_crypto_core::{asymmetric_crypto::DhKeyPair, symmetric_crypto::SymKey, KeyTrait};
-use rand_core::{CryptoRng, RngCore};
 use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
     Shake256,
@@ -65,8 +66,10 @@ pub struct MasterSecretKey<
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    type Error = Error;
+
     /// Serialize the master secret key.
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.u.to_bytes())?;
         n += ser.write_array(&self.v.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
@@ -81,11 +84,11 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
     /// Deserialize the master secret key from the given bytes.
     ///
     /// - `bytes`   : bytes from which to read the master secret key
-    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let u = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let v = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let s = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let x_len = de.read_u64()?.try_into()?;
+        let x_len = <usize>::try_from(de.read_u64()?)?;
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
@@ -144,8 +147,10 @@ pub struct UserSecretKey<
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Serializable
     for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    type Error = Error;
+
     /// Serialize the user secret key.
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_u64(self.x.len() as u64)?;
@@ -158,10 +163,10 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
     /// Deserialize the user secret key.
     ///
     /// - `bytes`   : bytes from which to read the user secret key
-    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let a = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let b = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let x_len = de.read_u64()?.try_into()?;
+        let x_len = <usize>::try_from(de.read_u64()?)?;
         let mut x = HashSet::with_capacity(x_len);
         for _ in 0..x_len {
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
@@ -208,8 +213,10 @@ pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLI
 impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializable
     for PublicKey<PUBLIC_KEY_LENGTH, PK>
 {
+    type Error = Error;
+
     /// Serialize the public key.
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.U.to_bytes())?;
         n += ser.write_array(&self.V.to_bytes())?;
         n += ser.write_u64(self.H.len() as u64)?;
@@ -223,10 +230,10 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
     /// Deserialize the public key.
     ///
     /// - `bytes`   : bytes from which to read the public key
-    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let U = PK::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let V = PK::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let H_len = de.read_u64()?.try_into()?;
+        let H_len = <usize>::try_from(de.read_u64()?)?;
         let mut H = HashMap::with_capacity(H_len);
         for _ in 0..H_len {
             let partition = de.read_vec()?;
@@ -270,8 +277,10 @@ impl<
     > Serializable
     for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
 {
+    type Error = Error;
+
     /// Serializes the encapsulation.
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_u64(self.E.len() as u64)?;
@@ -285,10 +294,10 @@ impl<
     /// Deserializes the encapsulation.
     ///
     /// - `bytes`   : bytes from which to read the encapsulation
-    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let C = PublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let D = PublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let E_len = de.read_u64()?.try_into()?;
+        let E_len = <usize>::try_from(de.read_u64()?)?;
         let mut E = HashSet::with_capacity(E_len);
         for _ in 0..E_len {
             let tag_i = de.read_array::<TAG_LENGTH>()?;
@@ -663,8 +672,9 @@ mod tests {
     use super::*;
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair,
-        entropy::CsRng,
+        reexport::rand_core::SeedableRng,
         symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, key::Key, Dem},
+        CsRng,
     };
 
     /// Length of the desired symmetric key
@@ -697,7 +707,7 @@ mod tests {
         // target set
         let target_set = HashSet::from([admin_partition]);
         // secure random number generator
-        let mut rng = CsRng::new();
+        let mut rng = CsRng::from_entropy();
         // setup scheme
         let (msk, mpk) = setup::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
@@ -749,7 +759,7 @@ mod tests {
         // target set
         let target_set = HashSet::from([admin_partition]);
         // secure random number generator
-        let mut rng = CsRng::new();
+        let mut rng = CsRng::from_entropy();
         // setup scheme
         let (mut msk, mut mpk) = setup::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
@@ -846,7 +856,7 @@ mod tests {
         // partition list
         let partitions_set = HashSet::from([partition_1.clone(), partition_2.clone()]);
         // secure random number generator
-        let mut rng = CsRng::new();
+        let mut rng = CsRng::from_entropy();
         // setup scheme
         let (mut msk, mut mpk) = setup::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
@@ -885,7 +895,7 @@ mod tests {
             partition_3.clone(),
         ]);
         // secure random number generator
-        let mut rng = CsRng::new();
+        let mut rng = CsRng::from_entropy();
         // setup scheme
         let (mut msk, mut mpk) = setup::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },

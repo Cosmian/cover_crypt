@@ -2,13 +2,11 @@
 //!
 //! The `CoverCrypt` trait is the main entry point for the core functionalities.
 
-use crate::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
-    error::Error,
-};
+use crate::error::Error;
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::{Dem, SymKey},
 };
 use std::{
@@ -46,13 +44,13 @@ pub trait CoverCrypt<
     const PUBLIC_KEY_LENGTH: usize = PK_LENGTH;
     const PRIVATE_KEY_LENGTH: usize = SK_LENGTH;
 
-    type MasterSecretKey: Serializable;
+    type MasterSecretKey: Serializable<Error = Error>;
 
-    type UserSecretKey: Serializable;
+    type UserSecretKey: Serializable<Error = Error>;
 
-    type PublicKey: Serializable;
+    type PublicKey: Serializable<Error = Error>;
 
-    type Encapsulation: PartialEq + Eq + Serializable;
+    type Encapsulation: PartialEq + Eq + Serializable<Error = Error>;
 
     type Dem: Dem<SYM_KEY_LENGTH>;
 
@@ -316,15 +314,17 @@ where
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
     CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
 {
+    type Error = Error;
+
     /// Tries to serialize the encrypted header.
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.encapsulation.write(ser)?;
         n += ser.write_vec(self.ciphertext.as_slice())?;
         Ok(n)
     }
 
     /// Tries to deserialize the encrypted header.
-    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let encapsulation = CoverCryptScheme::Encapsulation::read(de)?;
         let ciphertext = de.read_vec()?;
         Ok(Self {
@@ -348,15 +348,17 @@ impl<const KEY_LENGTH: usize, DEM> Serializable for ClearTextHeader<KEY_LENGTH, 
 where
     DEM: Dem<KEY_LENGTH>,
 {
+    type Error = Error;
+
     /// Tries to serialize the cleartext header.
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
         n += ser.write_vec(&self.additional_data)?;
         Ok(n)
     }
 
     /// Tries to deserialize the cleartext header.
-    fn read(de: &mut Deserializer) -> Result<Self, Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
         let additional_data = de.read_vec()?;
         Ok(Self {

@@ -5,14 +5,16 @@
 
 use crate::{
     api::CoverCrypt,
-    bytes_ser_de::Deserializer,
     interfaces::statics::{
         CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey, UserSecretKey,
     },
-    Serializable,
 };
 use abe_policy::AccessPolicy;
-use cosmian_crypto_core::{symmetric_crypto::SymKey, KeyTrait};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable},
+    symmetric_crypto::SymKey,
+    KeyTrait,
+};
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 

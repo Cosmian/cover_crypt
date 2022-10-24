@@ -7,9 +7,9 @@ use crate::{
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::{curve25519::X25519KeyPair, DhKeyPair},
-    entropy::CsRng,
+    reexport::rand_core::SeedableRng,
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Dem},
-    KeyTrait,
+    CsRng, KeyTrait,
 };
 use std::{ops::DerefMut, sync::Mutex};
 
@@ -232,7 +232,7 @@ impl
 impl Default for CoverCryptX25519Aes256 {
     fn default() -> Self {
         Self {
-            rng: Mutex::new(CsRng::new()),
+            rng: Mutex::new(CsRng::from_entropy()),
         }
     }
 }
@@ -304,10 +304,9 @@ pub type SymmetricKey = <CoverCryptDem as Dem<{ CoverCryptDem::KEY_LENGTH }>>::K
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        bytes_ser_de::Deserializer, partitions::Partition, CoverCrypt, Error, Serializable,
-    };
+    use crate::{partitions::Partition, CoverCrypt, Error};
     use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+    use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
     use serde::{Deserialize, Serialize};
 
     fn policy() -> Result<Policy, Error> {

@@ -1,8 +1,9 @@
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
     interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader},
-    CoverCrypt, Error, Serializable,
+    CoverCrypt, Error,
 };
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {

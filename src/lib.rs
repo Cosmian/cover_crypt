@@ -112,7 +112,6 @@
 //! ```
 
 pub mod api;
-mod bytes_ser_de;
 mod cover_crypt_core;
 pub mod error;
 pub mod interfaces;
@@ -120,6 +119,5 @@ pub mod partitions;
 
 pub use api::CoverCrypt;
 pub use api::{ClearTextHeader, EncryptedHeader};
-pub use bytes_ser_de::Serializable;
 pub use error::Error;
 pub use interfaces::statics::CoverCryptX25519Aes256 as CoverCryptStruct;

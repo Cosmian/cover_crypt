@@ -1,5 +1,6 @@
-use crate::{bytes_ser_de::Serializer, Error};
+use crate::Error;
 use abe_policy::{AccessPolicy, Attribute, Policy};
+use cosmian_crypto_core::bytes_ser_de::Serializer;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
