@@ -25,16 +25,17 @@ fn generate_new(
     msk: &MasterSecretKey,
     mpk: &PublicKey,
 ) {
-    let ap =
-        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
+    let access_policy =
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Top Secret")
+            .unwrap();
 
-    let (_, header) = EncryptedHeader::generate(cc, policy, mpk, &ap.attributes(), None, None)
+    let (_, header) = EncryptedHeader::generate(cc, policy, mpk, &access_policy, None, None)
         .expect("cannot encrypt header");
 
     println!(
         "usk = {}",
         hex::encode(
-            &cc.generate_user_secret_key(msk, &ap, policy)
+            &cc.generate_user_secret_key(msk, &access_policy, policy)
                 .unwrap()
                 .try_to_bytes()
                 .unwrap()
@@ -52,10 +53,9 @@ fn main() {
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
 
-    let policy_attributes = vec![
-        Attribute::new("Department", "FIN"),
-        Attribute::new("Security Level", "Top Secret"),
-    ];
+    let access_policy =
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Top Secret")
+            .unwrap();
 
     //
     // Use the following to update `examples/decrypt.rs` constants.
@@ -65,7 +65,7 @@ fn main() {
     // encrypt header, use loop to add weight in the flamegraph on it
     for _ in 0..100 {
         let _encrypted_header =
-            EncryptedHeader::generate(&cc, &policy, &mpk, &policy_attributes, None, None)
+            EncryptedHeader::generate(&cc, &policy, &mpk, &access_policy, None, None)
                 .expect("cannot encrypt header");
     }
 }

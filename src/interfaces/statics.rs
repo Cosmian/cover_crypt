@@ -4,7 +4,7 @@ use crate::{
     error::Error,
     partitions,
 };
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::{curve25519::X25519KeyPair, DhKeyPair},
     entropy::CsRng,
@@ -126,7 +126,7 @@ impl
         >(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             msk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy)?,
+            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
         )
     }
 
@@ -147,7 +147,7 @@ impl
         >(
             msk,
             usk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy)?,
+            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
             keep_old_accesses,
         )
     }
@@ -156,7 +156,7 @@ impl
         &self,
         policy: &Policy,
         pk: &Self::PublicKey,
-        attributes: &[Attribute],
+        access_policy: &AccessPolicy,
     ) -> Result<
         (
             <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
@@ -178,7 +178,7 @@ impl
         >(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
-            &partitions::to_partitions(attributes, policy)?,
+            &partitions::access_policy_to_current_partitions(access_policy, policy, false)?,
             &sym_key,
         )?;
         Ok((sym_key, encapsulation))
@@ -309,7 +309,6 @@ mod tests {
     };
     use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
     use serde::{Deserialize, Serialize};
-    use std::collections::HashSet;
 
     fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
@@ -395,64 +394,13 @@ mod tests {
         let (sym_key, encrypted_key) = cover_crypt.encaps(
             &policy,
             &mpk,
-            &[
-                Attribute::new("Department", "R&D"),
-                Attribute::new("Security Level", "Top Secret"),
-            ],
+            &AccessPolicy::from_boolean_expression(
+                "Department::R&D && Security Level::Top Secret",
+            )?,
         )?;
         let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
         assert_eq!(sym_key, recovered_key, "Wrong decryption of the key!");
-        Ok(())
-    }
-
-    #[test]
-    fn test_access_policy_to_partition() -> Result<(), Error> {
-        //
-        // create policy
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
-
-        //
-        // create access policy
-        let access_policy = AccessPolicy::new("Department", "HR")
-            | (AccessPolicy::new("Department", "FIN")
-                & AccessPolicy::new("Security Level", "Confidential"));
-
-        //
-        // create partitions from access policy
-        let partitions = partitions::access_policy_to_current_partitions(&access_policy, &policy)?;
-
-        //
-        // manually create the partitions
-        let mut partitions_ = HashSet::new();
-        // add the partitions associated with the HR department: combine with
-        // all attributes of the Security Level axis
-        let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
-        let (security_levels, _) = policy.axes.get("Security Level").unwrap();
-        for attr_name in security_levels {
-            let attr_value =
-                policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
-            let mut partition = vec![hr_value, attr_value];
-            partition.sort_unstable();
-            partitions_.insert(Partition::from_attributes(partition)?);
-        }
-
-        // add the other attribute combination: FIN && Confidential
-        let fin_value = policy.attribute_current_value(&Attribute::new("Department", "FIN"))?;
-        let conf_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Confidential"))?;
-        let mut partition = vec![fin_value, conf_value];
-        partition.sort_unstable();
-        partitions_.insert(Partition::from_attributes(partition)?);
-        // since this is a hierarchical axis, add the lower values: here only protected
-        let prot_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
-        let mut partition = vec![fin_value, prot_value];
-        partition.sort_unstable();
-        partitions_.insert(Partition::from_attributes(partition)?);
-
-        assert_eq!(partitions, partitions_);
         Ok(())
     }
 
@@ -489,13 +437,9 @@ mod tests {
         policy.add_axis(&sec_level)?;
         policy.add_axis(&department)?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let attributes = vec![
-            Attribute::new("Security Level", "Low Secret"),
-            Attribute::new("Department", "HR"),
-            Attribute::new("Department", "FIN"),
-        ];
-        let access_policy = AccessPolicy::new("Security Level", "Top Secret")
-            & (AccessPolicy::new("Department", "FIN") | AccessPolicy::new("Department", "MKG"));
+        let access_policy = AccessPolicy::from_boolean_expression(
+            "(Department::HR || Department:: FIN) && Security Level::Low Secret",
+        )?;
 
         //
         // CoverCrypt setup
@@ -515,7 +459,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &attributes,
+            &access_policy,
             Some(&additional_data),
             authenticated_data,
         )?;
@@ -606,8 +550,11 @@ mod tests {
 
         //
         // New user secret key
-        let access_policy = AccessPolicy::from_boolean_expression("Security Level::Top Secret")?;
-        let _user_key = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let _user_key = cover_crypt.generate_user_secret_key(
+            &msk,
+            &AccessPolicy::from_boolean_expression("Security Level::Top Secret")?,
+            &policy,
+        )?;
 
         Ok(())
     }
@@ -617,6 +564,7 @@ mod tests {
         //
         // Declare policy
         let mut policy = policy()?;
+        let top_secret_ap = AccessPolicy::from_boolean_expression("Security Level::Top Secret")?;
 
         //
         // Setup CoverCrypt
@@ -625,9 +573,13 @@ mod tests {
 
         //
         // New user secret key
-        let access_policy =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
-        let user_key = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let top_secret_fin_usk = cover_crypt.generate_user_secret_key(
+            &msk,
+            &AccessPolicy::from_boolean_expression(
+                "Security Level::Top Secret && Department::FIN",
+            )?,
+            &policy,
+        )?;
 
         //
         // Encrypt
@@ -635,12 +587,13 @@ mod tests {
             &cover_crypt,
             &policy,
             &master_public_key,
-            &[Attribute::from(("Security Level", "Top Secret"))],
+            &top_secret_ap,
             None,
             None,
         )?;
 
-        let _cleartext_header = encrypted_header.decrypt(&cover_crypt, &user_key, None)?;
+        let _cleartext_header =
+            encrypted_header.decrypt(&cover_crypt, &top_secret_fin_usk, None)?;
 
         //
         // Rotate argument (must update master keys)
@@ -653,13 +606,13 @@ mod tests {
             &cover_crypt,
             &policy,
             &master_public_key,
-            &[Attribute::from(("Security Level", "Top Secret"))],
+            &top_secret_ap,
             None,
             None,
         )?;
 
         assert!(encrypted_header
-            .decrypt(&cover_crypt, &user_key, None)
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_err());
 
         Ok(())

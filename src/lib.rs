@@ -61,7 +61,7 @@
 //!     &cover_crypt,
 //!     &policy,
 //!     &mpk,
-//!     &access_policy.attributes(),
+//!     &access_policy,
 //!     None,
 //!     None,
 //! )
@@ -86,7 +86,7 @@
 //!     &cover_crypt,
 //!     &policy,
 //!     &mpk,
-//!     &[Attribute::from(("Security Level", "Top Secret"))],
+//!     &AccessPolicy::new("Security Level", "Top Secret"),
 //!     None,
 //!     None,
 //! )
@@ -116,7 +116,7 @@ mod bytes_ser_de;
 mod cover_crypt_core;
 pub mod error;
 pub mod interfaces;
-mod partitions;
+pub mod partitions;
 
 pub use api::CoverCrypt;
 pub use api::{ClearTextHeader, EncryptedHeader};

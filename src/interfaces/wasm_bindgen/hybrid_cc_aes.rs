@@ -11,7 +11,7 @@ use crate::{
     },
     Serializable,
 };
-use abe_policy::Attribute;
+use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{symmetric_crypto::SymKey, KeyTrait};
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
@@ -21,16 +21,15 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 #[wasm_bindgen]
 pub fn webassembly_encrypt_hybrid_header(
     policy_bytes: Uint8Array,
-    attributes_bytes: Uint8Array,
+    access_policy: String,
     public_key_bytes: Uint8Array,
     additional_data: Uint8Array,
     authenticated_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
-    let attributes: Vec<Attribute> =
-        serde_json::from_slice(attributes_bytes.to_vec().as_slice())
-            .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
+    let access_policy = AccessPolicy::from_boolean_expression(&access_policy)
+        .map_err(|e| JsValue::from_str(&format!("Error reading access policy: {e}")))?;
     let public_key = PublicKey::try_from_bytes(&public_key_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
     let additional_data = if additional_data.is_null() {
@@ -48,7 +47,7 @@ pub fn webassembly_encrypt_hybrid_header(
         &CoverCryptX25519Aes256::default(),
         &policy,
         &public_key,
-        &attributes,
+        &access_policy,
         additional_data.as_deref(),
         authenticated_data.as_deref(),
     )
@@ -187,7 +186,7 @@ pub fn webassembly_decrypt_symmetric_block(
 #[wasm_bindgen]
 pub fn webassembly_hybrid_encrypt(
     policy_bytes: Uint8Array,
-    attributes_bytes: Uint8Array,
+    access_policy: String,
     pk: Uint8Array,
     plaintext: Uint8Array,
     additional_data: Uint8Array,
@@ -195,9 +194,8 @@ pub fn webassembly_hybrid_encrypt(
 ) -> Result<Uint8Array, JsValue> {
     let policy = serde_json::from_slice(&policy_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error parsing policy: {e}")))?;
-    let attributes: Vec<Attribute> =
-        serde_json::from_slice(attributes_bytes.to_vec().as_slice())
-            .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
+    let access_policy = AccessPolicy::from_boolean_expression(&access_policy)
+        .map_err(|e| JsValue::from_str(&format!("Error reading access policy: {e}")))?;
     let pk = PublicKey::try_from_bytes(&pk.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error parsing public key: {e}")))?;
     let additional_data = if additional_data.is_null() {
@@ -218,7 +216,7 @@ pub fn webassembly_hybrid_encrypt(
         &cover_crypt,
         &policy,
         &pk,
-        &attributes,
+        &access_policy,
         additional_data.as_deref(),
         authenticated_data.as_deref(),
     )

@@ -178,13 +178,15 @@ fn combine_attribute_values(
     }
 }
 
-/// Convert an access policy used to decrypt ciphertexts into the corresponding
-/// list of CoverCrypt current partitions that can be decrypted by that access policy
-pub(crate) fn access_policy_to_current_partitions(
+/// Converts an access policy into the corresponding list of CoverCrypt
+/// current partitions.
+pub fn access_policy_to_current_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
+    follow_hierachical_axes: bool,
 ) -> Result<HashSet<Partition>, Error> {
-    let attr_combinations = to_attribute_combinations(access_policy, policy)?;
+    let attr_combinations =
+        to_attribute_combinations(access_policy, policy, follow_hierachical_axes)?;
     let mut set = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
         for partition in to_partitions(attr_combination, policy)? {
@@ -206,6 +208,7 @@ pub(crate) fn access_policy_to_current_partitions(
 fn to_attribute_combinations(
     access_policy: &AccessPolicy,
     policy: &Policy,
+    follow_hierachical_axes: bool,
 ) -> Result<Vec<Vec<Attribute>>, Error> {
     match access_policy {
         AccessPolicy::Attr(attr) => {
@@ -214,9 +217,9 @@ fn to_attribute_combinations(
                 .get(&attr.axis)
                 .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
             let mut res = vec![vec![attr.clone()]];
-            if *is_hierarchical {
+            if *is_hierarchical && follow_hierachical_axes {
                 // add attribute values for all attributes below the given one
-                for name in attribute_names.iter() {
+                for name in attribute_names {
                     if *name == attr.name {
                         break;
                     }
@@ -226,8 +229,10 @@ fn to_attribute_combinations(
             Ok(res)
         }
         AccessPolicy::And(ap_left, ap_right) => {
-            let combinations_left = to_attribute_combinations(ap_left, policy)?;
-            let combinations_right = to_attribute_combinations(ap_right, policy)?;
+            let combinations_left =
+                to_attribute_combinations(ap_left, policy, follow_hierachical_axes)?;
+            let combinations_right =
+                to_attribute_combinations(ap_right, policy, follow_hierachical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() * combinations_right.len());
             for value_left in combinations_left {
                 for value_right in combinations_right.iter() {
@@ -240,8 +245,10 @@ fn to_attribute_combinations(
             Ok(res)
         }
         AccessPolicy::Or(ap_left, ap_right) => {
-            let combinations_left = to_attribute_combinations(ap_left, policy)?;
-            let combinations_right = to_attribute_combinations(ap_right, policy)?;
+            let combinations_left =
+                to_attribute_combinations(ap_left, policy, follow_hierachical_axes)?;
+            let combinations_right =
+                to_attribute_combinations(ap_right, policy, follow_hierachical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() + combinations_right.len());
             res.extend(combinations_left);
             res.extend(combinations_right);
@@ -352,6 +359,75 @@ mod tests {
         assert!(partitions_3.contains(&Partition::from_attributes(vec![att_0_0_new, att_1_0])?));
         assert!(!partitions_3.contains(&Partition::from_attributes(vec![att_0_0, att_1_0])?));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_access_policy_to_partition() -> Result<(), Error> {
+        //
+        // create policy
+        let mut policy = policy()?;
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+
+        //
+        // create access policy
+        let access_policy = AccessPolicy::new("Department", "HR")
+            | (AccessPolicy::new("Department", "FIN")
+                & AccessPolicy::new("Security Level", "Confidential"));
+
+        //
+        // create partitions from access policy
+        let partitions = access_policy_to_current_partitions(&access_policy, &policy, true)?;
+
+        //
+        // manually create the partitions
+        let mut partitions_ = HashSet::new();
+        // add the partitions associated with the HR department: combine with
+        // all attributes of the Security Level axis
+        let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
+        let (security_levels, _) = policy.axes.get("Security Level").unwrap();
+        for attr_name in security_levels {
+            let attr_value =
+                policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
+            let mut partition = vec![hr_value, attr_value];
+            partition.sort_unstable();
+            partitions_.insert(Partition::from_attributes(partition)?);
+        }
+
+        // add the other attribute combination: FIN && Confidential
+        let fin_value = policy.attribute_current_value(&Attribute::new("Department", "FIN"))?;
+        let conf_value =
+            policy.attribute_current_value(&Attribute::new("Security Level", "Confidential"))?;
+        let mut partition = vec![fin_value, conf_value];
+        partition.sort_unstable();
+        partitions_.insert(Partition::from_attributes(partition)?);
+        // since this is a hierarchical axis, add the lower values: here only protected
+        let prot_value =
+            policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
+        let mut partition = vec![fin_value, prot_value];
+        partition.sort_unstable();
+        partitions_.insert(Partition::from_attributes(partition)?);
+
+        assert_eq!(partitions, partitions_);
+
+        //
+        // check the number of partitions generated by some access policies
+        //
+        let policy_attributes_4 = AccessPolicy::from_boolean_expression(
+            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security Level::Protected)",
+        )
+        .unwrap();
+        let partition_4 =
+            access_policy_to_current_partitions(&policy_attributes_4, &policy, true).unwrap();
+
+        let policy_attributes_5 = AccessPolicy::from_boolean_expression(
+            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security Level::Confidential)",
+        )
+        .unwrap();
+        let partition_5 =
+            access_policy_to_current_partitions(&policy_attributes_5, &policy, true).unwrap();
+        assert_eq!(partition_4.len(), 4);
+        assert_eq!(partition_5.len(), 5);
         Ok(())
     }
 }

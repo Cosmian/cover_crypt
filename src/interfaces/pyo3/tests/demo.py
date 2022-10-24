@@ -48,16 +48,15 @@ additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
 authenticated_data = [];
 
 # Encrypt with different ABE policies
-low_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, bytes(json.dumps(
-    ['Security Level::Low Secret', 'Department::MKG']), 'utf8'),
+low_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Low Secret && Department::MKG",
+                                                  master_keys[1],
+                                                  plaintext_bytes,
+                                                  additional_data,
+                                                  authenticated_data)
+top_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Top Secret && Department::MKG",
                                           master_keys[1], plaintext_bytes,
                                           additional_data, authenticated_data)
-top_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, bytes(json.dumps(
-    ['Security Level::Top Secret', 'Department::MKG']), 'utf8'),
-                                          master_keys[1], plaintext_bytes,
-                                          additional_data, authenticated_data)
-low_secret_fin_data = cosmian_cover_crypt.encrypt(policy, bytes(json.dumps(
-    ['Security Level::Low Secret', 'Department::FIN']), 'utf8'),
+low_secret_fin_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Low Secret && Department::FIN",
                                           master_keys[1], plaintext_bytes,
                                           additional_data, authenticated_data)
 
@@ -110,8 +109,7 @@ new_policy = cosmian_cover_crypt.rotate_attributes(bytes(json.dumps(
 
 # Master keys MUST be refreshed
 master_keys = cosmian_cover_crypt.generate_master_keys(new_policy)
-new_low_secret_mkg_data = cosmian_cover_crypt.encrypt(new_policy, bytes(json.dumps(
-    ['Security Level::Low Secret', 'Department::MKG']), 'utf8'),
+new_low_secret_mkg_data = cosmian_cover_crypt.encrypt(new_policy, "Security Level::Low Secret && Department::MKG",
                                               master_keys[1], plaintext_bytes,
                                               additional_data, authenticated_data)
 
