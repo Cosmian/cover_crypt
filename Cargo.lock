@@ -203,7 +203,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "3.1.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?rev=29e7216#29e7216fb11aa8c0a701d1aad6b7460b15f0ccf8"
+source = "git+https://github.com/Cosmian/crypto_core.git?rev=d6bb5ad#d6bb5ad916fc85bab124e2832d137cb192cb07ff"
 dependencies = [
  "aes-gcm",
  "curve25519-dalek",

@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - make `EncryptedHeader` generic
 - make `ClearTextHeader` generic
 - use EAKEM (cf [MR](https://github.com/Cosmian/cover_crypt/pull/39))
+- `UserSecretKey::x` is now a `HashSet` (`Partition`s are removed)
 
 ### Fixed
 

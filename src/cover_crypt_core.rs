@@ -18,6 +18,7 @@ use sha3::{
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
+    hash::Hash,
     ops::{Add, Div, Mul, Sub},
 };
 use zeroize::Zeroize;
@@ -51,15 +52,18 @@ const KEY_GEN_INFO: &[u8] = b"key generation info";
 /// It is composed of `u`, `v` and `s`, three randomly chosen scalars,
 /// and the scalars `x_i` associated to all subsets `S_i`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MasterSecretKey<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> {
-    u: SK,
-    v: SK,
-    s: SK,
-    pub(crate) x: HashMap<Partition, SK>,
+pub struct MasterSecretKey<
+    const PRIVATE_KEY_LENGTH: usize,
+    PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>,
+> {
+    u: PrivateKey,
+    v: PrivateKey,
+    s: PrivateKey,
+    pub(crate) x: HashMap<Partition, PrivateKey>,
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
-    for MasterSecretKey<PRIVATE_KEY_LENGTH, SK>
+impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
+    for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     /// Serialize the master secret key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
@@ -78,22 +82,25 @@ impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Serializ
     ///
     /// - `bytes`   : bytes from which to read the master secret key
     fn read(de: &mut Deserializer) -> Result<Self, Error> {
-        let u = SK::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let v = SK::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let s = SK::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
+        let u = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
+        let v = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
+        let s = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let x_len = de.read_u64()?.try_into()?;
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
-            x.insert(Partition::from(partition), SK::try_from_bytes(&x_i)?);
+            x.insert(
+                Partition::from(partition),
+                PrivateKey::try_from_bytes(&x_i)?,
+            );
         }
         Ok(Self { u, v, s, x })
     }
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Zeroize
-    for MasterSecretKey<PRIVATE_KEY_LENGTH, SK>
+impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Zeroize
+    for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     fn zeroize(&mut self) {
         self.u.zeroize();
@@ -105,8 +112,8 @@ impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Zeroize
     }
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
-    for MasterSecretKey<PRIVATE_KEY_LENGTH, SK>
+impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
+    for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     fn drop(&mut self) {
         self.zeroize();
@@ -125,22 +132,24 @@ impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
 /// Therefore, a user can decrypt messages encrypted for any subset `S_i` his
 /// secret key holds the associated `x_i`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserSecretKey<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> {
-    a: SK,
-    b: SK,
-    pub(crate) x: HashMap<Partition, SK>,
+pub struct UserSecretKey<
+    const PRIVATE_KEY_LENGTH: usize,
+    PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash,
+> {
+    a: PrivateKey,
+    b: PrivateKey,
+    pub(crate) x: HashSet<PrivateKey>,
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
-    for UserSecretKey<PRIVATE_KEY_LENGTH, SK>
+impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Serializable
+    for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     /// Serialize the user secret key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_u64(self.x.len() as u64)?;
-        for (partition, x_i) in &self.x {
-            n += ser.write_vec(partition)?;
+        for x_i in &self.x {
             n += ser.write_array(&x_i.to_bytes())?;
         }
         Ok(n)
@@ -150,33 +159,30 @@ impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Serializ
     ///
     /// - `bytes`   : bytes from which to read the user secret key
     fn read(de: &mut Deserializer) -> Result<Self, Error> {
-        let a = SK::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let b = SK::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
+        let a = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
+        let b = PrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let x_len = de.read_u64()?.try_into()?;
-        let mut x = HashMap::with_capacity(x_len);
+        let mut x = HashSet::with_capacity(x_len);
         for _ in 0..x_len {
-            let partition = de.read_vec()?;
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
-            x.insert(Partition::from(partition), SK::try_from_bytes(&x_i)?);
+            x.insert(PrivateKey::try_from_bytes(&x_i)?);
         }
         Ok(Self { a, b, x })
     }
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Zeroize
-    for UserSecretKey<PRIVATE_KEY_LENGTH, SK>
+impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Zeroize
+    for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     fn zeroize(&mut self) {
         self.a.zeroize();
         self.b.zeroize();
-        self.x.iter_mut().for_each(|(_, x_i)| {
-            x_i.zeroize();
-        });
+        self.x.clear();
     }
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
-    for UserSecretKey<PRIVATE_KEY_LENGTH, SK>
+impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Drop
+    for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     fn drop(&mut self) {
         self.zeroize();
@@ -193,10 +199,10 @@ impl<const PRIVATE_KEY_LENGTH: usize, SK: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
 /// - the `H_i` such that `H_i = g * s * x_i` with `x_i` the scalars associated
 /// to each subset `S_i`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> {
-    U: PK,
-    V: PK,
-    pub(crate) H: HashMap<Partition, PK>,
+pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> {
+    U: DhPublicKey,
+    V: DhPublicKey,
+    pub(crate) H: HashMap<Partition, DhPublicKey>,
 }
 
 impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializable
@@ -382,6 +388,7 @@ where
     R: CryptoRng + RngCore,
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
     KeyPair::PublicKey: From<KeyPair::PrivateKey>,
+    KeyPair::PrivateKey: Hash,
     for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
     for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
@@ -396,7 +403,7 @@ where
         .iter()
         .filter_map(|(partition, x_i)| {
             if decryption_set.contains(partition) {
-                Some((partition.clone(), x_i.clone()))
+                Some(x_i.clone())
             } else {
                 None
             }
@@ -534,6 +541,7 @@ where
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
     KeyPair::PublicKey: From<KeyPair::PrivateKey>,
+    KeyPair::PrivateKey: Hash,
     for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
     for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
@@ -543,7 +551,7 @@ where
 {
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
     for (tag_i, E_i) in &encapsulation.E {
-        for x_k in sk_j.x.values() {
+        for x_k in &sk_j.x {
             let (tag_k, mut K_k) = eakem_hash!(
                 TAG_LENGTH,
                 SYM_KEY_LENGTH,
@@ -633,29 +641,23 @@ pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
     msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
     usk: &mut UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
     user_set: &HashSet<Partition>,
+    keep_old_accesses: bool,
 ) -> Result<(), Error>
 where
-    PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>,
+    PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash,
 {
+    if !keep_old_accesses {
+        // generate a fresh key
+        usk.x = Default::default();
+    }
+
     // add keys for partitions that do not exist
     for partition in user_set {
-        if !usk.x.contains_key(partition) {
-            // extract key from master secret key (see join)
-            let kem_private_key = msk.x.get(partition).ok_or_else(|| {
-                Error::UnknownPartition(format!(
-                    "the master secret key does not contain the partition: {partition:?}"
-                ))
-            })?;
-            usk.x
-                .insert(partition.to_owned(), kem_private_key.to_owned());
+        if let Some(x_i) = msk.x.get(partition) {
+            usk.x.insert(x_i.clone());
         }
     }
-    // remove keys for partitions not in the list
-    for (partition, _) in usk.x.clone().iter() {
-        if !user_set.contains(partition) {
-            usk.x.remove_entry(partition);
-        }
-    }
+
     Ok(())
 }
 
@@ -815,7 +817,7 @@ mod tests {
             CsRng,
             X25519KeyPair,
         >(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh(&msk, &mut sk0, &HashSet::from([client_partition]))?;
+        refresh(&msk, &mut sk0, &HashSet::from([client_partition]), false)?;
         println!("msk: {:?}", msk.x);
         println!("usk: {:?}", sk0.x);
         println!("{sym_key:?}");
@@ -914,6 +916,7 @@ mod tests {
             partition_4.clone(),
         ]);
         // update the master keys
+        let old_msk = msk.clone();
         update::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
             { X25519KeyPair::PRIVATE_KEY_LENGTH },
@@ -925,11 +928,12 @@ mod tests {
             &msk,
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
+            false,
         )?;
-        assert!(!usk.x.contains_key(&partition_1));
-        assert!(usk.x.contains_key(&partition_2));
-        assert!(!usk.x.contains_key(&partition_3));
-        assert!(usk.x.contains_key(&partition_4));
+        assert!(!usk.x.contains(old_msk.x.get(&partition_1).unwrap()));
+        assert!(usk.x.contains(msk.x.get(&partition_2).unwrap()));
+        assert!(!usk.x.contains(old_msk.x.get(&partition_3).unwrap()));
+        assert!(usk.x.contains(msk.x.get(&partition_4).unwrap()));
         Ok(())
     }
 }
