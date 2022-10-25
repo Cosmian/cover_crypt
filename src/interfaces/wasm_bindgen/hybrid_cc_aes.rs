@@ -116,7 +116,7 @@ pub fn webassembly_decrypt_hybrid_header(
 pub fn webassembly_encrypt_symmetric_block(
     symmetric_key_bytes: Uint8Array,
     plaintext_bytes: Uint8Array,
-    associated_data: Uint8Array,
+    authenticated_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     //
     // Check `plaintext_bytes` input parameter
@@ -131,14 +131,17 @@ pub fn webassembly_encrypt_symmetric_block(
 
     //
     // Encrypt block
-    let associated_data = associated_data.to_vec();
-    let ad = if associated_data.is_empty() {
+    let authenticated_data = if authenticated_data.is_null() {
         None
     } else {
-        Some(associated_data.as_slice())
+        Some(authenticated_data.to_vec())
     };
     let ciphertext = CoverCryptX25519Aes256::default()
-        .encrypt(&symmetric_key, &plaintext_bytes.to_vec(), ad)
+        .encrypt(
+            &symmetric_key,
+            &plaintext_bytes.to_vec(),
+            authenticated_data.as_deref(),
+        )
         .map_err(|e| JsValue::from_str(&format!("Error encrypting block: {e}")))?;
 
     Ok(Uint8Array::from(&ciphertext[..]))
@@ -257,8 +260,8 @@ pub fn webassembly_hybrid_decrypt(
 ) -> Result<Uint8Array, JsValue> {
     // read encrypted bytes as the concatenation of an encrypted header
     // and a DEM ciphertext
-    let ciphertext = encrypted_bytes.to_vec();
-    let mut de = Deserializer::new(&ciphertext);
+    let encrypted_bytes = encrypted_bytes.to_vec();
+    let mut de = Deserializer::new(&encrypted_bytes);
     // this will read the exact header size
     let header = EncryptedHeader::read(&mut de)
         .map_err(|e| JsValue::from_str(&format!("Error parsing encrypted header: {e}")))?;
