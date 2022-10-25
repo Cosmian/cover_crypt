@@ -45,6 +45,35 @@ macro_rules! eakem_hash {
     };
 }
 
+/// Computes the length of the LEB128 serialization of the given `usize`.
+///
+/// # Unsigned LEB128
+///
+/// MSB ------------------ LSB
+///       10011000011101100101  In raw binary
+///      010011000011101100101  Padded to a multiple of 7 bits
+///  0100110  0001110  1100101  Split into 7-bit groups
+/// 00100110 10001110 11100101  Add high 1 bits on all but last (most significant) group to form bytes
+///     0x26     0x8E     0xE5  In hexadecimal
+///
+/// → 0xE5 0x8E 0x26            Output stream (LSB to MSB)
+///
+/// Source: [Wikipedia](https://en.wikipedia.org/wiki/LEB128#Encoding_format)
+///
+/// # Parameters
+///
+/// - `n`   : `usize` for which to compute the length of the serialization
+#[inline]
+fn to_leb128_len(n: usize) -> usize {
+    let mut n = n >> 7;
+    let mut size = 0;
+    while n != 0 {
+        size += 1;
+        n >>= 7;
+    }
+    size
+}
+
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &[u8] = b"key generation info";
 
@@ -67,6 +96,19 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     type Error = Error;
+
+    #[inline]
+    fn length(&self) -> usize {
+        3 * PRIVATE_KEY_LENGTH
+                + to_leb128_len(self.x.len())
+                // compute the length of all the partitions
+                + self
+                    .x
+                    .iter()
+                    .map(|(partition, _)| to_leb128_len(partition.len()) + partition.len())
+                    .sum::<usize>()
+                + self.x.len() * PRIVATE_KEY_LENGTH
+    }
 
     /// Serialize the master secret key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -105,6 +147,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Zeroize
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn zeroize(&mut self) {
         self.u.zeroize();
         self.v.zeroize();
@@ -118,6 +161,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -149,7 +193,12 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 {
     type Error = Error;
 
-    /// Serialize the user secret key.
+    #[inline]
+    fn length(&self) -> usize {
+        2 + PRIVATE_KEY_LENGTH + to_leb128_len(self.x.len()) + self.x.len() * PRIVATE_KEY_LENGTH
+    }
+
+    /// Serializes the user secret key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
@@ -160,7 +209,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
         Ok(n)
     }
 
-    /// Deserialize the user secret key.
+    /// Deserializes the user secret key.
     ///
     /// - `bytes`   : bytes from which to read the user secret key
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -179,6 +228,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Zeroize
     for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn zeroize(&mut self) {
         self.a.zeroize();
         self.b.zeroize();
@@ -189,6 +239,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Drop
     for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn drop(&mut self) {
         self.zeroize();
     }
@@ -215,7 +266,20 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
 {
     type Error = Error;
 
-    /// Serialize the public key.
+    #[inline]
+    fn length(&self) -> usize {
+        2 * PUBLIC_KEY_LENGTH
+            + to_leb128_len(self.H.len())
+            // compute the length of all the partitions
+            + self
+                .H
+                .iter()
+                .map(|(partition, _)| to_leb128_len(partition.len()) + partition.len())
+                .sum::<usize>()
+            + self.H.len() * (PUBLIC_KEY_LENGTH)
+    }
+
+    /// Serializes the public key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.U.to_bytes())?;
         n += ser.write_array(&self.V.to_bytes())?;
@@ -227,7 +291,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
         Ok(n)
     }
 
-    /// Deserialize the public key.
+    /// Deserializes the public key.
     ///
     /// - `bytes`   : bytes from which to read the public key
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -278,6 +342,12 @@ impl<
     for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, SymmetricKey, PublicKey>
 {
     type Error = Error;
+
+    fn length(&self) -> usize {
+        2 * PUBLIC_KEY_LENGTH
+            + to_leb128_len(self.E.len())
+            + self.E.len() * (TAG_LENGTH + SYM_KEY_LENGTH)
+    }
 
     /// Serializes the encapsulation.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -680,21 +750,6 @@ mod tests {
     /// Length of the desired symmetric key
     const SYM_KEY_LENGTH: usize = 32;
     const TAG_LENGTH: usize = 32;
-
-    #[test]
-    fn test_partitions() -> Result<(), Error> {
-        let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
-        let partition = Partition::from_attributes(values.clone())?;
-        let bytes = partition.0;
-        let mut readable = &bytes[..];
-        // values are sorted n Partition
-        values.sort_unstable();
-        for v in values {
-            let val = leb128::read::unsigned(&mut readable).expect("Should read number") as u32;
-            assert_eq!(v, val);
-        }
-        Ok(())
-    }
 
     #[test]
     fn test_serialization() -> Result<(), Error> {

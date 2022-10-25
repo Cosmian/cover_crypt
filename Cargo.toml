@@ -32,7 +32,7 @@ full_bench = []
 
 [dependencies]
 abe_policy = "1.0"
-cosmian_crypto_core = "4.0"
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", rev = "2bda750" }
 hex = "0.4"
 leb128 = "0.2"
 rand_core = { version = "0.6", features = ["getrandom"] }

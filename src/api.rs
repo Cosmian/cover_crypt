@@ -316,7 +316,14 @@ where
 {
     type Error = Error;
 
+    #[inline]
+    fn length(&self) -> usize {
+        // we don't write the length of the `ciphertext` in `try_to_bytes()`
+        self.encapsulation.length() + self.ciphertext.len()
+    }
+
     /// Tries to serialize the encrypted header.
+    #[inline]
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.encapsulation.write(ser)?;
         n += ser.write_vec(self.ciphertext.as_slice())?;
@@ -324,9 +331,36 @@ where
     }
 
     /// Tries to deserialize the encrypted header.
+    #[inline]
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let encapsulation = CoverCryptScheme::Encapsulation::read(de)?;
         let ciphertext = de.read_vec()?;
+        Ok(Self {
+            encapsulation,
+            ciphertext,
+        })
+    }
+
+    #[inline]
+    fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+        let mut ser = Serializer::with_capacity(self.length());
+        self.encapsulation.write(&mut ser)?;
+        // avoid writing length
+        ser.write_array(self.ciphertext.as_slice())?;
+        Ok(ser.finalize())
+    }
+
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.is_empty() {
+            return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
+                "Given byte string is empty".to_string(),
+            )
+            .into());
+        }
+        let mut de = Deserializer::new(bytes);
+        let encapsulation = CoverCryptScheme::Encapsulation::read(&mut de)?;
+        // all remaining bytes constitute the additional data
+        let ciphertext = de.finalize();
         Ok(Self {
             encapsulation,
             ciphertext,
@@ -350,7 +384,14 @@ where
 {
     type Error = Error;
 
+    #[inline]
+    fn length(&self) -> usize {
+        // we don't write the length of the `additional_data` in `try_to_bytes()`
+        KEY_LENGTH + self.additional_data.len()
+    }
+
     /// Tries to serialize the cleartext header.
+    #[inline]
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
         n += ser.write_vec(&self.additional_data)?;
@@ -358,9 +399,36 @@ where
     }
 
     /// Tries to deserialize the cleartext header.
+    #[inline]
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
         let additional_data = de.read_vec()?;
+        Ok(Self {
+            symmetric_key,
+            additional_data,
+        })
+    }
+
+    #[inline]
+    fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+        let mut ser = Serializer::with_capacity(self.length());
+        ser.write_array(self.symmetric_key.as_bytes())?;
+        // avoid writing length
+        ser.write_array(&self.additional_data)?;
+        Ok(ser.finalize())
+    }
+
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.is_empty() {
+            return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
+                "Given byte string is empty".to_string(),
+            )
+            .into());
+        }
+        let mut de = Deserializer::new(bytes);
+        let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
+        // all remaining bytes constitute the additional data
+        let additional_data = de.finalize();
         Ok(Self {
             symmetric_key,
             additional_data,
