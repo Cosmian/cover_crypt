@@ -27,12 +27,13 @@ impl Partition {
                     .to_string(),
             ));
         }
-        // the sort operation allows to get the same hash for :
+        // the sort operation allows to get the same `Partition` for :
         // `Department::HR || Level::Secret`
         // and
         // `Level::Secret || Department::HR`
         attribute_values.sort_unstable();
-        let mut ser = Serializer::new();
+        // the actual size in bytes will be at least equal to the length
+        let mut ser = Serializer::with_capacity(attribute_values.len());
         for value in attribute_values {
             ser.write_u64(value as u64)?;
         }
@@ -293,6 +294,21 @@ mod tests {
             axes_attributes.push(axis_attributes);
         }
         Ok(axes_attributes)
+    }
+
+    #[test]
+    fn test_partitions() -> Result<(), Error> {
+        let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
+        let partition = Partition::from_attributes(values.clone())?;
+        let bytes = partition.0;
+        let mut readable = &bytes[..];
+        // values are sorted n Partition
+        values.sort_unstable();
+        for v in values {
+            let val = leb128::read::unsigned(&mut readable).expect("Should read number") as u32;
+            assert_eq!(v, val);
+        }
+        Ok(())
     }
 
     #[test]
