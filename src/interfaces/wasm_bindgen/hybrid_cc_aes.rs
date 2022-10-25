@@ -237,13 +237,13 @@ pub fn webassembly_hybrid_encrypt(
         .map_err(|e| JsValue::from_str(&format!("Error encrypting symmetric plaintext: {e}")))?;
 
     // concatenate the two encrypted header and the ciphertext
-    let encrypted_header_bytes = encrypted_header
-        .try_to_bytes()
+    let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.capacity());
+    encrypted_header
+        .write(&mut ser)
         .map_err(|e| JsValue::from_str(&format!("Error serializing encrypted header: {e}")))?;
-    let mut bytes = Vec::<u8>::with_capacity(encrypted_header_bytes.len() + ciphertext.len());
-    bytes.extend_from_slice(&encrypted_header_bytes);
-    bytes.extend_from_slice(&ciphertext);
-    Ok(Uint8Array::from(bytes.as_slice()))
+    ser.write_array(&ciphertext)
+        .map_err(|e| JsValue::from_str(&format!("Error writting ciphertext: {e}")))?;
+    Ok(Uint8Array::from(ser.finalize().as_slice()))
 }
 
 /// Decrypt the DEM ciphertext with the header encapsulated symmetric key,

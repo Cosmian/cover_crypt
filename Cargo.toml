@@ -32,7 +32,7 @@ full_bench = []
 
 [dependencies]
 abe_policy = "1.0"
-cosmian_crypto_core = "4.0"
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", rev = "2bda750" }
 hex = "0.4"
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }

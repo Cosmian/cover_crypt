@@ -60,6 +60,7 @@ All notable changes to this project will be documented in this file.
 - `UserSecretKey::x` is now a `HashSet` (`Partition`s are removed)
 - `CoverCrypt::encaps()` now takes an `AccessPolicy`
 - replace `Hc128` by `ChaCha12Rng` as RNG
+- improve serialization
 
 ### Fixed
 
