@@ -332,6 +332,31 @@ where
             ciphertext,
         })
     }
+
+    fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+        let mut ser = Serializer::new();
+        self.encapsulation.write(&mut ser)?;
+        // avoid writing length
+        ser.write_array(self.ciphertext.as_slice())?;
+        Ok(ser.finalize())
+    }
+
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.is_empty() {
+            return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
+                "Given byte string is empty".to_string(),
+            )
+            .into());
+        }
+        let mut de = Deserializer::new(bytes);
+        let encapsulation = CoverCryptScheme::Encapsulation::read(&mut de)?;
+        // all remaining bytes constitute the additional data
+        let ciphertext = de.finalize();
+        Ok(Self {
+            encapsulation,
+            ciphertext,
+        })
+    }
 }
 
 /// A `ClearTextHeader` returned by the `decrypt_hybrid_header` function
@@ -361,6 +386,31 @@ where
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
         let additional_data = de.read_vec()?;
+        Ok(Self {
+            symmetric_key,
+            additional_data,
+        })
+    }
+
+    fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
+        let mut ser = Serializer::new();
+        ser.write_array(self.symmetric_key.as_bytes())?;
+        // avoid writing length
+        ser.write_array(&self.additional_data)?;
+        Ok(ser.finalize())
+    }
+
+    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.is_empty() {
+            return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
+                "Given byte string is empty".to_string(),
+            )
+            .into());
+        }
+        let mut de = Deserializer::new(bytes);
+        let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
+        // all remaining bytes constitute the additional data
+        let additional_data = de.finalize();
         Ok(Self {
             symmetric_key,
             additional_data,
