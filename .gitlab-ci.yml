@@ -50,6 +50,17 @@ cargo_security_check:
     - cargo audit --deny warnings
   allow_failure: true
 
+is_publishable:
+  stage: prebuild
+  cache: {}
+  script:
+    - rm -rf /tmp/${CI_PROJECT_NAME}
+    - cp -rf . /tmp/${CI_PROJECT_NAME}
+    - cd /tmp/${CI_PROJECT_NAME}
+    - cargo publish --dry-run
+    - rm -rf /tmp/${CI_PROJECT_NAME}
+  allow_failure: true
+
 #
 # Build base
 #
@@ -196,8 +207,6 @@ cargo_publish:
   stage: publish
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/'
-  before_script:
-    - apt update && apt install -y git
   script:
     - echo "[registry]" > ~/.cargo/credentials
     - echo "token = \"$CRATES_IO\"" >> ~/.cargo/credentials
