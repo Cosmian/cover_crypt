@@ -28,6 +28,7 @@ debug = true
 ffi = ["lazy_static"]
 wasm_bindgen = ["js-sys", "wasm-bindgen"]
 python = ["pyo3"]
+full_bench = []
 
 [dependencies]
 abe_policy = "1.0"
