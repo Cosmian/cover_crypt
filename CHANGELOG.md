@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 
 ---
+
+## [7.0.0] - 2022-10-26
+
+### Added
+
+- instantiated types in `statics.rs`
+- `Serializable` trait
+
+### Changed
+
+- use `Shake256` to derive keys
+- use constant generics instead of `GenericArray`
+- make `EncryptedHeader` generic
+- make `ClearTextHeader` generic
+- use EAKEM (cf [MR](https://github.com/Cosmian/cover_crypt/pull/39))
+- `UserSecretKey::x` is now a `HashSet` (`Partition`s are removed)
+- `CoverCrypt::encaps()` now takes an `AccessPolicy`
+- replace `Hc128` by `ChaCha12Rng` as RNG
+
+### Fixed
+
+### Removed
+
+- `Metadata`
+
+---
+
+---
 ## [6.0.8] - 2022-10-17
 
 ### Added
@@ -14,7 +42,6 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 ### Removed
-
 ---
 
 ---

@@ -7,25 +7,8 @@ variables:
   KMS_PUBLIC_PATH: /tmp
   KMS_PRIVATE_PATH: /tmp
   KMS_SHARED_PATH: /tmp
-  # Postgres for `cloudproof_js` tests
-  POSTGRES_DB: app_db
-  POSTGRES_USER: app_user
-  POSTGRES_PASSWORD: password
-  PGPASSWORD: password
-  PGPORT: 5433
-  # Postgrest for `cloudproof_js` tests
-  PGRST_SERVER_HOST: localhost
-  PGRST_SERVER_PORT: 3000
-  PGRST_DB_URI: postgres://app_user:password@localhost:${PGPORT}/app_db
-  PGRST_DB_SCHEMA: public
-  PGRST_DB_ANON_ROLE: app_user
-  PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
 
 services:
-  - name: postgres
-    alias: db
-  - name: postgrest/postgrest
-    alias: server
   - name: gitlab.cosmian.com:5000/core/kms:${KMS_VERSION}_ci
     alias: kms_ci
   - redis:latest
@@ -65,6 +48,17 @@ cargo_security_check:
   script:
     - cargo outdated -wR
     - cargo audit --deny warnings
+  allow_failure: true
+
+is_publishable:
+  stage: prebuild
+  cache: {}
+  script:
+    - rm -rf /tmp/${CI_PROJECT_NAME}
+    - cp -rf . /tmp/${CI_PROJECT_NAME}
+    - cd /tmp/${CI_PROJECT_NAME}
+    - cargo publish --dry-run
+    - rm -rf /tmp/${CI_PROJECT_NAME}
   allow_failure: true
 
 #
@@ -175,14 +169,11 @@ test_python:
 test_cloudproof_js:
   image: node:16
   stage: test
-  before_script:
-    - apt update && apt install -y postgresql libpq-dev
   script:
     - git clone https://github.com/Cosmian/cloudproof_js.git
     - mkdir -p cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}
     - cp -r pkg/nodejs/* cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}/
     - cd cloudproof_js
-    - psql -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f ./dump_db_demo.sql
     - npm install jest
     - npm test
   allow_failure: true
@@ -196,7 +187,7 @@ pack_all_artifacts:
   script:
     - zip -r ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip pkg target jniLibs
   artifacts:
-    name: 'cosmian_${CI_PROJECT_NAME}_${CI_COMMIT_TAG}'
+    name: "cosmian_${CI_PROJECT_NAME}_${CI_COMMIT_TAG}"
     paths:
       - ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip
     expire_in: 3 mos
@@ -216,8 +207,6 @@ cargo_publish:
   stage: publish
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/'
-  before_script:
-    - apt update && apt install -y git
   script:
     - echo "[registry]" > ~/.cargo/credentials
     - echo "token = \"$CRATES_IO\"" >> ~/.cargo/credentials

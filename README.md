@@ -5,72 +5,109 @@
 [Latest Version]: https://img.shields.io/crates/v/cosmian_cover_crypt.svg
 [crates.io]: https://crates.io/crates/cosmian_cover_crypt
 
-
 Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
 creating ciphertexts for a set of attributes and issuing user keys with access
 policies over these attributes.
 
 ## Getting started
 
+The following code sample introduces the CoverCrypt functionalities. It can be
+run from `examples/runme.rs` using `cargo run --example runme`.
+
 ``` rust
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-use cosmian_crypto_core::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
-use cosmian_cover_crypt::{CoverCrypt, interfaces::statics::*};
+use cosmian_cover_crypt::{
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader},
+    CoverCrypt,
+};
 
-//
-// Declare a new policy
-
-// The first axis represents security levels. This axis is hierarchical, i.e.
-// user matching a given level have access to all the lower levels. For
-// example, a users matching `Security Level::Confidential` can also decrypt
-// ciphertexts created for `Security Level::Protected`.
+// The first attribute axis will be a security level.
+// This axis is hierarchical, i.e. users matching
+// `Security Level::Confidential` can also decrypt
+// messages encrypted for `Security Level::Protected`.
 let sec_level = PolicyAxis::new(
-    // axis name
     "Security Level",
-    // axis attributes (lower attributes are declared first)
     &["Protected", "Confidential", "Top Secret"],
-    // mark this axis as being hierarchical
     true,
 );
 
-// The second axis represents departments. This axis is *not* hierarchical.
+// Another attribute axis will be department names.
+// This axis is *not* hierarchical.
 let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
 
-// Generate a new `Policy` for these axis. 100 revocations are allowed.
+// Generate a new `Policy` object with a 100 revocations allowed.
 let mut policy = Policy::new(100);
+
+// Add the two generated axes to the policy
 policy.add_axis(&sec_level).unwrap();
 policy.add_axis(&department).unwrap();
 
-// Instantiate CoverCrypt.
-let cover_crypt = CoverCrypt::default();
+// Setup CoverCrypt and generate master keys
+let cover_crypt = CoverCryptX25519Aes256::default();
+let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy).unwrap();
 
-// Generate master keys.
-let (mut master_private_key, mut master_public_key) =
-    cover_crypt.generate_master_keys(&policy).unwrap();
+// The user has a security clearance `Security Level::Top Secret`,
+// and belongs to the finance department (`Department::FIN`).
+let access_policy =
+    AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")
+        .unwrap();
+let mut usk = cover_crypt
+    .generate_user_secret_key(&msk, &access_policy, &policy)
+    .unwrap();
 
-// Create a user secret key for a user in the finance department with a top
-// secret security clearance.
-let mut user_key = cover_crypt.generate_user_private_key(
-    &master_private_key,
-    &AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")
-        .unwrap(),
-    &policy
-).unwrap();
-
-// Encrypt a header for top level security clearance.
-let encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
+// Encrypt
+let (_, encrypted_header) = EncryptedHeader::generate(
+    &cover_crypt,
     &policy,
-    &master_public_key,
+    &mpk,
+    &access_policy.attributes(),
+    None,
+    None,
+)
+.unwrap();
+
+// The user is able to decrypt the encrypted header.
+assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_ok());
+
+//
+// Rotate the `Security Level::Top Secret` attribute
+policy
+    .rotate(&Attribute::from(("Security Level", "Top Secret")))
+    .unwrap();
+
+// Master keys need to be updated to take into account the policy rotation
+cover_crypt
+    .update_master_keys(&policy, &mut msk, &mut mpk)
+    .unwrap();
+
+// Encrypt with rotated attribute
+let (_, new_encrypted_header) = EncryptedHeader::generate(
+    &cover_crypt,
+    &policy,
+    &mpk,
     &[Attribute::from(("Security Level", "Top Secret"))],
     None,
-).unwrap();
-
-// The user secret key is able to decrypt the encrypted header.
-assert!(decrypt_hybrid_header::<Aes256GcmCrypto>(
-    &user_key,
-    &encrypted_header.header_bytes,
+    None,
 )
-.is_ok());
+.unwrap();
+
+// user cannot decrypt the newly encrypted header
+assert!(new_encrypted_header
+    .decrypt(&cover_crypt, &usk, None)
+    .is_err());
+
+// refresh user secret key, do not grant old encryption access
+cover_crypt
+    .refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, false)
+    .unwrap();
+
+// The user with refreshed key is able to decrypt the newly encrypted header.
+assert!(new_encrypted_header
+    .decrypt(&cover_crypt, &usk, None)
+    .is_ok());
+
+// But it cannot decrypt old ciphertexts
+assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_err());
 ```
 
 # Building and testing
@@ -167,13 +204,13 @@ the encrypted header and the encryption time given the number of rights in the
 target set (one right = one partition).
 
 ```
-Header encryption size: 1 partition: 129 bytes, 3 partitions: 193 bytes
+Bench header encryption size: 1 partition: 126 bytes, 3 partitions: 190 bytes
 
 Header encryption/1 partition
-                        time:   [204.73 µs 204.79 µs 204.85 µs]
+                        time:   [187.07 µs 187.10 µs 187.14 µs]
 
 Header encryption/3 partitions
-                        time:   [340.59 µs 340.69 µs 340.79 µs]
+                        time:   [319.33 µs 319.41 µs 319.51 µs]
 ```
 
 ### Secret key decapsulation
@@ -184,10 +221,10 @@ user secret keys contains the appropriate rights.
 
 ```
 Header decryption/1 partition access
-                        time:   [271.55 µs 271.62 µs 271.70 µs]
+                        time:   [252.55 µs 252.66 µs 252.79 µs]
 
 Header decryption/3 partition access
-                        time:   [338.29 µs 338.32 µs 338.35 µs]
+                        time:   [318.59 µs 318.66 µs 318.74 µs]
 ```
 
 ## Documentation

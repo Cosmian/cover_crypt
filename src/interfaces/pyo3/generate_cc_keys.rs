@@ -1,5 +1,9 @@
-use crate::{api::CoverCrypt, MasterPrivateKey};
+use crate::{
+    api::CoverCrypt,
+    interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey},
+};
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use pyo3::{exceptions::PyTypeError, prelude::*};
 
 /// Generate the master authority keys for supplied Policy
@@ -10,41 +14,35 @@ pub fn generate_master_keys(policy_bytes: Vec<u8>) -> PyResult<(Vec<u8>, Vec<u8>
     let policy: Policy = serde_json::from_slice(policy_bytes.as_slice())
         .map_err(|e| PyTypeError::new_err(format!("Policy deserialization failed: {e}")))?;
 
-    //
-    // Setup CoverCrypt
-    let (master_private_key, master_public_key) =
-        CoverCrypt::default().generate_master_keys(&policy)?;
+    let (msk, mpk) = CoverCryptX25519Aes256::default().generate_master_keys(&policy)?;
 
-    Ok((
-        master_private_key.try_to_bytes()?,
-        master_public_key.try_to_bytes()?,
-    ))
+    Ok((msk.try_to_bytes()?, mpk.try_to_bytes()?))
 }
 
-/// Generate a user private key.
+/// Generate a user secret key.
 ///
-/// - `master_private_key_bytes`    : master secret key
-/// - `access_policy_str`           : user access policy
-/// - `policy_bytes`                : global policy
+/// - `msk_bytes`           : master secret key
+/// - `access_policy_str`   : user access policy
+/// - `policy_bytes`        : global policy
 #[pyfunction]
-pub fn generate_user_private_key(
-    master_private_key_bytes: Vec<u8>,
+pub fn generate_user_secret_key(
+    msk_bytes: Vec<u8>,
     access_policy_str: String,
     policy_bytes: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
-    let master_private_key = MasterPrivateKey::try_from_bytes(&master_private_key_bytes)?;
+    let msk = MasterSecretKey::try_from_bytes(&msk_bytes)?;
     let policy = serde_json::from_slice(&policy_bytes)
         .map_err(|e| PyTypeError::new_err(format!("Policy deserialization failed: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
         .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
-    let user_key = CoverCrypt::default().generate_user_private_key(
-        &master_private_key,
+    let usk = CoverCryptX25519Aes256::default().generate_user_secret_key(
+        &msk,
         &access_policy,
         &policy,
     )?;
 
-    Ok(user_key.try_to_bytes()?)
+    Ok(usk.try_to_bytes()?)
 }
 
 /// Generate ABE policy from axis given in serialized JSON
