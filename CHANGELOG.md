@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [7.0.1] - 2022-10-27
+
+### Changed
+
+- change `wasm` target to `web`
+
+---
+
+---
+
 ## [7.0.0] - 2022-10-26
 
 ### Added
