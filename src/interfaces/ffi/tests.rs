@@ -11,14 +11,14 @@ use crate::{
     interfaces::{
         ffi::{error::get_last_error, generate_cc_keys::h_rotate_attributes},
         statics::{
-            ClearTextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
-            SymmetricKey, UserSecretKey,
+            CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
+            UserSecretKey, DEM,
         },
     },
     partitions::Partition,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-use cosmian_crypto_core::{bytes_ser_de::Serializable, KeyTrait};
+use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
 use std::{
     ffi::{CStr, CString},
     os::raw::c_int,
@@ -30,7 +30,7 @@ unsafe fn encrypt_header(
     public_key: &PublicKey,
     additional_data: &[u8],
     authenticated_data: &[u8],
-) -> Result<(SymmetricKey, EncryptedHeader), Error> {
+) -> Result<(<DEM as Dem<{ DEM::KEY_LENGTH }>>::Key, EncryptedHeader), Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
@@ -66,10 +66,9 @@ unsafe fn encrypt_header(
         authenticated_data.as_ref().len() as i32,
     ))?;
 
-    let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr.cast(),
-        symmetric_key_len as usize,
-    ))
+    let symmetric_key_ = <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(
+        std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize),
+    )
     .map_err(|e| Error::Other(e.to_string()))?;
 
     let encrypted_header_bytes_ =
@@ -85,7 +84,7 @@ unsafe fn decrypt_header(
     header: &EncryptedHeader,
     user_decryption_key: &UserSecretKey,
     authenticated_data: &[u8],
-) -> Result<ClearTextHeader, Error> {
+) -> Result<CleartextHeader, Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
@@ -116,17 +115,16 @@ unsafe fn decrypt_header(
         user_decryption_key_len,
     ))?;
 
-    let symmetric_key = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr.cast(),
-        symmetric_key_len as usize,
-    ))
+    let symmetric_key = <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(
+        std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize),
+    )
     .map_err(|e| Error::Other(e.to_string()))?;
 
     let additional_data =
         std::slice::from_raw_parts(additional_data_ptr.cast(), additional_data_len as usize)
             .to_vec();
 
-    Ok(ClearTextHeader {
+    Ok(CleartextHeader {
         symmetric_key,
         additional_data,
     })
@@ -212,7 +210,7 @@ unsafe fn encrypt_header_using_cache(
     policy: &Policy,
     additional_data: &[u8],
     authenticated_data: &[u8],
-) -> Result<(SymmetricKey, EncryptedHeader), Error> {
+) -> Result<(<DEM as Dem<{ DEM::KEY_LENGTH }>>::Key, EncryptedHeader), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
@@ -256,10 +254,9 @@ unsafe fn encrypt_header_using_cache(
         authenticated_data.len() as i32,
     ))?;
 
-    let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr.cast(),
-        symmetric_key_len as usize,
-    ))
+    let symmetric_key_ = <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(
+        std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize),
+    )
     .map_err(|e| Error::Other(e.to_string()))?;
 
     let encrypted_header_bytes_ =
@@ -278,7 +275,7 @@ unsafe fn decrypt_header_using_cache(
     user_decryption_key: &UserSecretKey,
     header: &EncryptedHeader,
     authenticated_data: &[u8],
-) -> Result<ClearTextHeader, Error> {
+) -> Result<CleartextHeader, Error> {
     let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast();
     let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
@@ -313,10 +310,9 @@ unsafe fn decrypt_header_using_cache(
         cache_handle,
     ))?;
 
-    let symmetric_key = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
-        symmetric_key_ptr.cast(),
-        symmetric_key_len as usize,
-    ))
+    let symmetric_key = <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(
+        std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize),
+    )
     .map_err(|e| Error::Other(e.to_string()))?;
 
     let additional_data =
@@ -325,7 +321,7 @@ unsafe fn decrypt_header_using_cache(
 
     unwrap_ffi_error(h_aes_destroy_decryption_cache(cache_handle))?;
 
-    Ok(ClearTextHeader {
+    Ok(CleartextHeader {
         symmetric_key,
         additional_data,
     })

@@ -5,10 +5,7 @@ use crate::{
     ffi_bail, ffi_not_null, ffi_unwrap,
     interfaces::{
         ffi::error::{set_last_error, FfiError},
-        statics::{
-            CoverCryptDem, CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey,
-            UserSecretKey,
-        },
+        statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
     },
 };
 use abe_policy::{AccessPolicy, Policy};
@@ -129,10 +126,10 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         symmetric_key_ptr,
         "Symmetric key pointer should point to pre-allocated memory"
     );
-    if (symmetric_key_len as usize) < CoverCryptDem::KEY_LENGTH {
+    if (symmetric_key_len as usize) < CoverCryptX25519Aes256::SYM_KEY_LENGTH {
         ffi_bail!(
             "The pre-allocated symmetric key buffer is too small; need {} bytes",
-            CoverCryptDem::KEY_LENGTH
+            CoverCryptX25519Aes256::SYM_KEY_LENGTH
         );
     }
     ffi_not_null!(
@@ -200,7 +197,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
 
     // serialize symmetric key
     let symmetric_key_bytes = symmetric_key.to_bytes();
-    *symmetric_key_len = CoverCryptDem::KEY_LENGTH as c_int;
+    *symmetric_key_len = CoverCryptX25519Aes256::SYM_KEY_LENGTH as c_int;
     std::slice::from_raw_parts_mut(symmetric_key_ptr.cast(), symmetric_key_bytes.len())
         .copy_from_slice(&symmetric_key_bytes);
 
@@ -618,7 +615,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
-    CoverCryptDem::ENCRYPTION_OVERHEAD as c_int
+    DEM::ENCRYPTION_OVERHEAD as c_int
 }
 
 #[no_mangle]
@@ -676,7 +673,9 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     let plaintext =
         std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
 
-    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
+    let symmetric_key = ffi_unwrap!(<DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(
+        &symmetric_key.to_vec()
+    ));
     let ciphertext =
         ffi_unwrap!(CoverCryptX25519Aes256::default().encrypt(&symmetric_key, &plaintext, ad,));
 
@@ -735,7 +734,9 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
         std::slice::from_raw_parts(encrypted_bytes_ptr.cast(), encrypted_bytes_len as usize)
             .to_vec();
 
-    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
+    let symmetric_key = ffi_unwrap!(<DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(
+        &symmetric_key.to_vec()
+    ));
 
     //
     // Associated Data

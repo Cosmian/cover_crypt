@@ -115,6 +115,8 @@ pub mod api;
 mod cover_crypt_core;
 pub mod error;
 pub mod interfaces;
+#[macro_use]
+mod macros;
 pub mod partitions;
 
 pub use api::{CleartextHeader, CoverCrypt, EncryptedHeader};

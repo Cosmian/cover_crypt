@@ -4,7 +4,7 @@
 // Allows using the paper notations
 #![allow(non_snake_case)]
 
-use crate::{error::Error, partitions::Partition};
+use crate::{eakem_hash, encapsulation_length, error::Error, partitions::Partition};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
@@ -12,13 +12,10 @@ use cosmian_crypto_core::{
     symmetric_crypto::SymKey,
     KeyTrait,
 };
+#[cfg(feature = "hybrid")]
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SSBYTES,
-};
-use sha3::{
-    digest::{ExtendableOutput, Update, XofReader},
-    Shake256,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -27,27 +24,6 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 use zeroize::Zeroize;
-
-/// Hashes and extends the given bytes into a tag of size `TAG_LENGTH` and a
-/// key of size `KEY_LENGTH`.
-///
-/// - `bytes`   : input bytes
-macro_rules! eakem_hash {
-    ($TAG_LENGTH: ident, $KEY_LENGTH: ident, $($bytes: expr),+) => {
-        {
-            let mut hasher = Shake256::default();
-            $(
-                hasher.update($bytes);
-            )*
-            let mut reader = hasher.finalize_xof();
-            let mut tag = [0; $TAG_LENGTH];
-            let mut key = [0; $KEY_LENGTH];
-            reader.read(&mut tag);
-            reader.read(&mut key);
-            (tag, key)
-        }
-    };
-}
 
 /// Xor the two given byte arrays.
 #[inline]
@@ -59,18 +35,25 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8]) {
 }
 
 /// Length of the EAKEM tag
+// TODO TBZ: use as constant generic ?
 type Tag<const LENGTH: usize> = [u8; LENGTH];
+
+/// Length of the symmetric key. When hybridizing with Kyber, this length
+/// should be `KYBER_SSBYTES` to ensure the `Xor` operation covers the whole
+/// key and the AES security is still 128 post-quantum bits.
+#[cfg(feature = "hybrid")]
+pub const SYM_KEY_LENGTH: usize = KYBER_SSBYTES;
 
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &[u8] = b"key generation info";
 
-// Kyber public key length is 800
+// Kyber public key length
+#[cfg(feature = "hybrid")]
 type KyberPublicKey = [u8; KYBER_INDCPA_PUBLICKEYBYTES];
 
-// Kyber secret key length is 1632
+// Kyber secret key length
+#[cfg(feature = "hybrid")]
 type KyberSecretKey = [u8; KYBER_INDCPA_SECRETKEYBYTES];
-
-type KyberCipherText = [u8; KYBER_INDCPA_BYTES];
 
 /// CoverCrypt master secret key.
 ///
@@ -84,7 +67,10 @@ pub struct MasterSecretKey<
     u: PrivateKey,
     v: PrivateKey,
     s: PrivateKey,
+    #[cfg(feature = "hybrid")]
     pub(crate) x: HashMap<Partition, (KyberSecretKey, PrivateKey)>,
+    #[cfg(not(feature = "hybrid"))]
+    pub(crate) x: HashMap<Partition, PrivateKey>,
 }
 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
@@ -94,15 +80,22 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
 
     #[inline]
     fn length(&self) -> usize {
-        3 * PRIVATE_KEY_LENGTH
+        let length = 3 * PRIVATE_KEY_LENGTH
                 + to_leb128_len(self.x.len())
                 // compute the length of all the partitions
                 + self
                     .x
                     .iter()
                     .map(|(partition, _)| to_leb128_len(partition.len()) + partition.len())
-                    .sum::<usize>()
-                + self.x.len() * PRIVATE_KEY_LENGTH
+                    .sum::<usize>();
+        #[cfg(feature = "hybrid")]
+        {
+            length + self.x.len() * (PRIVATE_KEY_LENGTH + KYBER_INDCPA_SECRETKEYBYTES)
+        }
+        #[cfg(not(feature = "hybrid"))]
+        {
+            length + self.x.len() * PRIVATE_KEY_LENGTH
+        }
     }
 
     /// Serialize the master secret key.
@@ -111,9 +104,15 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
         n += ser.write_array(&self.v.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
         n += ser.write_u64(self.x.len() as u64)?;
+        #[cfg(feature = "hybrid")]
         for (partition, (sk_i, x_i)) in &self.x {
             n += ser.write_vec(partition)?;
             n += ser.write_array(sk_i)?;
+            n += ser.write_array(&x_i.to_bytes())?;
+        }
+        #[cfg(not(feature = "hybrid"))]
+        for (partition, x_i) in &self.x {
+            n += ser.write_vec(partition)?;
             n += ser.write_array(&x_i.to_bytes())?;
         }
         Ok(n)
@@ -130,11 +129,18 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
+            #[cfg(feature = "hybrid")]
             let sk_i = de.read_array::<KYBER_INDCPA_SECRETKEYBYTES>()?;
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
+            #[cfg(feature = "hybrid")]
             x.insert(
                 Partition::from(partition),
                 (sk_i, PrivateKey::try_from_bytes(&x_i)?),
+            );
+            #[cfg(not(feature = "hybrid"))]
+            x.insert(
+                Partition::from(partition),
+                PrivateKey::try_from_bytes(&x_i)?,
             );
         }
         Ok(Self { u, v, s, x })
@@ -149,8 +155,13 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
         self.u.zeroize();
         self.v.zeroize();
         self.s.zeroize();
+        #[cfg(feature = "hybrid")]
         self.x.iter_mut().for_each(|(_, (sk_i, x_i))| {
             sk_i.zeroize();
+            x_i.zeroize();
+        });
+        #[cfg(not(feature = "hybrid"))]
+        self.x.iter_mut().for_each(|(_, x_i)| {
             x_i.zeroize();
         });
     }
@@ -183,7 +194,10 @@ pub struct UserSecretKey<
 > {
     a: PrivateKey,
     b: PrivateKey,
+    #[cfg(feature = "hybrid")]
     pub(crate) x: HashSet<(KyberSecretKey, PrivateKey)>,
+    #[cfg(not(feature = "hybrid"))]
+    pub(crate) x: HashSet<PrivateKey>,
 }
 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Serializable
@@ -193,7 +207,15 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 
     #[inline]
     fn length(&self) -> usize {
-        2 * PRIVATE_KEY_LENGTH + to_leb128_len(self.x.len()) + self.x.len() * PRIVATE_KEY_LENGTH
+        let length = 2 * PRIVATE_KEY_LENGTH + to_leb128_len(self.x.len());
+        #[cfg(feature = "hybrid")]
+        {
+            length + self.x.len() * (PRIVATE_KEY_LENGTH + KYBER_INDCPA_SECRETKEYBYTES)
+        }
+        #[cfg(not(feature = "hybrid"))]
+        {
+            length + self.x.len() * PRIVATE_KEY_LENGTH
+        }
     }
 
     /// Serializes the user secret key.
@@ -201,8 +223,13 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_u64(self.x.len() as u64)?;
+        #[cfg(feature = "hybrid")]
         for (sk_i, x_i) in &self.x {
             n += ser.write_array(sk_i)?;
+            n += ser.write_array(&x_i.to_bytes())?;
+        }
+        #[cfg(not(feature = "hybrid"))]
+        for x_i in &self.x {
             n += ser.write_array(&x_i.to_bytes())?;
         }
         Ok(n)
@@ -217,9 +244,13 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
         let x_len = <usize>::try_from(de.read_u64()?)?;
         let mut x = HashSet::with_capacity(x_len);
         for _ in 0..x_len {
+            #[cfg(feature = "hybrid")]
             let sk_i = de.read_array::<KYBER_INDCPA_SECRETKEYBYTES>()?;
             let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
+            #[cfg(feature = "hybrid")]
             x.insert((sk_i, PrivateKey::try_from_bytes(&x_i)?));
+            #[cfg(not(feature = "hybrid"))]
+            x.insert(PrivateKey::try_from_bytes(&x_i)?);
         }
         Ok(Self { a, b, x })
     }
@@ -258,7 +289,10 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> {
     U: DhPublicKey,
     V: DhPublicKey,
+    #[cfg(feature = "hybrid")]
     pub(crate) H: HashMap<Partition, (KyberPublicKey, DhPublicKey)>,
+    #[cfg(not(feature = "hybrid"))]
+    pub(crate) H: HashMap<Partition, DhPublicKey>,
 }
 
 impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializable
@@ -268,15 +302,23 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
 
     #[inline]
     fn length(&self) -> usize {
-        2 * PUBLIC_KEY_LENGTH
+        let length = 2 * PUBLIC_KEY_LENGTH
             + to_leb128_len(self.H.len())
             // compute the length of all the partitions
             + self
                 .H
                 .iter()
                 .map(|(partition, _)| to_leb128_len(partition.len()) + partition.len())
-                .sum::<usize>()
-            + self.H.len() * (PUBLIC_KEY_LENGTH)
+                .sum::<usize>();
+
+        #[cfg(feature = "hybrid")]
+        {
+            length + self.H.len() * (PUBLIC_KEY_LENGTH + KYBER_INDCPA_PUBLICKEYBYTES)
+        }
+        #[cfg(not(feature = "hybrid"))]
+        {
+            length + self.H.len() * PUBLIC_KEY_LENGTH
+        }
     }
 
     /// Serializes the public key.
@@ -284,9 +326,15 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
         let mut n = ser.write_array(&self.U.to_bytes())?;
         n += ser.write_array(&self.V.to_bytes())?;
         n += ser.write_u64(self.H.len() as u64)?;
+        #[cfg(feature = "hybrid")]
         for (partition, (pk_i, H_i)) in &self.H {
             n += ser.write_vec(partition)?;
             n += ser.write_array(pk_i)?;
+            n += ser.write_array(&H_i.to_bytes())?;
+        }
+        #[cfg(not(feature = "hybrid"))]
+        for (partition, H_i) in &self.H {
+            n += ser.write_vec(partition)?;
             n += ser.write_array(&H_i.to_bytes())?;
         }
         Ok(n)
@@ -302,11 +350,15 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
         let mut H = HashMap::with_capacity(H_len);
         for _ in 0..H_len {
             let partition = de.read_vec()?;
+            #[cfg(feature = "hybrid")]
             let pk_i = de.read_array::<KYBER_INDCPA_PUBLICKEYBYTES>()?;
             let H_i = de.read_array::<PUBLIC_KEY_LENGTH>()?;
             H.insert(
                 Partition::from(partition),
+                #[cfg(feature = "hybrid")]
                 (pk_i, PK::try_from_bytes(&H_i)?),
+                #[cfg(not(feature = "hybrid"))]
+                PK::try_from_bytes(&H_i)?,
             );
         }
         Ok(Self { U, V, H })
@@ -327,28 +379,29 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Encapsulation<
     const TAG_LENGTH: usize,
-    const KEY_LENGTH: usize,
+    const ENCAPSULATION_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
 > {
     C: PublicKey,
     D: PublicKey,
-    E: HashSet<(Tag<TAG_LENGTH>, KyberCipherText)>,
+    E: HashSet<(Tag<TAG_LENGTH>, [u8; ENCAPSULATION_LENGTH])>,
 }
 
 impl<
         const TAG_LENGTH: usize,
-        const SYM_KEY_LENGTH: usize,
+        const ENCAPSULATION_LENGTH: usize,
         const PUBLIC_KEY_LENGTH: usize,
         PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-    > Serializable for Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, PublicKey>
+    > Serializable
+    for Encapsulation<TAG_LENGTH, ENCAPSULATION_LENGTH, PUBLIC_KEY_LENGTH, PublicKey>
 {
     type Error = Error;
 
     fn length(&self) -> usize {
         2 * PUBLIC_KEY_LENGTH
             + to_leb128_len(self.E.len())
-            + self.E.len() * (TAG_LENGTH + SYM_KEY_LENGTH)
+            + self.E.len() * (TAG_LENGTH + ENCAPSULATION_LENGTH)
     }
 
     /// Serializes the encapsulation.
@@ -356,9 +409,9 @@ impl<
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_u64(self.E.len() as u64)?;
-        for (tag, EPQ_i) in &self.E {
+        for (tag, encapsulation) in &self.E {
             n += ser.write_array(tag)?;
-            n += ser.write_array(EPQ_i)?;
+            n += ser.write_array(encapsulation)?;
         }
         Ok(n)
     }
@@ -373,8 +426,8 @@ impl<
         let mut E = HashSet::with_capacity(E_len);
         for _ in 0..E_len {
             let tag = de.read_array::<TAG_LENGTH>()?;
-            let EPQ_i = de.read_array::<KYBER_INDCPA_BYTES>()?;
-            E.insert((tag, EPQ_i));
+            let encapsulation = de.read_array::<ENCAPSULATION_LENGTH>()?;
+            E.insert((tag, encapsulation));
         }
         Ok(Self { C, D, E })
     }
@@ -428,6 +481,7 @@ where
     let mut x = HashMap::with_capacity(partitions.len());
     let mut H = HashMap::with_capacity(partitions.len());
 
+    #[cfg(feature = "hybrid")]
     for partition in partitions {
         let (mut sk_pq, mut pk_pq) = (
             [0; KYBER_INDCPA_SECRETKEYBYTES],
@@ -438,6 +492,13 @@ where
         let H_i = &S * &x_i;
         x.insert(partition.clone(), (sk_pq, x_i));
         H.insert(partition.clone(), (pk_pq, H_i));
+    }
+    #[cfg(not(feature = "hybrid"))]
+    for partition in partitions {
+        let x_i = KeyPair::PrivateKey::new(rng);
+        let H_i = &S * &x_i;
+        x.insert(partition.clone(), x_i);
+        H.insert(partition.clone(), H_i);
     }
 
     (MasterSecretKey { u, v, s, x }, PublicKey { U, V, H })
@@ -528,7 +589,7 @@ where
 /// - `K`               : secret key
 pub fn encaps<
     const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
+    #[cfg(not(feature = "hybrid"))] const SYM_KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     const PRIVATE_KEY_LENGTH: usize,
     R,
@@ -539,7 +600,10 @@ pub fn encaps<
     mpk: &PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
     encryption_set: &HashSet<Partition>,
     K: &SymmetricKey,
-) -> Result<Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, KeyPair::PublicKey>, Error>
+) -> Result<
+    Encapsulation<TAG_LENGTH, { encapsulation_length!() }, PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
+    Error,
+>
 where
     R: CryptoRng + RngCore,
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
@@ -557,14 +621,22 @@ where
     let D = &mpk.V * &r;
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
+        #[cfg(feature = "hybrid")]
         if let Some((pk, H_i)) = mpk.H.get(partition) {
             let K_i = (H_i * &r).to_bytes();
-            // EAKEM is useless if we use CCA-Kyber
-            let (K1_i, mut K2_i) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_i, KEY_GEN_INFO);
-            xor_in_place(&mut K2_i, K.as_bytes());
+            let (tag_i, mut E_i) = eakem_hash!(TAG_LENGTH, KYBER_SSBYTES, &K_i, KEY_GEN_INFO);
+            xor_in_place(&mut E_i, K.as_bytes());
             let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
-            indcpa_enc(&mut EPQ_i, &K2_i, pk, &[0; KYBER_SSBYTES]);
-            E.insert((K1_i, EPQ_i));
+            // TODO TBZ: which coin to use ?
+            indcpa_enc(&mut EPQ_i, &E_i, pk, &[0; KYBER_SSBYTES]);
+            E.insert((tag_i, EPQ_i));
+        } // else may log a warning about unknown target partition
+        #[cfg(not(feature = "hybrid"))]
+        if let Some(H_i) = mpk.H.get(partition) {
+            let K_i = (H_i * &r).to_bytes();
+            let (tag_i, mut E_i) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_i, KEY_GEN_INFO);
+            xor_in_place(&mut E_i, K.as_bytes());
+            E.insert((tag_i, E_i));
         } // else may log a warning about unknown target partition
     }
     Ok(Encapsulation { C, D, E })
@@ -600,7 +672,7 @@ where
 /// - `encapsulation`       : symmetric key encapsulation
 pub fn decaps<
     const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
+    #[cfg(not(feature = "hybrid"))] const SYM_KEY_LENGTH: usize,
     const PUBLIC_KEY_LENGTH: usize,
     const PRIVATE_KEY_LENGTH: usize,
     SymmetricKey,
@@ -609,7 +681,7 @@ pub fn decaps<
     sk_j: &UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     encapsulation: &Encapsulation<
         TAG_LENGTH,
-        SYM_KEY_LENGTH,
+        { encapsulation_length!() },
         PUBLIC_KEY_LENGTH,
         KeyPair::PublicKey,
     >,
@@ -627,15 +699,25 @@ where
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
 {
     let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
-    for (tag_i, EPQ_i) in &encapsulation.E {
+    for (tag_i, encapsulation_i) in &encapsulation.E {
+        #[cfg(feature = "hybrid")]
         for (sk_k, x_k) in &sk_j.x {
             let K_k = (&precomp * x_k).to_bytes();
             let (tag_k, mut Ki_k) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_k, KEY_GEN_INFO);
             if tag_i == &tag_k {
-                let mut E_i = [0; KYBER_SSBYTES];
-                indcpa_dec(&mut E_i, EPQ_i, sk_k);
-                // TODO: `KYBER_SSBYTES` needs to be equal to `SYM_KEY_LENGTH`
-                xor_in_place(&mut Ki_k, &E_i);
+                // TODO TBZ: which coin to use ?
+                let mut E_k = [0; KYBER_SSBYTES];
+                indcpa_dec(&mut E_k, encapsulation_i, sk_k);
+                xor_in_place(&mut Ki_k, &E_k);
+                return Ok(SymmetricKey::from_bytes(Ki_k));
+            }
+        }
+        #[cfg(not(feature = "hybrid"))]
+        for x_k in &sk_j.x {
+            let K_k = (&precomp * x_k).to_bytes();
+            let (tag_k, mut Ki_k) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_k, KEY_GEN_INFO);
+            if tag_i == &tag_k {
+                xor_in_place(&mut Ki_k, encapsulation_i);
                 return Ok(SymmetricKey::from_bytes(Ki_k));
             }
         }
@@ -678,6 +760,7 @@ where
 {
     // add keys for partitions that do not exist in the master keys
     let S = KeyPair::PublicKey::from(msk.s.clone());
+    #[cfg(feature = "hybrid")]
     for partition in partitions_set {
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = KeyPair::PrivateKey::new(rng);
@@ -689,6 +772,15 @@ where
             indcpa_keypair(&mut pk_pq, &mut sk_pq, None, rng);
             msk.x.insert(partition.to_owned(), (sk_pq, x_i));
             mpk.H.insert(partition.to_owned(), (pk_pq, H_i));
+        }
+    }
+    #[cfg(not(feature = "hybrid"))]
+    for partition in partitions_set {
+        if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
+            let x_i = KeyPair::PrivateKey::new(rng);
+            let H_i = &S * &x_i;
+            msk.x.insert(partition.to_owned(), x_i);
+            mpk.H.insert(partition.to_owned(), H_i);
         }
     }
     // remove keys for partitions not in the list
@@ -741,6 +833,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{decaps, encaps, join, refresh, setup, update};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair,
         reexport::rand_core::SeedableRng,
@@ -748,9 +841,17 @@ mod tests {
         CsRng,
     };
 
-    /// Length of the desired symmetric key
-    const SYM_KEY_LENGTH: usize = 32;
+    //
+    // Define types and constants used in the tests
+    //
     const TAG_LENGTH: usize = 32;
+    #[cfg(not(feature = "hybrid"))]
+    const SYM_KEY_LENGTH: usize = Aes256GcmCrypto::KEY_LENGTH;
+    type KeyPair = X25519KeyPair;
+    #[allow(clippy::upper_case_acronyms)]
+    type DEM = Aes256GcmCrypto;
+    //
+    //
 
     #[test]
     fn test_serialization() -> Result<(), Error> {
@@ -790,15 +891,7 @@ mod tests {
         let usk_ = UserSecretKey::try_from_bytes(&bytes)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
-        let encapsulation = encaps::<
-            TAG_LENGTH,
-            { Aes256GcmCrypto::KEY_LENGTH },
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(&mut rng, &mpk, &target_set, &sym_key)?;
+        let encapsulation = encaps!(&mut rng, &mpk, &target_set, &sym_key)?;
         let bytes = encapsulation.try_to_bytes()?;
         assert_eq!(
             bytes.len(),
@@ -813,6 +906,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "hybrid")]
     #[test]
     fn test_kyber() {
         let mut rng = CsRng::from_entropy();
@@ -838,56 +932,19 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup::<
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
         // generate user secret keys
-        let mut sk0 = join::<
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(&mut rng, &msk, &users_set[0])?;
-        let sk1 = join::<
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(&mut rng, &msk, &users_set[1])?;
+        let mut sk0 = join!(&mut rng, &msk, &users_set[0])?;
+        let sk1 = join!(&mut rng, &msk, &users_set[1])?;
         // encapsulate for the target set
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
-        let encapsulation = encaps::<
-            TAG_LENGTH,
-            { Aes256GcmCrypto::KEY_LENGTH },
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(&mut rng, &mpk, &target_set, &sym_key)?;
+        let encapsulation = encaps!(&mut rng, &mpk, &target_set, &sym_key)?;
         // decapsulate for users 1 and 3
-        let res0 = decaps::<
-            TAG_LENGTH,
-            { Aes256GcmCrypto::KEY_LENGTH },
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(&sk0, &encapsulation);
+        let res0 = decaps!(&sk0, &encapsulation);
 
         assert!(res0.is_err(), "User 0 shouldn't be able to decapsulate!");
 
-        let res1 = decaps::<
-            TAG_LENGTH,
-            { Aes256GcmCrypto::KEY_LENGTH },
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(&sk1, &encapsulation)?;
+        let res1 = decaps!(&sk1, &encapsulation)?;
 
         assert_eq!(sym_key, res1, "Wrong decapsulation for user 1!");
 
@@ -905,23 +962,8 @@ mod tests {
         println!("msk: {:?}", msk.x);
         println!("usk: {:?}", sk0.x);
         println!("{sym_key:?}");
-        let new_encapsulation = encaps::<
-            TAG_LENGTH,
-            { Aes256GcmCrypto::KEY_LENGTH },
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(&mut rng, &mpk, &new_partitions_set, &sym_key)?;
-        let res0 = decaps::<
-            TAG_LENGTH,
-            { Aes256GcmCrypto::KEY_LENGTH },
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(&sk0, &new_encapsulation)?;
+        let new_encapsulation = encaps!(&mut rng, &mpk, &new_partitions_set, &sym_key)?;
+        let res0 = decaps!(&sk0, &new_encapsulation)?;
         assert_eq!(sym_key, res0, "User 0 should be able to decapsulate!");
         Ok(())
     }
@@ -974,45 +1016,30 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup::<
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
         // create a user key with access to partition 1 and 2
-        let mut usk = join::<
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(
+        let mut usk = join!(
             &mut rng,
             &msk,
-            &HashSet::from([partition_1.clone(), partition_2.clone()]),
+            &HashSet::from([partition_1.clone(), partition_2.clone()])
         )?;
 
         // now remove partition 1 and add partition 4
         let partition_4 = Partition(b"4".to_vec());
-        let new_partitions_set = HashSet::from([
+        let new_partition_set = HashSet::from([
             partition_2.clone(),
             partition_3.clone(),
             partition_4.clone(),
         ]);
         // update the master keys
         let old_msk = msk.clone();
-        update::<
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        update!(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
         // refresh the user key with partitions 2 and 4
-        refresh(
+        refresh!(
             &msk,
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
-            false,
+            false
         )?;
         assert!(!usk.x.contains(old_msk.x.get(&partition_1).unwrap()));
         assert!(usk.x.contains(msk.x.get(&partition_2).unwrap()));

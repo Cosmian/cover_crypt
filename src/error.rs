@@ -3,6 +3,7 @@
 use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 
 use cosmian_crypto_core::CryptoCoreError;
+#[cfg(feature = "hybrid")]
 use pqc_kyber::KyberError;
 use thiserror::Error;
 
@@ -63,6 +64,7 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
+#[cfg(feature = "hybrid")]
 impl From<KyberError> for Error {
     fn from(e: KyberError) -> Self {
         Self::CryptoError(e.to_string())

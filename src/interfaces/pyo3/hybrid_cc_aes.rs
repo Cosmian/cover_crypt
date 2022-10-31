@@ -4,13 +4,12 @@
 
 use crate::{
     api::CoverCrypt,
-    interfaces::statics::{
-        CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey, UserSecretKey,
-    },
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
 };
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
+    symmetric_crypto::Dem,
     KeyTrait,
 };
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
@@ -124,7 +123,7 @@ pub fn encrypt_symmetric_block(
 
     //
     // Parse symmetric key
-    let symmetric_key = SymmetricKey::try_from_bytes(&symmetric_key)
+    let symmetric_key = <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(&symmetric_key)
         .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //
@@ -155,7 +154,7 @@ pub fn decrypt_symmetric_block(
 
     //
     // Parse symmetric key
-    let symmetric_key = SymmetricKey::try_from_bytes(&symmetric_key)
+    let symmetric_key = <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key::try_from_bytes(&symmetric_key)
         .map_err(|e| PyTypeError::new_err(format!("Deserialize symmetric key failed: {e}")))?;
 
     //

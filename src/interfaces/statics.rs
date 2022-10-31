@@ -1,8 +1,10 @@
+#[cfg(feature = "hybrid")]
+use crate::cover_crypt_core::SYM_KEY_LENGTH;
 use crate::{
     api::{self, CoverCrypt},
-    cover_crypt_core,
+    cover_crypt_core, decaps, encaps, encapsulation_length,
     error::Error,
-    partitions,
+    join, partitions, refresh, setup, update,
 };
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
@@ -13,7 +15,12 @@ use cosmian_crypto_core::{
 };
 use std::{ops::DerefMut, sync::Mutex};
 
+pub type KeyPair = X25519KeyPair;
+pub type DEM = Aes256GcmCrypto;
+
 const TAG_LENGTH: usize = 32;
+#[cfg(not(feature = "hybrid"))]
+const SYM_KEY_LENGTH: usize = DEM::KEY_LENGTH;
 
 /// Instantiate a CoverCrypt type with AES GCM 256 as DEM
 #[derive(Debug)]
@@ -30,18 +37,17 @@ impl PartialEq for CoverCryptX25519Aes256 {
 impl
     CoverCrypt<
         TAG_LENGTH,
-        { Aes256GcmCrypto::KEY_LENGTH },
-        { X25519KeyPair::PUBLIC_KEY_LENGTH },
-        { X25519KeyPair::PRIVATE_KEY_LENGTH },
-        X25519KeyPair,
-        Aes256GcmCrypto,
+        SYM_KEY_LENGTH,
+        { KeyPair::PUBLIC_KEY_LENGTH },
+        { KeyPair::PRIVATE_KEY_LENGTH },
+        KeyPair,
+        DEM,
     > for CoverCryptX25519Aes256
 {
-    type Dem = Aes256GcmCrypto;
     type Encapsulation =
         cover_crypt_core::Encapsulation<
             TAG_LENGTH,
-            { Self::SYM_KEY_LENGTH },
+            { encapsulation_length!() },
             { Self::PUBLIC_KEY_LENGTH },
             <X25519KeyPair as DhKeyPair<
                 { Self::PUBLIC_KEY_LENGTH },
@@ -77,14 +83,9 @@ impl
         &self,
         policy: &Policy,
     ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error> {
-        Ok(cover_crypt_core::setup::<
-            { Self::PUBLIC_KEY_LENGTH },
-            { Self::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(
+        Ok(setup!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
-            &partitions::all_partitions(policy)?,
+            &partitions::all_partitions(policy)?
         ))
     }
 
@@ -94,16 +95,11 @@ impl
         msk: &mut Self::MasterSecretKey,
         mpk: &mut Self::PublicKey,
     ) -> Result<(), Error> {
-        cover_crypt_core::update::<
-            { Self::PUBLIC_KEY_LENGTH },
-            { Self::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(
+        update!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             msk,
             mpk,
-            &partitions::all_partitions(policy)?,
+            &partitions::all_partitions(policy)?
         )
     }
 
@@ -113,15 +109,10 @@ impl
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error> {
-        cover_crypt_core::join::<
-            { Self::PUBLIC_KEY_LENGTH },
-            { Self::PRIVATE_KEY_LENGTH },
-            CsRng,
-            X25519KeyPair,
-        >(
+        join!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             msk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
+            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?
         )
     }
 
@@ -133,17 +124,11 @@ impl
         policy: &Policy,
         keep_old_accesses: bool,
     ) -> Result<(), Error> {
-        cover_crypt_core::refresh::<
-            { Self::PRIVATE_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PrivateKey,
-        >(
+        refresh!(
             msk,
             usk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
-            keep_old_accesses,
+            keep_old_accesses
         )
     }
 
@@ -154,27 +139,19 @@ impl
         access_policy: &AccessPolicy,
     ) -> Result<
         (
-            <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
+            <DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
             Self::Encapsulation,
         ),
         Error,
     > {
-        let sym_key = <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key::new(
+        let sym_key = <DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key::new(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
         );
-        let encapsulation = cover_crypt_core::encaps::<
-            TAG_LENGTH,
-            { Self::SYM_KEY_LENGTH },
-            { Self::PUBLIC_KEY_LENGTH },
-            { Self::PRIVATE_KEY_LENGTH },
-            CsRng,
-            <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(
+        let encapsulation = encaps!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, false)?,
-            &sym_key,
+            &sym_key
         )?;
         Ok((sym_key, encapsulation))
     }
@@ -183,20 +160,13 @@ impl
         &self,
         usk: &Self::UserSecretKey,
         encapsulation: &Self::Encapsulation,
-    ) -> Result<<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key, Error> {
-        cover_crypt_core::decaps::<
-            TAG_LENGTH,
-            { Self::SYM_KEY_LENGTH },
-            { Self::PUBLIC_KEY_LENGTH },
-            { Self::PRIVATE_KEY_LENGTH },
-            <Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
-            X25519KeyPair,
-        >(usk, encapsulation)
+    ) -> Result<<DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key, Error> {
+        decaps!(usk, encapsulation)
     }
 
     fn encrypt(
         &self,
-        symmetric_key: &<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
+        symmetric_key: &<DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
         plaintext: &[u8],
         authenticated_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
@@ -211,7 +181,7 @@ impl
 
     fn decrypt(
         &self,
-        symmetric_key: &<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
+        symmetric_key: &<DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
         ciphertext: &[u8],
         authenticated_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
@@ -243,7 +213,8 @@ pub type EncryptedHeader = api::EncryptedHeader<
     CoverCryptX25519Aes256,
 >;
 
-pub type ClearTextHeader = api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
+/// Convenience type
+pub type CleartextHeader = api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
 
 /// Convenience type: CoverCryptX25519Aes256 master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
@@ -284,17 +255,6 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
     X25519KeyPair,
     Aes256GcmCrypto,
 >>::Encapsulation;
-
-pub type CoverCryptDem = <CoverCryptX25519Aes256 as CoverCrypt<
-    TAG_LENGTH,
-    { Aes256GcmCrypto::KEY_LENGTH },
-    { X25519KeyPair::PUBLIC_KEY_LENGTH },
-    { X25519KeyPair::PRIVATE_KEY_LENGTH },
-    X25519KeyPair,
-    Aes256GcmCrypto,
->>::Dem;
-
-pub type SymmetricKey = <CoverCryptDem as Dem<{ CoverCryptDem::KEY_LENGTH }>>::Key;
 
 #[cfg(test)]
 mod tests {
@@ -496,6 +456,13 @@ mod tests {
         //additional_data: hex::encode(additional_data),
         //};
 
+        //#[cfg(feature = "hybrid")]
+        //std::fs::write(
+        //"non_regression_vector_hybrid.json",
+        //serde_json::to_string(&reg_vectors).unwrap(),
+        //)
+        //.unwrap();
+        //#[cfg(not(feature = "hybrid"))]
         //std::fs::write(
         //"non_regression_vector.json",
         //serde_json::to_string(&reg_vectors).unwrap(),
@@ -507,8 +474,12 @@ mod tests {
 
     #[test]
     fn test_non_regregression() {
+        #[cfg(not(feature = "hybrid"))]
         let reg_vector: NonRegressionTestVector =
             serde_json::from_str(include_str!("../../non_regression_vector.json")).unwrap();
+        #[cfg(feature = "hybrid")]
+        let reg_vector: NonRegressionTestVector =
+            serde_json::from_str(include_str!("../../non_regression_vector_hybrid.json")).unwrap();
         let top_secret_mkg_fin_user =
             UserSecretKey::try_from_bytes(&hex::decode(reg_vector.user_decryption_key).unwrap())
                 .unwrap();

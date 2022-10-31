@@ -26,25 +26,27 @@ debug = true
 
 [features]
 ffi = ["lazy_static"]
+full_bench = []
+hybrid = ["pqc_kyber"]
 wasm_bindgen = ["js-sys", "wasm-bindgen"]
 python = ["pyo3"]
-full_bench = []
 
 [dependencies]
 abe_policy = "1.0"
 cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", branch = "develop"}
 hex = "0.4"
 leb128 = "0.2"
-pqc_kyber = { git = "https://github.com/tbrezot/kyber.git", features = ["wasm", "ind_cpa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10"
 thiserror = "1.0"
 zeroize = "1.5"
+
 # Optional ones
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
+pqc_kyber = { git = "https://github.com/tbrezot/kyber.git", features = ["wasm", "ind_cpa"], optional = true}
 pyo3 = { version = "0.16.3", features = ["extension-module"], optional = true }
 wasm-bindgen = { version = "0.2", features = [
   "serde-serialize",
