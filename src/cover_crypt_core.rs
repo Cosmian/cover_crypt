@@ -7,7 +7,7 @@
 use crate::{error::Error, partitions::Partition};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
     reexport::rand_core::{CryptoRng, RngCore},
     symmetric_crypto::SymKey,
     KeyTrait,
@@ -43,35 +43,6 @@ macro_rules! eakem_hash {
             (tag, key)
         }
     };
-}
-
-/// Computes the length of the LEB128 serialization of the given `usize`.
-///
-/// # Unsigned LEB128
-///
-/// MSB ------------------ LSB
-///       10011000011101100101  In raw binary
-///      010011000011101100101  Padded to a multiple of 7 bits
-///  0100110  0001110  1100101  Split into 7-bit groups
-/// 00100110 10001110 11100101  Add high 1 bits on all but last (most significant) group to form bytes
-///     0x26     0x8E     0xE5  In hexadecimal
-///
-/// → 0xE5 0x8E 0x26            Output stream (LSB to MSB)
-///
-/// Source: [Wikipedia](https://en.wikipedia.org/wiki/LEB128#Encoding_format)
-///
-/// # Parameters
-///
-/// - `n`   : `usize` for which to compute the length of the serialization
-#[inline]
-fn to_leb128_len(n: usize) -> usize {
-    let mut n = n >> 7;
-    let mut size = 0;
-    while n != 0 {
-        size += 1;
-        n >>= 7;
-    }
-    size
 }
 
 /// Additional information to generate symmetric key using the KDF.
@@ -195,7 +166,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 
     #[inline]
     fn length(&self) -> usize {
-        2 + PRIVATE_KEY_LENGTH + to_leb128_len(self.x.len()) + self.x.len() * PRIVATE_KEY_LENGTH
+        2 * PRIVATE_KEY_LENGTH + to_leb128_len(self.x.len()) + self.x.len() * PRIVATE_KEY_LENGTH
     }
 
     /// Serializes the user secret key.
@@ -770,9 +741,13 @@ mod tests {
             CsRng,
             X25519KeyPair,
         >(&mut rng, &partitions_set);
-        let msk_ = MasterSecretKey::try_from_bytes(&msk.try_to_bytes()?)?;
+        let bytes = msk.try_to_bytes()?;
+        assert_eq!(bytes.len(), msk.length(), "Wrong master secret key length");
+        let msk_ = MasterSecretKey::try_from_bytes(&bytes)?;
         assert_eq!(msk, msk_, "Master secret key comparisons failed");
-        let mpk_ = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
+        let bytes = mpk.try_to_bytes()?;
+        assert_eq!(bytes.len(), mpk.length(), "Wrong master public key length");
+        let mpk_ = PublicKey::try_from_bytes(&bytes)?;
         assert_eq!(mpk, mpk_, "Master public key comparison failed");
         let usk = join::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
@@ -780,7 +755,9 @@ mod tests {
             CsRng,
             X25519KeyPair,
         >(&mut rng, &msk, &user_set)?;
-        let usk_ = UserSecretKey::try_from_bytes(&usk.try_to_bytes()?)?;
+        let bytes = usk.try_to_bytes()?;
+        assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
+        let usk_ = UserSecretKey::try_from_bytes(&bytes)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps::<
@@ -792,7 +769,13 @@ mod tests {
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
         >(&mut rng, &mpk, &target_set, &sym_key)?;
-        let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
+        let bytes = encapsulation.try_to_bytes()?;
+        assert_eq!(
+            bytes.len(),
+            encapsulation.length(),
+            "Wrong encapsulation size"
+        );
+        let encapsulation_ = Encapsulation::try_from_bytes(&bytes)?;
         assert_eq!(
             encapsulation, encapsulation_,
             "Encapsulation comparison failed"
