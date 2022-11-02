@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Added
+
+### Changed
+
+- improve serialization
+
+### Fixed
+
+### Removed
+
+---
+
+---
+
 ## [7.1.1] - 2022-11-22
 
 ### Added
@@ -24,12 +40,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+---
+
 ## [7.0.2] - 2022-11-14
 
 ### Fixed
 
 - `build.sh` only build for features FFI for GLIBC_2.17
 - no encryption in header if additional data is empty
+
+---
 
 ---
 
@@ -60,7 +80,6 @@ All notable changes to this project will be documented in this file.
 - `UserSecretKey::x` is now a `HashSet` (`Partition`s are removed)
 - `CoverCrypt::encaps()` now takes an `AccessPolicy`
 - replace `Hc128` by `ChaCha12Rng` as RNG
-- improve serialization
 
 ### Fixed
 
