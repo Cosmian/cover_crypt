@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "8.0.0"
+version = "7.0.1"
 edition = "2021"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
@@ -46,7 +46,7 @@ zeroize = "1.5"
 # Optional ones
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
-pqc_kyber = { git = "https://github.com/tbrezot/kyber.git", features = ["wasm", "ind_cpa"], optional = true}
+pqc_kyber = { git = "https://github.com/tbrezot/kyber.git", branch = "feat/expose_indcpa_primitives", features = ["wasm", "ind_cpa"], optional = true}
 pyo3 = { version = "0.16.3", features = ["extension-module"], optional = true }
 wasm-bindgen = { version = "0.2", features = [
   "serde-serialize",

@@ -186,7 +186,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "8.0.0"
+version = "7.0.1"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_core",
@@ -563,7 +563,7 @@ checksum = "eb9f9e6e233e5c4a35559a617bf40a4ec447db2e84c20b55a6f83167b7e57872"
 [[package]]
 name = "pqc_kyber"
 version = "0.3.0"
-source = "git+https://github.com/tbrezot/kyber.git#1020bfbdd402743a8fda52f21e5fdeafb185cef4"
+source = "git+https://github.com/tbrezot/kyber.git?branch=feat/expose_indcpa_primitives#f5aa9d6f0af1498f209d1ae190a4685542f17456"
 dependencies = [
  "cc",
  "getrandom 0.2.8",
