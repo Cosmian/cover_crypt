@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Added
+
+### Changed
+
+- improve serialization
+
+### Fixed
+
+### Removed
+
+---
+
+---
+
 ## [7.0.1] - 2022-10-27
 
 ### Changed
@@ -31,7 +47,6 @@ All notable changes to this project will be documented in this file.
 - `UserSecretKey::x` is now a `HashSet` (`Partition`s are removed)
 - `CoverCrypt::encaps()` now takes an `AccessPolicy`
 - replace `Hc128` by `ChaCha12Rng` as RNG
-- improve serialization
 
 ### Fixed
 
