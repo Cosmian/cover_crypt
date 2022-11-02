@@ -16,6 +16,7 @@ use cosmian_crypto_core::{
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SSBYTES,
+    KYBER_SYMBYTES,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -628,7 +629,7 @@ where
             xor_in_place(&mut E_i, K.as_bytes());
             let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
             // TODO TBZ: which coin to use ?
-            indcpa_enc(&mut EPQ_i, &E_i, pk_i, &[0; KYBER_SSBYTES]);
+            indcpa_enc(&mut EPQ_i, &E_i, pk_i, &[0; KYBER_SYMBYTES]);
             E.insert((tag_i, EPQ_i));
         } // else may log a warning about unknown target partition
         #[cfg(not(feature = "hybrid"))]
