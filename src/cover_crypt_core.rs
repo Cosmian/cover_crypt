@@ -622,13 +622,13 @@ where
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         #[cfg(feature = "hybrid")]
-        if let Some((pk, H_i)) = mpk.H.get(partition) {
+        if let Some((pk_i, H_i)) = mpk.H.get(partition) {
             let K_i = (H_i * &r).to_bytes();
             let (tag_i, mut E_i) = eakem_hash!(TAG_LENGTH, KYBER_SSBYTES, &K_i, KEY_GEN_INFO);
             xor_in_place(&mut E_i, K.as_bytes());
             let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
             // TODO TBZ: which coin to use ?
-            indcpa_enc(&mut EPQ_i, &E_i, pk, &[0; KYBER_SSBYTES]);
+            indcpa_enc(&mut EPQ_i, &E_i, pk_i, &[0; KYBER_SSBYTES]);
             E.insert((tag_i, EPQ_i));
         } // else may log a warning about unknown target partition
         #[cfg(not(feature = "hybrid"))]
@@ -678,7 +678,7 @@ pub fn decaps<
     SymmetricKey,
     KeyPair,
 >(
-    sk_j: &UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
+    usk: &UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     encapsulation: &Encapsulation<
         TAG_LENGTH,
         { encapsulation_length!() },
@@ -698,27 +698,27 @@ where
         + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
 {
-    let precomp = &(&encapsulation.C * &sk_j.a) + &(&encapsulation.D * &sk_j.b);
+    let precomp = &(&encapsulation.C * &usk.a) + &(&encapsulation.D * &usk.b);
     for (tag_i, encapsulation_i) in &encapsulation.E {
         #[cfg(feature = "hybrid")]
-        for (sk_k, x_k) in &sk_j.x {
-            let K_k = (&precomp * x_k).to_bytes();
-            let (tag_k, mut Ki_k) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_k, KEY_GEN_INFO);
-            if tag_i == &tag_k {
+        for (sk_j, x_j) in &usk.x {
+            let K_j = (&precomp * x_j).to_bytes();
+            let (tag_j, mut K_j) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_j, KEY_GEN_INFO);
+            if tag_i == &tag_j {
                 // TODO TBZ: which coin to use ?
-                let mut E_k = [0; KYBER_SSBYTES];
-                indcpa_dec(&mut E_k, encapsulation_i, sk_k);
-                xor_in_place(&mut Ki_k, &E_k);
-                return Ok(SymmetricKey::from_bytes(Ki_k));
+                let mut E_j = [0; KYBER_SSBYTES];
+                indcpa_dec(&mut E_j, encapsulation_i, sk_j);
+                xor_in_place(&mut K_j, &E_j);
+                return Ok(SymmetricKey::from_bytes(K_j));
             }
         }
         #[cfg(not(feature = "hybrid"))]
-        for x_k in &sk_j.x {
-            let K_k = (&precomp * x_k).to_bytes();
-            let (tag_k, mut Ki_k) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_k, KEY_GEN_INFO);
-            if tag_i == &tag_k {
-                xor_in_place(&mut Ki_k, encapsulation_i);
-                return Ok(SymmetricKey::from_bytes(Ki_k));
+        for x_j in &usk.x {
+            let K_j = (&precomp * x_j).to_bytes();
+            let (tag_j, mut Ki_j) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K_j, KEY_GEN_INFO);
+            if tag_i == &tag_j {
+                xor_in_place(&mut Ki_j, encapsulation_i);
+                return Ok(SymmetricKey::from_bytes(Ki_j));
             }
         }
     }
