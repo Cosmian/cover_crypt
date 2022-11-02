@@ -3,25 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ---
-## [8.0.0] - 2022-10-17
-
-### Added
-
-### Changed
-
-- Scheme now hybrids with the post-quantic KEM Kyber
-
-### Fixed
-
-### Removed
-
----
-
----
 
 ## Unreleased
 
 ### Added
+
+- `hybid` feature
+- hybridized version of CoverCrypt using Kyber under the `hybrid` feature
 
 ### Changed
 
