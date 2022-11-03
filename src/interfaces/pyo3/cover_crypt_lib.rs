@@ -2,8 +2,11 @@ use crate::{
     api::CoverCrypt as CoverCryptRust,
     interfaces::statics::{
         CoverCryptX25519Aes256,
+        EncryptedHeader as EncryptedHeaderRust,
         MasterSecretKey as MasterSecretKeyRust,
-        PublicKey as PublicKeyRust, UserSecretKey as UserSecretKeyRust}
+        PublicKey as PublicKeyRust, UserSecretKey as UserSecretKeyRust,
+        SymmetricKey as SymmetricKeyRust
+    }
 };
 use abe_policy::{AccessPolicy, Attribute as AttributeRust, Policy as PolicyRust, PolicyAxis as PolicyAxisRust};
 use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType};
@@ -171,6 +174,18 @@ pub struct CoverCrypt {
     inner: CoverCryptX25519Aes256,
 }
 
+
+#[pyclass]
+struct SymmetricKey {
+    inner: SymmetricKeyRust
+}
+
+#[pyclass]
+pub struct EncryptedHeader {
+    inner: EncryptedHeaderRust
+}
+
+
 #[pymethods]
 impl CoverCrypt {
     #[new]
@@ -221,7 +236,7 @@ impl CoverCrypt {
     /// - `policy`              : global policy
     pub fn generate_user_secret_key(
         &self,
-        msk: &mut MasterSecretKey,
+        msk: &MasterSecretKey,
         access_policy_str: String,
         policy: &Policy) -> PyResult<UserSecretKey> {
         
@@ -232,5 +247,99 @@ impl CoverCrypt {
             Ok(usk) => Ok(UserSecretKey { inner: usk }),
             Err(e) => Err(PyException::new_err(e.to_string())),
         }
+    }
+
+    /// Refresh the user key according to the given master key and access policy.
+    ///
+    /// The user key will be granted access to the current partitions, as determined by its access policy.
+    /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
+    ///
+    /// - `usk`                 : the user key to refresh
+    /// - `access_policy`       : the access policy of the user key
+    /// - `msk`                 : master secret key
+    /// - `policy`              : global policy of the master secret key
+    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before rotation) should be kept
+    pub fn refresh_user_secret_key(
+        &self,
+        usk: &mut UserSecretKey,
+        access_policy_str: String,
+        msk: &MasterSecretKey,
+        policy: &Policy,
+        keep_old_accesses: bool) -> PyResult<()> {
+        
+        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+            .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
+
+        match self.inner.refresh_user_secret_key(&mut usk.inner, &access_policy, &msk.inner, &policy.inner, keep_old_accesses) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// Hybrid encryption. Concatenates the encrypted header and the symmetric
+    /// ciphertext.
+    ///
+    /// - `policy`              : policy
+    /// - `access_policy_str`   : the access policy
+    /// - `pk`                  : CoverCrypt public key
+    /// - `plaintext`           : plaintext to encrypt using the DEM
+    /// - `additional_data`     : additional data to symmetrically encrypt in the header
+    /// - `authenticated_data`  : authenticated data to use in symmetric encryptions
+    pub fn encrypt(
+        &self,
+        policy: &Policy,
+        access_policy_str: String,
+        pk: &PublicKey,
+        plaintext: Vec<u8>,
+        additional_data: Option<Vec<u8>>,
+        authenticated_data: Option<Vec<u8>>,
+    ) -> PyResult<(EncryptedHeader, Vec<u8>)> {
+        
+        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
+
+        // generate encrypted header
+        let (symmetric_key, encrypted_header) = EncryptedHeaderRust::generate(
+            &self.inner,
+            &policy.inner,
+            &pk.inner,
+            &access_policy,
+            additional_data.as_deref(),
+            authenticated_data.as_deref(),
+        )?;
+
+        // encrypt the plaintext
+        let ciphertext = self.inner.encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
+
+        Ok((EncryptedHeader {inner: encrypted_header}, ciphertext))
+    }
+
+    /// Hybrid decryption.
+    ///
+    /// - `usk`                 : user secret key
+    /// - `encrypted_header`    : encrypted header
+    /// - `cyphertext_bytes`    : symmetric ciphertext
+    /// - `authenticated_data`  : authenticated data to use in symmetric decryptions
+    pub fn decrypt(
+        &self,
+        usk: &UserSecretKey,
+        encrypted_header: &EncryptedHeader,
+        cyphertext_bytes: Vec<u8>,
+        authenticated_data: Option<Vec<u8>>,
+    ) -> PyResult<Vec<u8>> {
+        // Decrypt header
+        let cleartext_header = encrypted_header.inner.decrypt(
+            &self.inner,
+            &usk.inner,
+            authenticated_data.as_deref(),
+        )?;
+
+        // Decrypt plaintext
+        self.inner.decrypt(
+                &cleartext_header.symmetric_key,
+                cyphertext_bytes.as_slice(),
+                authenticated_data.as_deref(),
+            )
+            .map_err(|e| PyTypeError::new_err(e.to_string()))
     }
 }
