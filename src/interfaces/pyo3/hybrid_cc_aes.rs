@@ -77,7 +77,8 @@ pub fn encrypt_hybrid_header(
 ///
 /// - `usk_bytes`               : serialized user secret key
 /// - `encrypted_header_bytes`  : encrypted header bytes
-/// - `authenticated_data`      : authenticated data to use in symmetric decryption
+/// - `authenticated_data`      : authenticated data to use in symmetric
+///   decryption
 #[pyfunction]
 pub fn decrypt_hybrid_header(
     usk_bytes: Vec<u8>,
@@ -173,7 +174,8 @@ pub fn decrypt_symmetric_block(
 /// - `attributes_bytes`    : attributes
 /// - `pk_bytes`            : CoverCrypt public key
 /// - `plaintext`           : plaintext to encrypt using the DEM
-/// - `additional_data`     : additional data to symmetrically encrypt in the header
+/// - `additional_data`     : additional data to symmetrically encrypt in the
+///   header
 /// - `authenticated_data`  : authenticated data to use in symmetric encryptions
 #[pyfunction]
 pub fn encrypt(

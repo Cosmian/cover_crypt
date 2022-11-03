@@ -186,7 +186,8 @@ pub fn webassembly_decrypt_symmetric_block(
 /// - `attribute_bytes`     : serialized attributes to use in the encapsulation
 /// - `pk`                  : CoverCrypt public key
 /// - `plaintext`           : message to encrypt with the DEM
-/// - `additional_data`     : additional data to symmetrically encrypt in the header
+/// - `additional_data`     : additional data to symmetrically encrypt in the
+///   header
 /// - `autenticated_data`   : data authenticated with the symmetric encryption
 #[wasm_bindgen]
 pub fn webassembly_hybrid_encrypt(
@@ -250,7 +251,8 @@ pub fn webassembly_hybrid_encrypt(
 /// with the header metadata as associated data.
 ///
 /// - `usk_bytes`           : serialized user secret key
-/// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM ciphertext
+/// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM
+///   ciphertext
 /// - `autenticated_data`   : data authenticated with the symmetric encryption
 #[wasm_bindgen]
 pub fn webassembly_hybrid_decrypt(
