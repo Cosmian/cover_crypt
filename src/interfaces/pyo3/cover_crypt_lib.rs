@@ -2,13 +2,16 @@ use crate::{
     api::CoverCrypt as CoverCryptRust,
     interfaces::statics::{
         CoverCryptX25519Aes256,
-        EncryptedHeader as EncryptedHeaderRust,
+        EncryptedHeader,
         MasterSecretKey as MasterSecretKeyRust,
         PublicKey as PublicKeyRust, UserSecretKey as UserSecretKeyRust,
         SymmetricKey as SymmetricKeyRust
     }
 };
 use abe_policy::{AccessPolicy, Attribute as AttributeRust, Policy as PolicyRust, PolicyAxis as PolicyAxisRust};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+};
 use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType};
 
 // Pyo3 doc on classes
@@ -174,17 +177,10 @@ pub struct CoverCrypt {
     inner: CoverCryptX25519Aes256,
 }
 
-
 #[pyclass]
-struct SymmetricKey {
+pub struct SymmetricKey {
     inner: SymmetricKeyRust
 }
-
-#[pyclass]
-pub struct EncryptedHeader {
-    inner: EncryptedHeaderRust
-}
-
 
 #[pymethods]
 impl CoverCrypt {
@@ -276,11 +272,116 @@ impl CoverCrypt {
         }
     }
 
+    /// Encrypt data symmetrically in a block.
+    ///
+    /// - `symmetric_key`       : symmetric key
+    /// - `plaintext_bytes`     : plaintext to encrypt
+    /// - `authenticated_data`  : associated data to be passed to the DEM scheme
+    pub fn encrypt_symmetric_block(
+        &self,
+        symmetric_key: &SymmetricKey,
+        plaintext: Vec<u8>,
+        authenticated_data: Option<Vec<u8>>,
+    ) -> PyResult<Vec<u8>> {
+
+        Ok(self.inner.encrypt(
+            &symmetric_key.inner,
+            &plaintext,
+            authenticated_data.as_deref(),
+        )?)
+    }
+
+    /// Symmetrically Decrypt encrypted data in a block.
+    ///
+    /// - `symmetric_key`       : symmetric key
+    /// - `ciphertext`          : ciphertext
+    /// - `authenticated_data`  : associated data to be passed to the DEM scheme
+    pub fn decrypt_symmetric_block(
+        &self,
+        symmetric_key: &SymmetricKey,
+        ciphertext: Vec<u8>,
+        authenticated_data: Option<Vec<u8>>,
+    ) -> PyResult<Vec<u8>> {
+
+        Ok(self.inner.decrypt(
+            &symmetric_key.inner,
+            &ciphertext,
+            authenticated_data.as_deref(),
+        )?)
+    }
+
+    /// Generate an encrypted header. A header contains the following elements:
+    ///
+    /// - `encapsulation_size`  : the size of the symmetric key encapsulation (u32)
+    /// - `encapsulation`       : symmetric key encapsulation using CoverCrypt
+    /// - `encrypted_metadata`  : Optional metadata encrypted using the DEM
+    ///
+    /// Parameters:
+    ///
+    /// - `policy`              : global policy
+    /// - `access_policy_str`   : access policy
+    /// - `public_key`          : CoverCrypt public key
+    /// - `additional_data`     : additional data to encrypt with the header
+    /// - `authenticated_data`  : authenticated data to use in symmetric encryption
+    pub fn encrypt_header(
+        &self,
+        policy: &Policy,
+        access_policy_str: String,
+        public_key: &PublicKey,
+        additional_data: Option<Vec<u8>>,
+        authenticated_data: Option<Vec<u8>>,
+    ) -> PyResult<(SymmetricKey, Vec<u8>)> {
+        // Deserialize inputs
+        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
+
+        // Encrypt
+        let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
+            &self.inner,
+            &policy.inner,
+            &public_key.inner,
+            &access_policy,
+            additional_data.as_deref(),
+            authenticated_data.as_deref(),
+        )?;
+
+        Ok((
+            SymmetricKey { inner: symmetric_key },
+            encrypted_header.try_to_bytes()?,
+        ))
+    }
+
+    
+    /// Decrypt the given header bytes using a user decryption key.
+    ///
+    /// - `usk`                     : user secret key
+    /// - `encrypted_header_bytes`  : encrypted header bytes
+    /// - `authenticated_data`      : authenticated data to use in symmetric decryption
+    pub fn decrypt_header(
+        &self,
+        usk: &UserSecretKey,
+        encrypted_header_bytes: Vec<u8>,
+        authenticated_data: Option<Vec<u8>>,
+    ) -> PyResult<(SymmetricKey, Vec<u8>)> {
+    
+        // Finally decrypt symmetric key using given user decryption key
+        let cleartext_header = EncryptedHeader::try_from_bytes(&encrypted_header_bytes)?.decrypt(
+            &self.inner,
+            &usk.inner,
+            authenticated_data.as_deref(),
+        )?;
+    
+        Ok((
+            SymmetricKey { inner: cleartext_header.symmetric_key },
+            cleartext_header.additional_data,
+        ))
+    }
+
     /// Hybrid encryption. Concatenates the encrypted header and the symmetric
     /// ciphertext.
     ///
-    /// - `policy`              : policy
-    /// - `access_policy_str`   : the access policy
+    /// - `policy`              : global policy
+    /// - `access_policy_str`   : access policy
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
     /// - `additional_data`     : additional data to symmetrically encrypt in the header
@@ -293,13 +394,13 @@ impl CoverCrypt {
         plaintext: Vec<u8>,
         additional_data: Option<Vec<u8>>,
         authenticated_data: Option<Vec<u8>>,
-    ) -> PyResult<(EncryptedHeader, Vec<u8>)> {
+    ) -> PyResult<Vec<u8>> {
         
         let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
         .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         // generate encrypted header
-        let (symmetric_key, encrypted_header) = EncryptedHeaderRust::generate(
+        let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &self.inner,
             &policy.inner,
             &pk.inner,
@@ -311,24 +412,33 @@ impl CoverCrypt {
         // encrypt the plaintext
         let ciphertext = self.inner.encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
 
-        Ok((EncryptedHeader {inner: encrypted_header}, ciphertext))
+        // concatenate the encrypted header and the ciphertext
+        let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
+        encrypted_header.write(&mut ser)?;
+        ser.write_array(&ciphertext)
+            .map_err(|e| PyTypeError::new_err(format!("Error serializing ciphertext: {e}")))?;
+        Ok(ser.finalize())
     }
 
     /// Hybrid decryption.
     ///
     /// - `usk`                 : user secret key
-    /// - `encrypted_header`    : encrypted header
-    /// - `cyphertext_bytes`    : symmetric ciphertext
+    /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
     /// - `authenticated_data`  : authenticated data to use in symmetric decryptions
     pub fn decrypt(
         &self,
         usk: &UserSecretKey,
-        encrypted_header: &EncryptedHeader,
-        cyphertext_bytes: Vec<u8>,
+        encrypted_bytes: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<Vec<u8>> {
+        let mut de = Deserializer::new(encrypted_bytes.as_slice());
+        // this will read the exact header size
+        let header = EncryptedHeader::read(&mut de)?;
+        // the rest is the symmetric ciphertext
+        let ciphertext = de.finalize();    
+
         // Decrypt header
-        let cleartext_header = encrypted_header.inner.decrypt(
+        let cleartext_header = header.decrypt(
             &self.inner,
             &usk.inner,
             authenticated_data.as_deref(),
@@ -337,7 +447,7 @@ impl CoverCrypt {
         // Decrypt plaintext
         self.inner.decrypt(
                 &cleartext_header.symmetric_key,
-                cyphertext_bytes.as_slice(),
+                ciphertext.as_slice(),
                 authenticated_data.as_deref(),
             )
             .map_err(|e| PyTypeError::new_err(e.to_string()))

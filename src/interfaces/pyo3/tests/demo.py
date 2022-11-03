@@ -20,15 +20,36 @@ msk, pk = cc.generate_master_keys(policy)
 sec_high_fr_sp_user = cc.generate_user_secret_key(
     msk, "Secrecy::High && (Country::France || Country::Spain)", policy)
 
-# Encryption
+sec_low_fr_sp_user = cc.generate_user_secret_key(
+    msk, "Secrecy::Low && (Country::France || Country::Spain)", policy)
+
+# Full encryption
 plaintext = "My secret data"
 plaintext_bytes = bytes(plaintext, 'utf-8')
 additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
 authenticated_data = None;
 
-enc_header, cypher_bytes = cc.encrypt(policy, "Secrecy::High && Country::France", pk , plaintext_bytes, additional_data, authenticated_data)
+ciphertext_bytes = cc.encrypt(policy, "Secrecy::High && Country::France", pk, plaintext_bytes, additional_data, authenticated_data)
 
 # The medium secret marketing user can successfully decrypt a low security marketing message:
-cleartext = cc.decrypt(sec_high_fr_sp_user, enc_header, cypher_bytes, authenticated_data)
+cleartext = cc.decrypt(sec_high_fr_sp_user, ciphertext_bytes, authenticated_data)
 
 assert(str(bytes(cleartext), "utf-8") == plaintext)
+
+
+# The low secret user cannot decrypt the message
+try:
+    cleartext = cc.decrypt(sec_low_fr_sp_user, ciphertext_bytes, authenticated_data)
+except Exception as ex:
+    print(f"As expected, user cannot decrypt this message: {ex}")
+
+# Decomposed encryption
+sym_key, enc_header = cc.encrypt_header(policy, "Secrecy::High && Country::France", pk, additional_data, authenticated_data)
+
+crypted_data = cc.encrypt_symmetric_block(sym_key, plaintext_bytes, authenticated_data)
+
+decrypted_sym_key, metadata = cc.decrypt_header(sec_high_fr_sp_user, enc_header, authenticated_data)
+
+decrypted_data = cc.decrypt_symmetric_block(decrypted_sym_key, crypted_data, authenticated_data)
+
+assert(str(bytes(decrypted_data), "utf-8") == plaintext)
