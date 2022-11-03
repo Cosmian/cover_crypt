@@ -10,7 +10,7 @@ use crate::{
 };
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable},
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     KeyTrait,
 };
 use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
@@ -220,11 +220,11 @@ pub fn encrypt(
         cover_crypt.encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
 
     // concatenate the encrypted header and the ciphertext
-    let encrypted_header_bytes = encrypted_header.try_to_bytes()?;
-    let mut encrypted_bytes = Vec::with_capacity(encrypted_header_bytes.len() + ciphertext.len());
-    encrypted_bytes.extend_from_slice(&encrypted_header_bytes);
-    encrypted_bytes.extend_from_slice(&ciphertext);
-    Ok(encrypted_bytes)
+    let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
+    encrypted_header.write(&mut ser)?;
+    ser.write_array(&ciphertext)
+        .map_err(|e| PyTypeError::new_err(format!("Error serializing ciphertext: {e}")))?;
+    Ok(ser.finalize())
 }
 
 /// Hybrid decryption.
