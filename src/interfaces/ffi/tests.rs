@@ -684,15 +684,18 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         // update the user key, preserving the accesses to the rotated partitions
         let updated_usk =
             refresh_user_secret_key(&usk, &access_policy, &updated_msk, &updated_policy, true)?;
-        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG
+        // Protected)
         assert_eq!(updated_usk.x.len(), original_usk.x.len() + 2);
         for x_i in &original_usk.x {
             assert!(updated_usk.x.contains(x_i));
         }
-        // update the user key, but do NOT preserve the accesses to the rotated partitions
+        // update the user key, but do NOT preserve the accesses to the rotated
+        // partitions
         let updated_usk =
             refresh_user_secret_key(&usk, &access_policy, &updated_msk, &updated_policy, false)?;
-        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG
+        // Protected)
         assert_eq!(updated_usk.x.len(), original_usk.x.len());
         for x_i in &original_usk.x {
             assert!(!updated_usk.x.contains(x_i));

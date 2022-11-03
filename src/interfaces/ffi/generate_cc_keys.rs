@@ -245,8 +245,9 @@ pub unsafe extern "C" fn h_rotate_attributes(
     *updated_policy_len = updated_policy_string.len() as c_int;
     if allocated < *updated_policy_len {
         ffi_bail!(
-            "The pre-allocated output policy buffer is too small; need {} bytes, allocated {allocated}"
-            ,*updated_policy_len
+            "The pre-allocated output policy buffer is too small; need {} bytes, allocated \
+             {allocated}",
+            *updated_policy_len
         );
     }
     std::slice::from_raw_parts_mut(updated_policy_ptr.cast(), updated_policy_string.len())
@@ -381,18 +382,24 @@ pub unsafe extern "C" fn h_update_master_keys(
 #[no_mangle]
 /// Refresh the user key according to the given master key and access policy.
 ///
-/// The user key will be granted access to the current partitions, as determined by its access policy.
-/// If preserve_old_partitions is set, the user access to rotated partitions will be preserved
+/// The user key will be granted access to the current partitions, as determined
+/// by its access policy. If preserve_old_partitions is set, the user access to
+/// rotated partitions will be preserved
 ///
-/// - `updated_usk_ptr`                 : Output buffer containing the updated user secret key
-/// - `updated_usk_len`                 : Size of the updated user secret key output buffer
+/// - `updated_usk_ptr`                 : Output buffer containing the updated
+///   user secret key
+/// - `updated_usk_len`                 : Size of the updated user secret key
+///   output buffer
 /// - `msk_ptr`                         : master secret key
 /// - `msk_len`                         : master secret key length
 /// - `current_usk_ptr`                 : current user secret key
 /// - `current_usk_len`                 : current user secret key length
-/// - `access_policy_ptr`               : Access policy of the user secret key (JSON)
-/// - `policy_ptr`                      : Policy to use to update the master keys (JSON)
-/// - `preserve_old_partitions_access`  : set to 1 to preserve the user access to the rotated partitions
+/// - `access_policy_ptr`               : Access policy of the user secret key
+///   (JSON)
+/// - `policy_ptr`                      : Policy to use to update the master
+///   keys (JSON)
+/// - `preserve_old_partitions_access`  : set to 1 to preserve the user access
+///   to the rotated partitions
 /// # Safety
 pub unsafe extern "C" fn h_refresh_user_secret_key(
     updated_usk_ptr: *mut c_char,
@@ -502,7 +509,8 @@ pub unsafe extern "C" fn h_refresh_user_secret_key(
 ///
 /// Note: the return string is NULL terminated
 ///
-/// - `json_access_policy_ptr`: Output buffer containing a null terminated string with the JSON access policy
+/// - `json_access_policy_ptr`: Output buffer containing a null terminated
+///   string with the JSON access policy
 /// - `json_access_policy_len`: Size of the output buffer
 /// - `boolean_access_policy_ptr`: boolean access policy string
 /// # Safety
@@ -550,7 +558,8 @@ pub unsafe extern "C" fn h_parse_boolean_access_policy(
     let len = json_access_policy_bytes.len();
     if (allocated as usize) < len {
         ffi_bail!(
-            "The pre-allocated output JSON access policy buffer is too small; need {len} bytes, allocated {allocated}"
+            "The pre-allocated output JSON access policy buffer is too small; need {len} bytes, \
+             allocated {allocated}"
         );
     }
     std::slice::from_raw_parts_mut(json_access_policy_ptr as *mut u8, len)

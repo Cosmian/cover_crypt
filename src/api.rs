@@ -93,16 +93,19 @@ pub trait CoverCrypt<
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error>;
 
-    /// Refresh the user key according to the given master key and access policy.
+    /// Refresh the user key according to the given master key and access
+    /// policy.
     ///
-    /// The user key will be granted access to the current partitions, as determined by its access policy.
-    /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
+    /// The user key will be granted access to the current partitions, as
+    /// determined by its access policy. If preserve_old_partitions_access
+    /// is set, the user access to rotated partitions will be preserved
     ///
     /// - `usk`                 : the user key to refresh
     /// - `access_policy`       : the access policy of the user key
     /// - `msk`                 : master secret key
     /// - `policy`              : global policy of the master secret key
-    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before rotation) should be kept
+    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
+    ///   rotation) should be kept
     fn refresh_user_secret_key(
         &self,
         usk: &mut Self::UserSecretKey,
@@ -164,7 +167,8 @@ pub trait CoverCrypt<
 }
 
 /// Encrypted header holding a CoverCrypt encapsulation of a symmetric key and
-/// additional data encrypted using the CoverCrypt DEM with the encapsulated key.
+/// additional data encrypted using the CoverCrypt DEM with the encapsulated
+/// key.
 ///
 /// *Note*: the DEM ciphertext is also used to select the correct symmetric key
 /// from the decapsulation.
@@ -272,14 +276,14 @@ where
         cover_crypt: &CoverCryptScheme,
         usk: &CoverCryptScheme::UserSecretKey,
         authentication_data: Option<&[u8]>,
-    ) -> Result<ClearTextHeader<SYM_KEY_LENGTH, DEM>, Error> {
+    ) -> Result<CleartextHeader<SYM_KEY_LENGTH, DEM>, Error> {
         let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
         let additional_data = if self.ciphertext.is_empty() {
             vec![]
         } else {
             cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authentication_data)?
         };
-        Ok(ClearTextHeader {
+        Ok(CleartextHeader {
             symmetric_key,
             additional_data,
         })
@@ -335,7 +339,7 @@ where
     /// Tries to deserialize the encrypted header.
     #[inline]
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let encapsulation = CoverCryptScheme::Encapsulation::read(de)?;
+        let encapsulation = de.read::<CoverCryptScheme::Encapsulation>()?;
         let ciphertext = de.read_vec()?;
         Ok(Self {
             encapsulation,
@@ -343,15 +347,24 @@ where
         })
     }
 
+    /// Serializes the `EncryptedHeader` without prepending the length.
+    ///
+    /// This allows saving some bytes. If you want to concatenate the
+    /// `EncryptedHeader`, use a `Serializer`.
     #[inline]
     fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
         let mut ser = Serializer::with_capacity(self.length());
-        self.encapsulation.write(&mut ser)?;
+        ser.write(&self.encapsulation)?;
         // avoid writing length
         ser.write_array(self.ciphertext.as_slice())?;
         Ok(ser.finalize())
     }
 
+    /// Deserializes the `EncryptedHeader` from the given bytes.
+    ///
+    /// This reads all the given bytes as the `EncryptedHeader`. If you want to
+    /// read an `EncryptedHeader` that has been concatenated to other bytes,
+    /// use a `Deserializer`.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.is_empty() {
             return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
@@ -360,8 +373,8 @@ where
             .into());
         }
         let mut de = Deserializer::new(bytes);
-        let encapsulation = CoverCryptScheme::Encapsulation::read(&mut de)?;
-        // all remaining bytes constitute the additional data
+        let encapsulation = de.read::<CoverCryptScheme::Encapsulation>()?;
+        // all remaining bytes constitute the encrypted additional data
         let ciphertext = de.finalize();
         Ok(Self {
             encapsulation,
@@ -372,7 +385,7 @@ where
 
 /// A `ClearTextHeader` returned by the `decrypt_hybrid_header` function
 #[derive(Debug, PartialEq, Eq)]
-pub struct ClearTextHeader<const KEY_LENGTH: usize, DEM>
+pub struct CleartextHeader<const KEY_LENGTH: usize, DEM>
 where
     DEM: Dem<KEY_LENGTH>,
 {
@@ -380,7 +393,7 @@ where
     pub additional_data: Vec<u8>,
 }
 
-impl<const KEY_LENGTH: usize, DEM> Serializable for ClearTextHeader<KEY_LENGTH, DEM>
+impl<const KEY_LENGTH: usize, DEM> Serializable for CleartextHeader<KEY_LENGTH, DEM>
 where
     DEM: Dem<KEY_LENGTH>,
 {
@@ -411,6 +424,10 @@ where
         })
     }
 
+    /// Serializes the `ClearTextHeader` without prepending the length.
+    ///
+    /// This allows saving some bytes. If you want to concatenate the
+    /// `ClearTextHeader`, use a `Serializer`.
     #[inline]
     fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
         let mut ser = Serializer::with_capacity(self.length());
@@ -420,6 +437,11 @@ where
         Ok(ser.finalize())
     }
 
+    /// Deserializes the `CleartextHeader` from the given bytes.
+    ///
+    /// This reads all the given bytes as the `CleartextHeader`. If you want to
+    /// read a `CleartextHeader` that has been concatenated to other bytes, use
+    /// a `Deserializer`.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
         if bytes.is_empty() {
             return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
