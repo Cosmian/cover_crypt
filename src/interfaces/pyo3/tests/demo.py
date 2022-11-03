@@ -53,3 +53,24 @@ decrypted_sym_key, metadata = cc.decrypt_header(sec_high_fr_sp_user, enc_header,
 decrypted_data = cc.decrypt_symmetric_block(decrypted_sym_key, crypted_data, authenticated_data)
 
 assert(str(bytes(decrypted_data), "utf-8") == plaintext)
+
+# Rotation
+france_attribute=Attribute("Country","France")
+policy.rotate(france_attribute)
+
+msk, pk = cc.generate_master_keys(policy)
+new_low_secret_mkg_data = cc.encrypt(policy, "Secrecy::Low && Country::France", pk, plaintext_bytes, additional_data, authenticated_data)
+
+# The low secret user cannot decrypt the new message until its key is refreshed
+try:
+    cleartext = cc.decrypt(sec_low_fr_sp_user, new_low_secret_mkg_data, authenticated_data)
+except Exception as ex:
+    print(f"As expected, user cannot decrypt this message: {ex}")
+
+# Refresh medium secret key
+sec_low_fr_sp_user = cc.generate_user_secret_key(msk, "Secrecy::Low && (Country::France || Country::Spain)", policy)
+
+# New messages can now be decrypted
+cleartext = cc.decrypt(sec_low_fr_sp_user, new_low_secret_mkg_data, authenticated_data)
+
+assert(str(bytes(cleartext), "utf-8") == plaintext)
