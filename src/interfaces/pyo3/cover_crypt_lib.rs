@@ -1,5 +1,3 @@
-use abe_policy::{Policy as PolicyRust, PolicyAxis as PolicyAxisRust};
-use abe_policy::Attribute as AttributeRust;
 use crate::{
     api::CoverCrypt as CoverCryptRust,
     interfaces::statics::{
@@ -7,8 +5,8 @@ use crate::{
         MasterSecretKey as MasterSecretKeyRust,
         PublicKey as PublicKeyRust, UserSecretKey as UserSecretKeyRust}
 };
-
-use pyo3::{exceptions::PyException, prelude::*, types::PyType};
+use abe_policy::{AccessPolicy, Attribute as AttributeRust, Policy as PolicyRust, PolicyAxis as PolicyAxisRust};
+use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType};
 
 // Pyo3 doc on classes
 // https://pyo3.rs/v0.16.2/class.html
@@ -188,6 +186,50 @@ impl CoverCrypt {
     pub fn generate_master_keys(&self, policy: &Policy) -> PyResult<(MasterSecretKey, PublicKey)> {
         match self.inner.generate_master_keys(&policy.inner) {
             Ok((msk, pk)) => Ok((MasterSecretKey { inner: msk }, PublicKey { inner: pk })),
+            Err(e) => Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// Update the master keys according to this new policy.
+    ///
+    /// When a partition exists in the new policy but not in the master keys,
+    /// a new key pair is added to the master keys for that partition.
+    /// When a partition exists on the master keys, but not in the new policy,
+    /// it is removed from the master keys.
+    ///
+    ///  - `policy` : Policy to use to generate the keys
+    ///  - `msk`    : master secret key
+    ///  - `mpk`    : master public key
+    pub fn update_master_keys(
+        &self,
+        policy: &Policy,
+        mpk: &mut MasterSecretKey,
+        pk: &mut PublicKey
+    ) -> PyResult<()> {
+        match self.inner.update_master_keys(&policy.inner, &mut mpk.inner, &mut pk.inner) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// Generate a user secret key.
+    ///
+    /// A new user secret key does NOT include to old (i.e. rotated) partitions
+    ///
+    /// - `msk`                 : master secret key
+    /// - `access_policy_str`   : user access policy
+    /// - `policy`              : global policy
+    pub fn generate_user_secret_key(
+        &self,
+        msk: &mut MasterSecretKey,
+        access_policy_str: String,
+        policy: &Policy) -> PyResult<UserSecretKey> {
+        
+        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+            .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
+
+        match self.inner.generate_user_secret_key(&msk.inner, &access_policy, &policy.inner) {
+            Ok(usk) => Ok(UserSecretKey { inner: usk }),
             Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }

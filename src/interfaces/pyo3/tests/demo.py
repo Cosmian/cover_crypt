@@ -21,4 +21,7 @@ cc = CoverCrypt()
 
 msk, pk = cc.generate_master_keys(policy)
 
-print(msk)
+top_secret_mkg_fin_user = cc.generate_user_secret_key(
+    msk, "Secrecy::High && (Country::France || Country::Spain)", policy)
+
+print(top_secret_mkg_fin_user)
