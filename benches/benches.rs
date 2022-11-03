@@ -101,14 +101,16 @@ fn bench_serialization(c: &mut Criterion) {
     // access policy with 4 partition
     #[cfg(feature = "full_bench")]
     let access_policy_4 = AccessPolicy::from_boolean_expression(
-        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected",
+        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected",
     )
     .unwrap();
 
     // access policy with 5 partition
     #[cfg(feature = "full_bench")]
     let access_policy_5 = AccessPolicy::from_boolean_expression(
-        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret)",
+        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected) || (Department::HR && Security Level::Top Secret)",
     )
     .unwrap();
 
@@ -148,7 +150,8 @@ fn bench_serialization(c: &mut Criterion) {
     println!("bench header encryption size:");
     #[cfg(feature = "full_bench")]
     println!(
-        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} bytes\n5 partitions: {} bytes\n",
+        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} \
+         bytes\n5 partitions: {} bytes\n",
         encrypted_header_1.try_to_bytes().unwrap().len(),
         encrypted_header_2.try_to_bytes().unwrap().len(),
         encrypted_header_3.try_to_bytes().unwrap().len(),
@@ -251,14 +254,16 @@ fn bench_header_encryption(c: &mut Criterion) {
     // access policy with 4 partition
     #[cfg(feature = "full_bench")]
     let access_policy_4 = AccessPolicy::from_boolean_expression(
-        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected",
+        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected",
     )
     .unwrap();
 
     // access policy with 5 partition
     #[cfg(feature = "full_bench")]
     let access_policy_5 = AccessPolicy::from_boolean_expression(
-        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret)",
+        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected) || (Department::HR && Security Level::Top Secret)",
     )
     .unwrap();
 
@@ -298,7 +303,8 @@ fn bench_header_encryption(c: &mut Criterion) {
     println!("bench header encryption size:");
     #[cfg(feature = "full_bench")]
     println!(
-        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} bytes\n5 partitions: {} bytes\n",
+        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} \
+         bytes\n5 partitions: {} bytes\n",
         encrypted_header_1.try_to_bytes().unwrap().len(),
         encrypted_header_2.try_to_bytes().unwrap().len(),
         encrypted_header_3.try_to_bytes().unwrap().len(),
@@ -539,14 +545,16 @@ fn bench_header_decryption(c: &mut Criterion) {
     // Access policy with 4 partition
     #[cfg(feature = "full_bench")]
     let access_policy_4 = AccessPolicy::from_boolean_expression(
-        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected",
+        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected",
     )
     .unwrap();
 
     // Access policy with 5 partition
     #[cfg(feature = "full_bench")]
     let access_policy_5 = AccessPolicy::from_boolean_expression(
-        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret)",
+        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected) || (Department::HR && Security Level::Top Secret)",
     )
     .unwrap();
 

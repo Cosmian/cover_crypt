@@ -558,7 +558,8 @@ where
 /// secret key and a ciphertext, it outputs the decrypted key `𝐾`.
 ///
 /// - the user first chooses an index `𝑖 ∈ 𝐵 ∩ 𝐴_𝑗` , in both its set of rights
-/// `𝐴_𝑗` and the rights `𝐵` of the ciphertext, and then uses `𝑥_𝑖 = sk_𝑖 ∈ SK_𝑗`;
+/// `𝐴_𝑗` and the rights `𝐵` of the ciphertext, and then uses `𝑥_𝑖 = sk_𝑖 ∈
+/// SK_𝑗`;
 ///
 /// - it can compute `𝐾_𝑖 = (𝐶 ^ 𝑎_𝑗 𝐷 ^ 𝑏_𝑗 ) ^ 𝑥_𝑖` , and extract
 /// `𝐾 = 𝐸_𝑖 ⊕ ℋ (𝐾_𝑖)`.
@@ -680,10 +681,12 @@ where
 /// Refresh a user key from the master secret key and a list of partitions.
 /// The partitions MUST exist in the master secret key.
 ///
-/// If a partition exists in the user key but is not in the list, it will be removed from the user key.
+/// If a partition exists in the user key but is not in the list, it will be
+/// removed from the user key.
 ///
-/// If a partition exists in the list, but not in the user key, it will be "added" to the user key,
-/// by copying the proper partition key from the master secret key
+/// If a partition exists in the list, but not in the user key, it will be
+/// "added" to the user key, by copying the proper partition key from the master
+/// secret key
 pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
     msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
     usk: &mut UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
