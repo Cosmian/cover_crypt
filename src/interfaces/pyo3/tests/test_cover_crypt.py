@@ -89,7 +89,6 @@ class TestEncryption(unittest.TestCase):
                 sec_low_fr_sp_user, ciphertext, self.authenticated_data
             )
 
-    # /!\ policy rotation can impact the other tests
     def test_policy_rotation(self) -> None:
 
         ciphertext = self.cc.encrypt(
@@ -111,12 +110,13 @@ class TestEncryption(unittest.TestCase):
         # new_policy = deepcopy(self.policy)
         self.policy.rotate(france_attribute)
 
-        new_msk, new_pk = self.cc.generate_master_keys(self.policy)
+        self.cc.update_master_keys(self.policy, self.msk, self.pk)
+        new_plaintext = b"My secret data 2"
         new_ciphertext = self.cc.encrypt(
             self.policy,
-            "Secrecy::High && Country::Spain",
-            new_pk,
-            self.plaintext,
+            "Secrecy::High && Country::France",
+            self.pk,
+            new_plaintext,
             self.additional_data,
             self.authenticated_data,
         )
@@ -127,20 +127,29 @@ class TestEncryption(unittest.TestCase):
                 sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
             )
 
-        new_sec_high_fr_sp_user = self.cc.generate_user_secret_key(
-            new_msk, "Secrecy::High && (Country::France || Country::Spain)", self.policy
+        # new user can still decrypt old message with keep_old_accesses
+        self.cc.refresh_user_secret_key(sec_high_fr_sp_user,
+            "Secrecy::High && (Country::France || Country::Spain)", self.msk, self.policy, keep_old_accesses=True
         )
 
-        # new user key cannot decrypt the old message
+        cleartext = self.cc.decrypt(
+            sec_high_fr_sp_user, ciphertext, self.authenticated_data
+        )
+        self.assertEqual(bytes(cleartext), self.plaintext)
+
+        # new user key can no longer decrypt the old message
+        self.cc.refresh_user_secret_key(sec_high_fr_sp_user,
+            "Secrecy::High && (Country::France || Country::Spain)", self.msk, self.policy, keep_old_accesses=False
+        ) 
         with self.assertRaises(Exception):
             cleartext = self.cc.decrypt(
-                new_sec_high_fr_sp_user, self.ciphertext, self.authenticated_data
+                sec_high_fr_sp_user, ciphertext, self.authenticated_data
             )
 
         cleartext = self.cc.decrypt(
-            new_sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
+            sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
         )
-        self.assertEqual(bytes(cleartext), self.plaintext)
+        self.assertEqual(bytes(cleartext), new_plaintext)
 
     def test_decomposed_encryption_decryption(self) -> None:
 
