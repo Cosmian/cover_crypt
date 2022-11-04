@@ -9,7 +9,10 @@ use crate::{
 use abe_policy::{
     AccessPolicy, Attribute as AttributeRust, Policy as PolicyRust, PolicyAxis as PolicyAxisRust,
 };
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    KeyTrait,
+};
 use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType};
 
 // Pyo3 doc on classes
@@ -153,6 +156,12 @@ impl Policy {
     pub fn to_string(&self) -> String {
         format!("{}", &self.inner)
     }
+
+    pub fn clone(&self) -> Self {
+        Policy {
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 #[pyclass]
@@ -178,6 +187,22 @@ pub struct CoverCrypt {
 #[pyclass]
 pub struct SymmetricKey {
     inner: SymmetricKeyRust,
+}
+
+#[pymethods]
+impl SymmetricKey {
+    pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
+        Ok(self.inner.to_bytes().to_vec())
+    }
+
+    #[classmethod]
+    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
+        let key = match SymmetricKeyRust::try_from_bytes(&key_bytes) {
+            Ok(key) => key,
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        };
+        Ok(SymmetricKey { inner: key })
+    }
 }
 
 #[pymethods]
@@ -212,12 +237,12 @@ impl CoverCrypt {
     pub fn update_master_keys(
         &self,
         policy: &Policy,
-        mpk: &mut MasterSecretKey,
+        msk: &mut MasterSecretKey,
         pk: &mut PublicKey,
     ) -> PyResult<()> {
         match self
             .inner
-            .update_master_keys(&policy.inner, &mut mpk.inner, &mut pk.inner)
+            .update_master_keys(&policy.inner, &mut msk.inner, &mut pk.inner)
         {
             Ok(()) => Ok(()),
             Err(e) => Err(PyException::new_err(e.to_string())),

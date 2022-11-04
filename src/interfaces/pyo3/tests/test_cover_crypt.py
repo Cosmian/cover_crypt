@@ -128,8 +128,12 @@ class TestEncryption(unittest.TestCase):
             )
 
         # new user can still decrypt old message with keep_old_accesses
-        self.cc.refresh_user_secret_key(sec_high_fr_sp_user,
-            "Secrecy::High && (Country::France || Country::Spain)", self.msk, self.policy, keep_old_accesses=True
+        self.cc.refresh_user_secret_key(
+            sec_high_fr_sp_user,
+            "Secrecy::High && (Country::France || Country::Spain)",
+            self.msk,
+            self.policy,
+            keep_old_accesses=True,
         )
 
         cleartext = self.cc.decrypt(
@@ -138,9 +142,13 @@ class TestEncryption(unittest.TestCase):
         self.assertEqual(bytes(cleartext), self.plaintext)
 
         # new user key can no longer decrypt the old message
-        self.cc.refresh_user_secret_key(sec_high_fr_sp_user,
-            "Secrecy::High && (Country::France || Country::Spain)", self.msk, self.policy, keep_old_accesses=False
-        ) 
+        self.cc.refresh_user_secret_key(
+            sec_high_fr_sp_user,
+            "Secrecy::High && (Country::France || Country::Spain)",
+            self.msk,
+            self.policy,
+            keep_old_accesses=False,
+        )
         with self.assertRaises(Exception):
             cleartext = self.cc.decrypt(
                 sec_high_fr_sp_user, ciphertext, self.authenticated_data
