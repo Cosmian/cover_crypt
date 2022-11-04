@@ -1,6 +1,5 @@
 import unittest
 from cosmian_cover_crypt import Attribute, Policy, PolicyAxis, CoverCrypt
-from copy import deepcopy
 
 class TestPolicy(unittest.TestCase):
 
@@ -43,33 +42,85 @@ class TestEncryption(unittest.TestCase):
 
         cls.cc = CoverCrypt()
 
-        cls.msk, cls.pk = cls.cc.generate_master_keys(cls.policy)
-
-        cls.plaintext = "My secret data"
-        cls.plaintext_bytes = bytes(cls.plaintext, 'utf-8')
-        additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
-        cls.authenticated_data = None;
-
-        cls.ciphertext_bytes = cls.cc.encrypt(cls.policy, "Secrecy::High && Country::France", cls.pk,
-                                              cls.plaintext_bytes, additional_data, cls.authenticated_data)
-
     
-    def test_successful_decryption(self) -> None:
-        sec_high_fr_sp_user = TestEncryption.cc.generate_user_secret_key(TestEncryption.msk,
+    def test_full_encryption_decryption(self) -> None:
+
+        msk, pk = TestEncryption.cc.generate_master_keys(TestEncryption.policy)
+
+        plaintext = "My secret data"
+        plaintext_bytes = bytes(plaintext, 'utf-8')
+        additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
+        authenticated_data = None;
+
+        ciphertext_bytes = TestEncryption.cc.encrypt(TestEncryption.policy, "Secrecy::High && Country::France",
+                                                    pk, plaintext_bytes, additional_data, authenticated_data)
+
+        sec_high_fr_sp_user = TestEncryption.cc.generate_user_secret_key(msk,
             "Secrecy::High && (Country::France || Country::Spain)", TestEncryption.policy)
         
-        cleartext = TestEncryption.cc.decrypt(sec_high_fr_sp_user, TestEncryption.ciphertext_bytes,
-                                                TestEncryption.authenticated_data)
-        self.assertEqual(str(bytes(cleartext), "utf-8"), TestEncryption.plaintext)
+        # Successful decryption
+        cleartext = TestEncryption.cc.decrypt(sec_high_fr_sp_user, ciphertext_bytes, authenticated_data)
+        self.assertEqual(str(bytes(cleartext), "utf-8"), plaintext)
 
-
-    def test_wrong_key_policy(self) -> None:
-        sec_low_fr_sp_user = TestEncryption.cc.generate_user_secret_key(TestEncryption.msk,
+        # Wrong key
+        sec_low_fr_sp_user = TestEncryption.cc.generate_user_secret_key(msk,
             "Secrecy::Low && (Country::France || Country::Spain)", TestEncryption.policy)
 
         with self.assertRaises(Exception):
-            cleartext = TestEncryption.cc.decrypt(sec_low_fr_sp_user, TestEncryption.ciphertext_bytes,
-                                                TestEncryption.authenticated_data)
+            cleartext = TestEncryption.cc.decrypt(sec_low_fr_sp_user, ciphertext_bytes, authenticated_data)
+
+
+        # /!\ policy rotation can impact the other tests
+        france_attribute = Attribute("Country","France")
+        # new_policy = deepcopy(TestEncryption.policy)
+        TestEncryption.policy.rotate(france_attribute)
+
+        new_msk, new_pk = TestEncryption.cc.generate_master_keys(TestEncryption.policy)
+        new_ciphertext = TestEncryption.cc.encrypt(TestEncryption.policy,
+            "Secrecy::High && Country::Spain", new_pk, plaintext_bytes,
+            additional_data, authenticated_data)
+
+        # user cannot decrypt the new message until its key is refreshed
+        with self.assertRaises(Exception):
+            cleartext = TestEncryption.cc.decrypt(sec_high_fr_sp_user, new_ciphertext,
+                                                  authenticated_data)
+
+        new_sec_high_fr_sp_user = TestEncryption.cc.generate_user_secret_key(new_msk,
+            "Secrecy::High && (Country::France || Country::Spain)", TestEncryption.policy)
+        
+        # new user key cannot decrypt the old message
+        with self.assertRaises(Exception):
+            cleartext = TestEncryption.cc.decrypt(new_sec_high_fr_sp_user, ciphertext_bytes,
+                                                  authenticated_data)
+
+        cleartext = TestEncryption.cc.decrypt(new_sec_high_fr_sp_user, new_ciphertext, authenticated_data)
+        self.assertEqual(str(bytes(cleartext), "utf-8"), plaintext)
+
+
+    def test_decomposed_encryption_decryption(self) -> None:
+
+        msk, pk = TestEncryption.cc.generate_master_keys(TestEncryption.policy)
+
+        plaintext = "My secret data"
+        plaintext_bytes = bytes(plaintext, 'utf-8')
+        additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
+        authenticated_data = None;
+
+        sym_key, enc_header = TestEncryption.cc.encrypt_header(TestEncryption.policy,
+            "Secrecy::Medium && Country::UK", pk, additional_data, authenticated_data)
+
+        crypted_data = TestEncryption.cc.encrypt_symmetric_block(sym_key, plaintext_bytes, authenticated_data)
+
+        sec_med_uk_user = TestEncryption.cc.generate_user_secret_key(msk,
+            "Secrecy::Medium && Country::UK", TestEncryption.policy)
+
+        decrypted_sym_key, metadata = TestEncryption.cc.decrypt_header(sec_med_uk_user, enc_header, authenticated_data)
+
+        self.assertEqual(metadata, additional_data)
+
+        decrypted_data = TestEncryption.cc.decrypt_symmetric_block(decrypted_sym_key, crypted_data, authenticated_data)
+
+        self.assertEqual(str(bytes(decrypted_data), "utf-8"), plaintext)
 
 
 if __name__ == '__main__':
