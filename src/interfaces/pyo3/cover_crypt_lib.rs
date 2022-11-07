@@ -157,10 +157,27 @@ impl Policy {
         format!("{}", &self.inner)
     }
 
+    /// Perform deep copy of the Policy
     pub fn clone(&self) -> Self {
         Policy {
             inner: self.inner.clone(),
         }
+    }
+
+    /// JSON serialization
+    pub fn to_json(&self) -> PyResult<String> {
+        match serde_json::to_string(&self.inner) {
+            Ok(res) => Ok(res),
+            Err(e) => Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// JSON deserialization
+    #[classmethod]
+    pub fn from_json(_cls: &PyType, policy_json: String) -> PyResult<Self> {
+        let policy: PolicyRust = serde_json::from_str(&policy_json)
+            .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
+        Ok(Policy { inner: policy })
     }
 }
 

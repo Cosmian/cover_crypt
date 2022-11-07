@@ -38,6 +38,27 @@ class TestPolicy(unittest.TestCase):
         self.assertEqual(new_france_value, 8)
         self.assertEqual(policy.attribute_values(france_attribute), [8, 1])
 
+    def test_policy_cloning_serialization(self):
+        country_axis = PolicyAxis(
+            "Country", ["France", "UK", "Spain", "Germany"], False
+        )
+        secrecy_axis = PolicyAxis("Secrecy", ["Low", "Medium", "High"], True)
+        policy = Policy()
+        policy.add_axis(country_axis)
+        policy.add_axis(secrecy_axis)
+
+        copy_policy = policy.clone()
+        self.assertIsInstance(copy_policy, Policy)
+
+        json_str = policy.to_json()
+        self.assertEqual(json_str, copy_policy.to_json())
+
+        deserialized_policy = Policy.from_json(json_str)
+        self.assertIsInstance(deserialized_policy, Policy)
+
+        with self.assertRaises(Exception):
+            Policy.from_json("wrong data format")
+
 
 class TestEncryption(unittest.TestCase):
     def setUp(self) -> None:
