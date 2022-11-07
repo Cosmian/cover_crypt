@@ -186,9 +186,49 @@ pub struct MasterSecretKey {
     inner: MasterSecretKeyRust,
 }
 
+#[pymethods]
+impl MasterSecretKey {
+    /// Convert to bytes for sending/saving the key
+    pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
+        match self.inner.try_to_bytes() {
+            Ok(res) => Ok(res),
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// Read key from bytes
+    #[classmethod]
+    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
+        match MasterSecretKeyRust::try_from_bytes(&key_bytes) {
+            Ok(key) => Ok(MasterSecretKey { inner: key }),
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        }
+    }
+}
+
 #[pyclass]
 pub struct PublicKey {
     inner: PublicKeyRust,
+}
+
+#[pymethods]
+impl PublicKey {
+    /// Convert to bytes for sending/saving the key
+    pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
+        match self.inner.try_to_bytes() {
+            Ok(res) => Ok(res),
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// Read key from bytes
+    #[classmethod]
+    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
+        match PublicKeyRust::try_from_bytes(&key_bytes) {
+            Ok(key) => Ok(PublicKey { inner: key }),
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        }
+    }
 }
 
 #[pyclass]
@@ -196,9 +236,24 @@ pub struct UserSecretKey {
     inner: UserSecretKeyRust,
 }
 
-#[pyclass]
-pub struct CoverCrypt {
-    inner: CoverCryptX25519Aes256,
+#[pymethods]
+impl UserSecretKey {
+    /// Convert to bytes for sending/saving the key
+    pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
+        match self.inner.try_to_bytes() {
+            Ok(res) => Ok(res),
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        }
+    }
+
+    /// Read key from bytes
+    #[classmethod]
+    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
+        match UserSecretKeyRust::try_from_bytes(&key_bytes) {
+            Ok(key) => Ok(UserSecretKey { inner: key }),
+            Err(e) => return Err(PyException::new_err(e.to_string())),
+        }
+    }
 }
 
 #[pyclass]
@@ -208,18 +263,24 @@ pub struct SymmetricKey {
 
 #[pymethods]
 impl SymmetricKey {
+    /// Convert to bytes for sending/saving the key
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         Ok(self.inner.to_bytes().to_vec())
     }
 
+    /// Read key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
-        let key = match SymmetricKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => key,
+        match SymmetricKeyRust::try_from_bytes(&key_bytes) {
+            Ok(key) => Ok(SymmetricKey { inner: key }),
             Err(e) => return Err(PyException::new_err(e.to_string())),
-        };
-        Ok(SymmetricKey { inner: key })
+        }
     }
+}
+
+#[pyclass]
+pub struct CoverCrypt {
+    inner: CoverCryptX25519Aes256,
 }
 
 #[pymethods]

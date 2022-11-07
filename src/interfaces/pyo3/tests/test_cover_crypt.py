@@ -1,5 +1,14 @@
 import unittest
-from cosmian_cover_crypt import Attribute, Policy, PolicyAxis, CoverCrypt, SymmetricKey
+from cosmian_cover_crypt import (
+    Attribute,
+    Policy,
+    PolicyAxis,
+    CoverCrypt,
+    SymmetricKey,
+    MasterSecretKey,
+    PublicKey,
+    UserSecretKey,
+)
 
 
 class TestPolicy(unittest.TestCase):
@@ -38,7 +47,7 @@ class TestPolicy(unittest.TestCase):
         self.assertEqual(new_france_value, 8)
         self.assertEqual(policy.attribute_values(france_attribute), [8, 1])
 
-    def test_policy_cloning_serialization(self):
+    def test_policy_cloning_serialization(self) -> None:
         country_axis = PolicyAxis(
             "Country", ["France", "UK", "Spain", "Germany"], False
         )
@@ -58,6 +67,48 @@ class TestPolicy(unittest.TestCase):
 
         with self.assertRaises(Exception):
             Policy.from_json("wrong data format")
+
+
+class TestKeyGeneration(unittest.TestCase):
+    def setUp(self) -> None:
+        country_axis = PolicyAxis(
+            "Country", ["France", "UK", "Spain", "Germany"], False
+        )
+        secrecy_axis = PolicyAxis("Secrecy", ["Low", "Medium", "High"], True)
+        self.policy = Policy()
+        self.policy.add_axis(country_axis)
+        self.policy.add_axis(secrecy_axis)
+
+        self.cc = CoverCrypt()
+        self.msk, self.pk = self.cc.generate_master_keys(self.policy)
+
+    def test_master_key_serialization(self) -> None:
+
+        msk_bytes = self.msk.to_bytes()
+        self.assertIsInstance(MasterSecretKey.from_bytes(msk_bytes), MasterSecretKey)
+
+        with self.assertRaises(Exception):
+            MasterSecretKey.from_bytes(b"wrong data")
+
+        pk_bytes = self.pk.to_bytes()
+        self.assertIsInstance(PublicKey.from_bytes(pk_bytes), PublicKey)
+
+        with self.assertRaises(Exception):
+            PublicKey.from_bytes(b"wrong data")
+
+    def test_user_key_serialization(self) -> None:
+
+        usk = self.cc.generate_user_secret_key(
+            self.msk,
+            "Secrecy::High && (Country::France || Country::Spain)",
+            self.policy,
+        )
+
+        usk_bytes = usk.to_bytes()
+        self.assertIsInstance(UserSecretKey.from_bytes(usk_bytes), UserSecretKey)
+
+        with self.assertRaises(Exception):
+            UserSecretKey.from_bytes(b"wrong data")
 
 
 class TestEncryption(unittest.TestCase):
