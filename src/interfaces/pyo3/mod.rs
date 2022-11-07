@@ -1,10 +1,11 @@
+use crate::error::Error;
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
 
-use self::cover_crypt_lib::{
-    Attribute, CoverCrypt, MasterSecretKey, Policy, PolicyAxis, PublicKey, SymmetricKey,
-    UserSecretKey,
-};
-use crate::error::Error;
+pub mod py_abe_policy;
+pub mod py_cover_crypt;
+
+use py_abe_policy::{Attribute, Policy, PolicyAxis};
+use py_cover_crypt::{CoverCrypt, MasterSecretKey, PublicKey, SymmetricKey, UserSecretKey};
 
 impl From<Error> for pyo3::PyErr {
     fn from(e: Error) -> Self {
@@ -25,5 +26,3 @@ fn cosmian_cover_crypt(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<UserSecretKey>()?;
     Ok(())
 }
-
-pub mod cover_crypt_lib;
