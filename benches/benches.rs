@@ -182,14 +182,24 @@ fn bench_header_encryption(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Header encryption");
     for (n_partition, access_policy) in access_policies.iter().enumerate() {
-        group.bench_function(&format!("{} partition(s), 1 access", n_partition + 1), |b| {
-            b.iter(|| {
-                EncryptedHeader::generate(&cover_crypt, &policy, &mpk, access_policy, None, None)
+        group.bench_function(
+            &format!("{} partition(s), 1 access", n_partition + 1),
+            |b| {
+                b.iter(|| {
+                    EncryptedHeader::generate(
+                        &cover_crypt,
+                        &policy,
+                        &mpk,
+                        access_policy,
+                        None,
+                        None,
+                    )
                     .unwrap_or_else(|_| {
                         panic!("cannot encrypt header for {} partition(s)", n_partition + 1)
                     })
-            })
-        });
+                })
+            },
+        );
     }
 
     #[cfg(feature = "full_bench")]
@@ -373,10 +383,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     let mut group = c.benchmark_group("Header encryption + decryption");
     for (n_partition, access_policy) in access_policies.iter().enumerate() {
         group.bench_function(
-            &format!(
-                "{} partition(s), 1 access",
-                n_partition + 1
-            ),
+            &format!("{} partition(s), 1 access", n_partition + 1),
             |b| {
                 b.iter(|| {
                     let (_, encrypted_header) = EncryptedHeader::generate(
