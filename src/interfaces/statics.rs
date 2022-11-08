@@ -612,13 +612,14 @@ mod tests {
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_err());
 
-        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, 
+        cover_crypt.refresh_user_secret_key(
+            &mut top_secret_fin_usk,
             &AccessPolicy::from_boolean_expression(
                 "Security Level::Top Secret && Department::FIN",
             )?,
             &msk,
             &policy,
-            false
+            false,
         )?;
 
         // The refreshed key can decrypt the header

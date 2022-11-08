@@ -29,7 +29,7 @@ impl MasterSecretKey {
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         match self.inner.try_to_bytes() {
             Ok(res) => Ok(res),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 
@@ -38,7 +38,7 @@ impl MasterSecretKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match MasterSecretKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(MasterSecretKey { inner: key }),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 }
@@ -54,7 +54,7 @@ impl PublicKey {
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         match self.inner.try_to_bytes() {
             Ok(res) => Ok(res),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 
@@ -63,7 +63,7 @@ impl PublicKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match PublicKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(PublicKey { inner: key }),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 }
@@ -79,7 +79,7 @@ impl UserSecretKey {
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         match self.inner.try_to_bytes() {
             Ok(res) => Ok(res),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 
@@ -88,7 +88,7 @@ impl UserSecretKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match UserSecretKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(UserSecretKey { inner: key }),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 }
@@ -110,7 +110,7 @@ impl SymmetricKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match SymmetricKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(SymmetricKey { inner: key }),
-            Err(e) => return Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 }

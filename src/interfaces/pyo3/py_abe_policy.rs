@@ -144,7 +144,7 @@ impl Policy {
     }
 
     /// Perform deep copy of the Policy
-    pub fn clone(&self) -> Self {
+    pub fn deep_copy(&self) -> Self {
         Policy {
             inner: self.inner.clone(),
         }

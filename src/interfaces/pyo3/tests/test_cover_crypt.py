@@ -56,7 +56,7 @@ class TestPolicy(unittest.TestCase):
         policy.add_axis(country_axis)
         policy.add_axis(secrecy_axis)
 
-        copy_policy = policy.clone()
+        copy_policy = policy.deep_copy()
         self.assertIsInstance(copy_policy, Policy)
 
         json_str = policy.to_json()
