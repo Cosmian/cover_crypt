@@ -158,8 +158,10 @@ test_cloudproof_java:
 
 test_python:
   stage: test
+  image:
+    name: ghcr.io/pyo3/maturin
+    entrypoint: [""]
   script:
-    - maturin build --release --features python
     - bash src/interfaces/pyo3/tests/test.sh
   artifacts:
     paths:
