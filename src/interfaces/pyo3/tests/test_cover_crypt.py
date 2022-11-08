@@ -83,7 +83,6 @@ class TestKeyGeneration(unittest.TestCase):
         self.msk, self.pk = self.cc.generate_master_keys(self.policy)
 
     def test_master_key_serialization(self) -> None:
-
         msk_bytes = self.msk.to_bytes()
         self.assertIsInstance(MasterSecretKey.from_bytes(msk_bytes), MasterSecretKey)
 
@@ -97,7 +96,6 @@ class TestKeyGeneration(unittest.TestCase):
             PublicKey.from_bytes(b"wrong data")
 
     def test_user_key_serialization(self) -> None:
-
         usk = self.cc.generate_user_secret_key(
             self.msk,
             "Secrecy::High && (Country::France || Country::Spain)",
@@ -109,6 +107,20 @@ class TestKeyGeneration(unittest.TestCase):
 
         with self.assertRaises(Exception):
             UserSecretKey.from_bytes(b"wrong data")
+
+    def test_sym_key_serialization(self) -> None:
+        sym_key, _ = self.cc.encrypt_header(
+            self.policy,
+            "Secrecy::High && Country::Germany",
+            self.pk,
+            None,
+            None,
+        )
+        sym_key_bytes = sym_key.to_bytes()
+        self.assertIsInstance(SymmetricKey.from_bytes(sym_key_bytes), SymmetricKey)
+
+        with self.assertRaises(Exception):
+            SymmetricKey.from_bytes(b"wrong data")
 
 
 class TestEncryption(unittest.TestCase):
@@ -128,7 +140,7 @@ class TestEncryption(unittest.TestCase):
         self.additional_data = [0, 0, 0, 0, 0, 0, 0, 1]
         self.authenticated_data = None
 
-    def test_full_encryption_decryption(self) -> None:
+    def test_simple_encryption_decryption(self) -> None:
 
         ciphertext = self.cc.encrypt(
             self.policy,
@@ -161,7 +173,7 @@ class TestEncryption(unittest.TestCase):
                 sec_low_fr_sp_user, ciphertext, self.authenticated_data
             )
 
-    def test_policy_rotation(self) -> None:
+    def test_policy_rotation_encryption_decryption(self) -> None:
 
         ciphertext = self.cc.encrypt(
             self.policy,
@@ -232,7 +244,7 @@ class TestEncryption(unittest.TestCase):
         self.assertEqual(bytes(cleartext), new_plaintext)
 
     def test_decomposed_encryption_decryption(self) -> None:
-
+        """Test individually the header and the symmetric encryption/decryption"""
         sym_key, enc_header = self.cc.encrypt_header(
             self.policy,
             "Secrecy::Medium && Country::UK",
@@ -240,7 +252,6 @@ class TestEncryption(unittest.TestCase):
             self.additional_data,
             self.authenticated_data,
         )
-        self.assertIsInstance(sym_key, SymmetricKey)
 
         ciphertext = self.cc.encrypt_symmetric_block(
             sym_key, self.plaintext, self.authenticated_data
