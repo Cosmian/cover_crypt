@@ -44,6 +44,7 @@ zeroize = "1.5"
 # Optional ones
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
+# Build python package for version 3.7 and above: https://pyo3.rs/v0.17.3/features.html
 pyo3 = { version = "0.17.3", features = ["extension-module", "abi3", "abi3-py37"], optional = true }
 wasm-bindgen = { version = "0.2", features = [
   "serde-serialize",

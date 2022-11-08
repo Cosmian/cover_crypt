@@ -3,6 +3,7 @@ requires = ["maturin>=0.13,<0.14"]
 build-backend = "maturin"
 
 [tool.maturin]
+# https://github.com/pypa/manylinux#manylinux
 compatibility = "manylinux_2_17"
 
 [project]
