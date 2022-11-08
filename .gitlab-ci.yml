@@ -146,9 +146,8 @@ build_android:
     expire_in: 3 mos
 
 build_python:
-  test_python:
-  stage: test
   image: ghcr.io/pyo3/maturin
+  stage: build
   script:
     - maturin build --release --features python
   artifacts:
