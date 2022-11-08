@@ -146,10 +146,11 @@ build_android:
     expire_in: 3 mos
 
 build_python:
+  <<: *base_compile
   image:
     name: ghcr.io/pyo3/maturin
-    entrypoint: [] # override the image entrypoint
-  stage: build
+    # override the image entrypoint
+    entrypoint: ['']
   script:
     - maturin build --release --features python
   artifacts:
