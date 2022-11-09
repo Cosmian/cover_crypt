@@ -88,7 +88,7 @@ macro_rules! join {
 #[cfg(feature = "hybrid")]
 #[macro_export]
 macro_rules! encaps {
-    ($rng: expr, $pk: expr, $target_set: expr, $sym_key: expr ) => {
+    ($rng: expr, $pk: expr, $target_set: expr) => {
         $crate::cover_crypt_core::encaps::<
             TAG_LENGTH,
             { KeyPair::PUBLIC_KEY_LENGTH },
@@ -96,13 +96,13 @@ macro_rules! encaps {
             CsRng,
             <DEM as Dem<{ DEM::KEY_LENGTH }>>::Key,
             KeyPair,
-        >($rng, $pk, $target_set, $sym_key)
+        >($rng, $pk, $target_set)
     };
 }
 #[cfg(not(feature = "hybrid"))]
 #[macro_export]
 macro_rules! encaps {
-    ($rng: expr, $pk: expr, $target_set: expr, $sym_key: expr ) => {
+    ($rng: expr, $pk: expr, $target_set: expr) => {
         $crate::cover_crypt_core::encaps::<
             TAG_LENGTH,
             SYM_KEY_LENGTH,
@@ -111,7 +111,7 @@ macro_rules! encaps {
             CsRng,
             <DEM as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             KeyPair,
-        >($rng, $pk, $target_set, $sym_key)
+        >($rng, $pk, $target_set)
     };
 }
 

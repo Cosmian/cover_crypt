@@ -11,7 +11,7 @@ use cosmian_crypto_core::{
     asymmetric_crypto::{curve25519::X25519KeyPair, DhKeyPair},
     reexport::rand_core::SeedableRng,
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Dem},
-    CsRng, KeyTrait,
+    CsRng,
 };
 use std::{ops::DerefMut, sync::Mutex};
 
@@ -144,16 +144,11 @@ impl
         ),
         Error,
     > {
-        let sym_key = <DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key::new(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
-        );
-        let encapsulation = encaps!(
+        encaps!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, false)?,
-            &sym_key
-        )?;
-        Ok((sym_key, encapsulation))
+            &partitions::access_policy_to_current_partitions(access_policy, policy, false)?
+        )
     }
 
     fn decaps(
@@ -261,7 +256,9 @@ mod tests {
     use super::*;
     use crate::{partitions::Partition, CoverCrypt, Error};
     use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
-    use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
+    // see commented code to generate non regression vector
+    #[allow(unused_imports)]
+    use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
     use serde::{Deserialize, Serialize};
 
     fn policy() -> Result<Policy, Error> {
@@ -436,8 +433,10 @@ mod tests {
         // Uncomment the following code to write a new regression vector
         //
 
-        //let mut encrypted_bytes = encrypted_header.try_to_bytes()?;
-        //encrypted_bytes.append(&mut ctx);
+        //let mut ser = Serializer::new();
+        //ser.write(&encrypted_header)?;
+        //ser.write_array(&ctx)?;
+        //let encrypted_bytes = ser.finalize();
 
         //let access_policy_2 = AccessPolicy::new("Security Level", "Medium Secret")
         //& AccessPolicy::new("Department", "MKG");
@@ -487,8 +486,9 @@ mod tests {
             UserSecretKey::try_from_bytes(&hex::decode(reg_vector.user_decryption_key_2).unwrap())
                 .unwrap();
         let encrypted_bytes = &hex::decode(reg_vector.encrypted_bytes).unwrap();
+        println!("{}", encrypted_bytes.len());
         let mut de = Deserializer::new(encrypted_bytes.as_slice());
-        let encrypted_header = EncryptedHeader::read(&mut de).unwrap();
+        let encrypted_header = de.read::<EncryptedHeader>().unwrap();
         let ciphertext = de.finalize();
         let cover_crypt = CoverCryptX25519Aes256::default();
         assert!(encrypted_header
