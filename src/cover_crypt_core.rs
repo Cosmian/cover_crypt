@@ -402,7 +402,8 @@ impl<
     type Error = Error;
 
     fn length(&self) -> usize {
-        2 * PUBLIC_KEY_LENGTH + TAG_LENGTH
+        2 * PUBLIC_KEY_LENGTH
+            + TAG_LENGTH
             + to_leb128_len(self.E.len())
             + self.E.len() * ENCAPSULATION_LENGTH
     }
@@ -635,7 +636,7 @@ where
         #[cfg(feature = "hybrid")]
         if let Some((pk_i, H_i)) = mpk.H.get(partition) {
             let K_i = (H_i * &r).to_bytes();
-            let E_i = xor(&Sha256::digest(&K_i), &K);
+            let E_i = xor(&kdf!(SYM_KEY_LENGTH, &K_i), &K);
             // TODO TBZ: which coin to use ?
             let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
             indcpa_enc(&mut EPQ_i, &E_i, pk_i, &[0; KYBER_SYMBYTES]);
