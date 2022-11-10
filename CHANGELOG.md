@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - improve serialization
-- new python interfaces based on objects rather than functions covering a broader range functionalities
+- new python interfaces based on objects rather than functions covering a broader range of functionalities
 
 ### Fixed
 
