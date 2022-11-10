@@ -179,7 +179,7 @@ impl CoverCrypt {
     /// Refreshes the user key according to the given master key and access policy.
     ///
     /// The user key will be granted access to the current partitions, as determined by its access policy.
-    /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
+    /// If `preserve_old_partitions_access` is set, the user access to rotated partitions will be preserved
     ///
     /// - `usk`                 : the user key to refresh
     /// - `access_policy`       : the access policy of the user key
