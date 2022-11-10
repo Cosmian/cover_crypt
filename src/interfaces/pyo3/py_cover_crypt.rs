@@ -162,10 +162,10 @@ impl CoverCrypt {
     pub fn generate_user_secret_key(
         &self,
         msk: &MasterSecretKey,
-        access_policy_str: String,
+        access_policy_str: &str,
         policy: &Policy,
     ) -> PyResult<UserSecretKey> {
-        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         match self
@@ -190,12 +190,12 @@ impl CoverCrypt {
     pub fn refresh_user_secret_key(
         &self,
         usk: &mut UserSecretKey,
-        access_policy_str: String,
+        access_policy_str: &str,
         msk: &MasterSecretKey,
         policy: &Policy,
         keep_old_accesses: bool,
     ) -> PyResult<()> {
-        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         self.inner
@@ -265,13 +265,13 @@ impl CoverCrypt {
     pub fn encrypt_header(
         &self,
         policy: &Policy,
-        access_policy_str: String,
+        access_policy_str: &str,
         public_key: &PublicKey,
         additional_data: Option<Vec<u8>>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<(SymmetricKey, Vec<u8>)> {
         // Deserialize inputs
-        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         // Encrypt
@@ -330,13 +330,13 @@ impl CoverCrypt {
     pub fn encrypt(
         &self,
         policy: &Policy,
-        access_policy_str: String,
+        access_policy_str: &str,
         pk: &PublicKey,
         plaintext: Vec<u8>,
         additional_data: Option<Vec<u8>>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<Vec<u8>> {
-        let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
+        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         // generates encrypted header

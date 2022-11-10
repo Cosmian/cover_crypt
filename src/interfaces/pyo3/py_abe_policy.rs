@@ -161,8 +161,8 @@ impl Policy {
 
     /// JSON deserialization
     #[classmethod]
-    pub fn from_json(_cls: &PyType, policy_json: String) -> PyResult<Self> {
-        let policy: PolicyRust = serde_json::from_str(&policy_json)
+    pub fn from_json(_cls: &PyType, policy_json: &str) -> PyResult<Self> {
+        let policy: PolicyRust = serde_json::from_str(policy_json)
             .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
         Ok(Policy { inner: policy })
     }
