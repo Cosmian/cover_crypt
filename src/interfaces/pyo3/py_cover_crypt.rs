@@ -27,10 +27,7 @@ pub struct MasterSecretKey {
 impl MasterSecretKey {
     /// Convert to bytes for sending/saving the key
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        match self.inner.try_to_bytes() {
-            Ok(res) => Ok(res),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+        self.inner.try_to_bytes().map_err(PyErr::from)
     }
 
     /// Read key from bytes
@@ -38,7 +35,7 @@ impl MasterSecretKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match MasterSecretKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(MasterSecretKey { inner: key }),
-            Err(e) => Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyErr::from(e)),
         }
     }
 }
@@ -52,10 +49,7 @@ pub struct PublicKey {
 impl PublicKey {
     /// Convert to bytes for sending/saving the key
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        match self.inner.try_to_bytes() {
-            Ok(res) => Ok(res),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+        self.inner.try_to_bytes().map_err(PyErr::from)
     }
 
     /// Read key from bytes
@@ -63,7 +57,7 @@ impl PublicKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match PublicKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(PublicKey { inner: key }),
-            Err(e) => Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyErr::from(e)),
         }
     }
 }
@@ -77,10 +71,7 @@ pub struct UserSecretKey {
 impl UserSecretKey {
     /// Convert to bytes for sending/saving the key
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        match self.inner.try_to_bytes() {
-            Ok(res) => Ok(res),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+        self.inner.try_to_bytes().map_err(PyErr::from)
     }
 
     /// Read key from bytes
@@ -88,7 +79,7 @@ impl UserSecretKey {
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match UserSecretKeyRust::try_from_bytes(&key_bytes) {
             Ok(key) => Ok(UserSecretKey { inner: key }),
-            Err(e) => Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyErr::from(e)),
         }
     }
 }
