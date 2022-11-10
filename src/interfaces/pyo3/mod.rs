@@ -9,7 +9,7 @@ use py_cover_crypt::{CoverCrypt, MasterSecretKey, PublicKey, SymmetricKey, UserS
 
 impl From<Error> for pyo3::PyErr {
     fn from(e: Error) -> Self {
-        pyo3::exceptions::PyTypeError::new_err(format!("{e}"))
+        pyo3::exceptions::PyException::new_err(format!("{e}"))
     }
 }
 

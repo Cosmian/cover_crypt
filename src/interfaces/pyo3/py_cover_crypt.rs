@@ -3,7 +3,7 @@ use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     KeyTrait,
 };
-use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType};
+use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType, PyErr};
 
 use crate::{
     api::CoverCrypt as CoverCryptRust,
@@ -135,7 +135,7 @@ impl CoverCrypt {
     pub fn generate_master_keys(&self, policy: &Policy) -> PyResult<(MasterSecretKey, PublicKey)> {
         match self.inner.generate_master_keys(&policy.inner) {
             Ok((msk, pk)) => Ok((MasterSecretKey { inner: msk }, PublicKey { inner: pk })),
-            Err(e) => Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyErr::from(e)),
         }
     }
 
@@ -155,13 +155,9 @@ impl CoverCrypt {
         msk: &mut MasterSecretKey,
         pk: &mut PublicKey,
     ) -> PyResult<()> {
-        match self
-            .inner
+        self.inner
             .update_master_keys(&policy.inner, &mut msk.inner, &mut pk.inner)
-        {
-            Ok(()) => Ok(()),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+            .map_err(PyErr::from)
     }
 
     /// Generate a user secret key.
@@ -185,11 +181,11 @@ impl CoverCrypt {
             .generate_user_secret_key(&msk.inner, &access_policy, &policy.inner)
         {
             Ok(usk) => Ok(UserSecretKey { inner: usk }),
-            Err(e) => Err(PyException::new_err(e.to_string())),
+            Err(e) => Err(PyErr::from(e)),
         }
     }
 
-    /// Refresh the user key according to the given master key and access policy.
+    /// Refreshes the user key according to the given master key and access policy.
     ///
     /// The user key will be granted access to the current partitions, as determined by its access policy.
     /// If preserve_old_partitions_access is set, the user access to rotated partitions will be preserved
@@ -210,22 +206,21 @@ impl CoverCrypt {
         let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
-        match self.inner.refresh_user_secret_key(
-            &mut usk.inner,
-            &access_policy,
-            &msk.inner,
-            &policy.inner,
-            keep_old_accesses,
-        ) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+        self.inner
+            .refresh_user_secret_key(
+                &mut usk.inner,
+                &access_policy,
+                &msk.inner,
+                &policy.inner,
+                keep_old_accesses,
+            )
+            .map_err(PyErr::from)
     }
 
-    /// Encrypt data symmetrically in a block.
+    /// Encrypts data symmetrically in a block.
     ///
     /// - `symmetric_key`       : symmetric key
-    /// - `plaintext_bytes`     : plaintext to encrypt
+    /// - `plaintext`     : plaintext to encrypt
     /// - `authenticated_data`  : associated data to be passed to the DEM scheme
     pub fn encrypt_symmetric_block(
         &self,
@@ -240,7 +235,7 @@ impl CoverCrypt {
         )?)
     }
 
-    /// Symmetrically Decrypt encrypted data in a block.
+    /// Symmetrically Decrypts encrypted data in a block.
     ///
     /// - `symmetric_key`       : symmetric key
     /// - `ciphertext`          : ciphertext
@@ -258,7 +253,7 @@ impl CoverCrypt {
         )?)
     }
 
-    /// Generate an encrypted header. A header contains the following elements:
+    /// Generates an encrypted header. A header contains the following elements:
     ///
     /// - `encapsulation_size`  : the size of the symmetric key encapsulation (u32)
     /// - `encapsulation`       : symmetric key encapsulation using CoverCrypt
@@ -301,7 +296,7 @@ impl CoverCrypt {
         ))
     }
 
-    /// Decrypt the given header bytes using a user decryption key.
+    /// Decrypts the given header bytes using a user decryption key.
     ///
     /// - `usk`                     : user secret key
     /// - `encrypted_header_bytes`  : encrypted header bytes
@@ -348,7 +343,7 @@ impl CoverCrypt {
         let access_policy = AccessPolicy::from_boolean_expression(&access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
-        // generate encrypted header
+        // generates encrypted header
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &self.inner,
             &policy.inner,
@@ -358,12 +353,12 @@ impl CoverCrypt {
             authenticated_data.as_deref(),
         )?;
 
-        // encrypt the plaintext
+        // encrypts the plaintext
         let ciphertext =
             self.inner
                 .encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
 
-        // concatenate the encrypted header and the ciphertext
+        // concatenates the encrypted header and the ciphertext
         let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
         encrypted_header.write(&mut ser)?;
         ser.write_array(&ciphertext)
@@ -388,17 +383,16 @@ impl CoverCrypt {
         // the rest is the symmetric ciphertext
         let ciphertext = de.finalize();
 
-        // Decrypt header
+        // decrypts the header
         let cleartext_header =
             header.decrypt(&self.inner, &usk.inner, authenticated_data.as_deref())?;
 
-        // Decrypt plaintext
         self.inner
             .decrypt(
                 &cleartext_header.symmetric_key,
                 ciphertext.as_slice(),
                 authenticated_data.as_deref(),
             )
-            .map_err(|e| PyTypeError::new_err(e.to_string()))
+            .map_err(PyErr::from)
     }
 }

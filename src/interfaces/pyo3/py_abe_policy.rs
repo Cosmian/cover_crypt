@@ -30,6 +30,7 @@ impl Attribute {
         format!("{}", &self.inner)
     }
 
+    /// Create a Policy Attribute from a string representation
     #[classmethod]
     pub fn from_string(_cls: &PyType, string: &str) -> PyResult<Self> {
         match AttributeRust::try_from(string) {
