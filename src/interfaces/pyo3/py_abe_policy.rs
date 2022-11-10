@@ -24,13 +24,13 @@ impl Attribute {
         }
     }
 
-    /// Return a string representation of the Attribute
+    /// Returns a string representation of the Attribute
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         format!("{}", &self.inner)
     }
 
-    /// Create a Policy Attribute from a string representation
+    /// Creates a Policy Attribute from a string representation
     #[classmethod]
     pub fn from_string(_cls: &PyType, string: &str) -> PyResult<Self> {
         match AttributeRust::try_from(string) {
@@ -40,7 +40,7 @@ impl Attribute {
     }
 }
 
-/// Defines a policy axis by its name and its underlying attribute names.
+/// Defines an unique policy axis by its name and its underlying attribute names.
 ///
 /// If the axis is defined as hierarchical, we assume a lexicographical order
 /// on the attribute name.
@@ -91,10 +91,14 @@ pub struct Policy {
 
 #[pymethods]
 impl Policy {
+    /// Generates a new policy object with the given number of attribute
+    /// creations (revocation + addition) allowed.
+    /// Default maximum of attribute creations is u32::MAX
     #[new]
-    fn new() -> Self {
+    #[args(max_attribute_creations = "4294967295")]
+    fn new(max_attribute_creations: u32) -> Self {
         Policy {
-            inner: PolicyRust::new(u32::MAX),
+            inner: PolicyRust::new(max_attribute_creations),
         }
     }
 
@@ -137,13 +141,13 @@ impl Policy {
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 
-    /// Return a string representation of the Policy
+    /// Returns a string representation of the Policy
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         format!("{}", &self.inner)
     }
 
-    /// Perform deep copy of the Policy
+    /// Performs deep copy of the Policy
     pub fn deep_copy(&self) -> Self {
         Policy {
             inner: self.inner.clone(),

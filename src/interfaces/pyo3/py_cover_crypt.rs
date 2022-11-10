@@ -1,6 +1,7 @@
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
+    symmetric_crypto::SymKey,
     KeyTrait,
 };
 use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType, PyErr};
@@ -25,12 +26,12 @@ pub struct MasterSecretKey {
 
 #[pymethods]
 impl MasterSecretKey {
-    /// Convert to bytes for sending/saving the key
+    /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         self.inner.try_to_bytes().map_err(PyErr::from)
     }
 
-    /// Read key from bytes
+    /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match MasterSecretKeyRust::try_from_bytes(&key_bytes) {
@@ -47,12 +48,12 @@ pub struct PublicKey {
 
 #[pymethods]
 impl PublicKey {
-    /// Convert to bytes for sending/saving the key
+    /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         self.inner.try_to_bytes().map_err(PyErr::from)
     }
 
-    /// Read key from bytes
+    /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match PublicKeyRust::try_from_bytes(&key_bytes) {
@@ -69,12 +70,12 @@ pub struct UserSecretKey {
 
 #[pymethods]
 impl UserSecretKey {
-    /// Convert to bytes for sending/saving the key
+    /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
         self.inner.try_to_bytes().map_err(PyErr::from)
     }
 
-    /// Read key from bytes
+    /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match UserSecretKeyRust::try_from_bytes(&key_bytes) {
@@ -91,12 +92,12 @@ pub struct SymmetricKey {
 
 #[pymethods]
 impl SymmetricKey {
-    /// Convert to bytes for sending/saving the key
+    /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        Ok(self.inner.to_bytes().to_vec())
+        Ok(self.inner.as_bytes().to_vec())
     }
 
-    /// Read key from bytes
+    /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match SymmetricKeyRust::try_from_bytes(&key_bytes) {
