@@ -219,11 +219,13 @@ impl CoverCrypt {
         plaintext: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<Vec<u8>> {
-        Ok(self.inner.encrypt(
-            &symmetric_key.inner,
-            &plaintext,
-            authenticated_data.as_deref(),
-        )?)
+        self.inner
+            .encrypt(
+                &symmetric_key.inner,
+                &plaintext,
+                authenticated_data.as_deref(),
+            )
+            .map_err(PyErr::from)
     }
 
     /// Symmetrically Decrypts encrypted data in a block.
@@ -237,11 +239,13 @@ impl CoverCrypt {
         ciphertext: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<Vec<u8>> {
-        Ok(self.inner.decrypt(
-            &symmetric_key.inner,
-            &ciphertext,
-            authenticated_data.as_deref(),
-        )?)
+        self.inner
+            .decrypt(
+                &symmetric_key.inner,
+                &ciphertext,
+                authenticated_data.as_deref(),
+            )
+            .map_err(PyErr::from)
     }
 
     /// Generates an encrypted header. A header contains the following elements:
