@@ -13,7 +13,7 @@ pub struct Attribute {
 
 #[pymethods]
 impl Attribute {
-    /// Create a Policy Attribute.
+    /// Creates a Policy Attribute.
     ///
     /// - `axis`    : policy axis the attributes belongs to
     /// - `name`    : unique attribute name within this axis
@@ -32,17 +32,16 @@ impl Attribute {
 
     #[classmethod]
     pub fn from_string(_cls: &PyType, string: &str) -> PyResult<Self> {
-        let attribute = match AttributeRust::try_from(string) {
-            Ok(att) => att,
-            Err(e) => return Err(PyException::new_err(e.to_string())),
-        };
-        Ok(Attribute { inner: attribute })
+        match AttributeRust::try_from(string) {
+            Ok(inner) => Ok(Self { inner }),
+            Err(e) => Err(PyException::new_err(e.to_string())),
+        }
     }
 }
 
 /// Defines a policy axis by its name and its underlying attribute names.
 ///
-/// If `hierarchical` is set to `true`, we assume a lexicographical order based
+/// If the axis is defined as hierarchical, we assume a lexicographical order
 /// on the attribute name.
 #[pyclass]
 pub struct PolicyAxis {
@@ -52,14 +51,14 @@ pub struct PolicyAxis {
 #[pymethods]
 impl PolicyAxis {
     /// Generates a new policy axis with the given name and attribute names.
-    /// A hierarchical axis enforces order between its attributes.
+    /// If `hierarchical` is set to `true`, the axis is defined as hierarchical.
     ///
     /// - `name`        : axis name
     /// - `attributes`  : name of the attributes on this axis
     /// - `hierarchical`: set the axis to be hierarchical
     #[new]
     fn new(name: &str, attributes: Vec<&str>, hierarchical: bool) -> Self {
-        PolicyAxis {
+        Self {
             inner: PolicyAxisRust::new(name, attributes.as_slice(), hierarchical),
         }
     }
@@ -152,10 +151,7 @@ impl Policy {
 
     /// JSON serialization
     pub fn to_json(&self) -> PyResult<String> {
-        match serde_json::to_string(&self.inner) {
-            Ok(res) => Ok(res),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+        serde_json::to_string(&self.inner).map_err(|e| PyException::new_err(e.to_string()))
     }
 
     /// JSON deserialization
