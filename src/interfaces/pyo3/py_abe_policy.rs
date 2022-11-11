@@ -111,11 +111,7 @@ impl Policy {
 
     /// Returns the list of Attributes of this Policy.
     pub fn attributes(&self) -> Vec<Attribute> {
-        self.0
-            .attributes()
-            .into_iter()
-            .map(|a| Attribute(a))
-            .collect()
+        self.0.attributes().into_iter().map(Attribute).collect()
     }
 
     /// Returns the list of all attributes values given to this Attribute
