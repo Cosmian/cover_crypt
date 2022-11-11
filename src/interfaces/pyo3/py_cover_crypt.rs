@@ -20,113 +20,101 @@ use crate::{
 // https://pyo3.rs/v0.16.2/class.html
 
 #[pyclass]
-pub struct MasterSecretKey {
-    inner: MasterSecretKeyRust,
-}
+pub struct MasterSecretKey(MasterSecretKeyRust);
 
 #[pymethods]
 impl MasterSecretKey {
     /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        self.inner.try_to_bytes().map_err(PyErr::from)
+        self.0.try_to_bytes().map_err(PyErr::from)
     }
 
     /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match MasterSecretKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(MasterSecretKey { inner: key }),
+            Ok(key) => Ok(Self(key)),
             Err(e) => Err(PyErr::from(e)),
         }
     }
 }
 
 #[pyclass]
-pub struct PublicKey {
-    inner: PublicKeyRust,
-}
+pub struct PublicKey(PublicKeyRust);
 
 #[pymethods]
 impl PublicKey {
     /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        self.inner.try_to_bytes().map_err(PyErr::from)
+        self.0.try_to_bytes().map_err(PyErr::from)
     }
 
     /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match PublicKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(PublicKey { inner: key }),
+            Ok(key) => Ok(Self(key)),
             Err(e) => Err(PyErr::from(e)),
         }
     }
 }
 
 #[pyclass]
-pub struct UserSecretKey {
-    inner: UserSecretKeyRust,
-}
+pub struct UserSecretKey(UserSecretKeyRust);
 
 #[pymethods]
 impl UserSecretKey {
     /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        self.inner.try_to_bytes().map_err(PyErr::from)
+        self.0.try_to_bytes().map_err(PyErr::from)
     }
 
     /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match UserSecretKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(UserSecretKey { inner: key }),
+            Ok(key) => Ok(Self(key)),
             Err(e) => Err(PyErr::from(e)),
         }
     }
 }
 
 #[pyclass]
-pub struct SymmetricKey {
-    inner: SymmetricKeyRust,
-}
+pub struct SymmetricKey(SymmetricKeyRust);
 
 #[pymethods]
 impl SymmetricKey {
     /// Converts key to bytes
     pub fn to_bytes(&self) -> PyResult<Vec<u8>> {
-        Ok(self.inner.as_bytes().to_vec())
+        Ok(self.0.as_bytes().to_vec())
     }
 
     /// Reads key from bytes
     #[classmethod]
     pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
         match SymmetricKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(SymmetricKey { inner: key }),
+            Ok(key) => Ok(Self(key)),
             Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
 }
 
 #[pyclass]
-pub struct CoverCrypt {
-    inner: CoverCryptX25519Aes256,
-}
+pub struct CoverCrypt(CoverCryptX25519Aes256);
 
 #[pymethods]
 impl CoverCrypt {
     #[new]
     fn new() -> Self {
-        CoverCrypt {
-            inner: CoverCryptX25519Aes256::default(),
-        }
+        CoverCrypt(CoverCryptX25519Aes256::default())
     }
 
     /// Generate the master authority keys for supplied Policy
     ///
     ///  - `policy` : Policy to use to generate the keys
     pub fn generate_master_keys(&self, policy: &Policy) -> PyResult<(MasterSecretKey, PublicKey)> {
-        match self.inner.generate_master_keys(&policy.inner) {
-            Ok((msk, pk)) => Ok((MasterSecretKey { inner: msk }, PublicKey { inner: pk })),
+        match self.0.generate_master_keys(&policy.0) {
+            Ok((msk, pk)) => Ok((MasterSecretKey(msk), PublicKey(pk))),
             Err(e) => Err(PyErr::from(e)),
         }
     }
@@ -147,8 +135,8 @@ impl CoverCrypt {
         msk: &mut MasterSecretKey,
         pk: &mut PublicKey,
     ) -> PyResult<()> {
-        self.inner
-            .update_master_keys(&policy.inner, &mut msk.inner, &mut pk.inner)
+        self.0
+            .update_master_keys(&policy.0, &mut msk.0, &mut pk.0)
             .map_err(PyErr::from)
     }
 
@@ -169,10 +157,10 @@ impl CoverCrypt {
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         match self
-            .inner
-            .generate_user_secret_key(&msk.inner, &access_policy, &policy.inner)
+            .0
+            .generate_user_secret_key(&msk.0, &access_policy, &policy.0)
         {
-            Ok(usk) => Ok(UserSecretKey { inner: usk }),
+            Ok(usk) => Ok(UserSecretKey(usk)),
             Err(e) => Err(PyErr::from(e)),
         }
     }
@@ -198,12 +186,12 @@ impl CoverCrypt {
         let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
-        self.inner
+        self.0
             .refresh_user_secret_key(
-                &mut usk.inner,
+                &mut usk.0,
                 &access_policy,
-                &msk.inner,
-                &policy.inner,
+                &msk.0,
+                &policy.0,
                 keep_old_accesses,
             )
             .map_err(PyErr::from)
@@ -220,12 +208,8 @@ impl CoverCrypt {
         plaintext: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<Vec<u8>> {
-        self.inner
-            .encrypt(
-                &symmetric_key.inner,
-                &plaintext,
-                authenticated_data.as_deref(),
-            )
+        self.0
+            .encrypt(&symmetric_key.0, &plaintext, authenticated_data.as_deref())
             .map_err(PyErr::from)
     }
 
@@ -240,12 +224,8 @@ impl CoverCrypt {
         ciphertext: Vec<u8>,
         authenticated_data: Option<Vec<u8>>,
     ) -> PyResult<Vec<u8>> {
-        self.inner
-            .decrypt(
-                &symmetric_key.inner,
-                &ciphertext,
-                authenticated_data.as_deref(),
-            )
+        self.0
+            .decrypt(&symmetric_key.0, &ciphertext, authenticated_data.as_deref())
             .map_err(PyErr::from)
     }
 
@@ -276,18 +256,16 @@ impl CoverCrypt {
 
         // Encrypt
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
-            &self.inner,
-            &policy.inner,
-            &public_key.inner,
+            &self.0,
+            &policy.0,
+            &public_key.0,
             &access_policy,
             additional_data.as_deref(),
             authenticated_data.as_deref(),
         )?;
 
         Ok((
-            SymmetricKey {
-                inner: symmetric_key,
-            },
+            SymmetricKey(symmetric_key),
             encrypted_header.try_to_bytes()?,
         ))
     }
@@ -305,15 +283,13 @@ impl CoverCrypt {
     ) -> PyResult<(SymmetricKey, Vec<u8>)> {
         // Finally decrypt symmetric key using given user decryption key
         let cleartext_header = EncryptedHeader::try_from_bytes(&encrypted_header_bytes)?.decrypt(
-            &self.inner,
-            &usk.inner,
+            &self.0,
+            &usk.0,
             authenticated_data.as_deref(),
         )?;
 
         Ok((
-            SymmetricKey {
-                inner: cleartext_header.symmetric_key,
-            },
+            SymmetricKey(cleartext_header.symmetric_key),
             cleartext_header.additional_data,
         ))
     }
@@ -341,9 +317,9 @@ impl CoverCrypt {
 
         // generates encrypted header
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
-            &self.inner,
-            &policy.inner,
-            &pk.inner,
+            &self.0,
+            &policy.0,
+            &pk.0,
             &access_policy,
             additional_data.as_deref(),
             authenticated_data.as_deref(),
@@ -351,7 +327,7 @@ impl CoverCrypt {
 
         // encrypts the plaintext
         let ciphertext =
-            self.inner
+            self.0
                 .encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
 
         // concatenates the encrypted header and the ciphertext
@@ -380,10 +356,9 @@ impl CoverCrypt {
         let ciphertext = de.finalize();
 
         // decrypts the header
-        let cleartext_header =
-            header.decrypt(&self.inner, &usk.inner, authenticated_data.as_deref())?;
+        let cleartext_header = header.decrypt(&self.0, &usk.0, authenticated_data.as_deref())?;
 
-        self.inner
+        self.0
             .decrypt(
                 &cleartext_header.symmetric_key,
                 ciphertext.as_slice(),

@@ -7,9 +7,7 @@ use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::
 /// An attribute in a policy group is characterized by the axis policy name
 /// and its unique name within this axis.
 #[pyclass]
-pub struct Attribute {
-    inner: AttributeRust,
-}
+pub struct Attribute(AttributeRust);
 
 #[pymethods]
 impl Attribute {
@@ -19,22 +17,20 @@ impl Attribute {
     /// - `name`    : unique attribute name within this axis
     #[new]
     pub fn new(axis: &str, name: &str) -> Self {
-        Attribute {
-            inner: AttributeRust::new(axis, name),
-        }
+        Self(AttributeRust::new(axis, name))
     }
 
     /// Returns a string representation of the Attribute
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        format!("{}", &self.inner)
+        format!("{}", self.0)
     }
 
     /// Creates a Policy Attribute from a string representation
     #[classmethod]
     pub fn from_string(_cls: &PyType, string: &str) -> PyResult<Self> {
         match AttributeRust::try_from(string) {
-            Ok(inner) => Ok(Self { inner }),
+            Ok(inner) => Ok(Self(inner)),
             Err(e) => Err(PyException::new_err(e.to_string())),
         }
     }
@@ -45,9 +41,7 @@ impl Attribute {
 /// If the axis is defined as hierarchical, we assume a lexicographical order
 /// on the attribute name.
 #[pyclass]
-pub struct PolicyAxis {
-    inner: PolicyAxisRust,
-}
+pub struct PolicyAxis(PolicyAxisRust);
 
 #[pymethods]
 impl PolicyAxis {
@@ -59,19 +53,21 @@ impl PolicyAxis {
     /// - `hierarchical`: set the axis to be hierarchical
     #[new]
     fn new(name: &str, attributes: Vec<&str>, hierarchical: bool) -> Self {
-        Self {
-            inner: PolicyAxisRust::new(name, attributes.as_slice(), hierarchical),
-        }
+        Self(PolicyAxisRust::new(
+            name,
+            attributes.as_slice(),
+            hierarchical,
+        ))
     }
 
     /// Returns the number of attributes belonging to this axis.
     pub fn len(&self) -> usize {
-        self.inner.len()
+        self.0.len()
     }
 
     /// Return `true` if the attribute list is empty
     pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+        self.0.is_empty()
     }
 
     /// Return a string representation of the Policy Axis
@@ -79,15 +75,13 @@ impl PolicyAxis {
     pub fn to_string(&self) -> String {
         format!(
             "{}: {:?}, hierarchical: {}",
-            &self.inner.name, &self.inner.attributes, &self.inner.hierarchical
+            &self.0.name, &self.0.attributes, &self.0.hierarchical
         )
     }
 }
 
 #[pyclass]
-pub struct Policy {
-    pub(super) inner: PolicyRust,
-}
+pub struct Policy(pub(super) PolicyRust);
 
 #[pymethods]
 impl Policy {
@@ -97,66 +91,62 @@ impl Policy {
     #[new]
     #[args(max_attribute_creations = "4294967295")]
     fn new(max_attribute_creations: u32) -> Self {
-        Policy {
-            inner: PolicyRust::new(max_attribute_creations),
-        }
+        Self(PolicyRust::new(max_attribute_creations))
     }
 
     /// Adds the given policy axis to the policy.
     pub fn add_axis(&mut self, axis: &PolicyAxis) -> PyResult<()> {
-        self.inner
-            .add_axis(&axis.inner)
+        self.0
+            .add_axis(&axis.0)
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 
     /// Rotates an attribute, changing its underlying value with an unused
     /// value.
     pub fn rotate(&mut self, attr: &Attribute) -> PyResult<()> {
-        self.inner
-            .rotate(&attr.inner)
+        self.0
+            .rotate(&attr.0)
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 
     /// Returns the list of Attributes of this Policy.
     pub fn attributes(&self) -> Vec<Attribute> {
-        self.inner
+        self.0
             .attributes()
             .into_iter()
-            .map(|a| Attribute { inner: a })
+            .map(|a| Attribute(a))
             .collect()
     }
 
     /// Returns the list of all attributes values given to this Attribute
     /// over the time after rotations. The current value is returned first
     pub fn attribute_values(&self, attribute: &Attribute) -> PyResult<Vec<u32>> {
-        self.inner
-            .attribute_values(&attribute.inner)
+        self.0
+            .attribute_values(&attribute.0)
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 
     /// Retrieves the current value of an attribute.
     pub fn attribute_current_value(&self, attribute: &Attribute) -> PyResult<u32> {
-        self.inner
-            .attribute_current_value(&attribute.inner)
+        self.0
+            .attribute_current_value(&attribute.0)
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 
     /// Returns a string representation of the Policy
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        format!("{}", &self.inner)
+        format!("{}", &self.0)
     }
 
     /// Performs deep copy of the Policy
     pub fn deep_copy(&self) -> Self {
-        Policy {
-            inner: self.inner.clone(),
-        }
+        Self(self.0.clone())
     }
 
     /// JSON serialization
     pub fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner).map_err(|e| PyException::new_err(e.to_string()))
+        serde_json::to_string(&self.0).map_err(|e| PyException::new_err(e.to_string()))
     }
 
     /// JSON deserialization
@@ -164,6 +154,6 @@ impl Policy {
     pub fn from_json(_cls: &PyType, policy_json: &str) -> PyResult<Self> {
         let policy: PolicyRust = serde_json::from_str(policy_json)
             .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
-        Ok(Policy { inner: policy })
+        Ok(Self(policy))
     }
 }
