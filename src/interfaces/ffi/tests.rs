@@ -93,7 +93,7 @@ unsafe fn decrypt_header(
     let authenticated_data_ptr = authenticated_data.as_ptr().cast();
     let authenticated_data_len = authenticated_data.len() as c_int;
 
-    let mut additional_data = vec![0u8; 0];
+    let mut additional_data = vec![0u8; 8128];
     let additional_data_ptr = additional_data.as_mut_ptr().cast();
     let mut additional_data_len = additional_data.len() as c_int;
 
