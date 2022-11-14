@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [7.0.2] - 2022-11-14
+
+### Fixed
+
+- `build.sh` only build for features FFI for GLIBC_2.17
+- no encryption in header if additional data is empty
+
+---
+
 ## [7.0.1] - 2022-10-27
 
 ### Changed
@@ -41,6 +50,7 @@ All notable changes to this project will be documented in this file.
 ---
 
 ---
+
 ## [6.0.8] - 2022-10-17
 
 ### Added
@@ -52,14 +62,17 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 ### Removed
+
 ---
 
 ---
+
 ## [6.0.7] - 2022-10-14
 
 ### Added
 
 - expose boolean Access Policy parsing in WASM
+
 ### Fixed
 
 ### Removed

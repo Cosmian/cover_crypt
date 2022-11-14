@@ -10,4 +10,4 @@ sudo docker run -it --rm \
 -v $ROOT_DIR:/root/project \
 -v $TARGET_DIR:/root/project/target \
 rust_2.17 \
-/bin/bash -c "cd /root/project && cargo build --release --all-features"
+/bin/bash -c "cd /root/project && cargo build --release --features ffi"
