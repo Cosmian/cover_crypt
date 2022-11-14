@@ -1,5 +1,9 @@
 use abe_policy::{Attribute as AttributeRust, Policy as PolicyRust, PolicyAxis as PolicyAxisRust};
-use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType};
+use pyo3::{
+    exceptions::{PyException, PyTypeError},
+    prelude::*,
+    types::PyType,
+};
 
 // Pyo3 doc on classes
 // https://pyo3.rs/v0.16.2/class.html

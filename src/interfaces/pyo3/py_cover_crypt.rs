@@ -4,15 +4,22 @@ use cosmian_crypto_core::{
     symmetric_crypto::SymKey,
     KeyTrait,
 };
-use pyo3::{exceptions::PyException, exceptions::PyTypeError, prelude::*, types::PyType, PyErr};
+use pyo3::{
+    exceptions::{PyException, PyTypeError},
+    prelude::*,
+    types::PyType,
+    PyErr,
+};
 
 use crate::{
     api::CoverCrypt as CoverCryptRust,
-    interfaces::pyo3::py_abe_policy::Policy,
-    interfaces::statics::{
-        CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey as MasterSecretKeyRust,
-        PublicKey as PublicKeyRust, SymmetricKey as SymmetricKeyRust,
-        UserSecretKey as UserSecretKeyRust,
+    interfaces::{
+        pyo3::py_abe_policy::Policy,
+        statics::{
+            CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey as MasterSecretKeyRust,
+            PublicKey as PublicKeyRust, SymmetricKey as SymmetricKeyRust,
+            UserSecretKey as UserSecretKeyRust,
+        },
     },
 };
 
@@ -106,7 +113,7 @@ pub struct CoverCrypt(CoverCryptX25519Aes256);
 impl CoverCrypt {
     #[new]
     fn new() -> Self {
-        CoverCrypt(CoverCryptX25519Aes256::default())
+        Self(CoverCryptX25519Aes256::default())
     }
 
     /// Generate the master authority keys for supplied Policy
