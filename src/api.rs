@@ -118,12 +118,12 @@ pub trait CoverCrypt<
     ///
     /// - `policy`          : global policy
     /// - `pk`              : public key
-    /// - `access_policy`   : access policy used for the encapsulation
+    /// - `encryption_policy`   : encryption policy used for the encapsulation
     fn encaps(
         &self,
         policy: &Policy,
         pk: &Self::PublicKey,
-        access_policy: &AccessPolicy,
+        encryption_policy: &AccessPolicy,
     ) -> Result<(DEM::Key, Self::Encapsulation), Error>;
 
     /// Decapsulates a symmetric key from the given CoverCrypt encapsulation.
@@ -248,11 +248,10 @@ where
             cover_crypt.encaps(policy, public_key, access_policy)?;
 
         // encrypt the additional data using the DEM with the encapsulated key
-        let ciphertext = cover_crypt.encrypt(
-            &symmetric_key,
-            additional_data.unwrap_or_default(),
-            authenticated_data,
-        )?;
+        let ciphertext = match additional_data {
+            Some(d) => cover_crypt.encrypt(&symmetric_key, d, authenticated_data)?,
+            None => vec![],
+        };
 
         Ok((
             symmetric_key,
@@ -275,8 +274,11 @@ where
         authenticated_data: Option<&[u8]>,
     ) -> Result<ClearTextHeader<SYM_KEY_LENGTH, DEM>, Error> {
         let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
-        let additional_data =
-            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)?;
+        let additional_data = if self.ciphertext.is_empty() {
+            vec![]
+        } else {
+            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)?
+        };
         Ok(ClearTextHeader {
             symmetric_key,
             additional_data,

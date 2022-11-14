@@ -62,8 +62,8 @@ unsafe fn encrypt_header(
         attributes_ptr,
         additional_data.as_ptr().cast(),
         additional_data.len() as i32,
-        authenticated_data.as_ref().as_ptr().cast(),
-        authenticated_data.as_ref().len() as i32,
+        authenticated_data.as_ptr().cast(),
+        authenticated_data.len() as i32,
     ))?;
 
     let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
@@ -93,7 +93,7 @@ unsafe fn decrypt_header(
     let authenticated_data_ptr = authenticated_data.as_ptr().cast();
     let authenticated_data_len = authenticated_data.len() as c_int;
 
-    let mut additional_data = vec![0u8; 8128];
+    let mut additional_data = vec![0u8; 0];
     let additional_data_ptr = additional_data.as_mut_ptr().cast();
     let mut additional_data_len = additional_data.len() as c_int;
 
@@ -164,6 +164,47 @@ pub fn policy() -> Result<Policy, Error> {
     policy.add_axis(&department)?;
     policy.rotate(&Attribute::new("Department", "FIN"))?;
     Ok(policy)
+}
+
+#[test]
+fn test_ffi_simple() -> Result<(), Error> {
+    unsafe {
+        //
+        // Policy settings
+        //
+        let policy = policy()?;
+        let target_access_policy =
+            "(Department::HR || Department::FIN) && Security Level::Confidential";
+
+        //
+        // CoverCrypt setup
+        //
+        let cover_crypt = CoverCryptX25519Aes256::default();
+        let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let user_access_policy =
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Top Secret")?;
+        let usk = cover_crypt.generate_user_secret_key(&msk, &user_access_policy, &policy)?;
+
+        //
+        // Encrypt / decrypt
+        //
+        let additional_data = vec![];
+        let authenticated_data = vec![];
+
+        let (sym_key, encrypted_header) = encrypt_header(
+            &policy,
+            target_access_policy,
+            &mpk,
+            &additional_data,
+            &authenticated_data,
+        )?;
+
+        let decrypted_header = decrypt_header(&encrypted_header, &usk, &authenticated_data)?;
+
+        assert_eq!(sym_key, decrypted_header.symmetric_key);
+        assert_eq!(&additional_data, &decrypted_header.additional_data);
+    }
+    Ok(())
 }
 
 #[test]
