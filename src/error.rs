@@ -30,7 +30,7 @@ pub enum Error {
     #[error("could not decode number of attributes in encrypted message")]
     DecodingAttributeNumber,
     #[error(
-        "Unable to decrypt the header size. User decryption key has not the right policy to \
+        "Unable to decrypt the header. User decryption key has not the right policy to \
          decrypt this input."
     )]
     InsufficientAccessPolicy,

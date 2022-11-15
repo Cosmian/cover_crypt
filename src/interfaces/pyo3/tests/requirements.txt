@@ -1,2 +1,1 @@
-maturin
-notebook
+maturin>=0.13.7
