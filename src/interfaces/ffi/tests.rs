@@ -751,10 +751,14 @@ unsafe fn decrypt(
     ciphertext: &[u8],
     user_decryption_key: &UserSecretKey,
     authentication_data: &[u8],
-) -> Result<Vec<u8>, Error> {
+) -> Result<(Vec<u8>, Vec<u8>), Error> {
     let mut plaintext = vec![0u8; 8192];
     let plaintext_ptr = plaintext.as_mut_ptr().cast();
     let mut plaintext_len = plaintext.len() as c_int;
+
+    let mut additional_data = vec![0u8; 8192];
+    let additional_data_ptr = additional_data.as_mut_ptr().cast();
+    let mut additional_data_len = additional_data.len() as c_int;
 
     let ciphertext_ptr = ciphertext.as_ptr().cast();
     let ciphertext_len = ciphertext.len() as c_int;
@@ -769,6 +773,8 @@ unsafe fn decrypt(
     unwrap_ffi_error(h_aes_decrypt(
         plaintext_ptr,
         &mut plaintext_len,
+        additional_data_ptr,
+        &mut additional_data_len,
         ciphertext_ptr,
         ciphertext_len,
         authentication_data_ptr,
@@ -779,7 +785,11 @@ unsafe fn decrypt(
 
     let plaintext =
         std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
-    Ok(plaintext)
+    let additional_data =
+        std::slice::from_raw_parts(additional_data_ptr.cast(), additional_data_len as usize)
+            .to_vec();
+
+    Ok((plaintext, additional_data))
 }
 
 #[test]
@@ -817,9 +827,10 @@ fn test_encrypt_decrypt() -> Result<(), Error> {
             &authentication_data,
         )?;
 
-        let plaintext_ = decrypt(&ciphertext, &usk, &authentication_data)?;
+        let (plaintext_, additional_data_) = decrypt(&ciphertext, &usk, &authentication_data)?;
 
         assert_eq!(plaintext, plaintext_);
+        assert_eq!(additional_data, additional_data_);
     }
     Ok(())
 }

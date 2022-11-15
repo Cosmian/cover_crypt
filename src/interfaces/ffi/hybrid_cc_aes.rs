@@ -913,6 +913,8 @@ pub unsafe extern "C" fn h_aes_encrypt(
 pub unsafe extern "C" fn h_aes_decrypt(
     plaintext_ptr: *mut c_char,
     plaintext_len: *mut c_int,
+    additional_data_ptr: *mut c_char,
+    additional_data_len: *mut c_int,
     ciphertext_ptr: *const c_char,
     ciphertext_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -988,6 +990,24 @@ pub unsafe extern "C" fn h_aes_decrypt(
     }
     std::slice::from_raw_parts_mut(plaintext_ptr.cast(), plaintext.len())
         .copy_from_slice(&plaintext);
+
+    if *additional_data_len > 0 && !decrypted_header.additional_data.is_empty() {
+        let allocated = *additional_data_len;
+        *additional_data_len = decrypted_header.additional_data.len() as c_int;
+        if allocated < *additional_data_len {
+            ffi_bail!(
+                "The pre-allocated additional data buffer is too small; need {} bytes",
+                *additional_data_len
+            );
+        }
+        std::slice::from_raw_parts_mut(
+            additional_data_ptr.cast(),
+            decrypted_header.additional_data.len(),
+        )
+        .copy_from_slice(&decrypted_header.additional_data);
+    } else {
+        *additional_data_len = 0;
+    }
 
     0
 }
