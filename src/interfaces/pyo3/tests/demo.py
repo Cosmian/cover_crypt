@@ -45,7 +45,7 @@ medium_secret_mkg_user = cosmian_cover_crypt.generate_user_secret_key(
 plaintext = "My secret data"
 plaintext_bytes = bytes(plaintext, 'utf-8')
 additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
-anthentication_data = [];
+authentication_data = [];
 
 # Encrypt with different ABE policies
 low_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Low Secret && Department::MKG",
