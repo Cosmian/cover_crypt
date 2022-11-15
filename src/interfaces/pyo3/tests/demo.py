@@ -45,36 +45,36 @@ medium_secret_mkg_user = cosmian_cover_crypt.generate_user_secret_key(
 plaintext = "My secret data"
 plaintext_bytes = bytes(plaintext, 'utf-8')
 additional_data = [0, 0, 0, 0, 0, 0, 0, 1];
-authenticated_data = [];
+authentication_data = [];
 
 # Encrypt with different ABE policies
 low_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Low Secret && Department::MKG",
                                                   master_keys[1],
                                                   plaintext_bytes,
                                                   additional_data,
-                                                  authenticated_data)
+                                                  authentication_data)
 top_secret_mkg_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Top Secret && Department::MKG",
                                           master_keys[1], plaintext_bytes,
-                                          additional_data, authenticated_data)
+                                          additional_data, authentication_data)
 low_secret_fin_data = cosmian_cover_crypt.encrypt(policy, "Security Level::Low Secret && Department::FIN",
                                           master_keys[1], plaintext_bytes,
-                                          additional_data, authenticated_data)
+                                          additional_data, authentication_data)
 
 # The medium secret marketing user can successfully decrypt a low security marketing message:
 cleartext = cosmian_cover_crypt.decrypt(medium_secret_mkg_user, low_secret_mkg_data,
-                                authenticated_data)
+                                authentication_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)
 
 # .. however it can neither decrypt a marketing message with higher security:
 try:
     cleartext = cosmian_cover_crypt.decrypt(
-        medium_secret_mkg_user, top_secret_mkg_data, authenticated_data)
+        medium_secret_mkg_user, top_secret_mkg_data, authentication_data)
 except Exception as ex:
     print(f"As expected, user cannot decrypt this message: {ex}")
 
 try:
     cleartext = cosmian_cover_crypt.decrypt(
-        medium_secret_mkg_user, low_secret_fin_data, authenticated_data)
+        medium_secret_mkg_user, low_secret_fin_data, authentication_data)
 except Exception as ex:
     print(f"As expected, user cannot decrypt this message: {ex}")
 
@@ -83,15 +83,15 @@ except Exception as ex:
 
 # As expected, the top secret marketing financial user can successfully decrypt all messages
 cleartext = cosmian_cover_crypt.decrypt(top_secret_mkg_fin_user, low_secret_mkg_data,
-                                authenticated_data)
+                                authentication_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)
 
 cleartext = cosmian_cover_crypt.decrypt(top_secret_mkg_fin_user, top_secret_mkg_data,
-                                authenticated_data)
+                                authentication_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)
 
 cleartext = cosmian_cover_crypt.decrypt(top_secret_mkg_fin_user, low_secret_fin_data,
-                                authenticated_data)
+                                authentication_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)
 
 # Rotation of Policy attributes
@@ -111,12 +111,12 @@ new_policy = cosmian_cover_crypt.rotate_attributes(bytes(json.dumps(
 master_keys = cosmian_cover_crypt.generate_master_keys(new_policy)
 new_low_secret_mkg_data = cosmian_cover_crypt.encrypt(new_policy, "Security Level::Low Secret && Department::MKG",
                                               master_keys[1], plaintext_bytes,
-                                              additional_data, authenticated_data)
+                                              additional_data, authentication_data)
 
 # The medium secret user cannot decrypt the new message until its key is refreshed
 try:
     cleartext = cosmian_cover_crypt.decrypt(
-        medium_secret_mkg_user, new_low_secret_mkg_data, authenticated_data)
+        medium_secret_mkg_user, new_low_secret_mkg_data, authentication_data)
 except Exception as ex:
     print(f"As expected, user cannot decrypt this message: {ex}")
 
@@ -126,5 +126,5 @@ new_medium_secret_mkg_user = cosmian_cover_crypt.generate_user_secret_key(
 
 # New messages can now be decrypted
 cleartext = cosmian_cover_crypt.decrypt(
-    new_medium_secret_mkg_user, new_low_secret_mkg_data, authenticated_data)
+    new_medium_secret_mkg_user, new_low_secret_mkg_data, authentication_data)
 assert(str(bytes(cleartext), "utf-8") == plaintext)
