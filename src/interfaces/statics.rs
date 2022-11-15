@@ -572,7 +572,7 @@ mod tests {
 
         //
         // New user secret key
-        let top_secret_fin_usk = cover_crypt.generate_user_secret_key(
+        let mut top_secret_fin_usk = cover_crypt.generate_user_secret_key(
             &msk,
             &AccessPolicy::from_boolean_expression(
                 "Security Level::Top Secret && Department::FIN",
@@ -610,9 +610,25 @@ mod tests {
             None,
         )?;
 
+        // Decryption fails without refreshing the user key
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_err());
+
+        cover_crypt.refresh_user_secret_key(
+            &mut top_secret_fin_usk,
+            &AccessPolicy::from_boolean_expression(
+                "Security Level::Top Secret && Department::FIN",
+            )?,
+            &msk,
+            &policy,
+            false,
+        )?;
+
+        // The refreshed key can decrypt the header
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
 
         Ok(())
     }
