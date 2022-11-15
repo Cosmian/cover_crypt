@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [7.1.0] - 2022-11-15
+
+### Added
+
+- added encrypt / decrypt to FFI
+
+---
+
 ## [7.0.2] - 2022-11-14
 
 ### Fixed

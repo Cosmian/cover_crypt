@@ -142,24 +142,24 @@ pub trait CoverCrypt<
     ///
     /// - `symmetric_key`       : symmetric key used to encrypt data
     /// - `plaintext`           : data to be encrypted
-    /// - `authenticated_data`  : additional authenticated data
+    /// - `authentication_data` : optional data used for authentication
     fn encrypt(
         &self,
         symmetric_key: &DEM::Key,
         plaintext: &[u8],
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error>;
 
     /// Decrypts the given ciphertext using the given symmetric key.
     ///
     /// - `symmetric_key`       : symmetric key used to encrypt data
     /// - `plaintext`           : data to be encrypted
-    /// - `authenticated_data`  : additional authenticated data
+    /// - `authentication_data` : optional data used for authentication
     fn decrypt(
         &self,
         key: &DEM::Key,
         ciphertext: &[u8],
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error>;
 }
 
@@ -234,14 +234,14 @@ where
     /// - `public_key`          : CoverCrypt public key
     /// - `access_policy`       : access policy used for the encapsulation
     /// - `additional_data`     : additional data to encrypt in the header
-    /// - `authenticated_data`  : authenticated data used in the DEM encryption
+    /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &CoverCryptScheme,
         policy: &Policy,
         public_key: &CoverCryptScheme::PublicKey,
         access_policy: &AccessPolicy,
         additional_data: Option<&[u8]>,
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<(DEM::Key, Self), Error> {
         // generate a symmetric key and its encapsulation
         let (symmetric_key, encapsulation) =
@@ -249,7 +249,7 @@ where
 
         // encrypt the additional data using the DEM with the encapsulated key
         let ciphertext = match additional_data {
-            Some(d) => cover_crypt.encrypt(&symmetric_key, d, authenticated_data)?,
+            Some(d) => cover_crypt.encrypt(&symmetric_key, d, authentication_data)?,
             None => vec![],
         };
 
@@ -266,18 +266,18 @@ where
     ///
     /// - `cover_crypt`         : `CoverCrypt` object
     /// - `usk`                 : CoverCrypt user secret key
-    /// - `authenticated_data`  : authenticated data used in the DEM encryption
+    /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn decrypt(
         &self,
         cover_crypt: &CoverCryptScheme,
         usk: &CoverCryptScheme::UserSecretKey,
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<ClearTextHeader<SYM_KEY_LENGTH, DEM>, Error> {
         let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
         let additional_data = if self.ciphertext.is_empty() {
             vec![]
         } else {
-            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authenticated_data)?
+            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authentication_data)?
         };
         Ok(ClearTextHeader {
             symmetric_key,

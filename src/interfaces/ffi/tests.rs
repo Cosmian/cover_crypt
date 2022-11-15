@@ -26,10 +26,10 @@ use std::{
 
 unsafe fn encrypt_header(
     policy: &Policy,
-    target_access_policy: &str,
+    encryption_policy: &str,
     public_key: &PublicKey,
     additional_data: &[u8],
-    authenticated_data: &[u8],
+    authentication_data: &[u8],
 ) -> Result<(SymmetricKey, EncryptedHeader), Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
@@ -47,9 +47,9 @@ unsafe fn encrypt_header(
     let public_key_ptr = public_key_bytes.as_ptr();
     let public_key_len = public_key_bytes.len() as i32;
 
-    let attributes_json =
-        CString::new(target_access_policy).map_err(|e| Error::Other(e.to_string()))?;
-    let attributes_ptr = attributes_json.as_ptr();
+    let encryption_policy_cs =
+        CString::new(encryption_policy).map_err(|e| Error::Other(e.to_string()))?;
+    let encryption_policy_ptr = encryption_policy_cs.as_ptr();
 
     unwrap_ffi_error(h_aes_encrypt_header(
         symmetric_key_ptr,
@@ -59,11 +59,11 @@ unsafe fn encrypt_header(
         policy_ptr,
         public_key_ptr.cast(),
         public_key_len,
-        attributes_ptr,
+        encryption_policy_ptr,
         additional_data.as_ptr().cast(),
         additional_data.len() as i32,
-        authenticated_data.as_ptr().cast(),
-        authenticated_data.len() as i32,
+        authentication_data.as_ptr().cast(),
+        authentication_data.len() as i32,
     ))?;
 
     let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
@@ -84,14 +84,14 @@ unsafe fn encrypt_header(
 unsafe fn decrypt_header(
     header: &EncryptedHeader,
     user_decryption_key: &UserSecretKey,
-    authenticated_data: &[u8],
+    authentication_data: &[u8],
 ) -> Result<ClearTextHeader, Error> {
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-    let authenticated_data_ptr = authenticated_data.as_ptr().cast();
-    let authenticated_data_len = authenticated_data.len() as c_int;
+    let authentication_data_ptr = authentication_data.as_ptr().cast();
+    let authentication_data_len = authentication_data.len() as c_int;
 
     let mut additional_data = vec![0u8; 8128];
     let additional_data_ptr = additional_data.as_mut_ptr().cast();
@@ -110,8 +110,8 @@ unsafe fn decrypt_header(
         &mut additional_data_len,
         header_bytes.as_ptr().cast(),
         header_bytes.len() as c_int,
-        authenticated_data_ptr,
-        authenticated_data_len,
+        authentication_data_ptr,
+        authentication_data_len,
         user_decryption_key_ptr,
         user_decryption_key_len,
     ))?;
@@ -173,7 +173,7 @@ fn test_ffi_simple() -> Result<(), Error> {
         // Policy settings
         //
         let policy = policy()?;
-        let target_access_policy =
+        let encryption_policy =
             "(Department::HR || Department::FIN) && Security Level::Confidential";
 
         //
@@ -189,17 +189,17 @@ fn test_ffi_simple() -> Result<(), Error> {
         // Encrypt / decrypt
         //
         let additional_data = vec![];
-        let authenticated_data = vec![];
+        let authentication_data = vec![];
 
         let (sym_key, encrypted_header) = encrypt_header(
             &policy,
-            target_access_policy,
+            encryption_policy,
             &mpk,
             &additional_data,
-            &authenticated_data,
+            &authentication_data,
         )?;
 
-        let decrypted_header = decrypt_header(&encrypted_header, &usk, &authenticated_data)?;
+        let decrypted_header = decrypt_header(&encrypted_header, &usk, &authentication_data)?;
 
         assert_eq!(sym_key, decrypted_header.symmetric_key);
         assert_eq!(&additional_data, &decrypted_header.additional_data);
@@ -214,7 +214,7 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         // Policy settings
         //
         let policy = policy()?;
-        let target_access_policy =
+        let encryption_policy =
             "(Department::HR || Department::FIN) && Security Level::Confidential";
 
         //
@@ -230,17 +230,17 @@ fn test_ffi_hybrid_header() -> Result<(), Error> {
         // Encrypt / decrypt
         //
         let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let authenticated_data = vec![10, 11, 12, 13, 14];
+        let authentication_data = vec![10, 11, 12, 13, 14];
 
         let (sym_key, encrypted_header) = encrypt_header(
             &policy,
-            target_access_policy,
+            encryption_policy,
             &mpk,
             &additional_data,
-            &authenticated_data,
+            &authentication_data,
         )?;
 
-        let decrypted_header = decrypt_header(&encrypted_header, &usk, &authenticated_data)?;
+        let decrypted_header = decrypt_header(&encrypted_header, &usk, &authentication_data)?;
 
         assert_eq!(sym_key, decrypted_header.symmetric_key);
         assert_eq!(&additional_data, &decrypted_header.additional_data);
@@ -252,7 +252,7 @@ unsafe fn encrypt_header_using_cache(
     public_key: &PublicKey,
     policy: &Policy,
     additional_data: &[u8],
-    authenticated_data: &[u8],
+    authentication_data: &[u8],
 ) -> Result<(SymmetricKey, EncryptedHeader), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
@@ -271,7 +271,7 @@ unsafe fn encrypt_header_using_cache(
         public_key_len,
     ))?;
 
-    let target_access_policy = "Department::FIN && Security Level::Confidential";
+    let encryption_policy = "Department::FIN && Security Level::Confidential";
 
     let mut symmetric_key = vec![0u8; 32];
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast();
@@ -281,8 +281,8 @@ unsafe fn encrypt_header_using_cache(
     let encrypted_header_ptr = encrypted_header_bytes.as_mut_ptr().cast();
     let mut encrypted_header_len = encrypted_header_bytes.len() as c_int;
 
-    let target_access_policy =
-        CString::new(target_access_policy).map_err(|e| Error::Other(e.to_string()))?;
+    let encryption_policy_cs =
+        CString::new(encryption_policy).map_err(|e| Error::Other(e.to_string()))?;
 
     unwrap_ffi_error(h_aes_encrypt_header_using_cache(
         symmetric_key_ptr,
@@ -290,11 +290,11 @@ unsafe fn encrypt_header_using_cache(
         encrypted_header_ptr,
         &mut encrypted_header_len,
         cache_handle,
-        target_access_policy.as_ptr(),
+        encryption_policy_cs.as_ptr(),
         additional_data.as_ptr().cast(),
         additional_data.len() as i32,
-        authenticated_data.as_ptr().cast(),
-        authenticated_data.len() as i32,
+        authentication_data.as_ptr().cast(),
+        authentication_data.len() as i32,
     ))?;
 
     let symmetric_key_ = SymmetricKey::try_from_bytes(std::slice::from_raw_parts(
@@ -318,7 +318,7 @@ unsafe fn encrypt_header_using_cache(
 unsafe fn decrypt_header_using_cache(
     user_decryption_key: &UserSecretKey,
     header: &EncryptedHeader,
-    authenticated_data: &[u8],
+    authentication_data: &[u8],
 ) -> Result<ClearTextHeader, Error> {
     let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
     let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast();
@@ -349,8 +349,8 @@ unsafe fn decrypt_header_using_cache(
         &mut additional_data_len,
         header_bytes.as_ptr().cast(),
         header_bytes.len() as c_int,
-        authenticated_data.as_ptr().cast(),
-        authenticated_data.len() as c_int,
+        authentication_data.as_ptr().cast(),
+        authentication_data.len() as c_int,
         cache_handle,
     ))?;
 
@@ -402,12 +402,12 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
         // Encrypt / decrypt
         //
         let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let authenticated_data = vec![10, 11, 12, 13, 14];
+        let authentication_data = vec![10, 11, 12, 13, 14];
 
         let (symmetric_key, encrypted_header) =
-            encrypt_header_using_cache(&mpk, &policy, &additional_data, &authenticated_data)?;
+            encrypt_header_using_cache(&mpk, &policy, &additional_data, &authentication_data)?;
         let decrypted_header =
-            decrypt_header_using_cache(&sk_u, &encrypted_header, &authenticated_data)?;
+            decrypt_header_using_cache(&sk_u, &encrypted_header, &authentication_data)?;
 
         assert_eq!(symmetric_key, decrypted_header.symmetric_key);
         assert_eq!(&additional_data, &decrypted_header.additional_data);
@@ -420,6 +420,7 @@ unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterSecretKey, Publ
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
 
+    // use a large enough buffer size
     let mut master_keys_bytes = vec![0u8; 8192];
     let master_keys_ptr = master_keys_bytes.as_mut_ptr().cast();
     let mut master_keys_len = master_keys_bytes.len() as c_int;
@@ -466,6 +467,7 @@ unsafe fn generate_user_secret_key(
     let policy_ptr = policy_cs.as_ptr();
 
     // Prepare OUT buffer
+    // use a large enough buffer size
     let mut usk_bytes = vec![0u8; 8192];
     let usk_ptr = usk_bytes.as_mut_ptr().cast();
     let mut usk_len = usk_bytes.len() as c_int;
@@ -695,6 +697,144 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         for x_i in &original_usk.x {
             assert!(!updated_usk.x.contains(x_i));
         }
+    }
+    Ok(())
+}
+
+//
+// Encrypt / decrypt
+//
+
+unsafe fn encrypt(
+    policy: &Policy,
+    public_key: &PublicKey,
+    encryption_policy: &str,
+    plaintext: &[u8],
+    additional_data: &[u8],
+    authentication_data: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let mut ciphertext_bytes = vec![0u8; 8128];
+    let ciphertext_ptr = ciphertext_bytes.as_mut_ptr().cast();
+    let mut ciphertext_len = ciphertext_bytes.len() as c_int;
+
+    let policy_cs = CString::new(serde_json::to_string(policy)?.as_str())
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let policy_ptr = policy_cs.as_ptr();
+
+    let public_key_bytes = public_key.try_to_bytes()?;
+    let public_key_ptr = public_key_bytes.as_ptr();
+    let public_key_len = public_key_bytes.len() as i32;
+
+    let encryption_policy_cs =
+        CString::new(encryption_policy).map_err(|e| Error::Other(e.to_string()))?;
+    let encryption_policy_ptr = encryption_policy_cs.as_ptr();
+
+    unwrap_ffi_error(h_aes_encrypt(
+        ciphertext_ptr,
+        &mut ciphertext_len,
+        policy_ptr,
+        public_key_ptr.cast(),
+        public_key_len,
+        encryption_policy_ptr,
+        plaintext.as_ptr().cast(),
+        plaintext.len() as i32,
+        additional_data.as_ptr().cast(),
+        additional_data.len() as i32,
+        authentication_data.as_ptr().cast(),
+        authentication_data.len() as i32,
+    ))?;
+
+    let ciphertext_bytes =
+        std::slice::from_raw_parts(ciphertext_ptr.cast(), ciphertext_len as usize).to_vec();
+    Ok(ciphertext_bytes)
+}
+
+unsafe fn decrypt(
+    ciphertext: &[u8],
+    user_decryption_key: &UserSecretKey,
+    authentication_data: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), Error> {
+    // use a large enough buffer size
+    let mut plaintext = vec![0u8; 8192];
+    let plaintext_ptr = plaintext.as_mut_ptr().cast();
+    let mut plaintext_len = plaintext.len() as c_int;
+
+    // use a large enough buffer size
+    let mut additional_data = vec![0u8; 8192];
+    let additional_data_ptr = additional_data.as_mut_ptr().cast();
+    let mut additional_data_len = additional_data.len() as c_int;
+
+    let ciphertext_ptr = ciphertext.as_ptr().cast();
+    let ciphertext_len = ciphertext.len() as c_int;
+
+    let authentication_data_ptr = authentication_data.as_ptr().cast();
+    let authentication_data_len = authentication_data.len() as c_int;
+
+    let user_decryption_key_bytes = user_decryption_key.try_to_bytes()?;
+    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast();
+    let user_decryption_key_len = user_decryption_key_bytes.len() as i32;
+
+    unwrap_ffi_error(h_aes_decrypt(
+        plaintext_ptr,
+        &mut plaintext_len,
+        additional_data_ptr,
+        &mut additional_data_len,
+        ciphertext_ptr,
+        ciphertext_len,
+        authentication_data_ptr,
+        authentication_data_len,
+        user_decryption_key_ptr,
+        user_decryption_key_len,
+    ))?;
+
+    let plaintext =
+        std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
+    let additional_data =
+        std::slice::from_raw_parts(additional_data_ptr.cast(), additional_data_len as usize)
+            .to_vec();
+
+    Ok((plaintext, additional_data))
+}
+
+#[test]
+fn test_encrypt_decrypt() -> Result<(), Error> {
+    unsafe {
+        //
+        // Policy settings
+        //
+        let policy = policy()?;
+        let encryption_policy =
+            "(Department::HR || Department::FIN) && Security Level::Confidential";
+
+        //
+        // CoverCrypt setup
+        //
+        let cover_crypt = CoverCryptX25519Aes256::default();
+        let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let user_access_policy =
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Top Secret")?;
+        let usk = cover_crypt.generate_user_secret_key(&msk, &user_access_policy, &policy)?;
+
+        //
+        // Encrypt / decrypt
+        //
+        let plaintext = vec![16, 17, 18, 19, 20, 21];
+        let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let authentication_data = vec![10, 11, 12, 13, 14];
+
+        let ciphertext = encrypt(
+            &policy,
+            &mpk,
+            encryption_policy,
+            &plaintext,
+            &additional_data,
+            &authentication_data,
+        )?;
+
+        let (plaintext_, additional_data_) = decrypt(&ciphertext, &usk, &authentication_data)?;
+
+        assert_eq!(plaintext, plaintext_);
+        assert_eq!(additional_data, additional_data_);
     }
     Ok(())
 }

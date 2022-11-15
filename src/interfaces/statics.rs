@@ -203,13 +203,13 @@ impl
         &self,
         symmetric_key: &<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
         plaintext: &[u8],
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         <Aes256GcmCrypto as Dem<{ Self::SYM_KEY_LENGTH }>>::encrypt(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             symmetric_key,
             plaintext,
-            authenticated_data,
+            authentication_data,
         )
         .map_err(Error::CryptoError)
     }
@@ -218,12 +218,12 @@ impl
         &self,
         symmetric_key: &<Self::Dem as Dem<{ Self::SYM_KEY_LENGTH }>>::Key,
         ciphertext: &[u8],
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         <Aes256GcmCrypto as Dem<{ Self::SYM_KEY_LENGTH }>>::decrypt(
             symmetric_key,
             ciphertext,
-            authenticated_data,
+            authentication_data,
         )
         .map_err(Error::CryptoError)
     }
@@ -452,7 +452,7 @@ mod tests {
         // Encrypt/decrypt header
         //
         let additional_data = 1u32.to_be_bytes().to_vec();
-        let authenticated_data = None;
+        let authentication_data = None;
 
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
@@ -460,19 +460,22 @@ mod tests {
             &mpk,
             &access_policy,
             Some(&additional_data),
-            authenticated_data,
+            authentication_data,
         )?;
-        let res =
-            encrypted_header.decrypt(&cover_crypt, &top_secret_mkg_fin_user, authenticated_data)?;
+        let res = encrypted_header.decrypt(
+            &cover_crypt,
+            &top_secret_mkg_fin_user,
+            authentication_data,
+        )?;
 
         assert_eq!(additional_data, res.additional_data);
 
         let message = b"My secret message";
         // we need mut in the commented lines below
         #[allow(unused_mut)]
-        let mut ctx = cover_crypt.encrypt(&symmetric_key, message, authenticated_data)?;
+        let mut ctx = cover_crypt.encrypt(&symmetric_key, message, authentication_data)?;
 
-        let res = cover_crypt.decrypt(&symmetric_key, &ctx, authenticated_data)?;
+        let res = cover_crypt.decrypt(&symmetric_key, &ctx, authentication_data)?;
 
         assert_eq!(message.to_vec(), res);
 

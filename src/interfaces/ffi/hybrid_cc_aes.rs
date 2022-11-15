@@ -12,7 +12,11 @@ use crate::{
     },
 };
 use abe_policy::{AccessPolicy, Policy};
-use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable},
+    symmetric_crypto::Dem,
+    KeyTrait,
+};
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
@@ -119,11 +123,11 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     header_bytes_ptr: *mut c_char,
     header_bytes_len: *mut c_int,
     cache_handle: c_int,
-    access_policy_ptr: *const c_char,
+    encryption_policy_ptr: *const c_char,
     additional_data_ptr: *const c_char,
     additional_data_len: c_int,
-    authenticated_data_ptr: *const c_char,
-    authenticated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
 ) -> c_int {
     ffi_not_null!(
         symmetric_key_ptr,
@@ -142,7 +146,10 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     if *header_bytes_len == 0 {
         ffi_bail!("The header bytes buffer should have a size greater than zero");
     }
-    ffi_not_null!(access_policy_ptr, "Attributes pointer should not be null");
+    ffi_not_null!(
+        encryption_policy_ptr,
+        "Encryption policy pointer should not be null"
+    );
 
     let map = ENCRYPTION_CACHE_MAP
         .read()
@@ -157,8 +164,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         return 1;
     };
 
-    // Access policy
-    let access_policy = match CStr::from_ptr(access_policy_ptr).to_str() {
+    // Encryption policy
+    let encryption_policy = match CStr::from_ptr(encryption_policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
         Err(_e) => {
             set_last_error(FfiError::Generic(
@@ -167,7 +174,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
             return 1;
         }
     };
-    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
+    let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&encryption_policy));
 
     // Additional Data
     let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
@@ -179,13 +186,13 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         ))
     };
 
-    // Authenticated Data
-    let authenticated_data = if authenticated_data_ptr.is_null() || authenticated_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr.cast(),
-            authenticated_data_len as usize,
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
         ))
     };
 
@@ -193,9 +200,9 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         &CoverCryptX25519Aes256::default(),
         &cache.policy,
         &cache.pk,
-        &access_policy,
+        &encryption_policy,
         additional_data,
-        authenticated_data,
+        authentication_data,
     ));
 
     // serialize symmetric key
@@ -233,11 +240,11 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     policy_ptr: *const c_char,
     pk_ptr: *const c_char,
     pk_len: c_int,
-    access_policy_ptr: *const c_char,
+    encryption_policy_ptr: *const c_char,
     additional_data_ptr: *const c_char,
     additional_data_len: c_int,
-    authenticated_data_ptr: *const c_char,
-    authenticated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
 ) -> c_int {
     ffi_not_null!(
         symmetric_key_ptr,
@@ -254,11 +261,14 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         ffi_bail!("The header bytes buffer should have a size greater than zero");
     }
     ffi_not_null!(policy_ptr, "Policy pointer should not be null");
-    ffi_not_null!(pk_ptr, "Policy pointer should not be null");
+    ffi_not_null!(pk_ptr, "The public key pointer should not be null");
     if pk_len == 0 {
         ffi_bail!("The public key should not be empty");
     }
-    ffi_not_null!(access_policy_ptr, "Attributes pointer should not be null");
+    ffi_not_null!(
+        encryption_policy_ptr,
+        "Encryption policy pointer should not be null"
+    );
 
     // Policy
     let policy = match CStr::from_ptr(policy_ptr).to_str() {
@@ -276,8 +286,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let pk_bytes = std::slice::from_raw_parts(pk_ptr.cast(), pk_len as usize);
     let pk = ffi_unwrap!(PublicKey::try_from_bytes(pk_bytes));
 
-    // Access policy
-    let access_policy = match CStr::from_ptr(access_policy_ptr).to_str() {
+    // Encryption policy
+    let encryption_policy = match CStr::from_ptr(encryption_policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
         Err(_e) => {
             set_last_error(FfiError::Generic(
@@ -286,7 +296,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
             return 1;
         }
     };
-    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
+    let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&encryption_policy));
 
     // Additional Data
     let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
@@ -298,13 +308,13 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         ))
     };
 
-    // Authenticated Data
-    let authenticated_data = if authenticated_data_ptr.is_null() || authenticated_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr.cast(),
-            authenticated_data_len as usize,
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
         ))
     };
 
@@ -312,9 +322,9 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         &CoverCryptX25519Aes256::default(),
         &policy,
         &pk,
-        &access_policy,
+        &encryption_policy,
         additional_data,
-        authenticated_data
+        authentication_data
     ));
 
     let allocated = *symmetric_key_len;
@@ -432,8 +442,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     additional_data_len: *mut c_int,
     encrypted_header_ptr: *const c_char,
     encrypted_header_len: c_int,
-    authenticated_data_ptr: *const c_char,
-    authenticated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
     cache_handle: c_int,
 ) -> c_int {
     ffi_not_null!(
@@ -445,7 +455,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     }
     ffi_not_null!(
         encrypted_header_ptr,
-        "Encrypted header bytes pointer should not be bull"
+        "Encrypted header bytes pointer should not be null"
     );
     if encrypted_header_len == 0 {
         ffi_bail!("The encrypted header bytes size should be greater than zero");
@@ -467,13 +477,13 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         return 1;
     };
 
-    // Authenticated Data
-    let authenticated_data = if authenticated_data_ptr.is_null() || authenticated_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr.cast(),
-            authenticated_data_len as usize,
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
         ))
     };
 
@@ -482,7 +492,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     let header = ffi_unwrap!(encrypted_header.decrypt(
         &CoverCryptX25519Aes256::default(),
         &cache.usk,
-        authenticated_data
+        authentication_data
     ));
 
     // Symmetric Key
@@ -531,8 +541,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     additional_data_len: *mut c_int,
     encrypted_header_ptr: *const c_char,
     encrypted_header_len: c_int,
-    authenticated_data_ptr: *const c_char,
-    authenticated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
     usk_ptr: *const c_char,
     usk_len: c_int,
 ) -> c_int {
@@ -545,7 +555,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     }
     ffi_not_null!(
         encrypted_header_ptr,
-        "Encrypted header bytes pointer should not be bull"
+        "Encrypted header bytes pointer should not be null"
     );
     if encrypted_header_len == 0 {
         ffi_bail!("The encrypted header bytes size should be greater than zero");
@@ -564,13 +574,13 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
     let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
 
-    // Authenticated Data
-    let authenticated_data = if authenticated_data_ptr.is_null() || authenticated_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr.cast(),
-            authenticated_data_len as usize,
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
         ))
     };
 
@@ -579,7 +589,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     let decrypted_header = ffi_unwrap!(encrypted_header.decrypt(
         &CoverCryptX25519Aes256::default(),
         &usk,
-        authenticated_data
+        authentication_data
     ));
 
     // Symmetric Key
@@ -629,8 +639,8 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     ciphertext_len: *mut c_int,
     symmetric_key_ptr: *const c_char,
     symmetric_key_len: c_int,
-    associated_data_ptr: *const c_char,
-    associated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
     plaintext_ptr: *const c_char,
     plaintext_len: c_int,
 ) -> c_int {
@@ -654,18 +664,21 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
         std::slice::from_raw_parts(symmetric_key_ptr.cast(), symmetric_key_len as usize).to_vec();
 
     //
-    // Associated Data
-    let associated_data = if !associated_data_ptr.is_null() && associated_data_len > 0 {
-        std::slice::from_raw_parts(associated_data_ptr.cast(), associated_data_len as usize)
-            .to_vec()
+    // authentication Data
+    let authentication_data = if !authentication_data_ptr.is_null() && authentication_data_len > 0 {
+        std::slice::from_raw_parts(
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
+        )
+        .to_vec()
     } else {
         vec![]
     };
 
-    let ad = if associated_data.is_empty() {
+    let ad = if authentication_data.is_empty() {
         None
     } else {
-        Some(associated_data.as_slice())
+        Some(authentication_data.as_slice())
     };
 
     ffi_not_null!(plaintext_ptr, "Plaintext pointer should not be null");
@@ -702,8 +715,8 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     cleartext_len: *mut c_int,
     symmetric_key_ptr: *const c_char,
     symmetric_key_len: c_int,
-    associated_data_ptr: *const c_char,
-    associated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
     encrypted_bytes_ptr: *const c_char,
     encrypted_bytes_len: c_int,
 ) -> c_int {
@@ -739,17 +752,20 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
 
     //
     // Associated Data
-    let associated_data = if !associated_data_ptr.is_null() && associated_data_len > 0 {
-        std::slice::from_raw_parts(associated_data_ptr.cast(), associated_data_len as usize)
-            .to_vec()
+    let authentication_data = if !authentication_data_ptr.is_null() && authentication_data_len > 0 {
+        std::slice::from_raw_parts(
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
+        )
+        .to_vec()
     } else {
         vec![]
     };
 
-    let ad = if associated_data.is_empty() {
+    let ad = if authentication_data.is_empty() {
         None
     } else {
-        Some(associated_data.as_slice())
+        Some(authentication_data.as_slice())
     };
 
     //
@@ -767,6 +783,231 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     }
     std::slice::from_raw_parts_mut(cleartext_ptr.cast(), cleartext.len())
         .copy_from_slice(&cleartext);
+
+    0
+}
+
+#[no_mangle]
+/// Hybrid encrypt some content
+/// # Safety
+pub unsafe extern "C" fn h_aes_encrypt(
+    ciphertext_ptr: *mut c_char,
+    ciphertext_len: *mut c_int,
+    policy_ptr: *const c_char,
+    pk_ptr: *const c_char,
+    pk_len: c_int,
+    encryption_policy_ptr: *const c_char,
+    plaintext_ptr: *const c_char,
+    plaintext_len: c_int,
+    additional_data_ptr: *const c_char,
+    additional_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
+) -> c_int {
+    ffi_not_null!(policy_ptr, "Policy pointer should not be null");
+    ffi_not_null!(pk_ptr, "The Public key pointer should not be null");
+    if pk_len == 0 {
+        ffi_bail!("The public key should not be empty");
+    }
+    ffi_not_null!(
+        encryption_policy_ptr,
+        "Attributes pointer should not be null"
+    );
+    ffi_not_null!(plaintext_ptr, "The plaintext pointer should not be null");
+    if plaintext_len == 0 {
+        ffi_bail!("The plaintext should not be empty");
+    }
+
+    // Policy
+    let policy = match CStr::from_ptr(policy_ptr).to_str() {
+        Ok(msg) => msg.to_owned(),
+        Err(_e) => {
+            set_last_error(FfiError::Generic(
+                "Hybrid Cipher: invalid Policy".to_owned(),
+            ));
+            return 1;
+        }
+    };
+    let policy: Policy = ffi_unwrap!(serde_json::from_str(&policy));
+
+    // Public Key
+    let pk_bytes = std::slice::from_raw_parts(pk_ptr.cast(), pk_len as usize);
+    let pk = ffi_unwrap!(PublicKey::try_from_bytes(pk_bytes));
+
+    // Access policy
+    let access_policy = match CStr::from_ptr(encryption_policy_ptr).to_str() {
+        Ok(msg) => msg.to_owned(),
+        Err(_e) => {
+            set_last_error(FfiError::Generic(
+                "Hybrid Cipher: invalid attributes".to_owned(),
+            ));
+            return 1;
+        }
+    };
+    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
+
+    // Plaintext
+    let plaintext =
+        std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
+
+    // Additional Data
+    let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(
+            additional_data_ptr.cast(),
+            additional_data_len as usize,
+        ))
+    };
+
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
+        ))
+    };
+
+    let (symmetric_key, encrypted_header) = ffi_unwrap!(EncryptedHeader::generate(
+        &CoverCryptX25519Aes256::default(),
+        &policy,
+        &pk,
+        &access_policy,
+        additional_data,
+        authentication_data
+    ));
+    let encrypted_header_bytes = ffi_unwrap!(encrypted_header.try_to_bytes());
+
+    // encrypt the plaintext
+    let ciphertext = ffi_unwrap!(CoverCryptX25519Aes256::default().encrypt(
+        &symmetric_key,
+        &plaintext,
+        authentication_data,
+    ));
+
+    let allocated = *ciphertext_len as usize;
+    let actual_len = ciphertext.len() + encrypted_header_bytes.len();
+    if allocated < actual_len {
+        ffi_bail!(
+            "The pre-allocated encrypted bytes buffer is too small; need {} bytes",
+            actual_len
+        );
+    }
+
+    let mut bytes = Vec::<u8>::with_capacity(actual_len as usize);
+    bytes.extend_from_slice(&encrypted_header_bytes);
+    bytes.extend_from_slice(&ciphertext);
+
+    *ciphertext_len = actual_len as i32;
+    std::slice::from_raw_parts_mut(ciphertext_ptr.cast(), actual_len).copy_from_slice(&bytes);
+
+    0
+}
+
+#[no_mangle]
+/// Hybrid decrypt some content
+///
+/// # Safety
+pub unsafe extern "C" fn h_aes_decrypt(
+    plaintext_ptr: *mut c_char,
+    plaintext_len: *mut c_int,
+    additional_data_ptr: *mut c_char,
+    additional_data_len: *mut c_int,
+    ciphertext_ptr: *const c_char,
+    ciphertext_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
+    usk_ptr: *const c_char,
+    usk_len: c_int,
+) -> c_int {
+    ffi_not_null!(
+        plaintext_ptr,
+        "The clear text bytes pointer should point to pre-allocated memory"
+    );
+    if *plaintext_len == 0 {
+        ffi_bail!("The clear text bytes buffer should have a size greater than zero");
+    }
+    ffi_not_null!(
+        ciphertext_ptr,
+        "The ciphertext bytes pointer should not be null"
+    );
+    if ciphertext_len == 0 {
+        ffi_bail!("The ciphertext bytes size should be greater than zero");
+    }
+    ffi_not_null!(
+        usk_ptr,
+        "The user decryption key pointer should not be null"
+    );
+    if usk_len == 0 {
+        ffi_bail!("The user decryption key should not be empty");
+    }
+
+    let ciphertext_bytes =
+        std::slice::from_raw_parts(ciphertext_ptr.cast(), ciphertext_len as usize);
+
+    let mut de = Deserializer::new(ciphertext_bytes);
+    // this will read the exact header size
+    let encrypted_header = ffi_unwrap!(EncryptedHeader::read(&mut de));
+    // the rest is the symmetric ciphertext
+    let encrypted_content = de.finalize();
+
+    let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
+        ))
+    };
+
+    // Decrypt header
+    let decrypted_header = ffi_unwrap!(encrypted_header.decrypt(
+        &CoverCryptX25519Aes256::default(),
+        &usk,
+        authentication_data
+    ));
+
+    // Decrypt block
+    let plaintext = ffi_unwrap!(CoverCryptX25519Aes256::default().decrypt(
+        &decrypted_header.symmetric_key,
+        &encrypted_content,
+        authentication_data,
+    ));
+
+    let allocated = *plaintext_len;
+    *plaintext_len = plaintext.len() as c_int;
+    if allocated < *plaintext_len {
+        ffi_bail!(
+            "The pre-allocated clear text buffer is too small; need {} bytes",
+            *plaintext_len
+        );
+    }
+    std::slice::from_raw_parts_mut(plaintext_ptr.cast(), plaintext.len())
+        .copy_from_slice(&plaintext);
+
+    if *additional_data_len > 0 && !decrypted_header.additional_data.is_empty() {
+        let allocated = *additional_data_len;
+        *additional_data_len = decrypted_header.additional_data.len() as c_int;
+        if allocated < *additional_data_len {
+            ffi_bail!(
+                "The pre-allocated additional data buffer is too small; need {} bytes",
+                *additional_data_len
+            );
+        }
+        std::slice::from_raw_parts_mut(
+            additional_data_ptr.cast(),
+            decrypted_header.additional_data.len(),
+        )
+        .copy_from_slice(&decrypted_header.additional_data);
+    } else {
+        *additional_data_len = 0;
+    }
 
     0
 }
