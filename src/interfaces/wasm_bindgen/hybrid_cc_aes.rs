@@ -26,7 +26,7 @@ pub fn webassembly_encrypt_hybrid_header(
     access_policy: String,
     public_key_bytes: Uint8Array,
     additional_data: Uint8Array,
-    authenticated_data: Uint8Array,
+    authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
@@ -39,10 +39,10 @@ pub fn webassembly_encrypt_hybrid_header(
     } else {
         Some(additional_data.to_vec())
     };
-    let authenticated_data = if authenticated_data.is_null() {
+    let authentication_data = if authentication_data.is_null() {
         None
     } else {
-        Some(authenticated_data.to_vec())
+        Some(authentication_data.to_vec())
     };
 
     let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
@@ -51,7 +51,7 @@ pub fn webassembly_encrypt_hybrid_header(
         &public_key,
         &access_policy,
         additional_data.as_deref(),
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
     let symmetric_key_bytes = symmetric_key.into_bytes();
@@ -74,16 +74,16 @@ pub fn webassembly_encrypt_hybrid_header(
 pub fn webassembly_decrypt_hybrid_header(
     usk_bytes: Uint8Array,
     encrypted_header_bytes: Uint8Array,
-    authenticated_data: Uint8Array,
+    authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     //
     // Parse user decryption key
     let usk = UserSecretKey::try_from_bytes(usk_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing user decryption key: {e}")))?;
-    let authenticated_data = if authenticated_data.is_null() {
+    let authentication_data = if authentication_data.is_null() {
         None
     } else {
-        Some(authenticated_data.to_vec())
+        Some(authentication_data.to_vec())
     };
 
     //
@@ -99,7 +99,7 @@ pub fn webassembly_decrypt_hybrid_header(
         .decrypt(
             &CoverCryptX25519Aes256::default(),
             &usk,
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting hybrid header: {e}")))?;
 
@@ -116,7 +116,7 @@ pub fn webassembly_decrypt_hybrid_header(
 pub fn webassembly_encrypt_symmetric_block(
     symmetric_key_bytes: Uint8Array,
     plaintext_bytes: Uint8Array,
-    authenticated_data: Uint8Array,
+    authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     //
     // Check `plaintext_bytes` input parameter
@@ -131,16 +131,16 @@ pub fn webassembly_encrypt_symmetric_block(
 
     //
     // Encrypt block
-    let authenticated_data = if authenticated_data.is_null() {
+    let authentication_data = if authentication_data.is_null() {
         None
     } else {
-        Some(authenticated_data.to_vec())
+        Some(authentication_data.to_vec())
     };
     let ciphertext = CoverCryptX25519Aes256::default()
         .encrypt(
             &symmetric_key,
             &plaintext_bytes.to_vec(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Error encrypting block: {e}")))?;
 
@@ -152,7 +152,7 @@ pub fn webassembly_encrypt_symmetric_block(
 pub fn webassembly_decrypt_symmetric_block(
     symmetric_key_bytes: Uint8Array,
     encrypted_bytes: Uint8Array,
-    authenticated_data: Uint8Array,
+    authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     //
     // Parse symmetric key
@@ -161,17 +161,17 @@ pub fn webassembly_decrypt_symmetric_block(
 
     //
     // Decrypt `blockKey<KeyLength>`
-    let authenticated_data = if authenticated_data.is_null() {
+    let authentication_data = if authentication_data.is_null() {
         None
     } else {
-        Some(authenticated_data.to_vec())
+        Some(authentication_data.to_vec())
     };
 
     let cleartext = CoverCryptX25519Aes256::default()
         .decrypt(
             &symmetric_key,
             &encrypted_bytes.to_vec(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting block: {e}")))?;
 
@@ -187,7 +187,7 @@ pub fn webassembly_decrypt_symmetric_block(
 /// - `pk`                  : CoverCrypt public key
 /// - `plaintext`           : message to encrypt with the DEM
 /// - `additional_data`     : additional data to symmetrically encrypt in the header
-/// - `autenticated_data`   : data authenticated with the symmetric encryption
+/// - `authentication_data` : optional data used for authentication
 #[wasm_bindgen]
 pub fn webassembly_hybrid_encrypt(
     policy_bytes: Uint8Array,
@@ -195,7 +195,7 @@ pub fn webassembly_hybrid_encrypt(
     pk: Uint8Array,
     plaintext: Uint8Array,
     additional_data: Uint8Array,
-    authenticated_data: Uint8Array,
+    authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     let policy = serde_json::from_slice(&policy_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error parsing policy: {e}")))?;
@@ -209,10 +209,10 @@ pub fn webassembly_hybrid_encrypt(
         Some(additional_data.to_vec())
     };
 
-    let authenticated_data = if authenticated_data.is_null() {
+    let authentication_data = if authentication_data.is_null() {
         None
     } else {
-        Some(authenticated_data.to_vec())
+        Some(authentication_data.to_vec())
     };
 
     // instantiate CoverCrypt
@@ -223,7 +223,7 @@ pub fn webassembly_hybrid_encrypt(
         &pk,
         &access_policy,
         additional_data.as_deref(),
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
 
@@ -232,7 +232,7 @@ pub fn webassembly_hybrid_encrypt(
         .encrypt(
             &symmetric_key,
             &plaintext.to_vec(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Error encrypting symmetric plaintext: {e}")))?;
 
@@ -251,12 +251,12 @@ pub fn webassembly_hybrid_encrypt(
 ///
 /// - `usk_bytes`           : serialized user secret key
 /// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM ciphertext
-/// - `autenticated_data`   : data authenticated with the symmetric encryption
+/// - `authentication_data` : optional data used for authentication
 #[wasm_bindgen]
 pub fn webassembly_hybrid_decrypt(
     usk_bytes: Uint8Array,
     encrypted_bytes: Uint8Array,
-    authenticated_data: Uint8Array,
+    authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     // read encrypted bytes as the concatenation of an encrypted header
     // and a DEM ciphertext
@@ -272,10 +272,10 @@ pub fn webassembly_hybrid_decrypt(
     let usk = UserSecretKey::try_from_bytes(usk_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error parsing user secret key: {e}")))?;
 
-    let authenticated_data = if authenticated_data.is_null() {
+    let authentication_data = if authentication_data.is_null() {
         None
     } else {
-        Some(authenticated_data.to_vec())
+        Some(authentication_data.to_vec())
     };
 
     // Instantiate CoverCrypt
@@ -283,14 +283,14 @@ pub fn webassembly_hybrid_decrypt(
 
     // Decrypt header
     let cleartext_header = header
-        .decrypt(&cover_crypt, &usk, authenticated_data.as_deref())
+        .decrypt(&cover_crypt, &usk, authentication_data.as_deref())
         .map_err(|e| JsValue::from_str(&format!("Error decrypting header: {e}")))?;
 
     let cleartext = cover_crypt
         .decrypt(
             &cleartext_header.symmetric_key,
             ciphertext.as_slice(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting ciphertext: {e}")))?;
 

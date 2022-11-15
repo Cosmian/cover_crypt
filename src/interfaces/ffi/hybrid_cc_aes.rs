@@ -126,8 +126,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     encryption_policy_ptr: *const c_char,
     additional_data_ptr: *const c_char,
     additional_data_len: c_int,
-    authenticated_data_ptr: *const c_char,
-    authenticated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
 ) -> c_int {
     ffi_not_null!(
         symmetric_key_ptr,
@@ -186,13 +186,13 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         ))
     };
 
-    // Authenticated Data
-    let authenticated_data = if authenticated_data_ptr.is_null() || authenticated_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr.cast(),
-            authenticated_data_len as usize,
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
         ))
     };
 
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         &cache.pk,
         &encryption_policy,
         additional_data,
-        authenticated_data,
+        authentication_data,
     ));
 
     // serialize symmetric key
@@ -243,8 +243,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     encryption_policy_ptr: *const c_char,
     additional_data_ptr: *const c_char,
     additional_data_len: c_int,
-    authenticated_data_ptr: *const c_char,
-    authenticated_data_len: c_int,
+    authentication_data_ptr: *const c_char,
+    authentication_data_len: c_int,
 ) -> c_int {
     ffi_not_null!(
         symmetric_key_ptr,
@@ -308,13 +308,13 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         ))
     };
 
-    // Authenticated Data
-    let authenticated_data = if authenticated_data_ptr.is_null() || authenticated_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            authenticated_data_ptr.cast(),
-            authenticated_data_len as usize,
+            authentication_data_ptr.cast(),
+            authentication_data_len as usize,
         ))
     };
 
@@ -324,7 +324,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         &pk,
         &encryption_policy,
         additional_data,
-        authenticated_data
+        authentication_data
     ));
 
     let allocated = *symmetric_key_len;
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         return 1;
     };
 
-    // Authenticated Data
+    // Authentication Data
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
@@ -574,8 +574,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
     let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
 
-    // Authenticated Data
-    let authenticated_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
+    // Authentication Data
+    let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
@@ -589,7 +589,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     let decrypted_header = ffi_unwrap!(encrypted_header.decrypt(
         &CoverCryptX25519Aes256::default(),
         &usk,
-        authenticated_data
+        authentication_data
     ));
 
     // Symmetric Key
@@ -860,7 +860,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
         ))
     };
 
-    // Authenticated Data
+    // Authentication Data
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {
@@ -956,7 +956,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
     let usk_bytes = std::slice::from_raw_parts(usk_ptr.cast(), usk_len as usize);
     let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
 
-    // Authenticated Data
+    // Authentication Data
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
     } else {

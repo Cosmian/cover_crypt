@@ -142,24 +142,24 @@ pub trait CoverCrypt<
     ///
     /// - `symmetric_key`       : symmetric key used to encrypt data
     /// - `plaintext`           : data to be encrypted
-    /// - `authenticated_data`  : additional authenticated data
+    /// - `authentication_data` : optional data used for authentication
     fn encrypt(
         &self,
         symmetric_key: &DEM::Key,
         plaintext: &[u8],
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error>;
 
     /// Decrypts the given ciphertext using the given symmetric key.
     ///
     /// - `symmetric_key`       : symmetric key used to encrypt data
     /// - `plaintext`           : data to be encrypted
-    /// - `authenticated_data`  : additional authenticated data
+    /// - `authentication_data` : optional data used for authentication
     fn decrypt(
         &self,
         key: &DEM::Key,
         ciphertext: &[u8],
-        authenticated_data: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error>;
 }
 

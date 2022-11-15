@@ -45,10 +45,10 @@ fn encrypt_header(
     access_policy_string: String,
     public_key: &PublicKey,
     additional_data: &[u8],
-    authenticated_data: &[u8],
+    authentication_data: &[u8],
 ) -> Result<EncryptedHeader, Error> {
     let additional_data = Uint8Array::from(additional_data);
-    let authenticated_data = Uint8Array::from(authenticated_data);
+    let authentication_data = Uint8Array::from(authentication_data);
     let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
     let public_key_bytes = Uint8Array::from(public_key.try_to_bytes()?.as_slice());
     let encrypted_header = webassembly_encrypt_hybrid_header(
@@ -56,7 +56,7 @@ fn encrypt_header(
         access_policy_string,
         public_key_bytes,
         additional_data,
-        authenticated_data,
+        authentication_data,
     )
     .map_err(|e| Error::Other(e.as_string().unwrap()))?;
     EncryptedHeader::try_from_bytes(
@@ -68,14 +68,14 @@ fn encrypt_header(
 fn decrypt_header(
     encrypted_header: &EncryptedHeader,
     user_decryption_key: &UserSecretKey,
-    authenticated_data: &[u8],
+    authentication_data: &[u8],
 ) -> Result<ClearTextHeader, Error> {
-    let authenticated_data = Uint8Array::from(authenticated_data);
+    let authentication_data = Uint8Array::from(authentication_data);
     let encrypted_header_bytes =
         Uint8Array::from(encrypted_header.try_to_bytes().unwrap().as_slice());
     let sk_u = Uint8Array::from(user_decryption_key.try_to_bytes()?.as_slice());
     let decrypted_header_bytes =
-        webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes, authenticated_data)
+        webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes, authentication_data)
             .map_err(|e| Error::Other(e.as_string().unwrap()))?;
     ClearTextHeader::try_from_bytes(&decrypted_header_bytes.to_vec())
         .map_err(|e| Error::JsonParsing(e.to_string()))
@@ -108,7 +108,7 @@ pub fn test_decrypt_hybrid_header() {
     // Encrypt / decrypt
     //
     let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let authenticated_data = vec![10, 11, 12, 13, 14];
+    let authentication_data = vec![10, 11, 12, 13, 14];
 
     let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
         &cover_crypt,
@@ -116,11 +116,11 @@ pub fn test_decrypt_hybrid_header() {
         &mpk,
         &target_access_policy,
         Some(&additional_data),
-        Some(&authenticated_data),
+        Some(&authentication_data),
     )
     .unwrap();
 
-    let decrypted_header = decrypt_header(&encrypted_header, &sk_u, &authenticated_data).unwrap();
+    let decrypted_header = decrypt_header(&encrypted_header, &sk_u, &authentication_data).unwrap();
 
     assert_eq!(symmetric_key, decrypted_header.symmetric_key);
     assert_eq!(&additional_data, &decrypted_header.additional_data);
@@ -156,7 +156,7 @@ fn test_encrypt_decrypt() {
     // Encrypt / decrypt
     //
     let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let authenticated_data = vec![10, 11, 12, 13, 14];
+    let authentication_data = vec![10, 11, 12, 13, 14];
 
     let plaintext = "My secret message!";
 
@@ -166,14 +166,14 @@ fn test_encrypt_decrypt() {
         Uint8Array::from(&master_keys[4 + msk_len..]),
         Uint8Array::from(plaintext.as_bytes()),
         Uint8Array::from(additional_data.as_slice()),
-        Uint8Array::from(authenticated_data.as_slice()),
+        Uint8Array::from(authentication_data.as_slice()),
     )
     .unwrap();
 
     let res = webassembly_hybrid_decrypt(
         Uint8Array::from(usk.as_slice()),
         res,
-        Uint8Array::from(authenticated_data.as_slice()),
+        Uint8Array::from(authentication_data.as_slice()),
     )
     .unwrap();
 
@@ -272,21 +272,21 @@ fn test_generate_keys() {
     //
 
     let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let authenticated_data = vec![10, 11, 12, 13, 14];
+    let authentication_data = vec![10, 11, 12, 13, 14];
 
     let encrypted_header = encrypt_header(
         &policy,
         access_policy_string,
         &master_public_key,
         &additional_data,
-        &authenticated_data,
+        &authentication_data,
     )
     .unwrap();
 
     //
     // Try to decrypt with a non-refreshed secret key (it fails)
     //
-    assert!(decrypt_header(&encrypted_header, &usk, &authenticated_data).is_err());
+    assert!(decrypt_header(&encrypted_header, &usk, &authentication_data).is_err());
 
     //
     // Refresh user secret key
@@ -302,5 +302,5 @@ fn test_generate_keys() {
     //
     // Decrypt with the refreshed secret key (it now works)
     //
-    decrypt_header(&encrypted_header, &usk, &authenticated_data).unwrap();
+    decrypt_header(&encrypted_header, &usk, &authentication_data).unwrap();
 }

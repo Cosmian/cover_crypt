@@ -420,6 +420,7 @@ unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterSecretKey, Publ
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
 
+    // use a large enough buffer size
     let mut master_keys_bytes = vec![0u8; 8192];
     let master_keys_ptr = master_keys_bytes.as_mut_ptr().cast();
     let mut master_keys_len = master_keys_bytes.len() as c_int;
@@ -466,6 +467,7 @@ unsafe fn generate_user_secret_key(
     let policy_ptr = policy_cs.as_ptr();
 
     // Prepare OUT buffer
+    // use a large enough buffer size
     let mut usk_bytes = vec![0u8; 8192];
     let usk_ptr = usk_bytes.as_mut_ptr().cast();
     let mut usk_len = usk_bytes.len() as c_int;
@@ -752,10 +754,12 @@ unsafe fn decrypt(
     user_decryption_key: &UserSecretKey,
     authentication_data: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>), Error> {
+    // use a large enough buffer size
     let mut plaintext = vec![0u8; 8192];
     let plaintext_ptr = plaintext.as_mut_ptr().cast();
     let mut plaintext_len = plaintext.len() as c_int;
 
+    // use a large enough buffer size
     let mut additional_data = vec![0u8; 8192];
     let additional_data_ptr = additional_data.as_mut_ptr().cast();
     let mut additional_data_len = additional_data.len() as c_int;

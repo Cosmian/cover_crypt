@@ -27,14 +27,14 @@ use pyo3::{exceptions::PyTypeError, pyfunction, PyResult};
 /// - `attributes_bytes`    : serialized access policy
 /// - `public_key_bytes`    : CoverCrypt public key
 /// - `additional_data`     : additional data to encrypt with the header
-/// - `authenticated_data`  : authenticated data to use in symmetric encryption
+/// - `authentication_data` : optional data used for authentication in symmetric encryption
 #[pyfunction]
 pub fn encrypt_hybrid_header(
     policy_bytes: Vec<u8>,
     access_policy: String,
     public_key_bytes: Vec<u8>,
     additional_data: Vec<u8>,
-    authenticated_data: Vec<u8>,
+    authentication_data: Vec<u8>,
 ) -> PyResult<(Vec<u8>, Vec<u8>)> {
     //
     // Deserialize inputs
@@ -50,10 +50,10 @@ pub fn encrypt_hybrid_header(
         Some(additional_data)
     };
 
-    let authenticated_data = if authenticated_data.is_empty() {
+    let authentication_data = if authentication_data.is_empty() {
         None
     } else {
-        Some(authenticated_data)
+        Some(authentication_data)
     };
 
     //
@@ -64,7 +64,7 @@ pub fn encrypt_hybrid_header(
         &public_key,
         &access_policy,
         additional_data.as_deref(),
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )?;
 
     Ok((
@@ -77,17 +77,17 @@ pub fn encrypt_hybrid_header(
 ///
 /// - `usk_bytes`               : serialized user secret key
 /// - `encrypted_header_bytes`  : encrypted header bytes
-/// - `authenticated_data`      : authenticated data to use in symmetric decryption
+/// - `authentication_data` : optional data used for authentication in symmetric encryption
 #[pyfunction]
 pub fn decrypt_hybrid_header(
     usk_bytes: Vec<u8>,
     encrypted_header_bytes: Vec<u8>,
-    authenticated_data: Vec<u8>,
+    authentication_data: Vec<u8>,
 ) -> PyResult<(Vec<u8>, Vec<u8>)> {
-    let authenticated_data = if authenticated_data.is_empty() {
+    let authentication_data = if authentication_data.is_empty() {
         None
     } else {
-        Some(authenticated_data)
+        Some(authentication_data)
     };
 
     //
@@ -95,7 +95,7 @@ pub fn decrypt_hybrid_header(
     let cleartext_header = EncryptedHeader::try_from_bytes(&encrypted_header_bytes)?.decrypt(
         &CoverCryptX25519Aes256::default(),
         &UserSecretKey::try_from_bytes(&usk_bytes)?,
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )?;
 
     Ok((
@@ -108,17 +108,17 @@ pub fn decrypt_hybrid_header(
 ///
 /// - `symmetric_key`       : symmetric key
 /// - `plaintext_bytes`     : plaintext to encrypt
-/// - `authenticated_data`  : associated data to be passed to the DEM scheme
+/// - `authentication_data` : optional data used for authentication in symmetric encryption
 #[pyfunction]
 pub fn encrypt_symmetric_block(
     symmetric_key: Vec<u8>,
     plaintext: Vec<u8>,
-    authenticated_data: Vec<u8>,
+    authentication_data: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
-    let authenticated_data = if authenticated_data.is_empty() {
+    let authentication_data = if authentication_data.is_empty() {
         None
     } else {
-        Some(authenticated_data)
+        Some(authentication_data)
     };
 
     //
@@ -131,7 +131,7 @@ pub fn encrypt_symmetric_block(
     Ok(CoverCryptX25519Aes256::default().encrypt(
         &symmetric_key,
         &plaintext,
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )?)
 }
 
@@ -139,17 +139,17 @@ pub fn encrypt_symmetric_block(
 ///
 /// - `symmetric_key`       : symmetric key
 /// - `ciphertext`          : ciphertext
-/// - `authenticated_data`  : associated data to be passed to the DEM scheme
+/// - `authentication_data` : optional data used for authentication in symmetric encryption
 #[pyfunction]
 pub fn decrypt_symmetric_block(
     symmetric_key: Vec<u8>,
     ciphertext: Vec<u8>,
-    authenticated_data: Vec<u8>,
+    authentication_data: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
-    let authenticated_data = if authenticated_data.is_empty() {
+    let authentication_data = if authentication_data.is_empty() {
         None
     } else {
-        Some(authenticated_data)
+        Some(authentication_data)
     };
 
     //
@@ -162,7 +162,7 @@ pub fn decrypt_symmetric_block(
     Ok(CoverCryptX25519Aes256::default().decrypt(
         &symmetric_key,
         &ciphertext,
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )?)
 }
 
@@ -174,7 +174,7 @@ pub fn decrypt_symmetric_block(
 /// - `pk_bytes`            : CoverCrypt public key
 /// - `plaintext`           : plaintext to encrypt using the DEM
 /// - `additional_data`     : additional data to symmetrically encrypt in the header
-/// - `authenticated_data`  : authenticated data to use in symmetric encryptions
+/// - `authentication_data` : optional data used for authentication in symmetric encryption
 #[pyfunction]
 pub fn encrypt(
     policy_bytes: Vec<u8>,
@@ -182,7 +182,7 @@ pub fn encrypt(
     pk: Vec<u8>,
     plaintext: Vec<u8>,
     additional_data: Vec<u8>,
-    authenticated_data: Vec<u8>,
+    authentication_data: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
     let additional_data = if additional_data.is_empty() {
         None
@@ -190,10 +190,10 @@ pub fn encrypt(
         Some(additional_data)
     };
 
-    let authenticated_data = if authenticated_data.is_empty() {
+    let authentication_data = if authentication_data.is_empty() {
         None
     } else {
-        Some(authenticated_data)
+        Some(authentication_data)
     };
 
     let policy = serde_json::from_slice(&policy_bytes)
@@ -212,12 +212,12 @@ pub fn encrypt(
         &pk,
         &access_policy,
         additional_data.as_deref(),
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )?;
 
     // encrypt the plaintext
     let ciphertext =
-        cover_crypt.encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
+        cover_crypt.encrypt(&symmetric_key, &plaintext, authentication_data.as_deref())?;
 
     // concatenate the encrypted header and the ciphertext
     let encrypted_header_bytes = encrypted_header.try_to_bytes()?;
@@ -231,12 +231,12 @@ pub fn encrypt(
 ///
 /// - `usk_bytes`           : serialized user secret key
 /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
-/// - `authenticated_data`  : authenticated data to use in symmetric decryptions
+/// - `authentication_data` : optional data used for authentication in symmetric encryption
 #[pyfunction]
 pub fn decrypt(
     usk_bytes: Vec<u8>,
     encrypted_bytes: Vec<u8>,
-    authenticated_data: Vec<u8>,
+    authentication_data: Vec<u8>,
 ) -> PyResult<Vec<u8>> {
     let mut de = Deserializer::new(encrypted_bytes.as_slice());
     // this will read the exact header size
@@ -244,10 +244,10 @@ pub fn decrypt(
     // the rest is the symmetric ciphertext
     let ciphertext = de.finalize();
 
-    let authenticated_data = if authenticated_data.is_empty() {
+    let authentication_data = if authentication_data.is_empty() {
         None
     } else {
-        Some(authenticated_data)
+        Some(authentication_data)
     };
 
     // Instantiate CoverCrypt
@@ -257,7 +257,7 @@ pub fn decrypt(
     let cleartext_header = header.decrypt(
         &cover_crypt,
         &UserSecretKey::try_from_bytes(&usk_bytes)?,
-        authenticated_data.as_deref(),
+        authentication_data.as_deref(),
     )?;
 
     // Decrypt plaintext
@@ -265,7 +265,7 @@ pub fn decrypt(
         .decrypt(
             &cleartext_header.symmetric_key,
             ciphertext.as_slice(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )
         .map_err(|e| PyTypeError::new_err(e.to_string()))
 }
