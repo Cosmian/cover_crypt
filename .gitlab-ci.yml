@@ -157,7 +157,7 @@ test_cloudproof_java:
     - apt update && apt install -y maven
   script:
     - git clone https://github.com/Cosmian/cloudproof_java.git
-    - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/test/resources/linux-x86-64/
+    - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
     - cd cloudproof_java
     - mvn package
   allow_failure: true
