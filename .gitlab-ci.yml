@@ -149,7 +149,7 @@ build_python:
   stage: build
   image:
     name: ghcr.io/pyo3/maturin
-    # override the image entrypoint
+    # remove the image custom entrypoint because it is not supported by gitlab runners
     entrypoint: ['']
   script:
     - maturin build --release --features python
