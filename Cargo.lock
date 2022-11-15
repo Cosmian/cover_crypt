@@ -203,7 +203,8 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "5.0.0"
-source = "git+https://github.com/Cosmian/crypto_core#1ebedbdd6e656625e1f969f3ec9800c76be2cdf4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e5490966c09f4f783327dc7b5dea4c4a7d164fcdfb5fc4a277f3677473017ca"
 dependencies = [
  "aes-gcm",
  "curve25519-dalek",
