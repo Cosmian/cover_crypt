@@ -1024,10 +1024,10 @@ pub unsafe extern "C" fn h_aes_decrypt(
 ///     (including the NULL byte)
 ///
 /// `json_expr_len` contains the length of the JSON string on return
-///  (excluding the terminating NULL byte)
+///  (including the terminating NULL byte)
 ///
 /// # Safety
-pub unsafe extern "C" fn h_policy_expression_to_json(
+pub unsafe extern "C" fn h_access_policy_expression_to_json(
     json_expr_ptr: *mut c_char,
     json_expr_len: *mut c_int,
     boolean_expression_ptr: *const c_char,
@@ -1060,7 +1060,7 @@ pub unsafe extern "C" fn h_policy_expression_to_json(
         return bytes.len() as i32;
     }
 
-    *json_expr_len = bytes.len() as i32 - 1;
+    *json_expr_len = bytes.len() as i32;
     std::slice::from_raw_parts_mut(json_expr_ptr.cast(), bytes.len()).copy_from_slice(bytes);
 
     0

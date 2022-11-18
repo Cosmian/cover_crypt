@@ -850,10 +850,13 @@ fn test_policy_expression_to_json() -> Result<(), Error> {
     let mut large_enough_len = large_enough.len() as c_int;
 
     unsafe {
-        let ler =
-            h_policy_expression_to_json(large_enough_ptr, &mut large_enough_len, c_str.as_ptr());
+        let ler = h_access_policy_expression_to_json(
+            large_enough_ptr,
+            &mut large_enough_len,
+            c_str.as_ptr(),
+        );
         assert_eq!(0, ler);
-        assert_eq!(98, large_enough_len);
+        assert_eq!(99, large_enough_len);
         let le_json = CStr::from_ptr(large_enough_ptr);
         assert_eq!(
             r#"{"And":[{"Attr":"Department::MKG"},{"Or":[{"Attr":"Country::France"},{"Attr":"Country::Spain"}]}]}"#,
@@ -867,7 +870,8 @@ fn test_policy_expression_to_json() -> Result<(), Error> {
     let mut too_small_len = too_small.len() as c_int;
 
     unsafe {
-        let ler = h_policy_expression_to_json(too_small_ptr, &mut too_small_len, c_str.as_ptr());
+        let ler =
+            h_access_policy_expression_to_json(too_small_ptr, &mut too_small_len, c_str.as_ptr());
         assert_eq!(99, ler);
     };
 
