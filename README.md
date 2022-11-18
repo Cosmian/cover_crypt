@@ -1,13 +1,27 @@
 # CoverCrypt &emsp; [![Build Status]][actions] [![Latest Version]][crates.io]
 
+
+Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes.
+
+
 [Build Status]: https://img.shields.io/github/workflow/status/Cosmian/cosmian_cover_crypt/CI%20checks/main
 [actions]: https://github.com/Cosmian/cosmian_cover_crypt/actions?query=branch%3Amain
 [Latest Version]: https://img.shields.io/crates/v/cosmian_cover_crypt.svg
 [crates.io]: https://crates.io/crates/cosmian_cover_crypt
 
-Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
-creating ciphertexts for a set of attributes and issuing user keys with access
-policies over these attributes.
+<!-- toc -->
+
+  * [Getting started](#getting-started)
+- [Building and testing](#building-and-testing)
+    + [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+    + [Building for Pyo3](#building-for-pyo3)
+  * [Features and Benchmarks](#features-and-benchmarks)
+    + [Key generation](#key-generation)
+    + [Secret key encapsulation](#secret-key-encapsulation)
+    + [Secret key decapsulation](#secret-key-decapsulation)
+  * [Documentation](#documentation)
+
+<!-- tocstop -->
 
 ## Getting started
 

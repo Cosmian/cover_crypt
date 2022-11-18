@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## Unreleased version
+
+### Added
+
+- add FFI call to convert a policy expression to JSON
+
+---
+
+
 ## [7.1.0] - 2022-11-15
 
 ### Added
