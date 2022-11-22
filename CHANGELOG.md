@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## Unreleased version
+## [7.1.1] - 2022-11-22
 
 ### Added
 
