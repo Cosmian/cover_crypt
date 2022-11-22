@@ -838,3 +838,42 @@ fn test_encrypt_decrypt() -> Result<(), Error> {
     }
     Ok(())
 }
+
+#[test]
+fn test_policy_expression_to_json() -> Result<(), Error> {
+    let expr = "Department::MKG && ( Country::France || Country::Spain)";
+    let c_str = CString::new(expr)?;
+
+    // use a large enough buffer size
+    let mut large_enough = vec![0u8; 8192];
+    let large_enough_ptr = large_enough.as_mut_ptr().cast();
+    let mut large_enough_len = large_enough.len() as c_int;
+
+    unsafe {
+        let ler = h_access_policy_expression_to_json(
+            large_enough_ptr,
+            &mut large_enough_len,
+            c_str.as_ptr(),
+        );
+        assert_eq!(0, ler);
+        assert_eq!(99, large_enough_len);
+        let le_json = CStr::from_ptr(large_enough_ptr);
+        assert_eq!(
+            r#"{"And":[{"Attr":"Department::MKG"},{"Or":[{"Attr":"Country::France"},{"Attr":"Country::Spain"}]}]}"#,
+            le_json.to_str()?
+        );
+    };
+
+    // use a buffer that is too small
+    let mut too_small = vec![0u8; 8];
+    let too_small_ptr = too_small.as_mut_ptr().cast();
+    let mut too_small_len = too_small.len() as c_int;
+
+    unsafe {
+        let ler =
+            h_access_policy_expression_to_json(too_small_ptr, &mut too_small_len, c_str.as_ptr());
+        assert_eq!(99, ler);
+    };
+
+    Ok(())
+}

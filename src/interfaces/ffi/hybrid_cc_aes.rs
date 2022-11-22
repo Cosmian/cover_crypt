@@ -20,7 +20,7 @@ use cosmian_crypto_core::{
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
-    ffi::CStr,
+    ffi::{CStr, CString},
     os::raw::{c_char, c_int},
     sync::{
         atomic::{AtomicI32, Ordering},
@@ -835,7 +835,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
     let pk = ffi_unwrap!(PublicKey::try_from_bytes(pk_bytes));
 
     // Access policy
-    let access_policy = match CStr::from_ptr(encryption_policy_ptr).to_str() {
+    let encryption_policy = match CStr::from_ptr(encryption_policy_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
         Err(_e) => {
             set_last_error(FfiError::Generic(
@@ -844,7 +844,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
             return 1;
         }
     };
-    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
+    let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&encryption_policy));
 
     // Plaintext
     let plaintext =
@@ -874,7 +874,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
         &CoverCryptX25519Aes256::default(),
         &policy,
         &pk,
-        &access_policy,
+        &encryption_policy,
         additional_data,
         authentication_data
     ));
@@ -1008,6 +1008,60 @@ pub unsafe extern "C" fn h_aes_decrypt(
     } else {
         *additional_data_len = 0;
     }
+
+    0
+}
+
+#[no_mangle]
+/// Convert a boolean access policy expression into a
+/// json_expression that can be used to create a key using
+/// the KMIP interface
+///
+/// Returns
+///  - 0 if success
+///  - 1 in case of unrecoverable error
+///  - n if the return buffer is too small and should be of size n
+///     (including the NULL byte)
+///
+/// `json_expr_len` contains the length of the JSON string on return
+///  (including the terminating NULL byte)
+///
+/// # Safety
+pub unsafe extern "C" fn h_access_policy_expression_to_json(
+    json_expr_ptr: *mut c_char,
+    json_expr_len: *mut c_int,
+    boolean_expression_ptr: *const c_char,
+) -> c_int {
+    ffi_not_null!(json_expr_ptr, "The json_expr pointer should not be null");
+    if *json_expr_len == 0 {
+        ffi_bail!("The json_expr buffer should have a size greater than zero");
+    }
+
+    // Access policy
+    let access_policy = match CStr::from_ptr(boolean_expression_ptr).to_str() {
+        Ok(msg) => msg.to_owned(),
+        Err(_e) => {
+            set_last_error(FfiError::Generic(
+                "Hybrid Cipher: invalid attributes".to_owned(),
+            ));
+            return 1;
+        }
+    };
+    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&access_policy));
+    let json = ffi_unwrap!(serde_json::to_string(&access_policy));
+    // Build a CString
+    let cs = ffi_unwrap!(CString::new(json), "failed to convert JSON to CString");
+    // the CString as bytes
+    let bytes = cs.as_bytes_with_nul();
+    if bytes.len() > *json_expr_len as usize {
+        set_last_error(FfiError::Generic(
+            format!("access policy to JSON: the pre-allocated buffer is too small. It should be {} bytes long",bytes.len()),
+        ));
+        return bytes.len() as i32;
+    }
+
+    *json_expr_len = bytes.len() as i32;
+    std::slice::from_raw_parts_mut(json_expr_ptr.cast(), bytes.len()).copy_from_slice(bytes);
 
     0
 }
