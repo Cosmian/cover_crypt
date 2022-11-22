@@ -265,7 +265,7 @@ class TestEncryption(unittest.TestCase):
         decrypted_sym_key, decrypted_metadata = self.cc.decrypt_header(
             sec_med_uk_user, enc_header, self.authenticated_data
         )
-        self.assertEqual(decrypted_metadata, self.additional_data)
+        self.assertEqual(decrypted_metadata, bytes(self.additional_data))
 
         decrypted_data = self.cc.decrypt_symmetric_block(
             decrypted_sym_key, ciphertext, self.authenticated_data

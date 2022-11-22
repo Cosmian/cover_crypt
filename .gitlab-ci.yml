@@ -165,7 +165,8 @@ build_python:
     # remove the image custom entrypoint because it is not supported by gitlab runners
     entrypoint: ['']
   script:
-    - maturin build --release --features python
+    # Build for glibc 2.17
+    - maturin build --compatibility manylinux_2_17 --release --features python
   artifacts:
     paths:
       - target/wheels/*.whl
