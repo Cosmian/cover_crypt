@@ -158,7 +158,7 @@ benchmarks:
     - cargo bench --features full_bench,hybrid
   when: manual
 
-build_python:
+build_python_linux:
   stage: build
   image:
     name: ghcr.io/pyo3/maturin
@@ -169,7 +169,17 @@ build_python:
     - maturin build --compatibility manylinux_2_17 --release --features python
   artifacts:
     paths:
-      - target/wheels/*.whl
+      - target/wheels/*manylinux2014_x86_64.whl
+    expire_in: 3 mos
+
+build_python_windows:
+  <<: *base_compile
+  script:
+    - pip install -r src/interfaces/pyo3/tests/requirements.txt
+    - maturin build --release --features python --target x86_64-pc-windows-gnu
+  artifacts:
+    paths:
+      - target/wheels/*win_amd64.whl
     expire_in: 3 mos
 
 test_cloudproof_java:
