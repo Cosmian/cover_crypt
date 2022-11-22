@@ -1,15 +1,15 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "7.1.0"
-edition = "2021"
+version = "7.1.1"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
 ]
-description = "Key Policy attribute encryption based on subset cover"
 documentation = "https://docs.rs/cosmian_cover_crypt/"
+edition = "2021"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/Cosmian/cover_crypt"
+description = "Key Policy attribute encryption based on subset cover"
 
 [lib]
 name = "cosmian_cover_crypt"
@@ -33,25 +33,18 @@ python = ["pyo3"]
 abe_policy = "1.0"
 cosmian_crypto_core = "4.0"
 hex = "0.4"
+js-sys = { version = "0.3", optional = true }
+lazy_static = { version = "1.4", optional = true }
 leb128 = "0.2"
+pyo3 = { version = "0.16.3", features = ["extension-module"], optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10"
 thiserror = "1.0"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
 zeroize = "1.5"
-# Optional ones
-js-sys = { version = "0.3", optional = true }
-lazy_static = { version = "1.4", optional = true }
-pyo3 = { version = "0.16.3", features = ["extension-module"], optional = true }
-wasm-bindgen = { version = "0.2", features = [
-  "serde-serialize",
-], optional = true }
 
 [dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"], default_features = false }
 wasm-bindgen-test = { version = "0.3" }
-# Criterion used on branch "version-0.4"
-# serde_cbor is unmaintained: https://rustsec.org/advisories/RUSTSEC-2021-0127
-criterion = { git = "https://github.com/bheisler/criterion.rs", branch = "version-0.4", features = [
-  "html_reports",
-], default_features = false }
