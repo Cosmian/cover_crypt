@@ -169,7 +169,7 @@ build_python_linux:
     - maturin build --compatibility manylinux_2_17 --release --features python
   artifacts:
     paths:
-      - target/wheels/*manylinux2014_x86_64.whl
+      - target/wheels/*manylinux*.whl
     expire_in: 3 mos
 
 build_python_windows:
@@ -180,6 +180,20 @@ build_python_windows:
   artifacts:
     paths:
       - target/wheels/*win_amd64.whl
+    expire_in: 3 mos
+
+build_python_osx:
+  stage: build
+  tags:
+    - mac
+  before_script:
+    - rustup target add x86_64-apple-darwin
+  script:
+    - pip3 install -r src/interfaces/pyo3/tests/requirements.txt
+    - maturin build --release --features python --target x86_64-apple-darwin
+  artifacts:
+    paths:
+      - target/wheels/*macosx*.whl
     expire_in: 3 mos
 
 test_cloudproof_java:
@@ -197,7 +211,7 @@ test_cloudproof_java:
 test_python:
   stage: test
   script:
-    - pip install --force-reinstall target/wheels/cover_crypt*.whl
+    - pip install --force-reinstall target/wheels/*manylinux*.whl
     - python3 src/interfaces/pyo3/tests/test_cover_crypt.py
 
 test_cloudproof_js:
