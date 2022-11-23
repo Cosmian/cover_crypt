@@ -1,8 +1,10 @@
+#[macro_use]
+mod macros;
+mod py_abe_policy;
+mod py_cover_crypt;
+
 use crate::error::Error;
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
-
-pub mod py_abe_policy;
-pub mod py_cover_crypt;
 
 use py_abe_policy::{Attribute, Policy, PolicyAxis};
 use py_cover_crypt::{CoverCrypt, MasterSecretKey, PublicKey, SymmetricKey, UserSecretKey};

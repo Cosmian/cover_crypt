@@ -186,7 +186,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "7.1.1"
+version = "8.0.0"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_core",

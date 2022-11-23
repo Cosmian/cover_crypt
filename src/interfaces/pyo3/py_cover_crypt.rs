@@ -23,8 +23,8 @@ use crate::{
     },
 };
 
-// Vec[u8] return type is converted to ByteArray instead of bytes
-// so we need an explicit conversion
+// Vec[u8] return type is converted to a list of bytes instead of
+// the type bytes in Python so we need an explicit conversion
 fn convert_to_pybytes(bytes: &[u8], py: Python) -> PyObject {
     bytes.into_py(py)
 }
@@ -35,62 +35,17 @@ fn convert_to_pybytes(bytes: &[u8], py: Python) -> PyObject {
 #[pyclass]
 pub struct MasterSecretKey(MasterSecretKeyRust);
 
-#[pymethods]
-impl MasterSecretKey {
-    /// Converts key to bytes
-    pub fn to_bytes(&self, py: Python) -> PyResult<PyObject> {
-        Ok(convert_to_pybytes(&self.0.try_to_bytes()?, py))
-    }
-
-    /// Reads key from bytes
-    #[classmethod]
-    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
-        match MasterSecretKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(Self(key)),
-            Err(e) => Err(PyErr::from(e)),
-        }
-    }
-}
+impl_key_byte!(MasterSecretKey, MasterSecretKeyRust);
 
 #[pyclass]
 pub struct PublicKey(PublicKeyRust);
 
-#[pymethods]
-impl PublicKey {
-    /// Converts key to bytes
-    pub fn to_bytes(&self, py: Python) -> PyResult<PyObject> {
-        Ok(convert_to_pybytes(&self.0.try_to_bytes()?, py))
-    }
-
-    /// Reads key from bytes
-    #[classmethod]
-    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
-        match PublicKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(Self(key)),
-            Err(e) => Err(PyErr::from(e)),
-        }
-    }
-}
+impl_key_byte!(PublicKey, PublicKeyRust);
 
 #[pyclass]
 pub struct UserSecretKey(UserSecretKeyRust);
 
-#[pymethods]
-impl UserSecretKey {
-    /// Converts key to bytes
-    pub fn to_bytes(&self, py: Python) -> PyResult<PyObject> {
-        Ok(convert_to_pybytes(&self.0.try_to_bytes()?, py))
-    }
-
-    /// Reads key from bytes
-    #[classmethod]
-    pub fn from_bytes(_cls: &PyType, key_bytes: Vec<u8>) -> PyResult<Self> {
-        match UserSecretKeyRust::try_from_bytes(&key_bytes) {
-            Ok(key) => Ok(Self(key)),
-            Err(e) => Err(PyErr::from(e)),
-        }
-    }
-}
+impl_key_byte!(UserSecretKey, UserSecretKeyRust);
 
 #[pyclass]
 pub struct SymmetricKey(SymmetricKeyRust);
