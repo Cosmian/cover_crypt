@@ -124,7 +124,7 @@ assert!(new_encrypted_header
 assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_err());
 ```
 
-# Building and testing
+## Building and testing
 
 To build the core only, run:
 
@@ -208,6 +208,60 @@ The CoverCrypt APIs exposes everything that is needed:
 The key generations may be long if the policy contains many rights or if there
 are many users. But this is usually run once at setup. Key updates and refresh
 stay fast if the change in the policy is small.
+
+### Serialization
+
+The size of the serialized keys and encapsulation is given by the following formulas:
+- master secret key:
+```
+3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
+	+ sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+```
+- public key:
+```
+2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
+	+ sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PUBLIC_KEY_LENGTH)
+```
+- user secret key:
+```
+2 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
+	+ sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+```
+- encapsulation:
+```
+2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) + sum(TAG_LENGTH + PRIVATE_KEY_LENGTH)
+```
+- encrypted header (see below):
+```
+sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
+```
+
+NOTE: For our implementation `CoverCryptX25519Aes256`:
+- `PUBLIC_KEY_LENGTH` is 32 bytes
+- `PRIVATE_KEY_LENGTH` is 32 bytes
+- `TAG_LENGTH` is 32 bytes
+- `DEM_ENCRYPTION_OVERHEAD` is 28 bytes (12 bytes for the MAC tag and 16 bytes for the nonce)
+- `LEB128_sizeof(partitions.len())` is equal to 1 byte if the number of partitions is less than `2^7`
+
+The size of
+
+Below id given the size of an encapsulation given a number of partitions.
+
++-------------------+-------------------------------+
+| Nb. of partitions | encapsulation size (in bytes) |
++-------------------+-------------------------------+
+|         1         |              129              |
++-------------------+-------------------------------+
+|         2         |              193              |
++-------------------+-------------------------------+
+|         3         |              257              |
++-------------------+-------------------------------+
+|         4         |              321              |
++-------------------+-------------------------------+
+|         5         |              385              |
++-------------------+-------------------------------+
+
+
 
 ### Secret key encapsulation
 
