@@ -161,18 +161,18 @@ impl CoverCrypt {
     ///
     /// - `symmetric_key`       : symmetric key
     /// - `plaintext`     : plaintext to encrypt
-    /// - `authenticated_data`  : associated data to be passed to the DEM scheme
+    /// - `authentication_data`  : associated data to be passed to the DEM scheme
     pub fn encrypt_symmetric_block(
         &self,
         symmetric_key: &SymmetricKey,
         plaintext: Vec<u8>,
-        authenticated_data: Option<Vec<u8>>,
+        authentication_data: Option<&[u8]>,
         py: Python,
     ) -> PyResult<PyObject> {
         Ok(convert_to_pybytes(
             &self
                 .0
-                .encrypt(&symmetric_key.0, &plaintext, authenticated_data.as_deref())?,
+                .encrypt(&symmetric_key.0, &plaintext, authentication_data)?,
             py,
         ))
     }
@@ -181,18 +181,18 @@ impl CoverCrypt {
     ///
     /// - `symmetric_key`       : symmetric key
     /// - `ciphertext`          : ciphertext
-    /// - `authenticated_data`  : associated data to be passed to the DEM scheme
+    /// - `authentication_data`  : associated data to be passed to the DEM scheme
     pub fn decrypt_symmetric_block(
         &self,
         symmetric_key: &SymmetricKey,
         ciphertext: Vec<u8>,
-        authenticated_data: Option<Vec<u8>>,
+        authentication_data: Option<&[u8]>,
         py: Python,
     ) -> PyResult<PyObject> {
         Ok(convert_to_pybytes(
             &self
                 .0
-                .decrypt(&symmetric_key.0, &ciphertext, authenticated_data.as_deref())?,
+                .decrypt(&symmetric_key.0, &ciphertext, authentication_data)?,
             py,
         ))
     }
@@ -209,14 +209,14 @@ impl CoverCrypt {
     /// - `access_policy_str`   : access policy
     /// - `public_key`          : CoverCrypt public key
     /// - `additional_data`     : additional data to encrypt with the header
-    /// - `authenticated_data`  : authenticated data to use in symmetric encryption
+    /// - `authentication_data`  : authentication data to use in symmetric encryption
     pub fn encrypt_header(
         &self,
         policy: &Policy,
         access_policy_str: &str,
         public_key: &PublicKey,
         additional_data: Option<Vec<u8>>,
-        authenticated_data: Option<Vec<u8>>,
+        authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<(SymmetricKey, PyObject)> {
         // Deserialize inputs
@@ -230,7 +230,7 @@ impl CoverCrypt {
             &public_key.0,
             &access_policy,
             additional_data.as_deref(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )?;
 
         Ok((
@@ -243,19 +243,19 @@ impl CoverCrypt {
     ///
     /// - `usk`                     : user secret key
     /// - `encrypted_header_bytes`  : encrypted header bytes
-    /// - `authenticated_data`      : authenticated data to use in symmetric decryption
+    /// - `authentication_data`      : authentication data to use in symmetric decryption
     pub fn decrypt_header(
         &self,
         usk: &UserSecretKey,
         encrypted_header_bytes: Vec<u8>,
-        authenticated_data: Option<Vec<u8>>,
+        authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<(SymmetricKey, PyObject)> {
         // Finally decrypt symmetric key using given user decryption key
         let cleartext_header = EncryptedHeader::try_from_bytes(&encrypted_header_bytes)?.decrypt(
             &self.0,
             &usk.0,
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )?;
 
         Ok((
@@ -272,7 +272,7 @@ impl CoverCrypt {
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
     /// - `additional_data`     : additional data to symmetrically encrypt in the header
-    /// - `authenticated_data`  : authenticated data to use in symmetric encryptions
+    /// - `authentication_data`  : authentication data to use in symmetric encryptions
     #[allow(clippy::too_many_arguments)]
     pub fn encrypt(
         &self,
@@ -281,7 +281,7 @@ impl CoverCrypt {
         pk: &PublicKey,
         plaintext: Vec<u8>,
         additional_data: Option<Vec<u8>>,
-        authenticated_data: Option<Vec<u8>>,
+        authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<PyObject> {
         let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
@@ -294,13 +294,13 @@ impl CoverCrypt {
             &pk.0,
             &access_policy,
             additional_data.as_deref(),
-            authenticated_data.as_deref(),
+            authentication_data.as_deref(),
         )?;
 
         // encrypts the plaintext
         let ciphertext =
             self.0
-                .encrypt(&symmetric_key, &plaintext, authenticated_data.as_deref())?;
+                .encrypt(&symmetric_key, &plaintext, authentication_data.as_deref())?;
 
         // concatenates the encrypted header and the ciphertext
         let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
@@ -314,12 +314,12 @@ impl CoverCrypt {
     ///
     /// - `usk`                 : user secret key
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
-    /// - `authenticated_data`  : authenticated data to use in symmetric decryptions
+    /// - `authentication_data`  : authentication data to use in symmetric decryptions
     pub fn decrypt(
         &self,
         usk: &UserSecretKey,
         encrypted_bytes: Vec<u8>,
-        authenticated_data: Option<Vec<u8>>,
+        authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<PyObject> {
         let mut de = Deserializer::new(encrypted_bytes.as_slice());
@@ -329,13 +329,13 @@ impl CoverCrypt {
         let ciphertext = de.finalize();
 
         // decrypts the header
-        let cleartext_header = header.decrypt(&self.0, &usk.0, authenticated_data.as_deref())?;
+        let cleartext_header = header.decrypt(&self.0, &usk.0, authentication_data.as_deref())?;
 
         Ok(convert_to_pybytes(
             &self.0.decrypt(
                 &cleartext_header.symmetric_key,
                 ciphertext.as_slice(),
-                authenticated_data.as_deref(),
+                authentication_data.as_deref(),
             )?,
             py,
         ))

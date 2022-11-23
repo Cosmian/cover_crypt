@@ -149,7 +149,7 @@ class TestEncryption(unittest.TestCase):
 
         self.plaintext = b'My secret data'
         self.additional_data = [0, 0, 0, 0, 0, 0, 0, 1]
-        self.authenticated_data = None
+        self.authenticated_data = b'auth'
 
     def test_simple_encryption_decryption(self) -> None:
 
