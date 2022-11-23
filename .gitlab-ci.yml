@@ -119,10 +119,14 @@ build_windows:
   script:
     - cargo build --release --features ffi --target x86_64-pc-windows-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+    # python build
+    - pip install -r src/interfaces/pyo3/tests/requirements.txt
+    - maturin build --release --features python --target x86_64-pc-windows-gnu
   artifacts:
     paths:
       - target/x86_64-pc-windows-gnu/release/*.dll
       - target/*.h
+      - target/wheels/*win*.whl
     expire_in: 3 mos
 
 build_osx:
@@ -134,10 +138,14 @@ build_osx:
   script:
     - cargo build --release --features ffi --target x86_64-apple-darwin
     - cargo lipo --release --features ffi
+    # python build
+    - pip3 install -r src/interfaces/pyo3/tests/requirements.txt
+    - maturin build --release --features python --target x86_64-apple-darwin
   artifacts:
     paths:
       - target/x86_64-apple-darwin/release/*.dylib
       - target/universal/release/*.a
+      - target/wheels/*macosx*.whl
     expire_in: 3 mos
 
 build_android:
@@ -150,18 +158,10 @@ build_android:
       - jniLibs
     expire_in: 3 mos
 
-benchmarks:
-  stage: build
-  before_script:
-    - apt update && apt install -y gnuplot
-  script:
-    - cargo bench --features full_bench,hybrid
-  when: manual
-
-build_python_linux:
+build_python_manylinux:
   stage: build
   image:
-    name: ghcr.io/pyo3/maturin
+    name: ghcr.io/pyo3/maturin:v0.14.1
     # remove the image custom entrypoint because it is not supported by gitlab runners
     entrypoint: ['']
   script:
@@ -172,29 +172,13 @@ build_python_linux:
       - target/wheels/*manylinux*.whl
     expire_in: 3 mos
 
-build_python_windows:
-  <<: *base_compile
-  script:
-    - pip install -r src/interfaces/pyo3/tests/requirements.txt
-    - maturin build --release --features python --target x86_64-pc-windows-gnu
-  artifacts:
-    paths:
-      - target/wheels/*win_amd64.whl
-    expire_in: 3 mos
-
-build_python_osx:
+benchmarks:
   stage: build
-  tags:
-    - mac
   before_script:
-    - rustup target add x86_64-apple-darwin
+    - apt update && apt install -y gnuplot
   script:
-    - pip3 install -r src/interfaces/pyo3/tests/requirements.txt
-    - maturin build --release --features python --target x86_64-apple-darwin
-  artifacts:
-    paths:
-      - target/wheels/*macosx*.whl
-    expire_in: 3 mos
+    - cargo bench --features full_bench,hybrid
+  when: manual
 
 test_cloudproof_java:
   image: openjdk:8
@@ -284,13 +268,3 @@ python_publish:
   script:
     - pip install twine
     - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/cover_crypt-${CI_COMMIT_TAG}*.whl
-
-# Finally, run benchmarks at once
-benchmarks:
-  stage: publish
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
-  before_script:
-    - apt update && apt install -y gnuplot
-  script:
-    - cargo bench --all-features
