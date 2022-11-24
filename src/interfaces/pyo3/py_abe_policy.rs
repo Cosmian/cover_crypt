@@ -84,6 +84,8 @@ impl PolicyAxis {
     }
 }
 
+/// A policy is a set of policy axes. A fixed number of attribute creations
+/// (revocations + additions) is allowed.
 #[pyclass]
 pub struct Policy(pub(super) PolicyRust);
 
@@ -144,12 +146,12 @@ impl Policy {
         Self(self.0.clone())
     }
 
-    /// JSON serialization
+    /// Formats policy to json
     pub fn to_json(&self) -> PyResult<String> {
         serde_json::to_string(&self.0).map_err(|e| PyException::new_err(e.to_string()))
     }
 
-    /// JSON deserialization
+    /// Reads policy from a string in json format
     #[classmethod]
     pub fn from_json(_cls: &PyType, policy_json: &str) -> PyResult<Self> {
         let policy: PolicyRust = serde_json::from_str(policy_json)

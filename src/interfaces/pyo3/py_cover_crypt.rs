@@ -72,6 +72,10 @@ impl CoverCrypt {
     /// Generate the master authority keys for supplied Policy
     ///
     ///  - `policy` : Policy to use to generate the keys
+    ///
+    /// Parameters:
+    ///
+    /// Returns: MasterSecretKey
     pub fn generate_master_keys(&self, policy: &Policy) -> PyResult<(MasterSecretKey, PublicKey)> {
         match self.0.generate_master_keys(&policy.0) {
             Ok((msk, pk)) => Ok((MasterSecretKey(msk), PublicKey(pk))),
@@ -104,9 +108,13 @@ impl CoverCrypt {
     ///
     /// A new user secret key does NOT include to old (i.e. rotated) partitions
     ///
+    /// Parameters:
+    ///
     /// - `msk`                 : master secret key
     /// - `access_policy_str`   : user access policy
     /// - `policy`              : global policy
+    ///
+    /// Returns: UserSecretKey
     pub fn generate_user_secret_key(
         &self,
         msk: &MasterSecretKey,
@@ -129,6 +137,8 @@ impl CoverCrypt {
     ///
     /// The user key will be granted access to the current partitions, as determined by its access policy.
     /// If `preserve_old_partitions_access` is set, the user access to rotated partitions will be preserved
+    ///
+    /// Parameters:
     ///
     /// - `usk`                 : the user key to refresh
     /// - `access_policy`       : the access policy of the user key
@@ -159,9 +169,13 @@ impl CoverCrypt {
 
     /// Encrypts data symmetrically in a block.
     ///
+    /// Parameters:
+    ///
     /// - `symmetric_key`       : symmetric key
     /// - `plaintext`     : plaintext to encrypt
     /// - `authentication_data`  : associated data to be passed to the DEM scheme
+    ///
+    /// Returns: ciphertext bytes
     pub fn encrypt_symmetric_block(
         &self,
         symmetric_key: &SymmetricKey,
@@ -179,9 +193,13 @@ impl CoverCrypt {
 
     /// Symmetrically Decrypts encrypted data in a block.
     ///
+    /// Parameters:
+    ///
     /// - `symmetric_key`       : symmetric key
     /// - `ciphertext`          : ciphertext
     /// - `authentication_data`  : associated data to be passed to the DEM scheme
+    ///
+    /// Returns: plaintext bytes
     pub fn decrypt_symmetric_block(
         &self,
         symmetric_key: &SymmetricKey,
@@ -212,6 +230,8 @@ impl CoverCrypt {
     /// - `public_key`          : CoverCrypt public key
     /// - `additional_data`     : additional data to encrypt with the header
     /// - `authentication_data`  : authentication data to use in symmetric encryption
+    ///
+    /// Returns: (SymmetricKey, ciphertext bytes)
     pub fn encrypt_header(
         &self,
         policy: &Policy,
@@ -243,9 +263,13 @@ impl CoverCrypt {
 
     /// Decrypts the given header bytes using a user decryption key.
     ///
+    /// Parameters:
+    ///
     /// - `usk`                     : user secret key
     /// - `encrypted_header_bytes`  : encrypted header bytes
     /// - `authentication_data`      : authentication data to use in symmetric decryption
+    ///
+    /// Returns: (SymmetricKey, plaintext bytes)
     pub fn decrypt_header(
         &self,
         usk: &UserSecretKey,
@@ -269,12 +293,16 @@ impl CoverCrypt {
     /// Hybrid encryption. Concatenates the encrypted header and the symmetric
     /// ciphertext.
     ///
+    /// Parameters:
+    ///
     /// - `policy`              : global policy
     /// - `access_policy_str`   : access policy
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
     /// - `additional_data`     : additional data to symmetrically encrypt in the header
     /// - `authentication_data`  : authentication data to use in symmetric encryptions
+    ///
+    /// Returns: ciphertext bytes
     #[allow(clippy::too_many_arguments)]
     pub fn encrypt(
         &self,
@@ -314,9 +342,13 @@ impl CoverCrypt {
 
     /// Hybrid decryption.
     ///
+    /// Parameters:
+    ///
     /// - `usk`                 : user secret key
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
     /// - `authentication_data`  : authentication data to use in symmetric decryptions
+    ///
+    ///  Returns: plaintext bytes
     pub fn decrypt(
         &self,
         usk: &UserSecretKey,
