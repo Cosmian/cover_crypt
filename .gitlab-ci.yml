@@ -164,7 +164,7 @@ test_cloudproof_java:
   before_script:
     - apt update && apt install -y maven
   script:
-    - git clone https://github.com/Cosmian/cloudproof_java.git
+    - git clone --branch main https://github.com/Cosmian/cloudproof_java.git
     - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
     - cd cloudproof_java
     - mvn package
@@ -184,7 +184,7 @@ test_cloudproof_js:
   image: node:18
   stage: test
   script:
-    - git clone https://github.com/Cosmian/cloudproof_js.git
+    - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
     - mkdir -p cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}
     - cp -r pkg/nodejs/* cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}/
     - cd cloudproof_js
@@ -197,7 +197,7 @@ test_cloudproof_flutter:
     - mac
   stage: test
   script:
-    - git clone https://github.com/Cosmian/cloudproof_flutter.git
+    - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
     - cp target/x86_64-apple-darwin/release/libcosmian_${CI_PROJECT_NAME}.dylib cloudproof_flutter/resources/
     - cd cloudproof_flutter
     - flutter pub get
