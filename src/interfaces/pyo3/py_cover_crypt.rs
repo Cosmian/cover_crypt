@@ -166,13 +166,13 @@ impl CoverCrypt {
         &self,
         symmetric_key: &SymmetricKey,
         plaintext: Vec<u8>,
-        authentication_data: Option<&[u8]>,
+        authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<PyObject> {
         Ok(convert_to_pybytes(
             &self
                 .0
-                .encrypt(&symmetric_key.0, &plaintext, authentication_data)?,
+                .encrypt(&symmetric_key.0, &plaintext, authentication_data.as_deref())?,
             py,
         ))
     }
@@ -186,13 +186,15 @@ impl CoverCrypt {
         &self,
         symmetric_key: &SymmetricKey,
         ciphertext: Vec<u8>,
-        authentication_data: Option<&[u8]>,
+        authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<PyObject> {
         Ok(convert_to_pybytes(
-            &self
-                .0
-                .decrypt(&symmetric_key.0, &ciphertext, authentication_data)?,
+            &self.0.decrypt(
+                &symmetric_key.0,
+                &ciphertext,
+                authentication_data.as_deref(),
+            )?,
             py,
         ))
     }
