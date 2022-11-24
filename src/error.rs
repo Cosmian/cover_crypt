@@ -86,3 +86,10 @@ impl From<std::str::Utf8Error> for Error {
         Self::Other(format!("UTF8 error: {}", e))
     }
 }
+
+#[cfg(feature = "python")]
+impl From<Error> for pyo3::PyErr {
+    fn from(e: Error) -> Self {
+        pyo3::exceptions::PyException::new_err(format!("{e}"))
+    }
+}

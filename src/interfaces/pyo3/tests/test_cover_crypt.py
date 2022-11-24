@@ -84,15 +84,21 @@ class TestKeyGeneration(unittest.TestCase):
         self.msk, self.pk = self.cc.generate_master_keys(self.policy)
 
     def test_master_key_serialization(self) -> None:
+        # test deep copy
+        copy_msk = self.msk.deep_copy()
+        self.assertIsInstance(copy_msk, MasterSecretKey)
+
+        copy_pk = self.pk.deep_copy()
+        self.assertIsInstance(copy_pk, PublicKey)
+
+        # test serialization
         msk_bytes = self.msk.to_bytes()
         self.assertIsInstance(MasterSecretKey.from_bytes(msk_bytes), MasterSecretKey)
-
         with self.assertRaises(Exception):
             MasterSecretKey.from_bytes(b'wrong data')
 
         pk_bytes = self.pk.to_bytes()
         self.assertIsInstance(PublicKey.from_bytes(pk_bytes), PublicKey)
-
         with self.assertRaises(Exception):
             PublicKey.from_bytes(b'wrong data')
 
@@ -102,7 +108,11 @@ class TestKeyGeneration(unittest.TestCase):
             'Secrecy::High && (Country::France || Country::Spain)',
             self.policy,
         )
+        # test deep copy
+        copy_usk = self.msk.deep_copy()
+        self.assertIsInstance(copy_usk, MasterSecretKey)
 
+        # test serialization
         usk_bytes = usk.to_bytes()
         self.assertIsInstance(UserSecretKey.from_bytes(usk_bytes), UserSecretKey)
 
@@ -139,7 +149,7 @@ class TestEncryption(unittest.TestCase):
 
         self.plaintext = b'My secret data'
         self.additional_data = [0, 0, 0, 0, 0, 0, 0, 1]
-        self.authenticated_data = None
+        self.authenticated_data = b'auth'
 
     def test_simple_encryption_decryption(self) -> None:
 
@@ -265,7 +275,7 @@ class TestEncryption(unittest.TestCase):
         decrypted_sym_key, decrypted_metadata = self.cc.decrypt_header(
             sec_med_uk_user, enc_header, self.authenticated_data
         )
-        self.assertEqual(decrypted_metadata, self.additional_data)
+        self.assertEqual(decrypted_metadata, bytes(self.additional_data))
 
         decrypted_data = self.cc.decrypt_symmetric_block(
             decrypted_sym_key, ciphertext, self.authenticated_data

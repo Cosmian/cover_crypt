@@ -119,10 +119,14 @@ build_windows:
   script:
     - cargo build --release --features ffi --target x86_64-pc-windows-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+    # python build
+    - pip install -r src/interfaces/pyo3/tests/requirements.txt
+    - maturin build --release --features python --target x86_64-pc-windows-gnu
   artifacts:
     paths:
       - target/x86_64-pc-windows-gnu/release/*.dll
       - target/*.h
+      - target/wheels/*win*.whl
     expire_in: 3 mos
 
 build_osx:
@@ -134,10 +138,14 @@ build_osx:
   script:
     - cargo build --release --features ffi --target x86_64-apple-darwin
     - cargo lipo --release --features ffi
+    # python build
+    - pip3 install -r src/interfaces/pyo3/tests/requirements.txt
+    - maturin build --release --features python --target x86_64-apple-darwin
   artifacts:
     paths:
       - target/x86_64-apple-darwin/release/*.dylib
       - target/universal/release/*.a
+      - target/wheels/*macosx*.whl
     expire_in: 3 mos
 
 build_android:
@@ -150,6 +158,20 @@ build_android:
       - jniLibs
     expire_in: 3 mos
 
+build_python_manylinux:
+  stage: build
+  image:
+    name: ghcr.io/pyo3/maturin:v0.14.1
+    # remove the image custom entrypoint because it is not supported by gitlab runners
+    entrypoint: ['']
+  script:
+    # Build for glibc 2.17
+    - maturin build --compatibility manylinux_2_17 --release --features python
+  artifacts:
+    paths:
+      - target/wheels/*manylinux*.whl
+    expire_in: 3 mos
+
 benchmarks:
   stage: build
   before_script:
@@ -157,19 +179,6 @@ benchmarks:
   script:
     - cargo bench --features full_bench,hybrid
   when: manual
-
-build_python:
-  stage: build
-  image:
-    name: ghcr.io/pyo3/maturin
-    # remove the image custom entrypoint because it is not supported by gitlab runners
-    entrypoint: ['']
-  script:
-    - maturin build --release --features python
-  artifacts:
-    paths:
-      - target/wheels/*.whl
-    expire_in: 3 mos
 
 test_cloudproof_java:
   image: openjdk:8
@@ -186,7 +195,7 @@ test_cloudproof_java:
 test_python:
   stage: test
   script:
-    - pip install --force-reinstall target/wheels/cover_crypt*.whl
+    - pip install --force-reinstall target/wheels/*manylinux*.whl
     - python3 src/interfaces/pyo3/tests/test_cover_crypt.py
 
 test_cloudproof_js:
@@ -259,13 +268,3 @@ python_publish:
   script:
     - pip install twine
     - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/cover_crypt-${CI_COMMIT_TAG}*.whl
-
-# Finally, run benchmarks at once
-benchmarks:
-  stage: publish
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
-  before_script:
-    - apt update && apt install -y gnuplot
-  script:
-    - cargo bench --all-features

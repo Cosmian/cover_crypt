@@ -169,8 +169,13 @@ Go to the [build](build/glibc-2.17/) directory for an example on how to build fo
 
 ### Build and tests for Pyo3
 
+- See `gitlab-ci` for release build using manylinux (https://github.com/pypa/manylinux#manylinux)
+
 ```bash
-./src/interfaces/pyo3/tests/test.sh
+pip install -r src/interfaces/pyo3/tests/requirements.txt
+maturin build --release --features python
+pip install --force-reinstall target/wheels/cover_crypt-*.whl
+python3 src/interfaces/pyo3/tests/test_cover_crypt.py
 ```
 
 ## Features and Benchmarks
