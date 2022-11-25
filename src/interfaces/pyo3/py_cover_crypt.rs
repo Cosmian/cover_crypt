@@ -269,7 +269,7 @@ impl CoverCrypt {
     /// - `encrypted_header_bytes`  : encrypted header bytes
     /// - `authentication_data`      : authentication data to use in symmetric decryption
     ///
-    /// Returns: (SymmetricKey, plaintext bytes)
+    /// Returns: (SymmetricKey, metadata bytes)
     pub fn decrypt_header(
         &self,
         usk: &UserSecretKey,
@@ -348,14 +348,14 @@ impl CoverCrypt {
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
     /// - `authentication_data`  : authentication data to use in symmetric decryptions
     ///
-    ///  Returns: plaintext bytes
+    ///  Returns: (plaintext bytes, metadata bytes)
     pub fn decrypt(
         &self,
         usk: &UserSecretKey,
         encrypted_bytes: Vec<u8>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<(PyObject, PyObject)> {
         let mut de = Deserializer::new(encrypted_bytes.as_slice());
         // this will read the exact header size
         let header = EncryptedHeader::read(&mut de)?;
@@ -365,13 +365,16 @@ impl CoverCrypt {
         // decrypts the header
         let cleartext_header = header.decrypt(&self.0, &usk.0, authentication_data.as_deref())?;
 
-        Ok(convert_to_pybytes(
-            &self.0.decrypt(
-                &cleartext_header.symmetric_key,
-                ciphertext.as_slice(),
-                authentication_data.as_deref(),
-            )?,
-            py,
+        // decrypts data
+        let plaintext = self.0.decrypt(
+            &cleartext_header.symmetric_key,
+            ciphertext.as_slice(),
+            authentication_data.as_deref(),
+        )?;
+
+        Ok((
+            convert_to_pybytes(&plaintext, py),
+            convert_to_pybytes(&cleartext_header.additional_data, py),
         ))
     }
 }

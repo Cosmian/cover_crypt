@@ -195,7 +195,7 @@ test_cloudproof_java:
 test_python:
   stage: test
   script:
-    - pip install --force-reinstall target_python/wheels/*manylinux*.whl
+    - pip install --force-reinstall target/wheels/*manylinux*.whl
     - python3 src/interfaces/pyo3/tests/test_cover_crypt.py
 
 test_cloudproof_js:

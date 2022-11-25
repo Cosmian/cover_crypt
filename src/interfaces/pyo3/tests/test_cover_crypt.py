@@ -169,10 +169,11 @@ class TestEncryption(unittest.TestCase):
         )
 
         # Successful decryption
-        cleartext = self.cc.decrypt(
+        cleartext, metadata = self.cc.decrypt(
             sec_high_fr_sp_user, ciphertext, self.authenticated_data
         )
-        self.assertEqual(bytes(cleartext), self.plaintext)
+        self.assertEqual(cleartext, self.plaintext)
+        self.assertEqual(metadata, bytes(self.additional_data))
 
         # Wrong key
         sec_low_fr_sp_user = self.cc.generate_user_secret_key(
@@ -231,10 +232,10 @@ class TestEncryption(unittest.TestCase):
             keep_old_accesses=True,
         )
 
-        cleartext = self.cc.decrypt(
+        cleartext, _ = self.cc.decrypt(
             sec_high_fr_sp_user, ciphertext, self.authenticated_data
         )
-        self.assertEqual(bytes(cleartext), self.plaintext)
+        self.assertEqual(cleartext, self.plaintext)
 
         # new user key can no longer decrypt the old message
         self.cc.refresh_user_secret_key(
@@ -249,7 +250,7 @@ class TestEncryption(unittest.TestCase):
                 sec_high_fr_sp_user, ciphertext, self.authenticated_data
             )
 
-        cleartext = self.cc.decrypt(
+        cleartext, _ = self.cc.decrypt(
             sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
         )
         self.assertEqual(bytes(cleartext), new_plaintext)
