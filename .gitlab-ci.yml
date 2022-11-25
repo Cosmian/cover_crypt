@@ -121,7 +121,7 @@ build_windows:
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
     # python build
     - pip install -r src/interfaces/pyo3/tests/requirements.txt
-    - maturin build --release --features python --target x86_64-pc-windows-gnu
+    - maturin build --release --features python --target x86_64-pc-windows-gnu --target-dir target_python
   artifacts:
     paths:
       - target/x86_64-pc-windows-gnu/release/*.dll
@@ -138,9 +138,9 @@ build_osx:
   script:
     - cargo build --release --features ffi --target x86_64-apple-darwin
     - cargo lipo --release --features ffi
-    # python build
+    # python build: custom `target_dir` to avoid conflicts with flutter
     - pip3 install -r src/interfaces/pyo3/tests/requirements.txt
-    - maturin build --release --features python --target x86_64-apple-darwin
+    - maturin build --release --features python --target x86_64-apple-darwin --target-dir target_python
   artifacts:
     paths:
       - target/x86_64-apple-darwin/release/*.dylib
@@ -166,7 +166,7 @@ build_python_manylinux:
     entrypoint: ['']
   script:
     # Build for glibc 2.17
-    - maturin build --compatibility manylinux_2_17 --release --features python
+    - maturin build --compatibility manylinux_2_17 --release --features python --target-dir target_python
   artifacts:
     paths:
       - target/wheels/*manylinux*.whl
@@ -195,7 +195,7 @@ test_cloudproof_java:
 test_python:
   stage: test
   script:
-    - pip install --force-reinstall target/wheels/*manylinux*.whl
+    - pip install --force-reinstall target_python/wheels/*manylinux*.whl
     - python3 src/interfaces/pyo3/tests/test_cover_crypt.py
 
 test_cloudproof_js:
