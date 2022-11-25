@@ -175,9 +175,17 @@ fn test_encrypt_decrypt() {
         res,
         Uint8Array::from(authentication_data.as_slice()),
     )
-    .unwrap();
+    .unwrap()
+    .to_vec();
 
-    assert_eq!(plaintext.as_bytes(), res.to_vec().as_slice());
+    let mut bytes = res.as_slice();
+
+    let additional_data_length = leb128::read::unsigned(&mut bytes).unwrap() as usize;
+    let decrypted_additional_data = bytes.get(0..additional_data_length).unwrap();
+    let cleartext = bytes.get(additional_data_length..).unwrap();
+
+    assert_eq!(plaintext.as_bytes(), cleartext);
+    assert_eq!(additional_data, decrypted_additional_data);
 }
 
 #[wasm_bindgen_test]

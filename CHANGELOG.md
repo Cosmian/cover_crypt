@@ -10,8 +10,11 @@ All notable changes to this project will be documented in this file.
 
 - add FFI call to convert a policy expression to JSON
 
----
+### Changed
 
+- `webassembly_hybrid_decrypt` now returns a binary format containing the metadata and the decrypted value (leb128 length + metadata + decrypted value)
+
+---
 
 ## [7.1.0] - 2022-11-15
 

@@ -252,6 +252,11 @@ pub fn webassembly_hybrid_encrypt(
 /// - `usk_bytes`           : serialized user secret key
 /// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM ciphertext
 /// - `authentication_data` : optional data used for authentication
+///
+/// Return the decrypted data (additional data in header and cleartext) as a binary format:
+/// 1. LEB128 length of the additional data bytes
+/// 2. additional data bytes
+/// 3. cleartext bytes
 #[wasm_bindgen]
 pub fn webassembly_hybrid_decrypt(
     usk_bytes: Uint8Array,
@@ -294,5 +299,17 @@ pub fn webassembly_hybrid_decrypt(
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting ciphertext: {e}")))?;
 
-    Ok(Uint8Array::from(cleartext.as_slice()))
+    let mut result = vec![];
+    leb128::write::unsigned(&mut result, cleartext_header.additional_data.len() as u64).map_err(
+        |e| {
+            JsValue::from_str(&format!(
+                "Cannot encode to LEB128 the length of additional data {} : {e}",
+                cleartext_header.additional_data.len()
+            ))
+        },
+    )?;
+    result.extend_from_slice(cleartext_header.additional_data.as_slice());
+    result.extend_from_slice(cleartext.as_slice());
+
+    Ok(Uint8Array::from(result.as_slice()))
 }
