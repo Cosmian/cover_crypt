@@ -11,7 +11,7 @@ use crate::{
 };
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable},
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::SymKey,
     KeyTrait,
 };
@@ -252,6 +252,11 @@ pub fn webassembly_hybrid_encrypt(
 /// - `usk_bytes`           : serialized user secret key
 /// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM ciphertext
 /// - `authentication_data` : optional data used for authentication
+///
+/// Return the decrypted data (additional data in header and cleartext) as a binary format:
+/// 1. LEB128 length of the additional data bytes
+/// 2. additional data bytes
+/// 3. cleartext bytes
 #[wasm_bindgen]
 pub fn webassembly_hybrid_decrypt(
     usk_bytes: Uint8Array,
@@ -294,5 +299,17 @@ pub fn webassembly_hybrid_decrypt(
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting ciphertext: {e}")))?;
 
-    Ok(Uint8Array::from(cleartext.as_slice()))
+    let mut ser = Serializer::new();
+    ser.write_vec(cleartext_header.additional_data.as_slice())
+        .map_err(|e| {
+            JsValue::from_str(&format!(
+                "Cannot serialize the decrypted header metadata into response : {e}"
+            ))
+        })?;
+    ser.write_array(cleartext.as_slice()).map_err(|e| {
+        JsValue::from_str(&format!(
+            "Cannot serialize the decrypted plaintext into response : {e}"
+        ))
+    })?;
+    Ok(Uint8Array::from(ser.finalize().as_slice()))
 }
