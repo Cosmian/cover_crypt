@@ -155,7 +155,7 @@ fn test_encrypt_decrypt() {
     //
     // Encrypt / decrypt
     //
-    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
     let authentication_data = vec![10, 11, 12, 13, 14];
 
     let plaintext = "My secret message!";
@@ -165,7 +165,7 @@ fn test_encrypt_decrypt() {
         access_policy_string.to_string(),
         Uint8Array::from(&master_keys[4 + msk_len..]),
         Uint8Array::from(plaintext.as_bytes()),
-        Uint8Array::from(additional_data.as_slice()),
+        Uint8Array::from(header_metadata.as_slice()),
         Uint8Array::from(authentication_data.as_slice()),
     )
     .unwrap();
@@ -178,14 +178,12 @@ fn test_encrypt_decrypt() {
     .unwrap()
     .to_vec();
 
-    let mut bytes = res.as_slice();
+    let mut de = Deserializer::new(res.as_slice());
+    let decrypted_header_metadata = de.read_vec().unwrap();
+    let decrypted_plaintext = de.finalize();
 
-    let additional_data_length = leb128::read::unsigned(&mut bytes).unwrap() as usize;
-    let decrypted_additional_data = bytes.get(0..additional_data_length).unwrap();
-    let cleartext = bytes.get(additional_data_length..).unwrap();
-
-    assert_eq!(plaintext.as_bytes(), cleartext);
-    assert_eq!(additional_data, decrypted_additional_data);
+    assert_eq!(plaintext.as_bytes(), decrypted_plaintext);
+    assert_eq!(header_metadata, decrypted_header_metadata);
 }
 
 #[wasm_bindgen_test]

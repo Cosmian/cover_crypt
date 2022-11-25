@@ -11,7 +11,7 @@ use crate::{
 };
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable},
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::SymKey,
     KeyTrait,
 };
@@ -299,17 +299,17 @@ pub fn webassembly_hybrid_decrypt(
         )
         .map_err(|e| JsValue::from_str(&format!("Error decrypting ciphertext: {e}")))?;
 
-    let mut result = vec![];
-    leb128::write::unsigned(&mut result, cleartext_header.additional_data.len() as u64).map_err(
-        |e| {
+    let mut ser = Serializer::new();
+    ser.write_vec(cleartext_header.additional_data.as_slice())
+        .map_err(|e| {
             JsValue::from_str(&format!(
-                "Cannot encode to LEB128 the length of additional data {} : {e}",
-                cleartext_header.additional_data.len()
+                "Cannot serialize the decrypted header metadata into response : {e}"
             ))
-        },
-    )?;
-    result.extend_from_slice(cleartext_header.additional_data.as_slice());
-    result.extend_from_slice(cleartext.as_slice());
-
-    Ok(Uint8Array::from(result.as_slice()))
+        })?;
+    ser.write_array(cleartext.as_slice()).map_err(|e| {
+        JsValue::from_str(&format!(
+            "Cannot serialize the decrypted plaintext into response : {e}"
+        ))
+    })?;
+    Ok(Uint8Array::from(ser.finalize().as_slice()))
 }
