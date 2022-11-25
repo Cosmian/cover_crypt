@@ -4,7 +4,12 @@ use cosmian_crypto_core::{
     symmetric_crypto::Dem,
     symmetric_crypto::SymKey,
 };
-use pyo3::{exceptions::PyTypeError, prelude::*, types::PyType, PyErr};
+use pyo3::{
+    exceptions::PyTypeError,
+    prelude::*,
+    types::{PyBytes, PyType},
+    PyErr,
+};
 
 use crate::{
     api::CoverCrypt as CoverCryptRust,
@@ -17,12 +22,6 @@ use crate::{
         },
     },
 };
-
-// Vec[u8] return type is converted to a list of bytes instead of
-// the type bytes in Python so we need an explicit conversion
-fn convert_to_pybytes(bytes: &[u8], py: Python) -> PyObject {
-    bytes.into_py(py)
-}
 
 // Pyo3 doc on classes
 // https://pyo3.rs/v0.16.2/class.html
@@ -48,8 +47,8 @@ pub struct SymmetricKey(SymmetricKeyRust);
 #[pymethods]
 impl SymmetricKey {
     /// Converts key to bytes
-    pub fn to_bytes(&self, py: Python) -> PyResult<PyObject> {
-        Ok(convert_to_pybytes(self.0.as_bytes(), py))
+    pub fn to_bytes(&self, py: Python) -> Py<PyBytes> {
+        PyBytes::new(py, &self.0).into()
     }
 
     /// Reads key from bytes
@@ -182,13 +181,12 @@ impl CoverCrypt {
         plaintext: Vec<u8>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<PyObject> {
-        Ok(convert_to_pybytes(
-            &self
-                .0
-                .encrypt(&symmetric_key.0, &plaintext, authentication_data.as_deref())?,
-            py,
-        ))
+    ) -> PyResult<Py<PyBytes>> {
+        let ciphertext =
+            self.0
+                .encrypt(&symmetric_key.0, &plaintext, authentication_data.as_deref())?;
+
+        Ok(PyBytes::new(py, &ciphertext).into())
     }
 
     /// Symmetrically Decrypts encrypted data in a block.
@@ -206,15 +204,14 @@ impl CoverCrypt {
         ciphertext: Vec<u8>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<PyObject> {
-        Ok(convert_to_pybytes(
-            &self.0.decrypt(
-                &symmetric_key.0,
-                &ciphertext,
-                authentication_data.as_deref(),
-            )?,
-            py,
-        ))
+    ) -> PyResult<Py<PyBytes>> {
+        let plaintext = self.0.decrypt(
+            &symmetric_key.0,
+            &ciphertext,
+            authentication_data.as_deref(),
+        )?;
+
+        Ok(PyBytes::new(py, &plaintext).into())
     }
 
     /// Generates an encrypted header. A header contains the following elements:
@@ -240,7 +237,7 @@ impl CoverCrypt {
         additional_data: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<(SymmetricKey, PyObject)> {
+    ) -> PyResult<(SymmetricKey, Py<PyBytes>)> {
         // Deserialize inputs
         let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
@@ -257,7 +254,7 @@ impl CoverCrypt {
 
         Ok((
             SymmetricKey(symmetric_key),
-            convert_to_pybytes(&encrypted_header.try_to_bytes()?, py),
+            PyBytes::new(py, &encrypted_header.try_to_bytes()?).into(),
         ))
     }
 
@@ -276,7 +273,7 @@ impl CoverCrypt {
         encrypted_header_bytes: Vec<u8>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<(SymmetricKey, PyObject)> {
+    ) -> PyResult<(SymmetricKey, Py<PyBytes>)> {
         // Finally decrypt symmetric key using given user decryption key
         let cleartext_header = EncryptedHeader::try_from_bytes(&encrypted_header_bytes)?.decrypt(
             &self.0,
@@ -286,7 +283,7 @@ impl CoverCrypt {
 
         Ok((
             SymmetricKey(cleartext_header.symmetric_key),
-            convert_to_pybytes(&cleartext_header.additional_data, py),
+            PyBytes::new(py, &cleartext_header.additional_data).into(),
         ))
     }
 
@@ -313,7 +310,7 @@ impl CoverCrypt {
         additional_data: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyBytes>> {
         let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
@@ -337,7 +334,8 @@ impl CoverCrypt {
         encrypted_header.write(&mut ser)?;
         ser.write_array(&ciphertext)
             .map_err(|e| PyTypeError::new_err(format!("Error serializing ciphertext: {e}")))?;
-        Ok(convert_to_pybytes(&ser.finalize(), py))
+
+        Ok(PyBytes::new(py, &ser.finalize()).into())
     }
 
     /// Hybrid decryption.
@@ -355,7 +353,7 @@ impl CoverCrypt {
         encrypted_bytes: Vec<u8>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
-    ) -> PyResult<(PyObject, PyObject)> {
+    ) -> PyResult<(Py<PyBytes>, Py<PyBytes>)> {
         let mut de = Deserializer::new(encrypted_bytes.as_slice());
         // this will read the exact header size
         let header = EncryptedHeader::read(&mut de)?;
@@ -373,8 +371,8 @@ impl CoverCrypt {
         )?;
 
         Ok((
-            convert_to_pybytes(&plaintext, py),
-            convert_to_pybytes(&cleartext_header.additional_data, py),
+            PyBytes::new(py, &plaintext).into(),
+            PyBytes::new(py, &cleartext_header.additional_data).into(),
         ))
     }
 }

@@ -18,8 +18,8 @@ macro_rules! impl_key_byte {
             }
 
             /// Converts key to bytes
-            pub fn to_bytes(&self, py: Python) -> PyResult<PyObject> {
-                Ok(convert_to_pybytes(&self.0.try_to_bytes()?, py))
+            pub fn to_bytes(&self, py: Python) -> PyResult<Py<PyBytes>> {
+                Ok(PyBytes::new(py, &self.0.try_to_bytes()?).into())
             }
 
             /// Reads key from bytes
