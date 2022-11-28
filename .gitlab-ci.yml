@@ -119,10 +119,14 @@ build_windows:
   script:
     - cargo build --release --features ffi --target x86_64-pc-windows-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+    # python build
+    - pip install -r python/requirements.txt
+    - maturin build --release --features python --target x86_64-pc-windows-gnu --target-dir target_python
   artifacts:
     paths:
       - target/x86_64-pc-windows-gnu/release/*.dll
       - target/*.h
+      - target/wheels/*win*.whl
     expire_in: 3 mos
 
 build_osx:
@@ -134,10 +138,16 @@ build_osx:
   script:
     - cargo build --release --features ffi --target x86_64-apple-darwin
     - cargo lipo --release --features ffi
+    # python build
+    - pip3 install -r python/requirements.txt
+    # custom `target_dir` to avoid overwriting flutter `dylib`
+    # the wheel python package is still saved in `./target`
+    - maturin build --release --features python --target x86_64-apple-darwin --target-dir target_python
   artifacts:
     paths:
       - target/x86_64-apple-darwin/release/*.dylib
       - target/universal/release/*.a
+      - target/wheels/*macosx*.whl
     expire_in: 3 mos
 
 build_android:
@@ -148,6 +158,20 @@ build_android:
   artifacts:
     paths:
       - jniLibs
+    expire_in: 3 mos
+
+build_python_manylinux:
+  stage: build
+  image:
+    name: ghcr.io/pyo3/maturin:v0.14.1
+    # remove the image custom entrypoint because it is not supported by gitlab runners
+    entrypoint: ['']
+  script:
+    # Build for glibc 2.17
+    - maturin build --compatibility manylinux_2_17 --release --features python --target-dir target_python
+  artifacts:
+    paths:
+      - target/wheels/*manylinux*.whl
     expire_in: 3 mos
 
 benchmarks:
@@ -173,12 +197,8 @@ test_cloudproof_java:
 test_python:
   stage: test
   script:
-    - maturin build --release --features python
-    - bash src/interfaces/pyo3/tests/test.sh
-  artifacts:
-    paths:
-      - target/wheels/*.whl
-    expire_in: 3 mos
+    - pip install --force-reinstall target/wheels/*manylinux*.whl
+    - python3 python/test_cover_crypt.py
 
 test_cloudproof_js:
   image: node:18
@@ -242,3 +262,11 @@ cargo_publish:
     - rm -rf ${CI_PROJECT_NAME}-${CI_COMMIT_TAG}-bin.zip cosmian_${CI_PROJECT_NAME}_${CI_COMMIT_TAG}.zip jniLibs target
     - cargo publish --token $CRATES_IO
     - rm -rf /tmp/${CI_PROJECT_NAME}
+
+python_publish:
+  stage: publish
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
+  script:
+    - pip install twine
+    - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/cover_crypt-${CI_COMMIT_TAG}*.whl

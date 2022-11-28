@@ -13,7 +13,7 @@ use crate::{
 };
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable},
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::Dem,
     KeyTrait,
 };
@@ -878,7 +878,6 @@ pub unsafe extern "C" fn h_aes_encrypt(
         additional_data,
         authentication_data
     ));
-    let encrypted_header_bytes = ffi_unwrap!(encrypted_header.try_to_bytes());
 
     // encrypt the plaintext
     let ciphertext = ffi_unwrap!(CoverCryptX25519Aes256::default().encrypt(
@@ -887,21 +886,20 @@ pub unsafe extern "C" fn h_aes_encrypt(
         authentication_data,
     ));
 
-    let allocated = *ciphertext_len as usize;
-    let actual_len = ciphertext.len() + encrypted_header_bytes.len();
-    if allocated < actual_len {
+    let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
+    ffi_unwrap!(ser.write(&encrypted_header));
+    ffi_unwrap!(ser.write_array(&ciphertext));
+    let bytes = ser.finalize();
+
+    if (ciphertext_len as usize) < bytes.len() {
         ffi_bail!(
             "The pre-allocated encrypted bytes buffer is too small; need {} bytes",
-            actual_len
+            bytes.len()
         );
     }
 
-    let mut bytes = Vec::<u8>::with_capacity(actual_len as usize);
-    bytes.extend_from_slice(&encrypted_header_bytes);
-    bytes.extend_from_slice(&ciphertext);
-
-    *ciphertext_len = actual_len as i32;
-    std::slice::from_raw_parts_mut(ciphertext_ptr.cast(), actual_len).copy_from_slice(&bytes);
+    *ciphertext_len = bytes.len() as i32;
+    std::slice::from_raw_parts_mut(ciphertext_ptr.cast(), bytes.len()).copy_from_slice(&bytes);
 
     0
 }
@@ -949,7 +947,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
     let mut de = Deserializer::new(ciphertext_bytes);
     // this will read the exact header size
-    let encrypted_header = ffi_unwrap!(EncryptedHeader::read(&mut de));
+    let encrypted_header = ffi_unwrap!(de.read::<EncryptedHeader>());
     // the rest is the symmetric ciphertext
     let encrypted_content = de.finalize();
 

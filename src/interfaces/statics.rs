@@ -37,33 +37,7 @@ impl
         Aes256GcmCrypto,
     > for CoverCryptX25519Aes256
 {
-    type MasterSecretKey =
-        cover_crypt_core::MasterSecretKey<
-            { Self::PRIVATE_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PrivateKey,
-        >;
-
-    type UserSecretKey =
-        cover_crypt_core::UserSecretKey<
-            { Self::PRIVATE_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PrivateKey,
-        >;
-
-    type PublicKey =
-        cover_crypt_core::PublicKey<
-            { Self::PUBLIC_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PublicKey,
-        >;
-
+    type Dem = Aes256GcmCrypto;
     type Encapsulation =
         cover_crypt_core::Encapsulation<
             TAG_LENGTH,
@@ -75,8 +49,30 @@ impl
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PublicKey,
         >;
-
-    type Dem = Aes256GcmCrypto;
+    type MasterSecretKey =
+        cover_crypt_core::MasterSecretKey<
+            { Self::PRIVATE_KEY_LENGTH },
+            <X25519KeyPair as DhKeyPair<
+                { Self::PUBLIC_KEY_LENGTH },
+                { Self::PRIVATE_KEY_LENGTH },
+            >>::PrivateKey,
+        >;
+    type PublicKey =
+        cover_crypt_core::PublicKey<
+            { Self::PUBLIC_KEY_LENGTH },
+            <X25519KeyPair as DhKeyPair<
+                { Self::PUBLIC_KEY_LENGTH },
+                { Self::PRIVATE_KEY_LENGTH },
+            >>::PublicKey,
+        >;
+    type UserSecretKey =
+        cover_crypt_core::UserSecretKey<
+            { Self::PRIVATE_KEY_LENGTH },
+            <X25519KeyPair as DhKeyPair<
+                { Self::PUBLIC_KEY_LENGTH },
+                { Self::PRIVATE_KEY_LENGTH },
+            >>::PrivateKey,
+        >;
 
     fn generate_master_keys(
         &self,
@@ -248,7 +244,7 @@ pub type EncryptedHeader = api::EncryptedHeader<
     CoverCryptX25519Aes256,
 >;
 
-pub type ClearTextHeader = api::ClearTextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
+pub type ClearTextHeader = api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
 
 /// Convenience type: CoverCryptX25519Aes256 master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
@@ -364,7 +360,8 @@ mod tests {
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG
+        // Protected)
         assert_eq!(usk.x.len(), original_usk.x.len() + 2);
         for x_i in &original_usk.x {
             assert!(usk.x.contains(x_i));
@@ -575,7 +572,7 @@ mod tests {
 
         //
         // New user secret key
-        let top_secret_fin_usk = cover_crypt.generate_user_secret_key(
+        let mut top_secret_fin_usk = cover_crypt.generate_user_secret_key(
             &msk,
             &AccessPolicy::from_boolean_expression(
                 "Security Level::Top Secret && Department::FIN",
@@ -613,9 +610,25 @@ mod tests {
             None,
         )?;
 
+        // Decryption fails without refreshing the user key
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_err());
+
+        cover_crypt.refresh_user_secret_key(
+            &mut top_secret_fin_usk,
+            &AccessPolicy::from_boolean_expression(
+                "Security Level::Top Secret && Department::FIN",
+            )?,
+            &msk,
+            &policy,
+            false,
+        )?;
+
+        // The refreshed key can decrypt the header
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
 
         Ok(())
     }

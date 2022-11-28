@@ -236,14 +236,13 @@ pub fn webassembly_hybrid_encrypt(
         )
         .map_err(|e| JsValue::from_str(&format!("Error encrypting symmetric plaintext: {e}")))?;
 
-    // concatenate the two encrypted header and the ciphertext
-    let encrypted_header_bytes = encrypted_header
-        .try_to_bytes()
+    // concatenate the encrypted header and the ciphertext
+    let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
+    ser.write(&encrypted_header)
         .map_err(|e| JsValue::from_str(&format!("Error serializing encrypted header: {e}")))?;
-    let mut bytes = Vec::<u8>::with_capacity(encrypted_header_bytes.len() + ciphertext.len());
-    bytes.extend_from_slice(&encrypted_header_bytes);
-    bytes.extend_from_slice(&ciphertext);
-    Ok(Uint8Array::from(bytes.as_slice()))
+    ser.write_array(&ciphertext)
+        .map_err(|e| JsValue::from_str(&format!("Error writing ciphertext: {e}")))?;
+    Ok(Uint8Array::from(ser.finalize().as_slice()))
 }
 
 /// Decrypt the DEM ciphertext with the header encapsulated symmetric key,
@@ -268,7 +267,8 @@ pub fn webassembly_hybrid_decrypt(
     let encrypted_bytes = encrypted_bytes.to_vec();
     let mut de = Deserializer::new(&encrypted_bytes);
     // this will read the exact header size
-    let header = EncryptedHeader::read(&mut de)
+    let header = de
+        .read::<EncryptedHeader>()
         .map_err(|e| JsValue::from_str(&format!("Error parsing encrypted header: {e}")))?;
     // the rest is the symmetric ciphertext
     let ciphertext = de.finalize();

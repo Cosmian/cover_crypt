@@ -117,7 +117,6 @@ pub mod error;
 pub mod interfaces;
 pub mod partitions;
 
-pub use api::CoverCrypt;
-pub use api::{ClearTextHeader, EncryptedHeader};
+pub use api::{CleartextHeader, CoverCrypt, EncryptedHeader};
 pub use error::Error;
 pub use interfaces::statics::CoverCryptX25519Aes256 as CoverCryptStruct;

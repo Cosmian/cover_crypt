@@ -1,37 +1,55 @@
-use pyo3::{pymodule, types::PyModule, wrap_pyfunction, PyResult, Python};
+use pyo3::{pymodule, types::PyModule, PyResult, Python};
 
-use self::{
-    generate_cc_keys::{
-        generate_master_keys, generate_policy, generate_user_secret_key, rotate_attributes,
-    },
-    hybrid_cc_aes::{
-        decrypt, decrypt_hybrid_header, decrypt_symmetric_block, encrypt, encrypt_hybrid_header,
-        encrypt_symmetric_block,
-    },
-};
-use crate::error::Error;
+/// Implements the basic functionalities of a key in python.
+///
+/// - implements `deep_copy`
+/// - converts to and from `PyBytes`
+///
+/// # Parameters
+///
+/// - `type_name`   : name of the key type
+macro_rules! impl_key_byte {
+    ($py_type:ty, $rust_type:ty) => {
+        #[pymethods]
+        impl $py_type {
+            /// Clones the key
+            pub fn deep_copy(&self) -> Self {
+                Self(self.0.clone())
+            }
 
-impl From<Error> for pyo3::PyErr {
-    fn from(e: Error) -> Self {
-        pyo3::exceptions::PyTypeError::new_err(format!("{e}"))
-    }
+            /// Converts key to bytes
+            pub fn to_bytes(&self, py: Python) -> PyResult<Py<PyBytes>> {
+                Ok(PyBytes::new(py, &self.0.try_to_bytes()?).into())
+            }
+
+            /// Reads key from bytes
+            #[classmethod]
+            pub fn from_bytes(_cls: &PyType, key_bytes: &[u8]) -> PyResult<Self> {
+                match <$rust_type>::try_from_bytes(key_bytes) {
+                    Ok(key) => Ok(Self(key)),
+                    Err(e) => Err(PyErr::from(e)),
+                }
+            }
+        }
+    };
 }
+
+mod py_abe_policy;
+mod py_cover_crypt;
+
+use py_abe_policy::{Attribute, Policy, PolicyAxis};
+use py_cover_crypt::{CoverCrypt, MasterSecretKey, PublicKey, SymmetricKey, UserSecretKey};
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn cosmian_cover_crypt(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(generate_master_keys, m)?)?;
-    m.add_function(wrap_pyfunction!(generate_user_secret_key, m)?)?;
-    m.add_function(wrap_pyfunction!(generate_policy, m)?)?;
-    m.add_function(wrap_pyfunction!(rotate_attributes, m)?)?;
-    m.add_function(wrap_pyfunction!(encrypt_hybrid_header, m)?)?;
-    m.add_function(wrap_pyfunction!(decrypt_hybrid_header, m)?)?;
-    m.add_function(wrap_pyfunction!(encrypt_symmetric_block, m)?)?;
-    m.add_function(wrap_pyfunction!(decrypt_symmetric_block, m)?)?;
-    m.add_function(wrap_pyfunction!(encrypt, m)?)?;
-    m.add_function(wrap_pyfunction!(decrypt, m)?)?;
+    m.add_class::<Attribute>()?;
+    m.add_class::<PolicyAxis>()?;
+    m.add_class::<Policy>()?;
+    m.add_class::<CoverCrypt>()?;
+    m.add_class::<SymmetricKey>()?;
+    m.add_class::<MasterSecretKey>()?;
+    m.add_class::<PublicKey>()?;
+    m.add_class::<UserSecretKey>()?;
     Ok(())
 }
-
-pub mod generate_cc_keys;
-pub mod hybrid_cc_aes;

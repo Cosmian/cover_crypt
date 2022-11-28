@@ -14,7 +14,8 @@ use wasm_bindgen::prelude::*;
 
 /// Generate the master authority keys for supplied Policy
 ///
-///  - `policy_bytes` : Policy to use to generate the keys (serialized from JSON)
+///  - `policy_bytes` : Policy to use to generate the keys (serialized from
+///    JSON)
 #[wasm_bindgen]
 pub fn webassembly_generate_master_keys(policy_bytes: Uint8Array) -> Result<Uint8Array, JsValue> {
     let policy: Policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
