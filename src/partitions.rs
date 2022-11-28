@@ -186,10 +186,10 @@ fn combine_attribute_values(
 pub fn access_policy_to_current_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
-    follow_hierachical_axes: bool,
+    follow_hierarchical_axes: bool,
 ) -> Result<HashSet<Partition>, Error> {
     let attr_combinations =
-        to_attribute_combinations(access_policy, policy, follow_hierachical_axes)?;
+        to_attribute_combinations(access_policy, policy, follow_hierarchical_axes)?;
     let mut set = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
         for partition in to_partitions(attr_combination, policy)? {
@@ -211,7 +211,7 @@ pub fn access_policy_to_current_partitions(
 fn to_attribute_combinations(
     access_policy: &AccessPolicy,
     policy: &Policy,
-    follow_hierachical_axes: bool,
+    follow_hierarchical_axes: bool,
 ) -> Result<Vec<Vec<Attribute>>, Error> {
     match access_policy {
         AccessPolicy::Attr(attr) => {
@@ -220,7 +220,7 @@ fn to_attribute_combinations(
                 .get(&attr.axis)
                 .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
             let mut res = vec![vec![attr.clone()]];
-            if *is_hierarchical && follow_hierachical_axes {
+            if *is_hierarchical && follow_hierarchical_axes {
                 // add attribute values for all attributes below the given one
                 for name in attribute_names {
                     if *name == attr.name {
@@ -233,9 +233,9 @@ fn to_attribute_combinations(
         }
         AccessPolicy::And(ap_left, ap_right) => {
             let combinations_left =
-                to_attribute_combinations(ap_left, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_left, policy, follow_hierarchical_axes)?;
             let combinations_right =
-                to_attribute_combinations(ap_right, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_right, policy, follow_hierarchical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() * combinations_right.len());
             for value_left in combinations_left {
                 for value_right in combinations_right.iter() {
@@ -249,9 +249,9 @@ fn to_attribute_combinations(
         }
         AccessPolicy::Or(ap_left, ap_right) => {
             let combinations_left =
-                to_attribute_combinations(ap_left, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_left, policy, follow_hierarchical_axes)?;
             let combinations_right =
-                to_attribute_combinations(ap_right, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_right, policy, follow_hierarchical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() + combinations_right.len());
             res.extend(combinations_left);
             res.extend(combinations_right);

@@ -12,15 +12,15 @@ policies over these attributes.
 <!-- toc -->
 
 - [Getting started](#getting-started)
-
-* [Building and testing](#building-and-testing)
-  - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
-  - [Building for Pyo3](#building-for-pyo3)
-  * [Features and Benchmarks](#features-and-benchmarks)
-    - [Key generation](#key-generation)
-    - [Secret key encapsulation](#secret-key-encapsulation)
-    - [Secret key decapsulation](#secret-key-decapsulation)
-  * [Documentation](#documentation)
+- [Building and testing](#building-and-testing)
+  * [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+  * [Build and tests for Pyo3](#build-and-tests-for-pyo3)
+- [Features and Benchmarks](#features-and-benchmarks)
+  * [Key generation](#key-generation)
+  * [Serialization](#serialization)
+  * [Secret key encapsulation](#secret-key-encapsulation)
+  * [Secret key decapsulation](#secret-key-decapsulation)
+- [Documentation](#documentation)
 
 <!-- tocstop -->
 
@@ -262,19 +262,13 @@ The size of
 
 Below id given the size of an encapsulation given a number of partitions.
 
-+-------------------+-------------------------------+
 | Nb. of partitions | encapsulation size (in bytes) |
-+-------------------+-------------------------------+
-| 1 | 129 |
-+-------------------+-------------------------------+
-| 2 | 193 |
-+-------------------+-------------------------------+
-| 3 | 257 |
-+-------------------+-------------------------------+
-| 4 | 321 |
-+-------------------+-------------------------------+
-| 5 | 385 |
-+-------------------+-------------------------------+
+|-------------------|-------------------------------|
+| 1                 | 129                           |
+| 2                 | 193                           |
+| 3                 | 257                           |
+| 4                 | 321                           |
+| 5                 | 385                           |
 
 ### Secret key encapsulation
 

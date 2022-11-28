@@ -241,7 +241,7 @@ pub fn webassembly_hybrid_encrypt(
     ser.write(&encrypted_header)
         .map_err(|e| JsValue::from_str(&format!("Error serializing encrypted header: {e}")))?;
     ser.write_array(&ciphertext)
-        .map_err(|e| JsValue::from_str(&format!("Error writting ciphertext: {e}")))?;
+        .map_err(|e| JsValue::from_str(&format!("Error writing ciphertext: {e}")))?;
     Ok(Uint8Array::from(ser.finalize().as_slice()))
 }
 
