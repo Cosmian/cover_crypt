@@ -6,7 +6,7 @@ use crate::error::Error;
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
     symmetric_crypto::{Dem, SymKey},
 };
 use std::{
@@ -324,8 +324,7 @@ where
 
     #[inline]
     fn length(&self) -> usize {
-        // we don't write the length of the `ciphertext` in `try_to_bytes()`
-        self.encapsulation.length() + self.ciphertext.len()
+        self.encapsulation.length() + to_leb128_len(self.ciphertext.len()) + self.ciphertext.len()
     }
 
     /// Tries to serialize the encrypted header.
@@ -341,41 +340,6 @@ where
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let encapsulation = de.read::<CoverCryptScheme::Encapsulation>()?;
         let ciphertext = de.read_vec()?;
-        Ok(Self {
-            encapsulation,
-            ciphertext,
-        })
-    }
-
-    /// Serializes the `EncryptedHeader` without prepending the length.
-    ///
-    /// This allows saving some bytes. If you want to concatenate the
-    /// `EncryptedHeader`, use a `Serializer`.
-    #[inline]
-    fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
-        let mut ser = Serializer::with_capacity(self.length());
-        ser.write(&self.encapsulation)?;
-        // avoid writing length
-        ser.write_array(self.ciphertext.as_slice())?;
-        Ok(ser.finalize())
-    }
-
-    /// Deserializes the `EncryptedHeader` from the given bytes.
-    ///
-    /// This reads all the given bytes as the `EncryptedHeader`. If you want to
-    /// read an `EncryptedHeader` that has been concatenated to other bytes,
-    /// use a `Deserializer`.
-    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.is_empty() {
-            return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
-                "Given byte string is empty".to_string(),
-            )
-            .into());
-        }
-        let mut de = Deserializer::new(bytes);
-        let encapsulation = de.read::<CoverCryptScheme::Encapsulation>()?;
-        // all remaining bytes constitute the encrypted additional data
-        let ciphertext = de.finalize();
         Ok(Self {
             encapsulation,
             ciphertext,
@@ -401,8 +365,7 @@ where
 
     #[inline]
     fn length(&self) -> usize {
-        // we don't write the length of the `additional_data` in `try_to_bytes()`
-        KEY_LENGTH + self.additional_data.len()
+        KEY_LENGTH + to_leb128_len(self.additional_data.len()) + self.additional_data.len()
     }
 
     /// Tries to serialize the cleartext header.
@@ -418,41 +381,6 @@ where
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
         let additional_data = de.read_vec()?;
-        Ok(Self {
-            symmetric_key,
-            additional_data,
-        })
-    }
-
-    /// Serializes the `ClearTextHeader` without prepending the length.
-    ///
-    /// This allows saving some bytes. If you want to concatenate the
-    /// `ClearTextHeader`, use a `Serializer`.
-    #[inline]
-    fn try_to_bytes(&self) -> Result<Vec<u8>, Self::Error> {
-        let mut ser = Serializer::with_capacity(self.length());
-        ser.write_array(self.symmetric_key.as_bytes())?;
-        // avoid writing length
-        ser.write_array(&self.additional_data)?;
-        Ok(ser.finalize())
-    }
-
-    /// Deserializes the `CleartextHeader` from the given bytes.
-    ///
-    /// This reads all the given bytes as the `CleartextHeader`. If you want to
-    /// read a `CleartextHeader` that has been concatenated to other bytes, use
-    /// a `Deserializer`.
-    fn try_from_bytes(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.is_empty() {
-            return Err(cosmian_crypto_core::CryptoCoreError::InvalidSize(
-                "Given byte string is empty".to_string(),
-            )
-            .into());
-        }
-        let mut de = Deserializer::new(bytes);
-        let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
-        // all remaining bytes constitute the additional data
-        let additional_data = de.finalize();
         Ok(Self {
             symmetric_key,
             additional_data,
