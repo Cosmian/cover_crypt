@@ -120,7 +120,7 @@ build_windows:
     - cargo build --release --features ffi --target x86_64-pc-windows-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
     # python build
-    - pip install -r src/interfaces/pyo3/tests/requirements.txt
+    - pip install -r python/requirements.txt
     - maturin build --release --features python --target x86_64-pc-windows-gnu --target-dir target_python
   artifacts:
     paths:
@@ -138,8 +138,10 @@ build_osx:
   script:
     - cargo build --release --features ffi --target x86_64-apple-darwin
     - cargo lipo --release --features ffi
-    # python build: custom `target_dir` to avoid conflicts with flutter
-    - pip3 install -r src/interfaces/pyo3/tests/requirements.txt
+    # python build
+    - pip3 install -r python/requirements.txt
+    # custom `target_dir` to avoid overwriting flutter `dylib`
+    # the wheel python package is still saved in `./target`
     - maturin build --release --features python --target x86_64-apple-darwin --target-dir target_python
   artifacts:
     paths:
@@ -196,7 +198,7 @@ test_python:
   stage: test
   script:
     - pip install --force-reinstall target/wheels/*manylinux*.whl
-    - python3 src/interfaces/pyo3/tests/test_cover_crypt.py
+    - python3 python/test_cover_crypt.py
 
 test_cloudproof_js:
   image: node:18

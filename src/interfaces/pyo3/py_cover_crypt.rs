@@ -266,7 +266,7 @@ impl CoverCrypt {
     /// - `encrypted_header_bytes`  : encrypted header bytes
     /// - `authentication_data`      : authentication data to use in symmetric decryption
     ///
-    /// Returns: (SymmetricKey, metadata bytes)
+    /// Returns: (SymmetricKey, header metadata bytes)
     pub fn decrypt_header(
         &self,
         usk: &UserSecretKey,
@@ -346,7 +346,7 @@ impl CoverCrypt {
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
     /// - `authentication_data`  : authentication data to use in symmetric decryptions
     ///
-    ///  Returns: (plaintext bytes, metadata bytes)
+    ///  Returns: (plaintext bytes, header metadata bytes)
     pub fn decrypt(
         &self,
         usk: &UserSecretKey,

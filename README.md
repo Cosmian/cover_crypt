@@ -11,14 +11,15 @@ policies over these attributes.
 
 <!-- toc -->
 
-  * [Getting started](#getting-started)
-- [Building and testing](#building-and-testing)
-    + [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
-    + [Building for Pyo3](#building-for-pyo3)
+- [Getting started](#getting-started)
+
+* [Building and testing](#building-and-testing)
+  - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+  - [Building for Pyo3](#building-for-pyo3)
   * [Features and Benchmarks](#features-and-benchmarks)
-    + [Key generation](#key-generation)
-    + [Secret key encapsulation](#secret-key-encapsulation)
-    + [Secret key decapsulation](#secret-key-decapsulation)
+    - [Key generation](#key-generation)
+    - [Secret key encapsulation](#secret-key-encapsulation)
+    - [Secret key decapsulation](#secret-key-decapsulation)
   * [Documentation](#documentation)
 
 <!-- tocstop -->
@@ -172,10 +173,8 @@ Go to the [build](build/glibc-2.17/) directory for an example on how to build fo
 - See `gitlab-ci` for release build using manylinux (https://github.com/pypa/manylinux#manylinux)
 
 ```bash
-pip install -r src/interfaces/pyo3/tests/requirements.txt
-maturin build --release --features python
-pip install --force-reinstall target/wheels/cover_crypt-*.whl
-python3 src/interfaces/pyo3/tests/test_cover_crypt.py
+pip install -r python/requirements.txt
+./python/test.sh
 ```
 
 ## Features and Benchmarks
@@ -217,31 +216,42 @@ stay fast if the change in the policy is small.
 ### Serialization
 
 The size of the serialized keys and encapsulation is given by the following formulas:
+
 - master secret key:
+
 ```
 3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-	+ sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
 ```
+
 - public key:
+
 ```
 2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-	+ sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PUBLIC_KEY_LENGTH)
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PUBLIC_KEY_LENGTH)
 ```
+
 - user secret key:
+
 ```
 2 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-	+ sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
 ```
+
 - encapsulation:
+
 ```
 2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) + sum(TAG_LENGTH + PRIVATE_KEY_LENGTH)
 ```
+
 - encrypted header (see below):
+
 ```
 sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
 ```
 
 NOTE: For our implementation `CoverCryptX25519Aes256`:
+
 - `PUBLIC_KEY_LENGTH` is 32 bytes
 - `PRIVATE_KEY_LENGTH` is 32 bytes
 - `TAG_LENGTH` is 32 bytes
@@ -255,18 +265,16 @@ Below id given the size of an encapsulation given a number of partitions.
 +-------------------+-------------------------------+
 | Nb. of partitions | encapsulation size (in bytes) |
 +-------------------+-------------------------------+
-|         1         |              129              |
+| 1 | 129 |
 +-------------------+-------------------------------+
-|         2         |              193              |
+| 2 | 193 |
 +-------------------+-------------------------------+
-|         3         |              257              |
+| 3 | 257 |
 +-------------------+-------------------------------+
-|         4         |              321              |
+| 4 | 321 |
 +-------------------+-------------------------------+
-|         5         |              385              |
+| 5 | 385 |
 +-------------------+-------------------------------+
-
-
 
 ### Secret key encapsulation
 

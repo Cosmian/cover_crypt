@@ -169,11 +169,11 @@ class TestEncryption(unittest.TestCase):
         )
 
         # Successful decryption
-        cleartext, metadata = self.cc.decrypt(
+        plaintext, header_metadata = self.cc.decrypt(
             sec_high_fr_sp_user, ciphertext, self.authenticated_data
         )
-        self.assertEqual(cleartext, self.plaintext)
-        self.assertEqual(metadata, bytes(self.additional_data))
+        self.assertEqual(plaintext, self.plaintext)
+        self.assertEqual(header_metadata, bytes(self.additional_data))
 
         # Wrong key
         sec_low_fr_sp_user = self.cc.generate_user_secret_key(
@@ -181,7 +181,7 @@ class TestEncryption(unittest.TestCase):
         )
 
         with self.assertRaises(Exception):
-            cleartext = self.cc.decrypt(
+            plaintext = self.cc.decrypt(
                 sec_low_fr_sp_user, ciphertext, self.authenticated_data
             )
 
@@ -219,7 +219,7 @@ class TestEncryption(unittest.TestCase):
 
         # user cannot decrypt the new message until its key is refreshed
         with self.assertRaises(Exception):
-            cleartext = self.cc.decrypt(
+            plaintext = self.cc.decrypt(
                 sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
             )
 
@@ -232,10 +232,10 @@ class TestEncryption(unittest.TestCase):
             keep_old_accesses=True,
         )
 
-        cleartext, _ = self.cc.decrypt(
+        plaintext, _ = self.cc.decrypt(
             sec_high_fr_sp_user, ciphertext, self.authenticated_data
         )
-        self.assertEqual(cleartext, self.plaintext)
+        self.assertEqual(plaintext, self.plaintext)
 
         # new user key can no longer decrypt the old message
         self.cc.refresh_user_secret_key(
@@ -246,14 +246,14 @@ class TestEncryption(unittest.TestCase):
             keep_old_accesses=False,
         )
         with self.assertRaises(Exception):
-            cleartext = self.cc.decrypt(
+            plaintext = self.cc.decrypt(
                 sec_high_fr_sp_user, ciphertext, self.authenticated_data
             )
 
-        cleartext, _ = self.cc.decrypt(
+        plaintext, _ = self.cc.decrypt(
             sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
         )
-        self.assertEqual(bytes(cleartext), new_plaintext)
+        self.assertEqual(bytes(plaintext), new_plaintext)
 
     def test_decomposed_encryption_decryption(self) -> None:
         """Test individually the header and the symmetric encryption/decryption"""
