@@ -25,13 +25,13 @@ repos:
     rev: v3.0.0-alpha.4
     hooks:
       - id: prettier
-        types_or: [bash, dockerfile, json, python3, sh]
+        types_or: [bash, dockerfile, json, markdown, python3, sh]
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
     hooks:
       - id: yamlfmt
-        args: [--mapping, "2", --sequence, "4", --offset, "2"]
+        args: [--mapping, '2', --sequence, '4', --offset, '2']
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.12.14

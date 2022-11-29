@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- non regression test vectors with different encryption policies
+
 ### Changed
 
 - improve serialization
@@ -234,7 +236,7 @@ All notable changes to this project will be documented in this file.
 
 - `read_array()` -> `read_vec()`
 - `write_array()` -> `write_vec()`
-- `bytes_ser_de` is now private
+- `bytes_set_de` is now private
 
 ### Fixed
 

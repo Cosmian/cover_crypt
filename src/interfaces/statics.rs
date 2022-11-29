@@ -480,8 +480,8 @@ mod tests {
 
             let mut aes_ciphertext =
                 cover_crypt.encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
-            let mut ciphertext = encrypted_header.try_to_bytes()?;
-            ciphertext.append(&mut aes_ciphertext);
+            let mut encrypted_bytes = encrypted_header.try_to_bytes()?;
+            encrypted_bytes.append(&mut aes_ciphertext);
             let header_metadata = match header_metadata {
                 Some(ad) => base64::encode(ad),
                 None => String::new(),
@@ -493,7 +493,7 @@ mod tests {
             Ok(EncryptionTestVector {
                 encryption_policy: encryption_policy.to_string(),
                 plaintext: base64::encode(plaintext),
-                ciphertext: base64::encode(ciphertext),
+                ciphertext: base64::encode(encrypted_bytes),
                 header_metadata,
                 authentication_data,
             })

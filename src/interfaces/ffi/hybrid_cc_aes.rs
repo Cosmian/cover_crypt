@@ -949,7 +949,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
     let mut de = Deserializer::new(ciphertext_bytes);
     // this will read the exact header size
-    let encrypted_header = ffi_unwrap!(EncryptedHeader::read(&mut de));
+    let encrypted_header = ffi_unwrap!(de.read::<EncryptedHeader>());
     // the rest is the symmetric ciphertext
     let encrypted_content = de.finalize();
 
