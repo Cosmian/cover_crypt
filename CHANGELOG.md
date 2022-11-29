@@ -236,7 +236,7 @@ All notable changes to this project will be documented in this file.
 
 - `read_array()` -> `read_vec()`
 - `write_array()` -> `write_vec()`
-- `bytes_set_de` is now private
+- `bytes_ser_de` is now private
 
 ### Fixed
 

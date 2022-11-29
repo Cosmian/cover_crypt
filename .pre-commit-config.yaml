@@ -33,10 +33,10 @@ repos:
       - id: yamlfmt
         args: [--mapping, '2', --sequence, '4', --offset, '2']
 
-  - repo: https://github.com/crate-ci/typos
-    rev: v1.12.14
-    hooks:
-      - id: typos
+  # - repo: https://github.com/crate-ci/typos
+  #   rev: v1.12.14
+  #   hooks:
+  #     - id: typos
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.3.1
