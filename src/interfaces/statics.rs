@@ -615,16 +615,14 @@ mod tests {
             // top_secret_fin_key
             self.low_secret_fin_test_vector
                 .decrypt(&self.top_secret_fin_key.key)?;
-            assert!(
-                self.low_secret_mkg_test_vector
-                    .decrypt(&self.top_secret_fin_key.key)
-                    .is_err()
-            );
-            assert!(
-                self.top_secret_mkg_test_vector
-                    .decrypt(&self.top_secret_fin_key.key)
-                    .is_err()
-            );
+            assert!(self
+                .low_secret_mkg_test_vector
+                .decrypt(&self.top_secret_fin_key.key)
+                .is_err());
+            assert!(self
+                .top_secret_mkg_test_vector
+                .decrypt(&self.top_secret_fin_key.key)
+                .is_err());
 
             // top_secret_mkg_fin_key
             self.low_secret_fin_test_vector
@@ -635,18 +633,16 @@ mod tests {
                 .decrypt(&self.top_secret_mkg_fin_key.key)?;
 
             // medium_secret_mkg_key
-            assert!(
-                self.low_secret_fin_test_vector
-                    .decrypt(&self.medium_secret_mkg_key.key)
-                    .is_err()
-            );
+            assert!(self
+                .low_secret_fin_test_vector
+                .decrypt(&self.medium_secret_mkg_key.key)
+                .is_err());
             self.low_secret_mkg_test_vector
                 .decrypt(&self.medium_secret_mkg_key.key)?;
-            assert!(
-                self.top_secret_mkg_test_vector
-                    .decrypt(&self.medium_secret_mkg_key.key)
-                    .is_err()
-            );
+            assert!(self
+                .top_secret_mkg_test_vector
+                .decrypt(&self.medium_secret_mkg_key.key)
+                .is_err());
             Ok(())
         }
     }
@@ -746,11 +742,9 @@ mod tests {
         )?;
 
         // Decryption fails without refreshing the user key
-        assert!(
-            encrypted_header
-                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-                .is_err()
-        );
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_err());
 
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
@@ -763,11 +757,9 @@ mod tests {
         )?;
 
         // The refreshed key can decrypt the header
-        assert!(
-            encrypted_header
-                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-                .is_ok()
-        );
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
 
         Ok(())
     }
