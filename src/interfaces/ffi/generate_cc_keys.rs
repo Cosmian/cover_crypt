@@ -1,3 +1,11 @@
+use std::{
+    ffi::{CStr, CString},
+    os::raw::{c_char, c_int},
+};
+
+use abe_policy::{AccessPolicy, Attribute, Policy};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+
 use crate::{
     api::CoverCrypt,
     ffi_bail, ffi_not_null, ffi_unwrap,
@@ -5,12 +13,6 @@ use crate::{
         ffi::error::{set_last_error, FfiError},
         statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
     },
-};
-use abe_policy::{AccessPolicy, Attribute, Policy};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-use std::{
-    ffi::{CStr, CString},
-    os::raw::{c_char, c_int},
 };
 
 #[no_mangle]

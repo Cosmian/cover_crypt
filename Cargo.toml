@@ -47,5 +47,6 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = tru
 zeroize = "1.5"
 
 [dev-dependencies]
+base64 = "0.13"
 criterion = { version = "0.4", features = ["html_reports"], default_features = false }
 wasm-bindgen-test = "0.3"

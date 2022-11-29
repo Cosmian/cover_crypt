@@ -1,5 +1,23 @@
 #![allow(dead_code)]
 
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+    os::raw::{c_char, c_int},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        RwLock,
+    },
+};
+
+use abe_policy::{AccessPolicy, Policy};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    symmetric_crypto::Dem,
+    KeyTrait,
+};
+use lazy_static::lazy_static;
+
 use crate::{
     api::CoverCrypt,
     ffi_bail, ffi_not_null, ffi_unwrap,
@@ -9,22 +27,6 @@ use crate::{
             CoverCryptDem, CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey,
             UserSecretKey,
         },
-    },
-};
-use abe_policy::{AccessPolicy, Policy};
-use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
-    symmetric_crypto::Dem,
-    KeyTrait,
-};
-use lazy_static::lazy_static;
-use std::{
-    collections::HashMap,
-    ffi::{CStr, CString},
-    os::raw::{c_char, c_int},
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        RwLock,
     },
 };
 
@@ -711,8 +713,8 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_block(
-    cleartext_ptr: *mut c_char,
-    cleartext_len: *mut c_int,
+    plaintext_ptr: *mut c_char,
+    plaintext_len: *mut c_int,
     symmetric_key_ptr: *const c_char,
     symmetric_key_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -721,11 +723,11 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     encrypted_bytes_len: c_int,
 ) -> c_int {
     ffi_not_null!(
-        cleartext_ptr,
-        "The clear text bytes pointer should point to pre-allocated memory"
+        plaintext_ptr,
+        "The plaintext bytes pointer should point to pre-allocated memory"
     );
-    if *cleartext_len == 0 {
-        ffi_bail!("The clear text bytes buffer should have a size greater than zero");
+    if *plaintext_len == 0 {
+        ffi_bail!("The plaintext bytes buffer should have a size greater than zero");
     }
 
     // Symmetric Key
@@ -770,19 +772,19 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
 
     //
     // Decrypt block
-    let cleartext =
+    let plaintext =
         ffi_unwrap!(CoverCryptX25519Aes256::default().decrypt(&symmetric_key, &ciphertext, ad,));
 
-    let allocated = *cleartext_len;
-    *cleartext_len = cleartext.len() as c_int;
-    if allocated < *cleartext_len {
+    let allocated = *plaintext_len;
+    *plaintext_len = plaintext.len() as c_int;
+    if allocated < *plaintext_len {
         ffi_bail!(
-            "The pre-allocated clear text buffer is too small; need {} bytes",
-            *cleartext_len
+            "The pre-allocated plaintext buffer is too small; need {} bytes",
+            *plaintext_len
         );
     }
-    std::slice::from_raw_parts_mut(cleartext_ptr.cast(), cleartext.len())
-        .copy_from_slice(&cleartext);
+    std::slice::from_raw_parts_mut(plaintext_ptr.cast(), plaintext.len())
+        .copy_from_slice(&plaintext);
 
     0
 }
@@ -922,10 +924,10 @@ pub unsafe extern "C" fn h_aes_decrypt(
 ) -> c_int {
     ffi_not_null!(
         plaintext_ptr,
-        "The clear text bytes pointer should point to pre-allocated memory"
+        "The plaintext bytes pointer should point to pre-allocated memory"
     );
     if *plaintext_len == 0 {
-        ffi_bail!("The clear text bytes buffer should have a size greater than zero");
+        ffi_bail!("The plaintext bytes buffer should have a size greater than zero");
     }
     ffi_not_null!(
         ciphertext_ptr,
@@ -982,7 +984,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
     *plaintext_len = plaintext.len() as c_int;
     if allocated < *plaintext_len {
         ffi_bail!(
-            "The pre-allocated clear text buffer is too small; need {} bytes",
+            "The pre-allocated plaintext buffer is too small; need {} bytes",
             *plaintext_len
         );
     }
@@ -1018,8 +1020,8 @@ pub unsafe extern "C" fn h_aes_decrypt(
 /// Returns
 ///  - 0 if success
 ///  - 1 in case of unrecoverable error
-///  - n if the return buffer is too small and should be of size n
-///     (including the NULL byte)
+///  - n if the return buffer is too small and should be of size n (including
+///    the NULL byte)
 ///
 /// `json_expr_len` contains the length of the JSON string on return
 ///  (including the terminating NULL byte)
@@ -1052,9 +1054,11 @@ pub unsafe extern "C" fn h_access_policy_expression_to_json(
     // the CString as bytes
     let bytes = cs.as_bytes_with_nul();
     if bytes.len() > *json_expr_len as usize {
-        set_last_error(FfiError::Generic(
-            format!("access policy to JSON: the pre-allocated buffer is too small. It should be {} bytes long",bytes.len()),
-        ));
+        set_last_error(FfiError::Generic(format!(
+            "access policy to JSON: the pre-allocated buffer is too small. It should be {} bytes \
+             long",
+            bytes.len()
+        )));
         return bytes.len() as i32;
     }
 

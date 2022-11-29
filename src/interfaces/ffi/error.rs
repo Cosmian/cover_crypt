@@ -3,6 +3,7 @@ use std::{
     ffi::{CStr, CString},
     os::raw::{c_char, c_int},
 };
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
