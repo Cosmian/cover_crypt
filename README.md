@@ -263,7 +263,7 @@ The size of
 Below id given the size of an encapsulation given a number of partitions.
 
 | Nb. of partitions | encapsulation size (in bytes) |
-|-------------------|-------------------------------|
+| ----------------- | ----------------------------- |
 | 1                 | 129                           |
 | 2                 | 193                           |
 | 3                 | 257                           |

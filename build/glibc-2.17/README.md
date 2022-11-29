@@ -1,8 +1,7 @@
 This docker directory provides
 
- - a Dockerfile to build a docker image appropriate to build this library against GLIBC2.17
- - a build script to build this library using the docker image
-
+- a Dockerfile to build a docker image appropriate to build this library against GLIBC2.17
+- a build script to build this library using the docker image
 
 ### Build the docker image
 

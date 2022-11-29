@@ -25,7 +25,7 @@ repos:
     rev: v3.0.0-alpha.4
     hooks:
       - id: prettier
-        types_or: [bash, dockerfile, json, markdown, python3, sh]
+        types_or: [bash, dockerfile, json, python3, sh]
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
@@ -34,7 +34,7 @@ repos:
         args: [--mapping, '2', --sequence, '4', --offset, '2']
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.12.14
+    rev: v1.13.0
     hooks:
       - id: typos
 
@@ -67,23 +67,23 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.0
+    rev: v1.0.2
     hooks:
-      # - id: cargo-update
-      # - id: cargo-check-semver
-      # - id: cargo-audit
-      # - id: cargo-outdated
-      # - id: cargo-tests-all
-      # - id: clippy-autofix-all
-      # - id: clippy-autofix-pedantic
-      # - id: clippy-autofix-nursery
-      # - id: clippy-autofix-others
-      # - id: cargo-format
-      # - id: cargo-dry-publish
+      - id: cargo-update
+      - id: cargo-check-semver
+  #     - id: cargo-audit
+  #     - id: cargo-outdated
+  #     - id: cargo-tests-all
+  #     - id: clippy-autofix-all
+  #     - id: clippy-autofix-pedantic
+  #     - id: clippy-autofix-nursery
+  #     - id: clippy-autofix-others
+      - id: cargo-format
+      - id: cargo-dry-publish
       - id: dprint-toml-fix
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.3.0
+    rev: v4.4.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
