@@ -385,7 +385,7 @@ pub unsafe extern "C" fn h_update_master_keys(
 /// Refresh the user key according to the given master key and access policy.
 ///
 /// The user key will be granted access to the current partitions, as determined
-/// by its access policy. If preserve_old_partitions is set, the user access to
+/// by its access policy. If `preserve_old_partitions` is set, the user access to
 /// rotated partitions will be preserved
 ///
 /// - `updated_usk_ptr`                 : Output buffer containing the updated
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn h_parse_boolean_access_policy(
              allocated {allocated}"
         );
     }
-    std::slice::from_raw_parts_mut(json_access_policy_ptr as *mut u8, len)
+    std::slice::from_raw_parts_mut(json_access_policy_ptr.cast::<u8>(), len)
         .copy_from_slice(json_access_policy_bytes);
     *json_access_policy_len = len as c_int;
 

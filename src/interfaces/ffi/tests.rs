@@ -3,7 +3,13 @@ use super::{
         h_generate_master_keys, h_generate_user_secret_key, h_refresh_user_secret_key,
         h_update_master_keys,
     },
-    hybrid_cc_aes::*,
+    hybrid_cc_aes::{
+        h_access_policy_expression_to_json, h_aes_create_decryption_cache,
+        h_aes_create_encryption_cache, h_aes_decrypt, h_aes_decrypt_header,
+        h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
+        h_aes_destroy_encryption_cache, h_aes_encrypt, h_aes_encrypt_header,
+        h_aes_encrypt_header_using_cache,
+    },
 };
 use crate::{
     api::CoverCrypt,

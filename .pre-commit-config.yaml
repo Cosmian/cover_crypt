@@ -1,11 +1,13 @@
 ---
 # Pre-requisites:
 # pip install pre-commit conventional-pre-commit
+# pre-commit install
 # pre-commit install --install-hooks -t commit-msg
 # pre-commit autoupdate
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+exclude: datasets|tests_data
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -14,18 +16,28 @@ repos:
         stages: [commit-msg]
         args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.0-alpha.4
+    hooks:
+      - id: prettier
+        stages: [commit]
+        exclude_types:
+          - yaml
+          - markdown
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.32.2
+    hooks:
+      - id: markdownlint-fix
+        args: [--disable=MD013, --disable=MD024, --disable=MD041]
+
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
     hooks:
       - id: htmlhint
       - id: dockerfile_lint
       - id: markdown-toc
-
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.0-alpha.4
-    hooks:
-      - id: prettier
-        types_or: [bash, dockerfile, json, python3, sh]
+        args: [--bullets="-"] # comment this to refresh TOC
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
@@ -34,7 +46,7 @@ repos:
         args: [--mapping, '2', --sequence, '4', --offset, '2']
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.13.0
+    rev: v1.13.1
     hooks:
       - id: typos
 
@@ -69,18 +81,17 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.2
+    rev: v1.0.5
     hooks:
       - id: cargo-update
-      - id: cargo-check-semver
-  #     - id: cargo-audit
-  #     - id: cargo-outdated
-  #     - id: cargo-tests-all
-  #     - id: clippy-autofix-all
-  #     - id: clippy-autofix-pedantic
-  #     - id: clippy-autofix-nursery
-  #     - id: clippy-autofix-others
+      - id: cargo-outdated
+      - id: clippy-autofix-all
+      - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
+      - id: clippy-autofix-others
+      - id: cargo-tests-all
       - id: cargo-format
+      - id: clippy-all-targets-all-features
       - id: cargo-dry-publish
         args: [--allow-dirty]
       - id: dprint-toml-fix

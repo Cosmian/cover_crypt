@@ -1,4 +1,4 @@
-//! Implements the cryptographic primitives of CoverCrypt, based on
+//! Implements the cryptographic primitives of `CoverCrypt`, based on
 //! `../bib/CoverCrypt.pdf`.
 
 // Allows using the paper notations
@@ -48,7 +48,7 @@ macro_rules! eakem_hash {
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &[u8] = b"key generation info";
 
-/// CoverCrypt master secret key.
+/// `CoverCrypt` master secret key.
 ///
 /// It is composed of `u`, `v` and `s`, three randomly chosen scalars,
 /// and the scalars `x_i` associated to all subsets `S_i`.
@@ -74,9 +74,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
                 + to_leb128_len(self.x.len())
                 // compute the length of all the partitions
                 + self
-                    .x
-                    .iter()
-                    .map(|(partition, _)| to_leb128_len(partition.len()) + partition.len())
+                    .x.keys().map(|partition| to_leb128_len(partition.len()) + partition.len())
                     .sum::<usize>()
                 + self.x.len() * PRIVATE_KEY_LENGTH
     }
@@ -138,7 +136,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
     }
 }
 
-/// CoverCrypt user secret key.
+/// `CoverCrypt` user secret key.
 ///
 /// It is composed of:
 ///
@@ -216,7 +214,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
     }
 }
 
-/// CoverCrypt public key.
+/// `CoverCrypt` public key.
 ///
 /// It is composed of:
 ///
@@ -243,9 +241,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
             + to_leb128_len(self.H.len())
             // compute the length of all the partitions
             + self
-                .H
-                .iter()
-                .map(|(partition, _)| to_leb128_len(partition.len()) + partition.len())
+                .H.keys().map(|partition| to_leb128_len(partition.len()) + partition.len())
                 .sum::<usize>()
             + self.H.len() * (PUBLIC_KEY_LENGTH)
     }
@@ -279,7 +275,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
     }
 }
 
-/// CoverCrypt encapsulation.
+/// `CoverCrypt` encapsulation.
 ///
 /// It is composed of:
 ///
@@ -349,7 +345,7 @@ impl<
     }
 }
 
-/// Generates the master secret key and master public key of the CoverCrypt
+/// Generates the master secret key and master public key of the `CoverCrypt`
 /// scheme.
 ///
 /// # Paper
@@ -621,7 +617,7 @@ where
     Err(Error::InsufficientAccessPolicy)
 }
 
-/// Update the master secret key and master public key of the CoverCrypt
+/// Update the master secret key and master public key of the `CoverCrypt`
 /// scheme with the given list of partitions.
 ///
 /// If a partition exists in the keys but not in the list, it will be removed
@@ -660,17 +656,17 @@ where
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = KeyPair::PrivateKey::new(rng);
             let H_i = &S * &x_i;
-            msk.x.insert(partition.to_owned(), x_i);
-            mpk.H.insert(partition.to_owned(), H_i);
+            msk.x.insert(partition.clone(), x_i);
+            mpk.H.insert(partition.clone(), H_i);
         }
     }
     // remove keys for partitions not in the list
-    for (partition, _) in msk.x.clone().iter() {
+    for partition in msk.x.clone().keys() {
         if !partitions_set.contains(partition) {
             msk.x.remove_entry(partition);
         }
     }
-    for (partition, _) in mpk.H.clone().iter() {
+    for partition in mpk.H.clone().keys() {
         if !partitions_set.contains(partition) {
             mpk.H.remove_entry(partition);
         }

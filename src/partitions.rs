@@ -35,7 +35,7 @@ impl Partition {
         // the actual size in bytes will be at least equal to the length
         let mut ser = Serializer::with_capacity(attribute_values.len());
         for value in attribute_values {
-            ser.write_u64(value as u64)?;
+            ser.write_u64(u64::from(value))?;
         }
         Ok(Self(ser.finalize()))
     }
@@ -76,14 +76,14 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
     // We also collect a `Vec` of axes which is used later
     let mut axes = Vec::with_capacity(policy.axes.len());
     for (axis, (attribute_names, _hierarchical)) in &policy.axes {
-        axes.push(axis.to_owned());
+        axes.push(axis.clone());
         let mut values = vec![];
         for name in attribute_names {
             let attribute = Attribute::new(axis, name);
             let av = policy.attribute_values(&attribute)?;
             values.extend(av);
         }
-        map.insert(axis.to_owned(), values);
+        map.insert(axis.clone(), values);
     }
 
     // perform all the combinations to get all the partitions
@@ -96,10 +96,10 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 }
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
-/// corresponding list of CoverCrypt partitions; this only gets the current
+/// corresponding list of `CoverCrypt` partitions; this only gets the current
 /// partitions, not the old ones
 ///
-/// - `attributes`  : liste of attributes
+/// - `attributes`  : list of attributes
 /// - `policy`      : security policy
 pub(crate) fn to_partitions(
     attributes: &[Attribute],
@@ -110,7 +110,7 @@ pub(crate) fn to_partitions(
     let mut map = HashMap::<String, Vec<u32>>::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
-        let entry = map.entry(attribute.axis.to_owned()).or_default();
+        let entry = map.entry(attribute.axis.clone()).or_default();
         entry.push(value);
     }
 
@@ -120,14 +120,14 @@ pub(crate) fn to_partitions(
     // We also collect a `Vec` of axes which is used later
     let mut axes = Vec::with_capacity(policy.axes.len());
     for (axis, (attribute_names, _hierarchical)) in &policy.axes {
-        axes.push(axis.to_owned());
+        axes.push(axis.clone());
         if !map.contains_key(axis) {
             // gather all the latest value for that axis
             let values = attribute_names
                 .iter()
                 .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
                 .collect::<Result<_, _>>()?;
-            map.insert(axis.to_owned(), values);
+            map.insert(axis.clone(), values);
         }
     }
 
@@ -181,7 +181,7 @@ fn combine_attribute_values(
     }
 }
 
-/// Converts an access policy into the corresponding list of CoverCrypt
+/// Converts an access policy into the corresponding list of `CoverCrypt`
 /// current partitions.
 pub fn access_policy_to_current_partitions(
     access_policy: &AccessPolicy,
@@ -218,7 +218,7 @@ fn to_attribute_combinations(
             let (attribute_names, is_hierarchical) = policy
                 .axes
                 .get(&attr.axis)
-                .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
+                .ok_or_else(|| Error::UnknownPartition(attr.axis.clone()))?;
             let mut res = vec![vec![attr.clone()]];
             if *is_hierarchical && follow_hierarchical_axes {
                 // add attribute values for all attributes below the given one
@@ -238,7 +238,7 @@ fn to_attribute_combinations(
                 to_attribute_combinations(ap_right, policy, follow_hierarchical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() * combinations_right.len());
             for value_left in combinations_left {
-                for value_right in combinations_right.iter() {
+                for value_right in &combinations_right {
                     let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
                     combined.extend_from_slice(&value_left);
                     combined.extend_from_slice(value_right);

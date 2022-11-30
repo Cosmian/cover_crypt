@@ -54,9 +54,9 @@ pub struct EncryptionCache {
 /// the public key on the Rust side on every encryption which is costly.
 ///
 /// This method is to be used in conjunction with
-///     h_aes_encrypt_header_using_cache
+///     `h_aes_encrypt_header_using_cache`
 ///
-/// WARN: h_aes_destroy_encrypt_cache() should be called
+/// WARN: `h_aes_destroy_encrypt_cache`() should be called
 /// to reclaim the memory of the cache when done
 /// # Safety
 pub unsafe extern "C" fn h_aes_create_encryption_cache(
@@ -80,7 +80,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     let policy: Policy = match serde_json::from_str(&policy) {
         Ok(p) => p,
         Err(e) => {
-            ffi_bail!(format!("Hybrid Cipher: invalid Policy: {:?}", e));
+            ffi_bail!(format!("Hybrid Cipher: invalid Policy: {e:?}"));
         }
     };
 
@@ -89,7 +89,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     let pk = match PublicKey::try_from_bytes(pk_bytes) {
         Ok(key) => key,
         Err(e) => {
-            ffi_bail!(format!("Hybrid Cipher: invalid public key: {:?}", e));
+            ffi_bail!(format!("Hybrid Cipher: invalid public key: {e:?}"));
         }
     };
 
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
 
 #[no_mangle]
 /// The function should be called to reclaim memory
-/// of the cache created using h_aes_create_encrypt_cache()
+/// of the cache created using `h_aes_create_encrypt_cache`()
 /// # Safety
 pub unsafe extern "C" fn h_aes_destroy_encryption_cache(cache_handle: c_int) -> c_int {
     let mut map = ENCRYPTION_CACHE_MAP
@@ -381,9 +381,9 @@ pub struct DecryptionCache {
 /// the user key on the Rust side on every decryption which is costly.
 ///
 /// This method is to be used in conjunction with
-///     h_aes_decrypt_header_using_cache()
+///     `h_aes_decrypt_header_using_cache`()
 ///
-/// WARN: h_aes_destroy_decryption_cache() should be called
+/// WARN: `h_aes_destroy_decryption_cache`() should be called
 /// to reclaim the memory of the cache when done
 /// # Safety
 pub unsafe extern "C" fn h_aes_create_decryption_cache(
@@ -420,7 +420,7 @@ pub unsafe extern "C" fn h_aes_create_decryption_cache(
 
 #[no_mangle]
 /// The function should be called to reclaim memory
-/// of the cache created using h_aes_create_decryption_cache()
+/// of the cache created using `h_aes_create_decryption_cache`()
 /// # Safety
 pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> c_int {
     let mut map = DECRYPTION_CACHE_MAP
@@ -691,7 +691,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     let plaintext =
         std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
 
-    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
+    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key));
     let ciphertext =
         ffi_unwrap!(CoverCryptX25519Aes256::default().encrypt(&symmetric_key, &plaintext, ad,));
 
@@ -750,7 +750,7 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
         std::slice::from_raw_parts(encrypted_bytes_ptr.cast(), encrypted_bytes_len as usize)
             .to_vec();
 
-    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
+    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key));
 
     //
     // Associated Data
@@ -1014,7 +1014,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
 #[no_mangle]
 /// Convert a boolean access policy expression into a
-/// json_expression that can be used to create a key using
+/// json expression that can be used to create a key using
 /// the KMIP interface
 ///
 /// Returns

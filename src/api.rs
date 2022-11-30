@@ -1,4 +1,4 @@
-//! Build a KEM based on CoverCrypt.
+//! Build a KEM based on `CoverCrypt`.
 //!
 //! The `CoverCrypt` trait is the main entry point for the core functionalities.
 
@@ -97,7 +97,7 @@ pub trait CoverCrypt<
     /// policy.
     ///
     /// The user key will be granted access to the current partitions, as
-    /// determined by its access policy. If preserve_old_partitions_access
+    /// determined by its access policy. If `preserve_old_partitions_access`
     /// is set, the user access to rotated partitions will be preserved
     ///
     /// - `usk`                 : the user key to refresh
@@ -116,7 +116,7 @@ pub trait CoverCrypt<
     ) -> Result<(), Error>;
 
     /// Generates a random symmetric key to be used with a DEM scheme and
-    /// generates its CoverCrypt encapsulation for the given policy
+    /// generates its `CoverCrypt` encapsulation for the given policy
     /// `attributes`.
     ///
     /// - `policy`          : global policy
@@ -129,7 +129,7 @@ pub trait CoverCrypt<
         encryption_policy: &AccessPolicy,
     ) -> Result<(DEM::Key, Self::Encapsulation), Error>;
 
-    /// Decapsulates a symmetric key from the given CoverCrypt encapsulation.
+    /// Decapsulates a symmetric key from the given `CoverCrypt` encapsulation.
     /// This returns multiple key candidates. The use of an authenticated DEM
     /// scheme allows to select valid ones.
     ///
@@ -166,15 +166,15 @@ pub trait CoverCrypt<
     ) -> Result<Vec<u8>, Error>;
 }
 
-/// Encrypted header holding a CoverCrypt encapsulation of a symmetric key and
-/// additional data encrypted using the CoverCrypt DEM with the encapsulated
+/// Encrypted header holding a `CoverCrypt` encapsulation of a symmetric key and
+/// additional data encrypted using the `CoverCrypt` DEM with the encapsulated
 /// key.
 ///
 /// *Note*: the DEM ciphertext is also used to select the correct symmetric key
 /// from the decapsulation.
 ///
-/// - `encapsulation`   : CoverCrypt encapsulation of a symmetric key
-/// - `ciphertext`      : CoverCrypt DEM encryption of additional data
+/// - `encapsulation`   : `CoverCrypt` encapsulation of a symmetric key
+/// - `ciphertext`      : `CoverCrypt` DEM encryption of additional data
 #[derive(Debug, PartialEq, Eq)]
 pub struct EncryptedHeader<
     const TAG_LENGTH: usize,
@@ -235,7 +235,7 @@ where
     ///
     /// - `cover_crypt`         : `CoverCrypt` object
     /// - `policy`              : global policy
-    /// - `public_key`          : CoverCrypt public key
+    /// - `public_key`          : `CoverCrypt` public key
     /// - `access_policy`       : access policy used for the encapsulation
     /// - `additional_data`     : additional data to encrypt in the header
     /// - `authentication_data` : authentication data used in the DEM encryption
@@ -269,7 +269,7 @@ where
     /// Decrypt the header with the given user secret key.
     ///
     /// - `cover_crypt`         : `CoverCrypt` object
-    /// - `usk`                 : CoverCrypt user secret key
+    /// - `usk`                 : `CoverCrypt` user secret key
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn decrypt(
         &self,
