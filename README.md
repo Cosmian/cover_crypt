@@ -173,8 +173,7 @@ Go to the [build](build/glibc-2.17/) directory for an example on how to build fo
 - See `gitlab-ci` for release build using manylinux (https://github.com/pypa/manylinux#manylinux)
 
 ```bash
-pip install -r python/requirements.txt
-./python/test.sh
+./python/scripts/test.sh
 ```
 
 ## Features and Benchmarks
