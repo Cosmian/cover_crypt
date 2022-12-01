@@ -80,6 +80,7 @@ repos:
   #     - id: clippy-autofix-others
       - id: cargo-format
       - id: cargo-dry-publish
+        args: [--allow-dirty]
       - id: dprint-toml-fix
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

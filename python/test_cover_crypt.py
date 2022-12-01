@@ -33,7 +33,7 @@ class TestPolicy(unittest.TestCase):
             secrecy_axis.to_string(),
             'Secrecy: ["Low", "Medium", "High"], hierarchical: true',
         )
-        policy = Policy()
+        policy = Policy(100)
         policy.add_axis(country_axis)
         policy.add_axis(secrecy_axis)
         # test attributes
@@ -53,7 +53,7 @@ class TestPolicy(unittest.TestCase):
             'Country', ['France', 'UK', 'Spain', 'Germany'], False
         )
         secrecy_axis = PolicyAxis('Secrecy', ['Low', 'Medium', 'High'], True)
-        policy = Policy()
+        policy = Policy(100)
         policy.add_axis(country_axis)
         policy.add_axis(secrecy_axis)
 
@@ -76,7 +76,7 @@ class TestKeyGeneration(unittest.TestCase):
             'Country', ['France', 'UK', 'Spain', 'Germany'], False
         )
         secrecy_axis = PolicyAxis('Secrecy', ['Low', 'Medium', 'High'], True)
-        self.policy = Policy()
+        self.policy = Policy(100)
         self.policy.add_axis(country_axis)
         self.policy.add_axis(secrecy_axis)
 
@@ -140,7 +140,7 @@ class TestEncryption(unittest.TestCase):
             'Country', ['France', 'UK', 'Spain', 'Germany'], False
         )
         secrecy_axis = PolicyAxis('Secrecy', ['Low', 'Medium', 'High'], True)
-        self.policy = Policy()
+        self.policy = Policy(100)
         self.policy.add_axis(country_axis)
         self.policy.add_axis(secrecy_axis)
 
@@ -148,7 +148,7 @@ class TestEncryption(unittest.TestCase):
         self.msk, self.pk = self.cc.generate_master_keys(self.policy)
 
         self.plaintext = b'My secret data'
-        self.additional_data = [0, 0, 0, 0, 0, 0, 0, 1]
+        self.additional_data = bytes([0, 0, 0, 0, 0, 0, 0, 1])
         self.authenticated_data = b'auth'
 
     def test_simple_encryption_decryption(self) -> None:
@@ -181,9 +181,7 @@ class TestEncryption(unittest.TestCase):
         )
 
         with self.assertRaises(Exception):
-            plaintext = self.cc.decrypt(
-                sec_low_fr_sp_user, ciphertext, self.authenticated_data
-            )
+            self.cc.decrypt(sec_low_fr_sp_user, ciphertext, self.authenticated_data)
 
     def test_policy_rotation_encryption_decryption(self) -> None:
 
@@ -219,7 +217,7 @@ class TestEncryption(unittest.TestCase):
 
         # user cannot decrypt the new message until its key is refreshed
         with self.assertRaises(Exception):
-            plaintext = self.cc.decrypt(
+            self.cc.decrypt(
                 sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
             )
 
@@ -246,9 +244,7 @@ class TestEncryption(unittest.TestCase):
             keep_old_accesses=False,
         )
         with self.assertRaises(Exception):
-            plaintext = self.cc.decrypt(
-                sec_high_fr_sp_user, ciphertext, self.authenticated_data
-            )
+            self.cc.decrypt(sec_high_fr_sp_user, ciphertext, self.authenticated_data)
 
         plaintext, _ = self.cc.decrypt(
             sec_high_fr_sp_user, new_ciphertext, self.authenticated_data
