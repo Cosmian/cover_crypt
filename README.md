@@ -1,25 +1,26 @@
 # CoverCrypt &emsp; [![Build Status]][actions] [![Latest Version]][crates.io]
 
-
-Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes.
-
-
-[Build Status]: https://img.shields.io/github/workflow/status/Cosmian/cosmian_cover_crypt/CI%20checks/main
+[build status]: https://img.shields.io/github/workflow/status/Cosmian/cosmian_cover_crypt/CI%20checks/main
 [actions]: https://github.com/Cosmian/cosmian_cover_crypt/actions?query=branch%3Amain
-[Latest Version]: https://img.shields.io/crates/v/cosmian_cover_crypt.svg
+[latest version]: https://img.shields.io/crates/v/cosmian_cover_crypt.svg
 [crates.io]: https://crates.io/crates/cosmian_cover_crypt
+
+Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
+creating ciphertexts for a set of attributes and issuing user keys with access
+policies over these attributes.
 
 <!-- toc -->
 
-  * [Getting started](#getting-started)
+- [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
-    + [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
-    + [Building for Pyo3](#building-for-pyo3)
-  * [Features and Benchmarks](#features-and-benchmarks)
-    + [Key generation](#key-generation)
-    + [Secret key encapsulation](#secret-key-encapsulation)
-    + [Secret key decapsulation](#secret-key-decapsulation)
-  * [Documentation](#documentation)
+  - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+  - [Build and tests for Pyo3](#build-and-tests-for-pyo3)
+- [Features and Benchmarks](#features-and-benchmarks)
+  - [Key generation](#key-generation)
+  - [Serialization](#serialization)
+  - [Secret key encapsulation](#secret-key-encapsulation)
+  - [Secret key decapsulation](#secret-key-decapsulation)
+- [Documentation](#documentation)
 
 <!-- tocstop -->
 
@@ -28,7 +29,7 @@ Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows cr
 The following code sample introduces the CoverCrypt functionalities. It can be
 run from `examples/runme.rs` using `cargo run --example runme`.
 
-``` rust
+```rust
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
     interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader},
@@ -124,36 +125,42 @@ assert!(new_encrypted_header
 assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_err());
 ```
 
-# Building and testing
+## Building and testing
 
 To build the core only, run:
-``` bash
+
+```bash
 cargo build --release
 ```
 
 To build the FFI interface:
-``` bash
+
+```bash
 cargo build --release --features interfaces
 ```
 
 To build everything (including the FFI):
-``` bash
+
+```bash
 cargo build --release --all-features
 ```
 
 The latter will build a shared library. On Linux, one can verify that the FFI
 symbols are present using:
-``` bash
+
+```bash
 objdump -T  target/release/libcosmian_cover_crypt.so
 ```
 
 The code contains numerous tests that you can run using:
-``` bash
+
+```bash
 cargo test --release --all-features
 ```
 
 Benchmarks can be run using (one can pass any feature flag):
-``` bash
+
+```bash
 cargo bench
 ```
 
@@ -161,15 +168,17 @@ cargo bench
 
 Go to the [build](build/glibc-2.17/) directory for an example on how to build for GLIBC 2.17
 
-### Building for Pyo3
+### Build and tests for Pyo3
+
+> When a new function/class is added to the PyO3 interface, write its signature in `python/cosmian_cover_crypt/__init__.pyi`.
+
+- See `gitlab-ci` for release build using manylinux (<https://github.com/pypa/manylinux#manylinux>)
 
 ```bash
-maturin develop --cargo-extra-args="--release --features python
+./python/scripts/test.sh
 ```
 
-
 ## Features and Benchmarks
-
 
 In CoverCrypt, messages are encrypted using a symmetric scheme. The right
 management is performed by a novel asymmetric scheme which is used to
@@ -177,6 +186,7 @@ encapsulate a symmetric key. This encapsulation is stored in an object called
 encrypted header, along with the symmetric ciphertext.
 
 This design brings several advantages:
+
 - the central authority has a unique key to protect (the master secret key);
 - encapsulation can be performed without the need to store any sensitive
   information (public cryptography);
@@ -189,18 +199,75 @@ i7-10750H CPU @ 3.20GHz.
 
 Asymmetric keys must be generated beforehand. This is the role of a central
 authority, which is in charge of:
+
 - generating and updating the master keys according to the right policy;
 - generate and update user secret keys.
 
 The CoverCrypt APIs exposes everything that is needed:
-- `CoverCrypt::setup`   : generate master keys
-- `CoverCrypt::join`    : create a user secret key for the given rights
-- `CoverCrypt::update`  : update the master keys for the given policy
+
+- `CoverCrypt::setup` : generate master keys
+- `CoverCrypt::join` : create a user secret key for the given rights
+- `CoverCrypt::update` : update the master keys for the given policy
 - `CoverCrypt::refresh` : refresh a user secret key from the master secret key
 
 The key generations may be long if the policy contains many rights or if there
 are many users. But this is usually run once at setup. Key updates and refresh
 stay fast if the change in the policy is small.
+
+### Serialization
+
+The size of the serialized keys and encapsulation is given by the following formulas:
+
+- master secret key:
+
+```c
+3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+```
+
+- public key:
+
+```c
+2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PUBLIC_KEY_LENGTH)
+```
+
+- user secret key:
+
+```c
+2 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+```
+
+- encapsulation:
+
+```c
+2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) + sum(TAG_LENGTH + PRIVATE_KEY_LENGTH)
+```
+
+- encrypted header (see below):
+
+```c
+sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
+```
+
+NOTE: For our implementation `CoverCryptX25519Aes256`:
+
+- `PUBLIC_KEY_LENGTH` is 32 bytes
+- `PRIVATE_KEY_LENGTH` is 32 bytes
+- `TAG_LENGTH` is 32 bytes
+- `DEM_ENCRYPTION_OVERHEAD` is 28 bytes (12 bytes for the MAC tag and 16 bytes for the nonce)
+- `LEB128_sizeof(partitions.len())` is equal to 1 byte if the number of partitions is less than `2^7`
+
+Below id given the size of an encapsulation given a number of partitions.
+
+| Nb. of partitions | encapsulation size (in bytes) |
+| ----------------- | ----------------------------- |
+| 1                 | 129                           |
+| 2                 | 193                           |
+| 3                 | 257                           |
+| 4                 | 321                           |
+| 5                 | 385                           |
 
 ### Secret key encapsulation
 
@@ -217,7 +284,7 @@ and so does the encapsulation time. The following benchmark gives the size of
 the encrypted header and the encryption time given the number of rights in the
 target set (one right = one partition).
 
-```
+```c
 Bench header encryption size: 1 partition: 126 bytes, 3 partitions: 190 bytes
 
 Header encryption/1 partition
@@ -233,7 +300,7 @@ A user can retrieve the symmetric key needed to decrypt a CoverCrypt ciphertext
 by decrypting the associated `EncryptedHeader`. This is only possible if the
 user secret keys contains the appropriate rights.
 
-```
+```c
 Header decryption/1 partition access
                         time:   [252.55 µs 252.66 µs 252.79 µs]
 

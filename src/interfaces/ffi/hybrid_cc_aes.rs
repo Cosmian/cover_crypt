@@ -1,5 +1,23 @@
 #![allow(dead_code)]
 
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+    os::raw::{c_char, c_int},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        RwLock,
+    },
+};
+
+use abe_policy::{AccessPolicy, Policy};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    symmetric_crypto::Dem,
+    KeyTrait,
+};
+use lazy_static::lazy_static;
+
 use crate::{
     api::CoverCrypt,
     ffi_bail, ffi_not_null, ffi_unwrap,
@@ -9,22 +27,6 @@ use crate::{
             CoverCryptDem, CoverCryptX25519Aes256, EncryptedHeader, PublicKey, SymmetricKey,
             UserSecretKey,
         },
-    },
-};
-use abe_policy::{AccessPolicy, Policy};
-use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable},
-    symmetric_crypto::Dem,
-    KeyTrait,
-};
-use lazy_static::lazy_static;
-use std::{
-    collections::HashMap,
-    ffi::{CStr, CString},
-    os::raw::{c_char, c_int},
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        RwLock,
     },
 };
 
@@ -52,9 +54,9 @@ pub struct EncryptionCache {
 /// the public key on the Rust side on every encryption which is costly.
 ///
 /// This method is to be used in conjunction with
-///     h_aes_encrypt_header_using_cache
+///     `h_aes_encrypt_header_using_cache`
 ///
-/// WARN: h_aes_destroy_encrypt_cache() should be called
+/// WARN: `h_aes_destroy_encrypt_cache`() should be called
 /// to reclaim the memory of the cache when done
 /// # Safety
 pub unsafe extern "C" fn h_aes_create_encryption_cache(
@@ -78,7 +80,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     let policy: Policy = match serde_json::from_str(&policy) {
         Ok(p) => p,
         Err(e) => {
-            ffi_bail!(format!("Hybrid Cipher: invalid Policy: {:?}", e));
+            ffi_bail!(format!("Hybrid Cipher: invalid Policy: {e:?}"));
         }
     };
 
@@ -87,7 +89,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     let pk = match PublicKey::try_from_bytes(pk_bytes) {
         Ok(key) => key,
         Err(e) => {
-            ffi_bail!(format!("Hybrid Cipher: invalid public key: {:?}", e));
+            ffi_bail!(format!("Hybrid Cipher: invalid public key: {e:?}"));
         }
     };
 
@@ -103,7 +105,7 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
 
 #[no_mangle]
 /// The function should be called to reclaim memory
-/// of the cache created using h_aes_create_encrypt_cache()
+/// of the cache created using `h_aes_create_encrypt_cache`()
 /// # Safety
 pub unsafe extern "C" fn h_aes_destroy_encryption_cache(cache_handle: c_int) -> c_int {
     let mut map = ENCRYPTION_CACHE_MAP
@@ -379,9 +381,9 @@ pub struct DecryptionCache {
 /// the user key on the Rust side on every decryption which is costly.
 ///
 /// This method is to be used in conjunction with
-///     h_aes_decrypt_header_using_cache()
+///     `h_aes_decrypt_header_using_cache`()
 ///
-/// WARN: h_aes_destroy_decryption_cache() should be called
+/// WARN: `h_aes_destroy_decryption_cache`() should be called
 /// to reclaim the memory of the cache when done
 /// # Safety
 pub unsafe extern "C" fn h_aes_create_decryption_cache(
@@ -418,7 +420,7 @@ pub unsafe extern "C" fn h_aes_create_decryption_cache(
 
 #[no_mangle]
 /// The function should be called to reclaim memory
-/// of the cache created using h_aes_create_decryption_cache()
+/// of the cache created using `h_aes_create_decryption_cache`()
 /// # Safety
 pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> c_int {
     let mut map = DECRYPTION_CACHE_MAP
@@ -689,7 +691,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
     let plaintext =
         std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
 
-    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
+    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key));
     let ciphertext =
         ffi_unwrap!(CoverCryptX25519Aes256::default().encrypt(&symmetric_key, &plaintext, ad,));
 
@@ -711,8 +713,8 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_block(
-    cleartext_ptr: *mut c_char,
-    cleartext_len: *mut c_int,
+    plaintext_ptr: *mut c_char,
+    plaintext_len: *mut c_int,
     symmetric_key_ptr: *const c_char,
     symmetric_key_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -721,11 +723,11 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
     encrypted_bytes_len: c_int,
 ) -> c_int {
     ffi_not_null!(
-        cleartext_ptr,
-        "The clear text bytes pointer should point to pre-allocated memory"
+        plaintext_ptr,
+        "The plaintext bytes pointer should point to pre-allocated memory"
     );
-    if *cleartext_len == 0 {
-        ffi_bail!("The clear text bytes buffer should have a size greater than zero");
+    if *plaintext_len == 0 {
+        ffi_bail!("The plaintext bytes buffer should have a size greater than zero");
     }
 
     // Symmetric Key
@@ -748,7 +750,7 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
         std::slice::from_raw_parts(encrypted_bytes_ptr.cast(), encrypted_bytes_len as usize)
             .to_vec();
 
-    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key.to_vec()));
+    let symmetric_key = ffi_unwrap!(SymmetricKey::try_from_bytes(&symmetric_key));
 
     //
     // Associated Data
@@ -770,19 +772,19 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
 
     //
     // Decrypt block
-    let cleartext =
+    let plaintext =
         ffi_unwrap!(CoverCryptX25519Aes256::default().decrypt(&symmetric_key, &ciphertext, ad,));
 
-    let allocated = *cleartext_len;
-    *cleartext_len = cleartext.len() as c_int;
-    if allocated < *cleartext_len {
+    let allocated = *plaintext_len;
+    *plaintext_len = plaintext.len() as c_int;
+    if allocated < *plaintext_len {
         ffi_bail!(
-            "The pre-allocated clear text buffer is too small; need {} bytes",
-            *cleartext_len
+            "The pre-allocated plaintext buffer is too small; need {} bytes",
+            *plaintext_len
         );
     }
-    std::slice::from_raw_parts_mut(cleartext_ptr.cast(), cleartext.len())
-        .copy_from_slice(&cleartext);
+    std::slice::from_raw_parts_mut(plaintext_ptr.cast(), plaintext.len())
+        .copy_from_slice(&plaintext);
 
     0
 }
@@ -878,7 +880,6 @@ pub unsafe extern "C" fn h_aes_encrypt(
         additional_data,
         authentication_data
     ));
-    let encrypted_header_bytes = ffi_unwrap!(encrypted_header.try_to_bytes());
 
     // encrypt the plaintext
     let ciphertext = ffi_unwrap!(CoverCryptX25519Aes256::default().encrypt(
@@ -887,21 +888,20 @@ pub unsafe extern "C" fn h_aes_encrypt(
         authentication_data,
     ));
 
-    let allocated = *ciphertext_len as usize;
-    let actual_len = ciphertext.len() + encrypted_header_bytes.len();
-    if allocated < actual_len {
+    let mut ser = Serializer::with_capacity(encrypted_header.length() + ciphertext.len());
+    ffi_unwrap!(ser.write(&encrypted_header));
+    ffi_unwrap!(ser.write_array(&ciphertext));
+    let bytes = ser.finalize();
+
+    if (ciphertext_len as usize) < bytes.len() {
         ffi_bail!(
             "The pre-allocated encrypted bytes buffer is too small; need {} bytes",
-            actual_len
+            bytes.len()
         );
     }
 
-    let mut bytes = Vec::<u8>::with_capacity(actual_len as usize);
-    bytes.extend_from_slice(&encrypted_header_bytes);
-    bytes.extend_from_slice(&ciphertext);
-
-    *ciphertext_len = actual_len as i32;
-    std::slice::from_raw_parts_mut(ciphertext_ptr.cast(), actual_len).copy_from_slice(&bytes);
+    *ciphertext_len = bytes.len() as i32;
+    std::slice::from_raw_parts_mut(ciphertext_ptr.cast(), bytes.len()).copy_from_slice(&bytes);
 
     0
 }
@@ -924,10 +924,10 @@ pub unsafe extern "C" fn h_aes_decrypt(
 ) -> c_int {
     ffi_not_null!(
         plaintext_ptr,
-        "The clear text bytes pointer should point to pre-allocated memory"
+        "The plaintext bytes pointer should point to pre-allocated memory"
     );
     if *plaintext_len == 0 {
-        ffi_bail!("The clear text bytes buffer should have a size greater than zero");
+        ffi_bail!("The plaintext bytes buffer should have a size greater than zero");
     }
     ffi_not_null!(
         ciphertext_ptr,
@@ -949,7 +949,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
     let mut de = Deserializer::new(ciphertext_bytes);
     // this will read the exact header size
-    let encrypted_header = ffi_unwrap!(EncryptedHeader::read(&mut de));
+    let encrypted_header = ffi_unwrap!(de.read::<EncryptedHeader>());
     // the rest is the symmetric ciphertext
     let encrypted_content = de.finalize();
 
@@ -984,7 +984,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
     *plaintext_len = plaintext.len() as c_int;
     if allocated < *plaintext_len {
         ffi_bail!(
-            "The pre-allocated clear text buffer is too small; need {} bytes",
+            "The pre-allocated plaintext buffer is too small; need {} bytes",
             *plaintext_len
         );
     }
@@ -1014,14 +1014,14 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
 #[no_mangle]
 /// Convert a boolean access policy expression into a
-/// json_expression that can be used to create a key using
+/// json expression that can be used to create a key using
 /// the KMIP interface
 ///
 /// Returns
 ///  - 0 if success
 ///  - 1 in case of unrecoverable error
-///  - n if the return buffer is too small and should be of size n
-///     (including the NULL byte)
+///  - n if the return buffer is too small and should be of size n (including
+///    the NULL byte)
 ///
 /// `json_expr_len` contains the length of the JSON string on return
 ///  (including the terminating NULL byte)
@@ -1054,9 +1054,11 @@ pub unsafe extern "C" fn h_access_policy_expression_to_json(
     // the CString as bytes
     let bytes = cs.as_bytes_with_nul();
     if bytes.len() > *json_expr_len as usize {
-        set_last_error(FfiError::Generic(
-            format!("access policy to JSON: the pre-allocated buffer is too small. It should be {} bytes long",bytes.len()),
-        ));
+        set_last_error(FfiError::Generic(format!(
+            "access policy to JSON: the pre-allocated buffer is too small. It should be {} bytes \
+             long",
+            bytes.len()
+        )));
         return bytes.len() as i32;
     }
 

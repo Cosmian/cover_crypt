@@ -3,7 +3,13 @@ use super::{
         h_generate_master_keys, h_generate_user_secret_key, h_refresh_user_secret_key,
         h_update_master_keys,
     },
-    hybrid_cc_aes::*,
+    hybrid_cc_aes::{
+        h_access_policy_expression_to_json, h_aes_create_decryption_cache,
+        h_aes_create_encryption_cache, h_aes_decrypt, h_aes_decrypt_header,
+        h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
+        h_aes_destroy_encryption_cache, h_aes_encrypt, h_aes_encrypt_header,
+        h_aes_encrypt_header_using_cache,
+    },
 };
 use crate::{
     api::CoverCrypt,
@@ -684,15 +690,18 @@ fn test_ffi_rotate_attribute() -> Result<(), Error> {
         // update the user key, preserving the accesses to the rotated partitions
         let updated_usk =
             refresh_user_secret_key(&usk, &access_policy, &updated_msk, &updated_policy, true)?;
-        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG
+        // Protected)
         assert_eq!(updated_usk.x.len(), original_usk.x.len() + 2);
         for x_i in &original_usk.x {
             assert!(updated_usk.x.contains(x_i));
         }
-        // update the user key, but do NOT preserve the accesses to the rotated partitions
+        // update the user key, but do NOT preserve the accesses to the rotated
+        // partitions
         let updated_usk =
             refresh_user_secret_key(&usk, &access_policy, &updated_msk, &updated_policy, false)?;
-        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG Protected)
+        // 2 partitions accessed by the user were rotated (MKG Confidential and MKG
+        // Protected)
         assert_eq!(updated_usk.x.len(), original_usk.x.len());
         for x_i in &original_usk.x {
             assert!(!updated_usk.x.contains(x_i));

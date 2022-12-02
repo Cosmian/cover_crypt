@@ -64,6 +64,166 @@ fn generate_encrypted_header(
     ctx
 }
 
+fn bench_serialization(c: &mut Criterion) {
+    let policy = policy().expect("cannot generate policy");
+
+    let cover_crypt = CoverCryptX25519Aes256::default();
+    let (msk, mpk) = cover_crypt
+        .generate_master_keys(&policy)
+        .expect("cannot generate master keys");
+
+    let user_access_policy =
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+            .unwrap();
+    let user_decryption_key = cover_crypt
+        .generate_user_secret_key(&msk, &user_access_policy, &policy)
+        .expect("cannot generate user private key");
+
+    // access policy with 1 partition
+    let access_policy_1 =
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+            .unwrap();
+
+    // access policy with 2 partition
+    #[cfg(feature = "full_bench")]
+    let access_policy_2 = AccessPolicy::from_boolean_expression(
+        "(Department::FIN || Department::HR) && Security Level::Protected",
+    )
+    .unwrap();
+
+    // access policy with 3 partition
+    #[cfg(feature = "full_bench")]
+    let access_policy_3 = AccessPolicy::from_boolean_expression(
+        "(Department::FIN || Department::HR || Department::MKG) && Security Level::Protected",
+    )
+    .unwrap();
+
+    // access policy with 4 partition
+    #[cfg(feature = "full_bench")]
+    let access_policy_4 = AccessPolicy::from_boolean_expression(
+        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected",
+    )
+    .unwrap();
+
+    // access policy with 5 partition
+    #[cfg(feature = "full_bench")]
+    let access_policy_5 = AccessPolicy::from_boolean_expression(
+        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected) || (Department::HR && Security Level::Top Secret)",
+    )
+    .unwrap();
+
+    // get ready ciphertexts for size benchmark
+    let (_, encrypted_header_1) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_1, None, None)
+            .expect("cannot encrypt header 1");
+
+    #[cfg(feature = "full_bench")]
+    let (_, encrypted_header_2) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_2, None, None)
+            .expect("cannot encrypt header 2");
+
+    #[cfg(feature = "full_bench")]
+    let (_, encrypted_header_3) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_3, None, None)
+            .expect("cannot encrypt header 3");
+
+    #[cfg(feature = "full_bench")]
+    let (_, encrypted_header_4) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_4, None, None)
+            .expect("cannot encrypt header 4");
+
+    #[cfg(feature = "full_bench")]
+    let (_, encrypted_header_5) =
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_5, None, None)
+            .expect("cannot encrypt header 5");
+
+    #[cfg(not(feature = "full_bench"))]
+    print!("bench header encryption size: ");
+    #[cfg(not(feature = "full_bench"))]
+    println!(
+        "1 partition {} bytes\n",
+        encrypted_header_1.try_to_bytes().unwrap().len(),
+    );
+    #[cfg(feature = "full_bench")]
+    println!("bench header encryption size:");
+    #[cfg(feature = "full_bench")]
+    println!(
+        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} \
+         bytes\n5 partitions: {} bytes\n",
+        encrypted_header_1.try_to_bytes().unwrap().len(),
+        encrypted_header_2.try_to_bytes().unwrap().len(),
+        encrypted_header_3.try_to_bytes().unwrap().len(),
+        encrypted_header_4.try_to_bytes().unwrap().len(),
+        encrypted_header_5.try_to_bytes().unwrap().len(),
+    );
+
+    let mut group = c.benchmark_group("key serialization");
+
+    group.bench_function("MSK", |b| {
+        b.iter(|| msk.try_to_bytes().expect("cannot serialize msk"))
+    });
+
+    group.bench_function("MPK", |b| {
+        b.iter(|| mpk.try_to_bytes().expect("cannot serialize mpk"))
+    });
+
+    group.bench_function("USK", |b| {
+        b.iter(|| {
+            user_decryption_key
+                .try_to_bytes()
+                .expect("cannot serialize usk")
+        })
+    });
+
+    // removes borrow checker warning about several mutable reference on `c`
+    drop(group);
+
+    let mut group = c.benchmark_group("header serialization");
+
+    group.bench_function("1 partition", |b| {
+        b.iter(|| {
+            encrypted_header_1
+                .try_to_bytes()
+                .expect("cannot serialize header 1")
+        })
+    });
+
+    #[cfg(feature = "full_bench")]
+    group.bench_function("2 partitions", |b| {
+        b.iter(|| {
+            encrypted_header_2
+                .try_to_bytes()
+                .expect("cannot serialize header 2")
+        })
+    });
+    #[cfg(feature = "full_bench")]
+    group.bench_function("3 partitions", |b| {
+        b.iter(|| {
+            encrypted_header_3
+                .try_to_bytes()
+                .expect("cannot serialize header 3")
+        })
+    });
+    #[cfg(feature = "full_bench")]
+    group.bench_function("4 partitions", |b| {
+        b.iter(|| {
+            encrypted_header_4
+                .try_to_bytes()
+                .expect("cannot serialize header 4")
+        })
+    });
+    #[cfg(feature = "full_bench")]
+    group.bench_function("5 partitions", |b| {
+        b.iter(|| {
+            encrypted_header_5
+                .try_to_bytes()
+                .expect("cannot serialize header 5")
+        })
+    });
+}
+
 fn bench_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
 
@@ -72,59 +232,79 @@ fn bench_header_encryption(c: &mut Criterion) {
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
 
-    // Access policy with 1 partition
+    // access policy with 1 partition
     let access_policy_1 =
         AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
             .unwrap();
 
-    // Access policy with 2 partition
+    // access policy with 2 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_2 = AccessPolicy::from_boolean_expression(
         "(Department::FIN || Department::HR) && Security Level::Protected",
     )
     .unwrap();
 
-    // Access policy with 3 partition
+    // access policy with 3 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_3 = AccessPolicy::from_boolean_expression(
         "(Department::FIN || Department::HR || Department::MKG) && Security Level::Protected",
     )
     .unwrap();
 
-    // Access policy with 4 partition
+    // access policy with 4 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_4 = AccessPolicy::from_boolean_expression(
-        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected",
+        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected",
     )
     .unwrap();
 
-    // Access policy with 5 partition
+    // access policy with 5 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_5 = AccessPolicy::from_boolean_expression(
-        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret)",
+        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected) || (Department::HR && Security Level::Top Secret)",
     )
     .unwrap();
 
-    // Get ready ciphertexts for size benchmark
+    // get ready ciphertexts for size benchmark
     let (_, encrypted_header_1) =
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_1, None, None)
             .expect("cannot encrypt header 1");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_2) =
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_2, None, None)
             .expect("cannot encrypt header 2");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_3) =
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_3, None, None)
             .expect("cannot encrypt header 3");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_4) =
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_4, None, None)
             .expect("cannot encrypt header 4");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_5) =
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_5, None, None)
             .expect("cannot encrypt header 5");
 
-    println!("Bench header encryption size:");
+    #[cfg(not(feature = "full_bench"))]
+    print!("bench header encryption size: ");
+    #[cfg(not(feature = "full_bench"))]
     println!(
-        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} bytes\n5 partitions: {} bytes\n",
+        "1 partition {} bytes\n",
+        encrypted_header_1.try_to_bytes().unwrap().len(),
+    );
+    #[cfg(feature = "full_bench")]
+    println!("bench header encryption size:");
+    #[cfg(feature = "full_bench")]
+    println!(
+        "1 partition: {} bytes\n2 partitions: {} bytes\n3 partitions: {} bytes\n4 partitions: {} \
+         bytes\n5 partitions: {} bytes\n",
         encrypted_header_1.try_to_bytes().unwrap().len(),
         encrypted_header_2.try_to_bytes().unwrap().len(),
         encrypted_header_3.try_to_bytes().unwrap().len(),
@@ -132,31 +312,35 @@ fn bench_header_encryption(c: &mut Criterion) {
         encrypted_header_5.try_to_bytes().unwrap().len(),
     );
 
-    let mut group = c.benchmark_group("Header encryption");
+    let mut group = c.benchmark_group("header encryption");
     group.bench_function("1 partition", |b| {
         b.iter(|| {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_1, None, None)
                 .expect("cannot encrypt header 1")
         })
     });
+    #[cfg(feature = "full_bench")]
     group.bench_function("2 partitions", |b| {
         b.iter(|| {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_2, None, None)
                 .expect("cannot encrypt header 2")
         })
     });
+    #[cfg(feature = "full_bench")]
     group.bench_function("3 partitions", |b| {
         b.iter(|| {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_3, None, None)
                 .expect("cannot encrypt header 3")
         })
     });
+    #[cfg(feature = "full_bench")]
     group.bench_function("4 partitions", |b| {
         b.iter(|| {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_4, None, None)
                 .expect("cannot encrypt header 4")
         })
     });
+    #[cfg(feature = "full_bench")]
     group.bench_function("5 partitions", |b| {
         b.iter(|| {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy_5, None, None)
@@ -164,9 +348,12 @@ fn bench_header_encryption(c: &mut Criterion) {
         })
     });
 
+    #[cfg(feature = "full_bench")]
     let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    #[cfg(feature = "full_bench")]
     let authenticated_data = vec![10, 11, 12, 13, 14];
 
+    #[cfg(feature = "full_bench")]
     group.bench_function("speed with additional data", |b| {
         b.iter(|| {
             EncryptedHeader::generate(
@@ -342,26 +529,32 @@ fn bench_header_decryption(c: &mut Criterion) {
             .unwrap();
 
     // Access policy with 2 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_2 = AccessPolicy::from_boolean_expression(
         "(Department::FIN || Department::HR) && Security Level::Protected",
     )
     .unwrap();
 
     // Access policy with 3 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_3 = AccessPolicy::from_boolean_expression(
         "(Department::FIN || Department::HR || Department::MKG) && Security Level::Protected",
     )
     .unwrap();
 
     // Access policy with 4 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_4 = AccessPolicy::from_boolean_expression(
-        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected",
+        "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected",
     )
     .unwrap();
 
     // Access policy with 5 partition
+    #[cfg(feature = "full_bench")]
     let access_policy_5 = AccessPolicy::from_boolean_expression(
-        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret)",
+        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+         Level::Protected) || (Department::HR && Security Level::Top Secret)",
     )
     .unwrap();
 
@@ -376,6 +569,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     )
     .expect("cannot encrypt header 1");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_2) = EncryptedHeader::generate(
         &cover_crypt,
         &policy,
@@ -386,6 +580,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     )
     .expect("cannot encrypt header 2");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_3) = EncryptedHeader::generate(
         &cover_crypt,
         &policy,
@@ -396,6 +591,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     )
     .expect("cannot encrypt header 3");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_4) = EncryptedHeader::generate(
         &cover_crypt,
         &policy,
@@ -406,6 +602,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     )
     .expect("cannot encrypt header 4");
 
+    #[cfg(feature = "full_bench")]
     let (_, encrypted_header_5) = EncryptedHeader::generate(
         &cover_crypt,
         &policy,
@@ -415,6 +612,20 @@ fn bench_header_decryption(c: &mut Criterion) {
         Some(&authenticated_data),
     )
     .expect("cannot encrypt header 5");
+
+    #[cfg(feature = "full_bench")]
+    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+    #[cfg(feature = "full_bench")]
+    let (_, encrypted_header_with_metadata) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy_1,
+        Some(&additional_data),
+        Some(&authenticated_data),
+    )
+    .expect("cannot encrypt header with metadata");
 
     let user_access_policy =
         AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
@@ -434,6 +645,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                 .expect("cannot decrypt hybrid header")
         })
     });
+    #[cfg(feature = "full_bench")]
     c.bench_function("Header decryption/2 partition, 1 access", |b| {
         b.iter(|| {
             encrypted_header_2
@@ -445,6 +657,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                 .expect("cannot decrypt hybrid header")
         })
     });
+    #[cfg(feature = "full_bench")]
     c.bench_function("Header decryption/3 partition, 1 access", |b| {
         b.iter(|| {
             encrypted_header_3
@@ -456,6 +669,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                 .expect("cannot decrypt hybrid header")
         })
     });
+    #[cfg(feature = "full_bench")]
     c.bench_function("Header decryption/4 partition, 1 access", |b| {
         b.iter(|| {
             encrypted_header_4
@@ -467,6 +681,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                 .expect("cannot decrypt hybrid header")
         })
     });
+    #[cfg(feature = "full_bench")]
     c.bench_function("Header decryption/5 partition, 1 access", |b| {
         b.iter(|| {
             encrypted_header_5
@@ -478,9 +693,10 @@ fn bench_header_decryption(c: &mut Criterion) {
                 .expect("cannot decrypt hybrid header")
         })
     });
+    #[cfg(feature = "full_bench")]
     c.bench_function("Header decryption/1 partition, 1 access", |b| {
         b.iter(|| {
-            encrypted_header_1
+            encrypted_header_with_metadata
                 .decrypt(
                     &cover_crypt,
                     &user_decryption_key,
@@ -620,6 +836,12 @@ criterion_group!(
         bench_header_decryption
 );
 
+criterion_group!(
+    name = benches_serialization;
+    config = Criterion::default().sample_size(5000);
+    targets = bench_serialization
+);
+
 #[cfg(feature = "ffi")]
 criterion_group!(
     name = benches_ffi;
@@ -632,7 +854,7 @@ criterion_group!(
 );
 
 #[cfg(feature = "ffi")]
-criterion_main!(benches, benches_ffi);
+criterion_main!(benches, benches_serialization, benches_ffi);
 
 #[cfg(not(feature = "ffi"))]
-criterion_main!(benches);
+criterion_main!(benches, benches_serialization);

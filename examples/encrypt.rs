@@ -36,13 +36,13 @@ fn generate_new(
     println!(
         "usk = {}",
         hex::encode(
-            &cc.generate_user_secret_key(msk, &access_policy, policy)
+            cc.generate_user_secret_key(msk, &access_policy, policy)
                 .unwrap()
                 .try_to_bytes()
                 .unwrap()
         )
     );
-    println!("header = {}", hex::encode(&header.try_to_bytes().unwrap()));
+    println!("header = {}", hex::encode(header.try_to_bytes().unwrap()));
 }
 
 fn main() {

@@ -30,7 +30,7 @@ pub enum Error {
     #[error("could not decode number of attributes in encrypted message")]
     DecodingAttributeNumber,
     #[error(
-        "Unable to decrypt the header size. User decryption key has not the right policy to \
+        "Unable to decrypt the header. User decryption key has not the right policy to \
          decrypt this input."
     )]
     InsufficientAccessPolicy,
@@ -66,7 +66,7 @@ impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         match e {
             CryptoCoreError::SizeError { given, expected } => {
-                Self::InvalidSize(format!("expected: {}, given: {}", expected, given))
+                Self::InvalidSize(format!("expected: {expected}, given: {given}"))
             }
             CryptoCoreError::InvalidSize(e) => Self::InvalidSize(e),
             e => Self::CryptoError(e),
@@ -77,12 +77,19 @@ impl From<CryptoCoreError> for Error {
 #[cfg(feature = "ffi")]
 impl From<std::ffi::NulError> for Error {
     fn from(e: std::ffi::NulError) -> Self {
-        Self::Other(format!("FFI error: {}", e))
+        Self::Other(format!("FFI error: {e}"))
     }
 }
 
 impl From<std::str::Utf8Error> for Error {
     fn from(e: std::str::Utf8Error) -> Self {
-        Self::Other(format!("UTF8 error: {}", e))
+        Self::Other(format!("UTF8 error: {e}"))
+    }
+}
+
+#[cfg(feature = "python")]
+impl From<Error> for pyo3::PyErr {
+    fn from(e: Error) -> Self {
+        pyo3::exceptions::PyException::new_err(format!("{e}"))
     }
 }

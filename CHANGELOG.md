@@ -4,14 +4,35 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [8.0.0] - 2022-12-01
+
+### Added
+
+- non regression test vectors with different encryption policies
+- PyO3 functions signature is exported via a python interface file
+
+### Changed
+
+- improve serialization
+- new python interfaces based on objects rather than functions covering a broader range of functionalities
+
+---
+
+---
+
 ## [7.1.1] - 2022-11-22
 
 ### Added
 
 - add FFI call to convert a policy expression to JSON
 
+### Changed
+
+- `webassembly_hybrid_decrypt` now returns a binary format containing the metadata and the decrypted value (leb128 length + metadata + decrypted value)
+
 ---
 
+---
 
 ## [7.1.0] - 2022-11-15
 
@@ -21,12 +42,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+---
+
 ## [7.0.2] - 2022-11-14
 
 ### Fixed
 
 - `build.sh` only build for features FFI for GLIBC_2.17
 - no encryption in header if additional data is empty
+
+---
 
 ---
 

@@ -1,4 +1,4 @@
-//! This crate implements the CoverCrypt cryptographic scheme which allows to:
+//! This crate implements the `CoverCrypt` cryptographic scheme which allows to:
 //! - encrypt messages for a given set of policy attributes;
 //! - decrypt messages if the decryptor has been assigned one of these policy
 //! attributes;
@@ -7,9 +7,9 @@
 //! Old users can be granted decryption right for new ciphertexts after a key
 //! refresh.
 //!
-//! The `api` module exposes the generic definition of CoverCrypt.
+//! The `api` module exposes the generic definition of `CoverCrypt`.
 //!
-//! The `interface::statics` module exposes instantiates CoverCrypt using
+//! The `interface::statics` module exposes instantiates `CoverCrypt` using
 //! a DEM scheme build on top of AES256-GCM and a asymmetric key pair built on
 //! top of Curve25519.
 //!
@@ -117,7 +117,6 @@ pub mod error;
 pub mod interfaces;
 pub mod partitions;
 
-pub use api::CoverCrypt;
-pub use api::{ClearTextHeader, EncryptedHeader};
+pub use api::{CleartextHeader, CoverCrypt, EncryptedHeader};
 pub use error::Error;
 pub use interfaces::statics::CoverCryptX25519Aes256 as CoverCryptStruct;

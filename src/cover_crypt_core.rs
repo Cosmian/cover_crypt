@@ -1,4 +1,4 @@
-//! Implements the cryptographic primitives of CoverCrypt, based on
+//! Implements the cryptographic primitives of `CoverCrypt`, based on
 //! `../bib/CoverCrypt.pdf`.
 
 // Allows using the paper notations
@@ -7,7 +7,7 @@
 use crate::{error::Error, partitions::Partition};
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
     reexport::rand_core::{CryptoRng, RngCore},
     symmetric_crypto::SymKey,
     KeyTrait,
@@ -48,7 +48,7 @@ macro_rules! eakem_hash {
 /// Additional information to generate symmetric key using the KDF.
 const KEY_GEN_INFO: &[u8] = b"key generation info";
 
-/// CoverCrypt master secret key.
+/// `CoverCrypt` master secret key.
 ///
 /// It is composed of `u`, `v` and `s`, three randomly chosen scalars,
 /// and the scalars `x_i` associated to all subsets `S_i`.
@@ -67,6 +67,17 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
     type Error = Error;
+
+    #[inline]
+    fn length(&self) -> usize {
+        3 * PRIVATE_KEY_LENGTH
+                + to_leb128_len(self.x.len())
+                // compute the length of all the partitions
+                + self
+                    .x.keys().map(|partition| to_leb128_len(partition.len()) + partition.len())
+                    .sum::<usize>()
+                + self.x.len() * PRIVATE_KEY_LENGTH
+    }
 
     /// Serialize the master secret key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -105,6 +116,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Zeroize
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn zeroize(&mut self) {
         self.u.zeroize();
         self.v.zeroize();
@@ -118,12 +130,13 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> 
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Drop
     for MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn drop(&mut self) {
         self.zeroize();
     }
 }
 
-/// CoverCrypt user secret key.
+/// `CoverCrypt` user secret key.
 ///
 /// It is composed of:
 ///
@@ -149,7 +162,12 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 {
     type Error = Error;
 
-    /// Serialize the user secret key.
+    #[inline]
+    fn length(&self) -> usize {
+        2 * PRIVATE_KEY_LENGTH + to_leb128_len(self.x.len()) + self.x.len() * PRIVATE_KEY_LENGTH
+    }
+
+    /// Serializes the user secret key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
@@ -160,7 +178,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
         Ok(n)
     }
 
-    /// Deserialize the user secret key.
+    /// Deserializes the user secret key.
     ///
     /// - `bytes`   : bytes from which to read the user secret key
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -179,6 +197,7 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Zeroize
     for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn zeroize(&mut self) {
         self.a.zeroize();
         self.b.zeroize();
@@ -189,12 +208,13 @@ impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> +
 impl<const PRIVATE_KEY_LENGTH: usize, PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash> Drop
     for UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>
 {
+    #[inline]
     fn drop(&mut self) {
         self.zeroize();
     }
 }
 
-/// CoverCrypt public key.
+/// `CoverCrypt` public key.
 ///
 /// It is composed of:
 ///
@@ -215,7 +235,18 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
 {
     type Error = Error;
 
-    /// Serialize the public key.
+    #[inline]
+    fn length(&self) -> usize {
+        2 * PUBLIC_KEY_LENGTH
+            + to_leb128_len(self.H.len())
+            // compute the length of all the partitions
+            + self
+                .H.keys().map(|partition| to_leb128_len(partition.len()) + partition.len())
+                .sum::<usize>()
+            + self.H.len() * (PUBLIC_KEY_LENGTH)
+    }
+
+    /// Serializes the public key.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.U.to_bytes())?;
         n += ser.write_array(&self.V.to_bytes())?;
@@ -227,7 +258,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
         Ok(n)
     }
 
-    /// Deserialize the public key.
+    /// Deserializes the public key.
     ///
     /// - `bytes`   : bytes from which to read the public key
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -244,7 +275,7 @@ impl<const PUBLIC_KEY_LENGTH: usize, PK: KeyTrait<PUBLIC_KEY_LENGTH>> Serializab
     }
 }
 
-/// CoverCrypt encapsulation.
+/// `CoverCrypt` encapsulation.
 ///
 /// It is composed of:
 ///
@@ -279,6 +310,12 @@ impl<
 {
     type Error = Error;
 
+    fn length(&self) -> usize {
+        2 * PUBLIC_KEY_LENGTH
+            + to_leb128_len(self.E.len())
+            + self.E.len() * (TAG_LENGTH + SYM_KEY_LENGTH)
+    }
+
     /// Serializes the encapsulation.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.C.to_bytes())?;
@@ -308,7 +345,7 @@ impl<
     }
 }
 
-/// Generates the master secret key and master public key of the CoverCrypt
+/// Generates the master secret key and master public key of the `CoverCrypt`
 /// scheme.
 ///
 /// # Paper
@@ -513,11 +550,12 @@ where
 ///
 /// # Paper
 ///
-/// Dec(`SK_𝑗`, `(𝐶, 𝐷, (𝐸_𝑖 = 𝐾_𝑖 ⊕ 𝐾)_{𝑖∈𝐵})`): it takes as input a user’s
+/// Dec(`SK_𝑗`, `(𝐶, 𝐷, (𝐸_𝑖 = 𝐾_𝑖 ⊕ 𝐾)_{𝑖∈𝐵})`): it takes as input a user's
 /// secret key and a ciphertext, it outputs the decrypted key `𝐾`.
 ///
 /// - the user first chooses an index `𝑖 ∈ 𝐵 ∩ 𝐴_𝑗` , in both its set of rights
-/// `𝐴_𝑗` and the rights `𝐵` of the ciphertext, and then uses `𝑥_𝑖 = sk_𝑖 ∈ SK_𝑗`;
+/// `𝐴_𝑗` and the rights `𝐵` of the ciphertext, and then uses `𝑥_𝑖 = sk_𝑖 ∈
+/// SK_𝑗`;
 ///
 /// - it can compute `𝐾_𝑖 = (𝐶 ^ 𝑎_𝑗 𝐷 ^ 𝑏_𝑗 ) ^ 𝑥_𝑖` , and extract
 /// `𝐾 = 𝐸_𝑖 ⊕ ℋ (𝐾_𝑖)`.
@@ -579,7 +617,7 @@ where
     Err(Error::InsufficientAccessPolicy)
 }
 
-/// Update the master secret key and master public key of the CoverCrypt
+/// Update the master secret key and master public key of the `CoverCrypt`
 /// scheme with the given list of partitions.
 ///
 /// If a partition exists in the keys but not in the list, it will be removed
@@ -618,17 +656,17 @@ where
         if !msk.x.contains_key(partition) || !mpk.H.contains_key(partition) {
             let x_i = KeyPair::PrivateKey::new(rng);
             let H_i = &S * &x_i;
-            msk.x.insert(partition.to_owned(), x_i);
-            mpk.H.insert(partition.to_owned(), H_i);
+            msk.x.insert(partition.clone(), x_i);
+            mpk.H.insert(partition.clone(), H_i);
         }
     }
     // remove keys for partitions not in the list
-    for (partition, _) in msk.x.clone().iter() {
+    for partition in msk.x.clone().keys() {
         if !partitions_set.contains(partition) {
             msk.x.remove_entry(partition);
         }
     }
-    for (partition, _) in mpk.H.clone().iter() {
+    for partition in mpk.H.clone().keys() {
         if !partitions_set.contains(partition) {
             mpk.H.remove_entry(partition);
         }
@@ -639,10 +677,12 @@ where
 /// Refresh a user key from the master secret key and a list of partitions.
 /// The partitions MUST exist in the master secret key.
 ///
-/// If a partition exists in the user key but is not in the list, it will be removed from the user key.
+/// If a partition exists in the user key but is not in the list, it will be
+/// removed from the user key.
 ///
-/// If a partition exists in the list, but not in the user key, it will be "added" to the user key,
-/// by copying the proper partition key from the master secret key
+/// If a partition exists in the list, but not in the user key, it will be
+/// "added" to the user key, by copying the proper partition key from the master
+/// secret key
 pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
     msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
     usk: &mut UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
@@ -682,21 +722,6 @@ mod tests {
     const TAG_LENGTH: usize = 32;
 
     #[test]
-    fn test_partitions() -> Result<(), Error> {
-        let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
-        let partition = Partition::from_attributes(values.clone())?;
-        let bytes = partition.0;
-        let mut readable = &bytes[..];
-        // values are sorted n Partition
-        values.sort_unstable();
-        for v in values {
-            let val = leb128::read::unsigned(&mut readable).expect("Should read number") as u32;
-            assert_eq!(v, val);
-        }
-        Ok(())
-    }
-
-    #[test]
     fn test_serialization() -> Result<(), Error> {
         let admin_partition = Partition(b"admin".to_vec());
         let dev_partition = Partition(b"dev".to_vec());
@@ -715,9 +740,13 @@ mod tests {
             CsRng,
             X25519KeyPair,
         >(&mut rng, &partitions_set);
-        let msk_ = MasterSecretKey::try_from_bytes(&msk.try_to_bytes()?)?;
+        let bytes = msk.try_to_bytes()?;
+        assert_eq!(bytes.len(), msk.length(), "Wrong master secret key length");
+        let msk_ = MasterSecretKey::try_from_bytes(&bytes)?;
         assert_eq!(msk, msk_, "Master secret key comparisons failed");
-        let mpk_ = PublicKey::try_from_bytes(&mpk.try_to_bytes()?)?;
+        let bytes = mpk.try_to_bytes()?;
+        assert_eq!(bytes.len(), mpk.length(), "Wrong master public key length");
+        let mpk_ = PublicKey::try_from_bytes(&bytes)?;
         assert_eq!(mpk, mpk_, "Master public key comparison failed");
         let usk = join::<
             { X25519KeyPair::PUBLIC_KEY_LENGTH },
@@ -725,7 +754,9 @@ mod tests {
             CsRng,
             X25519KeyPair,
         >(&mut rng, &msk, &user_set)?;
-        let usk_ = UserSecretKey::try_from_bytes(&usk.try_to_bytes()?)?;
+        let bytes = usk.try_to_bytes()?;
+        assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
+        let usk_ = UserSecretKey::try_from_bytes(&bytes)?;
         assert_eq!(usk, usk_, "User secret key comparison failed");
         let sym_key = Key::<SYM_KEY_LENGTH>::new(&mut rng);
         let encapsulation = encaps::<
@@ -737,7 +768,13 @@ mod tests {
             <Aes256GcmCrypto as Dem<{ Aes256GcmCrypto::KEY_LENGTH }>>::Key,
             X25519KeyPair,
         >(&mut rng, &mpk, &target_set, &sym_key)?;
-        let encapsulation_ = Encapsulation::try_from_bytes(&encapsulation.try_to_bytes()?)?;
+        let bytes = encapsulation.try_to_bytes()?;
+        assert_eq!(
+            bytes.len(),
+            encapsulation.length(),
+            "Wrong encapsulation size"
+        );
+        let encapsulation_ = Encapsulation::try_from_bytes(&bytes)?;
         assert_eq!(
             encapsulation, encapsulation_,
             "Encapsulation comparison failed"

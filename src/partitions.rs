@@ -27,14 +27,15 @@ impl Partition {
                     .to_string(),
             ));
         }
-        // the sort operation allows to get the same hash for :
+        // the sort operation allows to get the same `Partition` for :
         // `Department::HR || Level::Secret`
         // and
         // `Level::Secret || Department::HR`
         attribute_values.sort_unstable();
-        let mut ser = Serializer::new();
+        // the actual size in bytes will be at least equal to the length
+        let mut ser = Serializer::with_capacity(attribute_values.len());
         for value in attribute_values {
-            ser.write_u64(value as u64)?;
+            ser.write_u64(u64::from(value))?;
         }
         Ok(Self(ser.finalize()))
     }
@@ -75,14 +76,14 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
     // We also collect a `Vec` of axes which is used later
     let mut axes = Vec::with_capacity(policy.axes.len());
     for (axis, (attribute_names, _hierarchical)) in &policy.axes {
-        axes.push(axis.to_owned());
+        axes.push(axis.clone());
         let mut values = vec![];
         for name in attribute_names {
             let attribute = Attribute::new(axis, name);
             let av = policy.attribute_values(&attribute)?;
             values.extend(av);
         }
-        map.insert(axis.to_owned(), values);
+        map.insert(axis.clone(), values);
     }
 
     // perform all the combinations to get all the partitions
@@ -95,10 +96,10 @@ pub(crate) fn all_partitions(policy: &Policy) -> Result<HashSet<Partition>, Erro
 }
 
 /// Convert a list of attributes used to encrypt ciphertexts into the
-/// corresponding list of CoverCrypt partitions; this only gets the current
+/// corresponding list of `CoverCrypt` partitions; this only gets the current
 /// partitions, not the old ones
 ///
-/// - `attributes`  : liste of attributes
+/// - `attributes`  : list of attributes
 /// - `policy`      : security policy
 pub(crate) fn to_partitions(
     attributes: &[Attribute],
@@ -109,7 +110,7 @@ pub(crate) fn to_partitions(
     let mut map = HashMap::<String, Vec<u32>>::new();
     for attribute in attributes.iter() {
         let value = policy.attribute_current_value(attribute)?;
-        let entry = map.entry(attribute.axis.to_owned()).or_default();
+        let entry = map.entry(attribute.axis.clone()).or_default();
         entry.push(value);
     }
 
@@ -119,14 +120,14 @@ pub(crate) fn to_partitions(
     // We also collect a `Vec` of axes which is used later
     let mut axes = Vec::with_capacity(policy.axes.len());
     for (axis, (attribute_names, _hierarchical)) in &policy.axes {
-        axes.push(axis.to_owned());
+        axes.push(axis.clone());
         if !map.contains_key(axis) {
             // gather all the latest value for that axis
             let values = attribute_names
                 .iter()
                 .map(|name| policy.attribute_current_value(&Attribute::new(axis, name)))
                 .collect::<Result<_, _>>()?;
-            map.insert(axis.to_owned(), values);
+            map.insert(axis.clone(), values);
         }
     }
 
@@ -140,7 +141,8 @@ pub(crate) fn to_partitions(
 
 /// Generate all attribute values combinations from the given axes.
 ///
-/// - `current_axis`    : axis from which to start to combine values with other axes
+/// - `current_axis`    : axis from which to start to combine values with other
+///   axes
 /// - `axes`            : list of axes
 /// - `map`             : map axes with their associated attribute values
 fn combine_attribute_values(
@@ -179,15 +181,15 @@ fn combine_attribute_values(
     }
 }
 
-/// Converts an access policy into the corresponding list of CoverCrypt
+/// Converts an access policy into the corresponding list of `CoverCrypt`
 /// current partitions.
 pub fn access_policy_to_current_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
-    follow_hierachical_axes: bool,
+    follow_hierarchical_axes: bool,
 ) -> Result<HashSet<Partition>, Error> {
     let attr_combinations =
-        to_attribute_combinations(access_policy, policy, follow_hierachical_axes)?;
+        to_attribute_combinations(access_policy, policy, follow_hierarchical_axes)?;
     let mut set = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
         for partition in to_partitions(attr_combination, policy)? {
@@ -209,16 +211,16 @@ pub fn access_policy_to_current_partitions(
 fn to_attribute_combinations(
     access_policy: &AccessPolicy,
     policy: &Policy,
-    follow_hierachical_axes: bool,
+    follow_hierarchical_axes: bool,
 ) -> Result<Vec<Vec<Attribute>>, Error> {
     match access_policy {
         AccessPolicy::Attr(attr) => {
             let (attribute_names, is_hierarchical) = policy
                 .axes
                 .get(&attr.axis)
-                .ok_or_else(|| Error::UnknownPartition(attr.axis.to_owned()))?;
+                .ok_or_else(|| Error::UnknownPartition(attr.axis.clone()))?;
             let mut res = vec![vec![attr.clone()]];
-            if *is_hierarchical && follow_hierachical_axes {
+            if *is_hierarchical && follow_hierarchical_axes {
                 // add attribute values for all attributes below the given one
                 for name in attribute_names {
                     if *name == attr.name {
@@ -231,12 +233,12 @@ fn to_attribute_combinations(
         }
         AccessPolicy::And(ap_left, ap_right) => {
             let combinations_left =
-                to_attribute_combinations(ap_left, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_left, policy, follow_hierarchical_axes)?;
             let combinations_right =
-                to_attribute_combinations(ap_right, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_right, policy, follow_hierarchical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() * combinations_right.len());
             for value_left in combinations_left {
-                for value_right in combinations_right.iter() {
+                for value_right in &combinations_right {
                     let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
                     combined.extend_from_slice(&value_left);
                     combined.extend_from_slice(value_right);
@@ -247,9 +249,9 @@ fn to_attribute_combinations(
         }
         AccessPolicy::Or(ap_left, ap_right) => {
             let combinations_left =
-                to_attribute_combinations(ap_left, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_left, policy, follow_hierarchical_axes)?;
             let combinations_right =
-                to_attribute_combinations(ap_right, policy, follow_hierachical_axes)?;
+                to_attribute_combinations(ap_right, policy, follow_hierarchical_axes)?;
             let mut res = Vec::with_capacity(combinations_left.len() + combinations_right.len());
             res.extend(combinations_left);
             res.extend(combinations_right);
@@ -293,6 +295,21 @@ mod tests {
             axes_attributes.push(axis_attributes);
         }
         Ok(axes_attributes)
+    }
+
+    #[test]
+    fn test_partitions() -> Result<(), Error> {
+        let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
+        let partition = Partition::from_attributes(values.clone())?;
+        let bytes = partition.0;
+        let mut readable = &bytes[..];
+        // values are sorted n Partition
+        values.sort_unstable();
+        for v in values {
+            let val = leb128::read::unsigned(&mut readable).expect("Should read number") as u32;
+            assert_eq!(v, val);
+        }
+        Ok(())
     }
 
     #[test]
@@ -415,14 +432,16 @@ mod tests {
         // check the number of partitions generated by some access policies
         //
         let policy_attributes_4 = AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security Level::Protected)",
+            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security \
+             Level::Protected)",
         )
         .unwrap();
         let partition_4 =
             access_policy_to_current_partitions(&policy_attributes_4, &policy, true).unwrap();
 
         let policy_attributes_5 = AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security Level::Confidential)",
+            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security \
+             Level::Confidential)",
         )
         .unwrap();
         let partition_5 =
