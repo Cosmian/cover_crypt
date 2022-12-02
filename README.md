@@ -13,13 +13,13 @@ policies over these attributes.
 
 - [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
-  * [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
-  * [Build and tests for Pyo3](#build-and-tests-for-pyo3)
+  - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+  - [Build and tests for Pyo3](#build-and-tests-for-pyo3)
 - [Features and Benchmarks](#features-and-benchmarks)
-  * [Key generation](#key-generation)
-  * [Serialization](#serialization)
-  * [Secret key encapsulation](#secret-key-encapsulation)
-  * [Secret key decapsulation](#secret-key-decapsulation)
+  - [Key generation](#key-generation)
+  - [Serialization](#serialization)
+  - [Secret key encapsulation](#secret-key-encapsulation)
+  - [Secret key decapsulation](#secret-key-decapsulation)
 - [Documentation](#documentation)
 
 <!-- tocstop -->
@@ -172,7 +172,7 @@ Go to the [build](build/glibc-2.17/) directory for an example on how to build fo
 
 > When a new function/class is added to the PyO3 interface, write its signature in `python/cosmian_cover_crypt/__init__.pyi`.
 
-- See `gitlab-ci` for release build using manylinux (https://github.com/pypa/manylinux#manylinux)
+- See `gitlab-ci` for release build using manylinux (<https://github.com/pypa/manylinux#manylinux>)
 
 ```bash
 ./python/scripts/test.sh
@@ -220,34 +220,34 @@ The size of the serialized keys and encapsulation is given by the following form
 
 - master secret key:
 
-```
+```c
 3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
     + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
 ```
 
 - public key:
 
-```
+```c
 2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
     + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PUBLIC_KEY_LENGTH)
 ```
 
 - user secret key:
 
-```
+```c
 2 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
     + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
 ```
 
 - encapsulation:
 
-```
+```c
 2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) + sum(TAG_LENGTH + PRIVATE_KEY_LENGTH)
 ```
 
 - encrypted header (see below):
 
-```
+```c
 sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
 ```
 
@@ -258,8 +258,6 @@ NOTE: For our implementation `CoverCryptX25519Aes256`:
 - `TAG_LENGTH` is 32 bytes
 - `DEM_ENCRYPTION_OVERHEAD` is 28 bytes (12 bytes for the MAC tag and 16 bytes for the nonce)
 - `LEB128_sizeof(partitions.len())` is equal to 1 byte if the number of partitions is less than `2^7`
-
-The size of
 
 Below id given the size of an encapsulation given a number of partitions.
 
@@ -286,7 +284,7 @@ and so does the encapsulation time. The following benchmark gives the size of
 the encrypted header and the encryption time given the number of rights in the
 target set (one right = one partition).
 
-```
+```c
 Bench header encryption size: 1 partition: 126 bytes, 3 partitions: 190 bytes
 
 Header encryption/1 partition
@@ -302,7 +300,7 @@ A user can retrieve the symmetric key needed to decrypt a CoverCrypt ciphertext
 by decrypting the associated `EncryptedHeader`. This is only possible if the
 user secret keys contains the appropriate rights.
 
-```
+```c
 Header decryption/1 partition access
                         time:   [252.55 µs 252.66 µs 252.79 µs]
 

@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## Unreleased
+## [8.0.0] - 2022-12-01
 
 ### Added
 
@@ -15,10 +15,6 @@ All notable changes to this project will be documented in this file.
 
 - improve serialization
 - new python interfaces based on objects rather than functions covering a broader range of functionalities
-
-### Fixed
-
-### Removed
 
 ---
 
@@ -33,6 +29,8 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - `webassembly_hybrid_decrypt` now returns a binary format containing the metadata and the decrypted value (leb128 length + metadata + decrypted value)
+
+---
 
 ---
 

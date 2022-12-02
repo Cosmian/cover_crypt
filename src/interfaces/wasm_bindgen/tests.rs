@@ -5,7 +5,7 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 /// - `cargo test --target wasm32-unknown-unknown --release --features
 ///   wasm_bindgen --lib`
 use js_sys::Uint8Array;
-use wasm_bindgen_test::*;
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::generate_cc_keys::webassembly_rotate_attributes;
 use crate::{
@@ -20,7 +20,10 @@ use crate::{
             generate_cc_keys::{
                 webassembly_generate_master_keys, webassembly_generate_user_secret_key,
             },
-            hybrid_cc_aes::*,
+            hybrid_cc_aes::{
+                webassembly_decrypt_hybrid_header, webassembly_encrypt_hybrid_header,
+                webassembly_hybrid_decrypt, webassembly_hybrid_encrypt,
+            },
         },
     },
 };

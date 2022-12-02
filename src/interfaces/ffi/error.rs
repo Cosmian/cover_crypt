@@ -181,7 +181,7 @@ pub unsafe extern "C" fn get_last_error(
 
     // Build a CString that will cleanup NULL bytes in the middle if needed
     let cs = ffi_unwrap!(
-        CString::new(err.map_or("".to_string(), |e| e.to_string())),
+        CString::new(err.map_or(String::new(), |e| e.to_string())),
         "failed to convert error to CString"
     );
     // the CString as bytes
