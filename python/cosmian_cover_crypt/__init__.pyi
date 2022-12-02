@@ -217,6 +217,8 @@ class SymmetricKey:
         """
 
 class CoverCrypt:
+    """The engine is the main entry point for the core functionalities.
+    """
     def __init__(self): ...
     def generate_master_keys(self, policy: Policy) -> Tuple[MasterSecretKey, PublicKey]:
         """Generate the master authority keys for supplied Policy.
