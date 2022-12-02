@@ -23,8 +23,8 @@ macro_rules! impl_key_byte {
             }
 
             /// Reads key from bytes
-            #[classmethod]
-            pub fn from_bytes(_cls: &PyType, key_bytes: &[u8]) -> PyResult<Self> {
+            #[staticmethod]
+            pub fn from_bytes(key_bytes: &[u8]) -> PyResult<Self> {
                 match <$rust_type>::try_from_bytes(key_bytes) {
                     Ok(key) => Ok(Self(key)),
                     Err(e) => Err(PyErr::from(e)),

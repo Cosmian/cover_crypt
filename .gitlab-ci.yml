@@ -198,7 +198,9 @@ test_python:
   stage: test
   script:
     - pip install --force-reinstall target/wheels/*manylinux*.whl
-    - python3 python/test_cover_crypt.py
+    - pip install -r python/requirements.txt
+    - mypy python/scripts/test_cover_crypt.py
+    - python3 python/scripts/test_cover_crypt.py
 
 test_cloudproof_js:
   image: node:18

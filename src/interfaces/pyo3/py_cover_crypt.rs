@@ -4,12 +4,7 @@ use cosmian_crypto_core::{
     symmetric_crypto::Dem,
     symmetric_crypto::SymKey,
 };
-use pyo3::{
-    exceptions::PyTypeError,
-    prelude::*,
-    types::{PyBytes, PyType},
-    PyErr,
-};
+use pyo3::{exceptions::PyTypeError, prelude::*, types::PyBytes, PyErr};
 
 use crate::{
     api::CoverCrypt as CoverCryptRust,
@@ -52,8 +47,8 @@ impl SymmetricKey {
     }
 
     /// Reads key from bytes
-    #[classmethod]
-    pub fn from_bytes(_cls: &PyType, key_bytes: [u8; CoverCryptDem::KEY_LENGTH]) -> PyResult<Self> {
+    #[staticmethod]
+    pub fn from_bytes(key_bytes: [u8; CoverCryptDem::KEY_LENGTH]) -> PyResult<Self> {
         Ok(Self(SymmetricKeyRust::from_bytes(key_bytes)))
     }
 }
@@ -225,7 +220,7 @@ impl CoverCrypt {
     /// - `policy`              : global policy
     /// - `access_policy_str`   : access policy
     /// - `public_key`          : CoverCrypt public key
-    /// - `additional_data`     : additional data to encrypt with the header
+    /// - `header_metadata`     : additional data to encrypt with the header
     /// - `authentication_data`  : authentication data to use in symmetric encryption
     ///
     /// Returns: (SymmetricKey, ciphertext bytes)
@@ -234,7 +229,7 @@ impl CoverCrypt {
         policy: &Policy,
         access_policy_str: &str,
         public_key: &PublicKey,
-        additional_data: Option<Vec<u8>>,
+        header_metadata: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<(SymmetricKey, Py<PyBytes>)> {
@@ -248,7 +243,7 @@ impl CoverCrypt {
             &policy.0,
             &public_key.0,
             &access_policy,
-            additional_data.as_deref(),
+            header_metadata.as_deref(),
             authentication_data.as_deref(),
         )?;
 
@@ -296,7 +291,7 @@ impl CoverCrypt {
     /// - `access_policy_str`   : access policy
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
-    /// - `additional_data`     : additional data to symmetrically encrypt in the header
+    /// - `header_metadata`     : additional data to symmetrically encrypt in the header
     /// - `authentication_data`  : authentication data to use in symmetric encryptions
     ///
     /// Returns: ciphertext bytes
@@ -307,7 +302,7 @@ impl CoverCrypt {
         access_policy_str: &str,
         pk: &PublicKey,
         plaintext: Vec<u8>,
-        additional_data: Option<Vec<u8>>,
+        header_metadata: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
         py: Python,
     ) -> PyResult<Py<PyBytes>> {
@@ -320,7 +315,7 @@ impl CoverCrypt {
             &policy.0,
             &pk.0,
             &access_policy,
-            additional_data.as_deref(),
+            header_metadata.as_deref(),
             authentication_data.as_deref(),
         )?;
 

@@ -170,11 +170,12 @@ Go to the [build](build/glibc-2.17/) directory for an example on how to build fo
 
 ### Build and tests for Pyo3
 
+> When a new function/class is added to the PyO3 interface, write its signature in `python/cosmian_cover_crypt/__init__.pyi`.
+
 - See `gitlab-ci` for release build using manylinux (https://github.com/pypa/manylinux#manylinux)
 
 ```bash
-pip install -r python/requirements.txt
-./python/test.sh
+./python/scripts/test.sh
 ```
 
 ## Features and Benchmarks

@@ -44,7 +44,9 @@ repos:
       - id: forbid-crlf
       - id: remove-crlf
       - id: forbid-tabs
+        exclude: ^.git/
       - id: remove-tabs
+        exclude: ^.git/
 
   - repo: https://github.com/sirosen/texthooks
     rev: 0.4.0
@@ -80,6 +82,7 @@ repos:
   #     - id: clippy-autofix-others
       - id: cargo-format
       - id: cargo-dry-publish
+        args: [--allow-dirty]
       - id: dprint-toml-fix
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

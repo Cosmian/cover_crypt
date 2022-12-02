@@ -1,1 +1,2 @@
-maturin>=0.13.7
+maturin>=0.13
+mypy>=0.99
