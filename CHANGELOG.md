@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [8.0.1] - 2022-12-06
+
+### Fixed
+
+- python publish
+- speedup ci
+
+---
+
 ## [8.0.0] - 2022-12-01
 
 ### Added
