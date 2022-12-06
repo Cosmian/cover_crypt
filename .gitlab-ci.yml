@@ -28,7 +28,6 @@ workflow:
 
 static_analysis:
   stage: prebuild
-  only: [main, develop, merge_requests, tags]
   cache: {}
   script:
     - cargo format
@@ -43,15 +42,15 @@ static_analysis:
 # Security check
 security_check:
   stage: prebuild
-  only: [main, develop, merge_requests, tags]
   cache: {}
   script:
     # Check is crate is publishable
     - rm -rf /tmp/${CI_PROJECT_NAME}
     - cp -rf . /tmp/${CI_PROJECT_NAME}
-    - cd /tmp/${CI_PROJECT_NAME}
+    - pushd /tmp/${CI_PROJECT_NAME}
     - cargo publish --dry-run
     - rm -rf /tmp/${CI_PROJECT_NAME}
+    - popd
     # Check deprecated dependencies
     - cargo outdated -wR
     - cargo audit --deny warnings
@@ -62,7 +61,6 @@ security_check:
 #
 .base_compile: &base_compile
   stage: build
-  only: [main, develop, merge_requests, tags]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
@@ -88,7 +86,6 @@ build_x86_64_centos7:
 test_cloudproof_java:
   image: openjdk:8
   stage: test
-  only: [main, develop, merge_requests, tags]
   before_script:
     - apt update && apt install -y maven
   script:
@@ -112,7 +109,6 @@ build_wasm:
 test_cloudproof_js:
   image: node:18
   stage: test
-  only: [main, develop, merge_requests, tags]
   script:
     - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
     - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
@@ -141,7 +137,6 @@ build_windows:
 
 build_osx:
   stage: build
-  only: [main, develop, merge_requests, tags]
   tags:
     - mac
   before_script:
@@ -165,7 +160,6 @@ test_cloudproof_flutter:
   tags:
     - mac
   stage: test
-  only: [main, develop, merge_requests, tags]
   script:
     - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
     - cp target/x86_64-apple-darwin/release/libcosmian_${CI_PROJECT_NAME}.dylib cloudproof_flutter/resources/
@@ -186,7 +180,6 @@ build_android:
 
 build_python_manylinux:
   stage: build
-  only: [main, develop, merge_requests, tags]
   image:
     name: ghcr.io/pyo3/maturin:v0.14.1
     # remove the image custom entrypoint because it is not supported by gitlab runners
@@ -201,12 +194,11 @@ build_python_manylinux:
 
 test_python:
   stage: test
-  only: [main, develop, merge_requests, tags]
   script:
     - pip install target/wheels/*manylinux*.whl
     - pip install -r python/requirements.txt
-    - mypy python/scripts/test_findex.py
-    - python3 python/scripts/test_findex.py
+    - mypy python/scripts/test_${CI_PROJECT_NAME}.py
+    - python3 python/scripts/test_${CI_PROJECT_NAME}.py
 
 #
 # benches
