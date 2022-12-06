@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "8.0.0"
+version = "8.0.1"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",

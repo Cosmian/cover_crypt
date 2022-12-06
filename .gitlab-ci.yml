@@ -21,58 +21,48 @@ stages:
   - pack
   - publish
 
-rustfmt:
-  stage: prebuild
-  cache: {}
-  script:
-    - cargo +stable format
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
 
-doc:
+static_analysis:
   stage: prebuild
+  only: [main, develop, merge_requests]
   cache: {}
   script:
+    - cargo format
     - cargo doc --all-features
-
-clippy:
-  stage: prebuild
-  cache: {}
-  script:
-    # all features activated
-    - cargo clippy --all-targets -- -D warnings
     # no feature activated
+    - cargo clippy --all-targets -- -D warnings
+    # all features activated
     - cargo clippy-all
+    # Check semver
+    - cargo semver-checks check-release
 
 # Security check
-cargo_security_check:
+security_check:
   stage: prebuild
+  only: [main, develop, merge_requests]
   cache: {}
   script:
-    - cargo outdated -wR
-    - cargo audit --deny warnings
-  allow_failure: true
-
-is_publishable:
-  stage: prebuild
-  cache: {}
-  script:
+    # Check is crate is publishable
     - rm -rf /tmp/${CI_PROJECT_NAME}
     - cp -rf . /tmp/${CI_PROJECT_NAME}
     - cd /tmp/${CI_PROJECT_NAME}
     - cargo publish --dry-run
     - rm -rf /tmp/${CI_PROJECT_NAME}
+    # Check deprecated dependencies
+    - cargo outdated -wR
+    - cargo audit --deny warnings
   allow_failure: true
-
-is_semver_broken:
-  stage: prebuild
-  cache: {}
-  script:
-    - cargo semver-checks check-release
 
 #
 # Build base
 #
 .base_compile: &base_compile
   stage: build
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
@@ -82,37 +72,57 @@ is_semver_broken:
   before_script:
     - sccache -s
 
-build_x86_64:
-  <<: *base_compile
-  script:
-    - cargo build --release --features ffi --target x86_64-unknown-linux-gnu
-    - cargo test --release --all-features --target x86_64-unknown-linux-gnu
-    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
-
 build_x86_64_centos7:
   <<: *base_compile
   image: gitlab.cosmian.com:5000/core/ci-rust-glibc-2.17
   script:
     - cargo build --release --features ffi --target x86_64-unknown-linux-gnu
-    - cargo test --release --features ffi --target x86_64-unknown-linux-gnu
     - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+    - cargo test --release --all-features --target x86_64-unknown-linux-gnu
   artifacts:
     paths:
       - target/x86_64-unknown-linux-gnu/release/*.so
       - target/*.h
     expire_in: 3 mos
 
+test_cloudproof_java:
+  image: openjdk:8
+  stage: test
+  only: [main, develop, merge_requests]
+  before_script:
+    - apt update && apt install -y maven
+  script:
+    - git clone --branch main https://github.com/Cosmian/cloudproof_java.git
+    - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
+    - cd cloudproof_java
+    - mvn package
+  allow_failure: true
+
 build_wasm:
   <<: *base_compile
   image: gitlab.cosmian.com:5000/core/ci-npm:latest
   script:
-    - wasm-pack build -d pkg/bundler --target web --release --features wasm_bindgen
+    - wasm-pack build -d pkg/web --target web --release --features wasm_bindgen
     - wasm-pack test --node --features wasm_bindgen --lib
-    - wasm-pack build -d pkg/nodejs --target nodejs --release --features wasm_bindgen
   artifacts:
     paths:
       - pkg
     expire_in: 3 mos
+
+test_cloudproof_js:
+  image: node:18
+  stage: test
+  only: [main, develop, merge_requests]
+  script:
+    - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
+    - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
+    - cd cloudproof_js
+    - ./download_wasm.sh
+    # Replace pkg with fresh build
+    - cp -r ../pkg/web/* cloudproof_js/src/pkg/${CI_PROJECT_NAME}/
+    - npm install
+    - npm test
+  allow_failure: true
 
 build_windows:
   <<: *base_compile
@@ -131,6 +141,7 @@ build_windows:
 
 build_osx:
   stage: build
+  only: [main, develop, merge_requests]
   tags:
     - mac
   before_script:
@@ -150,6 +161,19 @@ build_osx:
       - target/wheels/*macosx*.whl
     expire_in: 3 mos
 
+test_cloudproof_flutter:
+  tags:
+    - mac
+  stage: test
+  only: [main, develop, merge_requests]
+  script:
+    - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
+    - cp target/x86_64-apple-darwin/release/libcosmian_${CI_PROJECT_NAME}.dylib cloudproof_flutter/resources/
+    - cd cloudproof_flutter
+    - flutter pub get
+    - flutter test
+  allow_failure: true
+
 build_android:
   <<: *base_compile
   image: gitlab.cosmian.com:5000/core/ci-rust-android:latest
@@ -162,6 +186,7 @@ build_android:
 
 build_python_manylinux:
   stage: build
+  only: [main, develop, merge_requests]
   image:
     name: ghcr.io/pyo3/maturin:v0.14.1
     # remove the image custom entrypoint because it is not supported by gitlab runners
@@ -174,6 +199,18 @@ build_python_manylinux:
       - target/wheels/*manylinux*.whl
     expire_in: 3 mos
 
+test_python:
+  stage: test
+  only: [main, develop, merge_requests]
+  script:
+    - pip install target/wheels/*manylinux*.whl
+    - pip install -r python/requirements.txt
+    - mypy python/scripts/test_findex.py
+    - python3 python/scripts/test_findex.py
+
+#
+# benches
+#
 benchmarks:
   stage: build
   before_script:
@@ -182,50 +219,9 @@ benchmarks:
     - cargo bench --features full_bench,hybrid
   when: manual
 
-test_cloudproof_java:
-  image: openjdk:8
-  stage: test
-  before_script:
-    - apt update && apt install -y maven
-  script:
-    - git clone --branch main https://github.com/Cosmian/cloudproof_java.git
-    - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
-    - cd cloudproof_java
-    - mvn package
-  allow_failure: true
-
-test_python:
-  stage: test
-  script:
-    - pip install --force-reinstall target/wheels/*manylinux*.whl
-    - pip install -r python/requirements.txt
-    - mypy python/scripts/test_cover_crypt.py
-    - python3 python/scripts/test_cover_crypt.py
-
-test_cloudproof_js:
-  image: node:18
-  stage: test
-  script:
-    - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
-    - mkdir -p cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}
-    - cp -r pkg/nodejs/* cloudproof_js/tests/wasm_lib/cosmian_${CI_PROJECT_NAME}/
-    - cd cloudproof_js
-    - npm install jest
-    - npm test
-  allow_failure: true
-
-test_cloudproof_flutter:
-  tags:
-    - mac
-  stage: test
-  script:
-    - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
-    - cp target/x86_64-apple-darwin/release/libcosmian_${CI_PROJECT_NAME}.dylib cloudproof_flutter/resources/
-    - cd cloudproof_flutter
-    - flutter pub get
-    - flutter test
-  allow_failure: true
-
+#
+# Pack and publish from here
+#
 pack_all_artifacts:
   stage: pack
   rules:
@@ -271,4 +267,4 @@ python_publish:
     - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
   script:
     - pip install twine
-    - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/cover_crypt-${CI_COMMIT_TAG:1}*.whl
+    - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/${CI_PROJECT_NAME}-${CI_COMMIT_TAG:1}*.whl
