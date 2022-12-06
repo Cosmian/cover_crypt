@@ -151,8 +151,22 @@ class TestEncryption(unittest.TestCase):
         self.additional_data = bytes([0, 0, 0, 0, 0, 0, 0, 1])
         self.authenticated_data = b'auth'
 
-    def test_simple_encryption_decryption(self) -> None:
+    def test_simple_encryption_decryption_without_metadata(self) -> None:
+        ciphertext = self.cc.encrypt(
+            self.policy, 'Secrecy::Medium && Country::Germany', self.pk, self.plaintext
+        )
 
+        sec_high_ger_user = self.cc.generate_user_secret_key(
+            self.msk,
+            'Secrecy::High && Country::Germany',
+            self.policy,
+        )
+
+        # Successful decryption
+        plaintext, _ = self.cc.decrypt(sec_high_ger_user, ciphertext)
+        self.assertEqual(plaintext, self.plaintext)
+
+    def test_simple_encryption_decryption_with_metadata(self) -> None:
         ciphertext = self.cc.encrypt(
             self.policy,
             'Secrecy::High && Country::France',
@@ -184,7 +198,6 @@ class TestEncryption(unittest.TestCase):
             self.cc.decrypt(sec_low_fr_sp_user, ciphertext, self.authenticated_data)
 
     def test_policy_rotation_encryption_decryption(self) -> None:
-
         ciphertext = self.cc.encrypt(
             self.policy,
             'Secrecy::High && Country::France',
