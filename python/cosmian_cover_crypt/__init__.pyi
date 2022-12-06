@@ -11,14 +11,14 @@ class Attribute:
 
     def __init__(self, axis: str, name: str): ...
     def to_string(self) -> str:
-        """Creates a string representation of the attribute
+        """Creates a string representation of the attribute.
 
         Returns:
             str
         """
     @staticmethod
     def from_string(string: str) -> Attribute:
-        """Creates a policy attribute from a string representation
+        """Creates a policy attribute from a string representation.
 
         Args:
             string (str): Attribute in string format
@@ -45,13 +45,13 @@ class PolicyAxis:
             int
         """
     def is_empty(self) -> bool:
-        """Check whether the attribute list is empty
+        """Check whether the attribute list is empty.
 
         Returns:
             bool
         """
     def to_string(self) -> str:
-        """Creates a string representation of the policy axis
+        """Creates a string representation of the policy axis.
 
         Returns:
             str
@@ -104,7 +104,7 @@ class Policy:
             int
         """
     def to_json(self) -> str:
-        """Formats policy to json
+        """Formats policy to json.
 
         Returns:
             str
@@ -141,7 +141,7 @@ class MasterSecretKey:
         """
     @staticmethod
     def from_bytes(key_bytes: bytes) -> MasterSecretKey:
-        """Reads key from bytes
+        """Reads key from bytes.
 
         Args:
             key_bytes (bytes)
@@ -165,7 +165,7 @@ class PublicKey:
         """
     @staticmethod
     def from_bytes(key_bytes: bytes) -> PublicKey:
-        """Reads key from bytes
+        """Reads key from bytes.
 
         Args:
             key_bytes (bytes)
@@ -189,7 +189,7 @@ class UserSecretKey:
         """
     @staticmethod
     def from_bytes(key_bytes: bytes) -> UserSecretKey:
-        """Reads key from bytes
+        """Reads key from bytes.
 
         Args:
             key_bytes (bytes)
@@ -207,7 +207,7 @@ class SymmetricKey:
         """
     @staticmethod
     def from_bytes(key_bytes: bytes) -> SymmetricKey:
-        """Reads key from bytes
+        """Reads key from bytes.
 
         Args:
             key_bytes (bytes)
@@ -217,8 +217,8 @@ class SymmetricKey:
         """
 
 class CoverCrypt:
-    """The engine is the main entry point for the core functionalities.
-    """
+    """The engine is the main entry point for the core functionalities."""
+
     def __init__(self): ...
     def generate_master_keys(self, policy: Policy) -> Tuple[MasterSecretKey, PublicKey]:
         """Generate the master authority keys for supplied Policy.
@@ -276,7 +276,7 @@ class CoverCrypt:
         self,
         symmetric_key: SymmetricKey,
         plaintext: bytes,
-        authentication_data: Optional[bytes],
+        authentication_data: Optional[bytes] = ...,
     ) -> bytes:
         """Encrypts data symmetrically in a block.
 
@@ -292,7 +292,7 @@ class CoverCrypt:
         self,
         symmetric_key: SymmetricKey,
         ciphertext: bytes,
-        authentication_data: Optional[bytes],
+        authentication_data: Optional[bytes] = ...,
     ) -> bytes:
         """Symmetrically Decrypts encrypted data in a block.
 
@@ -309,8 +309,8 @@ class CoverCrypt:
         policy: Policy,
         access_policy_str: str,
         public_key: PublicKey,
-        additional_data: Optional[bytes],
-        authentication_data: Optional[bytes],
+        additional_data: Optional[bytes] = ...,
+        authentication_data: Optional[bytes] = ...,
     ) -> Tuple[SymmetricKey, bytes]:
         """Generates an encrypted header. A header contains the following elements:
         - `encapsulation_size`  : the size of the symmetric key encapsulation (u32)
@@ -331,7 +331,7 @@ class CoverCrypt:
         self,
         usk: UserSecretKey,
         encrypted_header_bytes: bytes,
-        authentication_data: Optional[bytes],
+        authentication_data: Optional[bytes] = ...,
     ) -> Tuple[SymmetricKey, bytes]:
         """Decrypts the given header bytes using a user decryption key.
 
@@ -349,8 +349,8 @@ class CoverCrypt:
         access_policy_str: str,
         pk: PublicKey,
         plaintext: bytes,
-        header_metadata: Optional[bytes],
-        authentication_data: Optional[bytes],
+        header_metadata: Optional[bytes] = ...,
+        authentication_data: Optional[bytes] = ...,
     ) -> bytes:
         """Hybrid encryption. Concatenates the encrypted header and the symmetric
         ciphertext.
@@ -366,13 +366,18 @@ class CoverCrypt:
         Returns:
             bytes: ciphertext bytes
         """
-    def decrypt(self, usk, encrypted_bytes, authentication_data) -> Tuple[bytes, bytes]:
+    def decrypt(
+        self,
+        usk: UserSecretKey,
+        encrypted_bytes: bytes,
+        authentication_data: Optional[bytes] = ...,
+    ) -> Tuple[bytes, bytes]:
         """Hybrid decryption.
 
         Args:
-            usk (_type_): user secret key
-            encrypted_bytes (_type_): encrypted header || symmetric ciphertext
-            authentication_data (_type_): authentication data to use in symmetric decryptions
+            usk (UserSecretKey): user secret key
+            encrypted_bytes (bytes): encrypted header || symmetric ciphertext
+            authentication_data (Optional[bytes]): authentication data to use in symmetric decryptions
 
         Returns:
             Tuple[bytes, bytes]: (plaintext bytes, header metadata bytes)
