@@ -207,28 +207,28 @@ cross_compatibility_checks:
     #
     # Java tests
     #
-    # - git clone --branch main https://github.com/Cosmian/cloudproof_java.git
-    # - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
-    # - cp target/non_regression_vector.json cloudproof_java/src/test/resources/cover_crypt/rust_non_regression_vector.json
-    # - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_java/src/test/resources/cover_crypt/other_java_java_non_regression_vector.json
-    # - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_java/src/test/resources/cover_crypt/
-    # - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_java/src/test/resources/cover_crypt/
-    # - cd cloudproof_java
-    # - mvn package
+    - git clone --branch main https://github.com/Cosmian/cloudproof_java.git
+    - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
+    - cp target/non_regression_vector.json cloudproof_java/src/test/resources/cover_crypt/rust_non_regression_vector.json
+    - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_java/src/test/resources/cover_crypt/other_java_java_non_regression_vector.json
+    - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_java/src/test/resources/cover_crypt/
+    - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_java/src/test/resources/cover_crypt/
+    - cd cloudproof_java
+    - mvn package
 
     #
     # JS tests
     #
-    # - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
-    # - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
-    # - cp target/non_regression_vector.json cloudproof_js/tests/data/cover_crypt/rust_non_regression_vector.json
-    # - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_js/tests/data/cover_crypt/
-    # - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_js/tests/data/cover_crypt/other_js_non_regression_test_vector.json
-    # - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_js/tests/data/cover_crypt/
-    # - cd cloudproof_js
-    # - cp -r ../pkg/web/* cloudproof_js/src/pkg/${CI_PROJECT_NAME}/
-    # - npm install
-    # - npm test
+    - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
+    - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
+    - cp target/non_regression_vector.json cloudproof_js/tests/data/cover_crypt/rust_non_regression_vector.json
+    - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_js/tests/data/cover_crypt/
+    - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_js/tests/data/cover_crypt/other_js_non_regression_test_vector.json
+    - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_js/tests/data/cover_crypt/
+    - cd cloudproof_js
+    - cp -r ../pkg/web/* cloudproof_js/src/pkg/${CI_PROJECT_NAME}/
+    - npm install
+    - npm test
 
     #
     # Python tests
@@ -240,13 +240,13 @@ cross_compatibility_checks:
     - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
     - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_flutter/resources/
     - cp target/non_regression_vector.json cloudproof_flutter/test/resources/cover_crypt/rust_non_regression_vector.json
-    # - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_flutter/test/resources/cover_crypt/
-    # - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_flutter/test/resources/cover_crypt/
+    - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_flutter/test/resources/cover_crypt/
+    - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_flutter/test/resources/cover_crypt/
     - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_flutter/test/resources/cover_crypt/other_flutter_non_regression_test_vector.json
     - cd cloudproof_flutter
     - flutter pub get
     - flutter test
-  when: manual
+  allow_failure: true
 
 # TODO
 # test_cloudproof_python:
