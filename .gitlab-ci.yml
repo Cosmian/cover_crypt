@@ -18,13 +18,9 @@ stages:
   - prebuild
   - build
   - test
+  - cross_test
   - pack
   - publish
-
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_PIPELINE_SOURCE == "push"
 
 static_analysis:
   stage: prebuild
@@ -59,7 +55,7 @@ security_check:
 #
 # Build base
 #
-.base_compile: &base_compile
+.cache:
   stage: build
   cache:
     key: ${CI_COMMIT_REF_SLUG}
@@ -70,8 +66,14 @@ security_check:
   before_script:
     - sccache -s
 
+.base_compile:
+  extends: .cache
+
+.base_test:
+  stage: test
+
 build_x86_64_centos7:
-  <<: *base_compile
+  extends: .cache
   image: gitlab.cosmian.com:5000/core/ci-rust-glibc-2.17
   script:
     - cargo build --release --features ffi --target x86_64-unknown-linux-gnu
@@ -81,11 +83,12 @@ build_x86_64_centos7:
     paths:
       - target/x86_64-unknown-linux-gnu/release/*.so
       - target/*.h
+      - target/non_regression_vector.json
     expire_in: 3 mos
 
 test_cloudproof_java:
+  extends: .base_test
   image: openjdk:8
-  stage: test
   before_script:
     - apt update && apt install -y maven
   script:
@@ -93,10 +96,15 @@ test_cloudproof_java:
     - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
     - cd cloudproof_java
     - mvn package
+  artifacts:
+    paths:
+      - cloudproof_java/target/test-classes/java_non_regression_vector.json
+    expire_in: 3 mos
+
   allow_failure: true
 
 build_wasm:
-  <<: *base_compile
+  extends: .base_compile
   image: gitlab.cosmian.com:5000/core/ci-npm:latest
   script:
     - wasm-pack build -d pkg/web --target web --release --features wasm_bindgen
@@ -107,33 +115,21 @@ build_wasm:
     expire_in: 3 mos
 
 test_cloudproof_js:
+  extends: .base_test
   image: node:18
-  stage: test
   script:
     - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
     - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
     - cd cloudproof_js
-    - ./download_wasm.sh
     # Replace pkg with fresh build
     - cp -r ../pkg/web/* cloudproof_js/src/pkg/${CI_PROJECT_NAME}/
     - npm install
     - npm test
-  allow_failure: true
-
-build_windows:
-  <<: *base_compile
-  script:
-    - cargo build --release --features ffi --target x86_64-pc-windows-gnu
-    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
-    # python build
-    - pip install -r python/requirements.txt
-    - maturin build --release --features python --target x86_64-pc-windows-gnu --target-dir target_python
   artifacts:
     paths:
-      - target/x86_64-pc-windows-gnu/release/*.dll
-      - target/*.h
-      - target/wheels/*win*.whl
+      - cloudproof_js/node_modules/non_regression_test_vector.json
     expire_in: 3 mos
+  allow_failure: true
 
 build_osx:
   stage: build
@@ -159,17 +155,111 @@ build_osx:
 test_cloudproof_flutter:
   tags:
     - mac
-  stage: test
   script:
     - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
     - cp target/x86_64-apple-darwin/release/libcosmian_${CI_PROJECT_NAME}.dylib cloudproof_flutter/resources/
     - cd cloudproof_flutter
     - flutter pub get
     - flutter test
+  artifacts:
+    paths:
+      - cloudproof_flutter/build/non_regression_test_vector.json
+    expire_in: 3 mos
   allow_failure: true
 
+build_python_manylinux:
+  stage: build
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
+  image:
+    name: ghcr.io/pyo3/maturin:v0.14.1
+    # remove the image custom entrypoint because it is not supported by gitlab runners
+    entrypoint: ['']
+  script:
+    # Build for glibc 2.17
+    - maturin build --compatibility manylinux_2_17 --release --features python --target-dir target_python
+    - pip install target/wheels/*manylinux*.whl
+    - pip install -r python/requirements.txt
+    - mypy python/scripts/test_${CI_PROJECT_NAME}.py
+    - python3 python/scripts/test_${CI_PROJECT_NAME}.py
+  artifacts:
+    paths:
+      - target/wheels/*manylinux*.whl
+    expire_in: 3 mos
+
+cross_compatibility_checks:
+  stage: cross_test
+  image: node:18
+  before_script:
+    - apt update && apt install -y software-properties-common sqlite3 libsqlite3-dev wget xz-utils git
+    - wget -qO - https://adoptopenjdk.jfrog.io/adoptopenjdk/api/gpg/key/public | apt-key add -
+    - add-apt-repository --yes https://adoptopenjdk.jfrog.io/adoptopenjdk/deb/
+    - apt update && apt install -y adoptopenjdk-8-hotspot
+    - apt install -y maven
+    - java -version
+    - mvn --version
+    - wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.3.4-stable.tar.xz -O /tmp/flutter_linux_3.3.4-stable.tar.xz
+    - tar xf /tmp/flutter_linux_3.3.4-stable.tar.xz --directory /tmp
+    - git config --global --add safe.directory /tmp/flutter
+    - export PATH="$PATH:/tmp/flutter/bin"
+    - flutter doctor
+  script:
+    #
+    # Java tests
+    #
+    # - git clone --branch main https://github.com/Cosmian/cloudproof_java.git
+    # - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
+    # - cp target/non_regression_vector.json cloudproof_java/src/test/resources/cover_crypt/rust_non_regression_vector.json
+    # - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_java/src/test/resources/cover_crypt/other_java_java_non_regression_vector.json
+    # - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_java/src/test/resources/cover_crypt/
+    # - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_java/src/test/resources/cover_crypt/
+    # - cd cloudproof_java
+    # - mvn package
+
+    #
+    # JS tests
+    #
+    # - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
+    # - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
+    # - cp target/non_regression_vector.json cloudproof_js/tests/data/cover_crypt/rust_non_regression_vector.json
+    # - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_js/tests/data/cover_crypt/
+    # - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_js/tests/data/cover_crypt/other_js_non_regression_test_vector.json
+    # - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_js/tests/data/cover_crypt/
+    # - cd cloudproof_js
+    # - cp -r ../pkg/web/* cloudproof_js/src/pkg/${CI_PROJECT_NAME}/
+    # - npm install
+    # - npm test
+
+    #
+    # Python tests
+    #
+
+    #
+    # Flutter tests
+    #
+    - git clone --branch main https://github.com/Cosmian/cloudproof_flutter.git
+    - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_flutter/resources/
+    - cp target/non_regression_vector.json cloudproof_flutter/test/resources/cover_crypt/rust_non_regression_vector.json
+    # - cp cloudproof_java/target/test-classes/java_non_regression_vector.json cloudproof_flutter/test/resources/cover_crypt/
+    # - cp cloudproof_js/node_modules/non_regression_test_vector.json cloudproof_flutter/test/resources/cover_crypt/
+    - cp cloudproof_flutter/build/non_regression_test_vector.json cloudproof_flutter/test/resources/cover_crypt/other_flutter_non_regression_test_vector.json
+    - cd cloudproof_flutter
+    - flutter pub get
+    - flutter test
+  when: manual
+
+# TODO
+# test_cloudproof_python:
+#   stage: test
+#   script:
+
+#
+# Build without tests
+#
 build_android:
-  <<: *base_compile
+  extends: .base_compile
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
   image: gitlab.cosmian.com:5000/core/ci-rust-android:latest
   script:
     - cargo ndk -t x86 -t x86_64 -t armeabi-v7a -t arm64-v8a -o jniLibs build --release --features ffi --lib
@@ -178,27 +268,22 @@ build_android:
       - jniLibs
     expire_in: 3 mos
 
-build_python_manylinux:
-  stage: build
-  image:
-    name: ghcr.io/pyo3/maturin:v0.14.1
-    # remove the image custom entrypoint because it is not supported by gitlab runners
-    entrypoint: ['']
+build_windows:
+  extends: .base_compile
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
   script:
-    # Build for glibc 2.17
-    - maturin build --compatibility manylinux_2_17 --release --features python --target-dir target_python
+    - cargo build --release --features ffi --target x86_64-pc-windows-gnu
+    - cbindgen . -c cbindgen.toml | grep -v \#include | uniq >target/${CI_PROJECT_NAME}.h
+    # python build
+    - pip install -r python/requirements.txt
+    - maturin build --release --features python --target x86_64-pc-windows-gnu --target-dir target_python
   artifacts:
     paths:
-      - target/wheels/*manylinux*.whl
+      - target/x86_64-pc-windows-gnu/release/*.dll
+      - target/*.h
+      - target/wheels/*win*.whl
     expire_in: 3 mos
-
-test_python:
-  stage: test
-  script:
-    - pip install target/wheels/*manylinux*.whl
-    - pip install -r python/requirements.txt
-    - mypy python/scripts/test_${CI_PROJECT_NAME}.py
-    - python3 python/scripts/test_${CI_PROJECT_NAME}.py
 
 #
 # benches
