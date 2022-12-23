@@ -93,7 +93,6 @@ test_cloudproof_java:
     - cp target/x86_64-unknown-linux-gnu/release/libcosmian_${CI_PROJECT_NAME}.so cloudproof_java/src/main/resources/linux-x86-64/
     - cd cloudproof_java
     - mvn package
-  allow_failure: true
 
 build_wasm:
   <<: *base_compile
@@ -113,12 +112,10 @@ test_cloudproof_js:
     - git clone --branch main https://github.com/Cosmian/cloudproof_js.git
     - mkdir -p cloudproof_js/src/pkg/${CI_PROJECT_NAME}
     - cd cloudproof_js
-    - ./download_wasm.sh
     # Replace pkg with fresh build
-    - cp -r ../pkg/web/* cloudproof_js/src/pkg/${CI_PROJECT_NAME}/
+    - cp -r ../pkg/web/* src/pkg/${CI_PROJECT_NAME}/
     - npm install
     - npm test
-  allow_failure: true
 
 build_windows:
   <<: *base_compile
@@ -166,7 +163,6 @@ test_cloudproof_flutter:
     - cd cloudproof_flutter
     - flutter pub get
     - flutter test
-  allow_failure: true
 
 build_android:
   <<: *base_compile
