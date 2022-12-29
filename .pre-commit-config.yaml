@@ -126,3 +126,10 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
+
+  - repo: https://github.com/psf/black
+    rev: 22.10.0
+    hooks:
+      - id: black
+        # avoid clash with `double-quote-string-fixer`
+        args: [--skip-string-normalization]

@@ -10,6 +10,18 @@ class Attribute:
     """
 
     def __init__(self, axis: str, name: str): ...
+    def get_axis(self) -> str:
+        """Get the corresponding axis of the attribute.
+
+        Returns:
+            str
+        """
+    def get_name(self) -> str:
+        """Get the attribute name.
+
+        Returns:
+            str
+        """
     def to_string(self) -> str:
         """Creates a string representation of the attribute.
 
@@ -46,6 +58,24 @@ class PolicyAxis:
         """
     def is_empty(self) -> bool:
         """Check whether the attribute list is empty.
+
+        Returns:
+            bool
+        """
+    def get_name(self) -> str:
+        """Get axis name.
+
+        Returns:
+            str
+        """
+    def get_attributes(self) -> List[str]:
+        """Get the list of attributes in the axis.
+
+        Returns:
+            List[str]
+        """
+    def is_hierarchical(self) -> bool:
+        """Check whether the axis is hierarchical.
 
         Returns:
             bool
