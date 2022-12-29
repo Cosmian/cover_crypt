@@ -14,7 +14,6 @@ policies over these attributes.
 - [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
   - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
-  - [Build and tests for Pyo3](#build-and-tests-for-pyo3)
 - [Features and Benchmarks](#features-and-benchmarks)
   - [Key generation](#key-generation)
   - [Serialization](#serialization)
@@ -139,6 +138,20 @@ To build the FFI interface:
 cargo build --release --features interfaces
 ```
 
+To build the Python interface, run:
+
+```bash
+maturin build --release --features python
+```
+
+__Note__: when a new function or class is added to the PyO3 interface, its signature needs to be added to [`__init__.pyi`](./python/cosmian_cover_crypt/__init__.pyi).
+
+To run tests on the Python interface, run:
+
+```bash
+./python/scripts/test.sh
+```
+
 To build everything (including the FFI):
 
 ```bash
@@ -167,16 +180,6 @@ cargo bench
 ### Building the library for a different glibc
 
 Go to the [build](build/glibc-2.17/) directory for an example on how to build for GLIBC 2.17
-
-### Build and tests for Pyo3
-
-> When a new function/class is added to the PyO3 interface, write its signature in `python/cosmian_cover_crypt/__init__.pyi`.
-
-- See `gitlab-ci` for release build using manylinux (<https://github.com/pypa/manylinux#manylinux>)
-
-```bash
-./python/scripts/test.sh
-```
 
 ## Features and Benchmarks
 
@@ -279,7 +282,7 @@ provided in the API. An encrypted header holds an encapsulation and a symmetric
 ciphertext of an optional additional data. This additional data can be useful
 to store metadata.
 
-**Note**: encapsulations grow bigger with the size of the target set of rights
+__Note__: encapsulations grow bigger with the size of the target set of rights
 and so does the encapsulation time. The following benchmark gives the size of
 the encrypted header and the encryption time given the number of rights in the
 target set (one right = one partition).
