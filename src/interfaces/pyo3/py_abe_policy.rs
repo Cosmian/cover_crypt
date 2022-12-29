@@ -20,7 +20,7 @@ impl Attribute {
         Self(AttributeRust::new(axis, name))
     }
 
-    /// Get the corresponding axis of the attribute
+    /// Gets the corresponding axis of the attribute.
     ///
     /// Returns:
     ///     str
@@ -28,7 +28,7 @@ impl Attribute {
         &self.0.axis
     }
 
-    /// Get the attribute name
+    /// Gets the attribute name.
     ///
     /// Returns:
     ///     str
@@ -98,7 +98,7 @@ impl PolicyAxis {
         self.0.is_empty()
     }
 
-    /// Get axis name
+    /// Gets axis name.
     ///
     /// Returns:
     ///     str
@@ -106,7 +106,7 @@ impl PolicyAxis {
         &self.0.name
     }
 
-    /// Get the list of attributes in the axis
+    /// Gets the list of attributes in the axis.
     ///
     /// Returns:
     ///     List[str]
@@ -114,7 +114,7 @@ impl PolicyAxis {
         self.0.attributes.clone()
     }
 
-    /// Check whether the axis is hierarchical
+    /// Checks whether the axis is hierarchical.
     ///
     /// Returns:
     ///     bool

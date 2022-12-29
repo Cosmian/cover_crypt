@@ -11,13 +11,13 @@ class Attribute:
 
     def __init__(self, axis: str, name: str): ...
     def get_axis(self) -> str:
-        """Get the corresponding axis of the attribute
+        """Get the corresponding axis of the attribute.
 
         Returns:
             str
         """
     def get_name(self) -> str:
-        """Get the attribute name
+        """Get the attribute name.
 
         Returns:
             str
@@ -63,19 +63,19 @@ class PolicyAxis:
             bool
         """
     def get_name(self) -> str:
-        """Get axis name
+        """Get axis name.
 
         Returns:
             str
         """
     def get_attributes(self) -> List[str]:
-        """Get the list of attributes in the axis
+        """Get the list of attributes in the axis.
 
         Returns:
             List[str]
         """
     def is_hierarchical(self) -> bool:
-        """Check whether the axis is hierarchical
+        """Check whether the axis is hierarchical.
 
         Returns:
             bool
