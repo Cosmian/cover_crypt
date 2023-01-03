@@ -36,7 +36,7 @@ macro_rules! eakem_hash {
     };
 }
 
-/// Macro calling CoverCrypt [`setup()`](crate::core::cover_crypt::setup) with the correct
+/// Macro calling CoverCrypt [`setup()`](crate::core::primitives::setup) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -45,7 +45,7 @@ macro_rules! eakem_hash {
 #[macro_export]
 macro_rules! setup {
     ($rng: expr, $partition_set: expr) => {
-        $crate::core::cover_crypt::setup::<
+        $crate::core::primitives::setup::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
             CsRng,
@@ -54,7 +54,7 @@ macro_rules! setup {
     };
 }
 
-/// Macro calling CoverCrypt [`join()`](crate::core::cover_crypt::join) with the correct
+/// Macro calling CoverCrypt [`join()`](crate::core::primitives::join) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -63,7 +63,7 @@ macro_rules! setup {
 #[macro_export]
 macro_rules! join {
     ($rng: expr, $msk: expr, $user_set: expr) => {
-        $crate::core::cover_crypt::join::<
+        $crate::core::primitives::join::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
             CsRng,
@@ -72,7 +72,7 @@ macro_rules! join {
     };
 }
 
-/// Macro calling CoverCrypt [`encaps()`](crate::core::cover_crypt::encaps) with the correct
+/// Macro calling CoverCrypt [`encaps()`](crate::core::primitives::encaps) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -84,7 +84,7 @@ macro_rules! join {
 #[macro_export]
 macro_rules! encaps {
     ($rng: expr, $pk: expr, $target_set: expr) => {
-        $crate::core::cover_crypt::encaps::<
+        $crate::core::primitives::encaps::<
             TAG_LENGTH,
             SYM_KEY_LENGTH,
             { KeyPair::PUBLIC_KEY_LENGTH },
@@ -95,7 +95,7 @@ macro_rules! encaps {
     };
 }
 
-/// Macro calling CoverCrypt [`decaps()`](crate::core::cover_crypt::decaps) with the correct
+/// Macro calling CoverCrypt [`decaps()`](crate::core::primitives::decaps) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -107,7 +107,7 @@ macro_rules! encaps {
 #[macro_export]
 macro_rules! decaps {
     ($sk: expr, $encapsulation: expr ) => {
-        $crate::core::cover_crypt::decaps::<
+        $crate::core::primitives::decaps::<
             TAG_LENGTH,
             SYM_KEY_LENGTH,
             { KeyPair::PUBLIC_KEY_LENGTH },
@@ -118,7 +118,7 @@ macro_rules! decaps {
     };
 }
 
-/// Macro calling CoverCrypt [`update()`](crate::core::cover_crypt::update) with the correct
+/// Macro calling CoverCrypt [`update()`](crate::core::primitives::update) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -127,7 +127,7 @@ macro_rules! decaps {
 #[macro_export]
 macro_rules! update {
     ($rng: expr, $msk: expr, $mpk: expr, $partition_set: expr) => {
-        $crate::core::cover_crypt::update::<
+        $crate::core::primitives::update::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
             CsRng,
@@ -136,7 +136,7 @@ macro_rules! update {
     };
 }
 
-/// Macro calling CoverCrypt [`refresh()`](crate::core::cover_crypt::refresh) with the correct
+/// Macro calling CoverCrypt [`refresh()`](crate::core::primitives::refresh) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -144,7 +144,7 @@ macro_rules! update {
 #[macro_export]
 macro_rules! refresh {
     ($msk: expr, $usk: expr, $user_set: expr, $keep_old_access: expr) => {
-        $crate::core::cover_crypt::refresh::<
+        $crate::core::primitives::refresh::<
             { KeyPair::PRIVATE_KEY_LENGTH },
             <KeyPair as DhKeyPair<
                 { KeyPair::PUBLIC_KEY_LENGTH },

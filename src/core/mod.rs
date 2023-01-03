@@ -1,6 +1,6 @@
 //! Implements the core functionalities of CoverCrypt.
 
-// Allows using the paper notations
+// Allows using the paper notations.
 #![allow(non_snake_case)]
 
 use self::partitions::Partition;
@@ -15,8 +15,8 @@ use std::{
 pub mod macros;
 
 pub mod api;
-pub mod cover_crypt;
 pub mod partitions;
+pub mod primitives;
 
 #[cfg(feature = "interface")]
 mod serialization;

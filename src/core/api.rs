@@ -239,14 +239,14 @@ where
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
     CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
 {
-    /// Generates new encrypted header and returns it, along with the symmetric
-    /// key encapsulated in this header.
+    /// Generates an encrypted header for a random key and the given metadata. Returns the
+    /// encrypted header along with the symmetric key encapsulated in this header.
     ///
     /// - `cover_crypt`         : `CoverCrypt` object
     /// - `policy`              : global policy
     /// - `public_key`          : `CoverCrypt` public key
     /// - `encryption_policy`   : access policy used for the encapsulation
-    /// - `header_metadata`     : additional data to encrypt in the header
+    /// - `header_metadata`     : additional data symmetrically encrypted in the header
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &CoverCryptScheme,
@@ -260,7 +260,7 @@ where
         let (symmetric_key, encapsulation) =
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
-        // encrypt the additional data using the DEM with the encapsulated key
+        // encrypt the metadata using the DEM with the authentication_data and the encapsulated key
         let ciphertext = match header_metadata {
             Some(d) => cover_crypt.encrypt(&symmetric_key, d, authentication_data)?,
             None => vec![],
@@ -302,7 +302,7 @@ where
 /// Structure containing all data encrypted in an `EncryptedHeader`.
 ///
 /// - `symmetric_key`   : DEM key
-/// - `header_metadata`
+/// - `header_metadata` : additional data symmetrically encrypted in a header
 #[derive(Debug, PartialEq, Eq)]
 pub struct CleartextHeader<const KEY_LENGTH: usize, DEM>
 where
