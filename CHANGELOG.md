@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - hybridized version of CoverCrypt using Kyber
 - all serializations
+- directory structure
 
 ---
 
