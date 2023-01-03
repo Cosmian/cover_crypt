@@ -23,7 +23,7 @@ pub fn webassembly_encrypt_hybrid_header(
     policy_bytes: Uint8Array,
     access_policy: String,
     public_key_bytes: Uint8Array,
-    additional_data: Uint8Array,
+    header_metadata: Uint8Array,
     authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
@@ -32,10 +32,10 @@ pub fn webassembly_encrypt_hybrid_header(
         .map_err(|e| JsValue::from_str(&format!("Error reading access policy: {e}")))?;
     let public_key = PublicKey::try_from_bytes(&public_key_bytes.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing public key: {e}")))?;
-    let additional_data = if additional_data.is_null() {
+    let header_metadata = if header_metadata.is_null() {
         None
     } else {
-        Some(additional_data.to_vec())
+        Some(header_metadata.to_vec())
     };
     let authentication_data = if authentication_data.is_null() {
         None
@@ -48,7 +48,7 @@ pub fn webassembly_encrypt_hybrid_header(
         &policy,
         &public_key,
         &access_policy,
-        additional_data.as_deref(),
+        header_metadata.as_deref(),
         authentication_data.as_deref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
@@ -186,7 +186,7 @@ pub fn webassembly_decrypt_symmetric_block(
 /// - `attribute_bytes`     : serialized attributes to use in the encapsulation
 /// - `pk`                  : CoverCrypt public key
 /// - `plaintext`           : message to encrypt with the DEM
-/// - `additional_data`     : additional data to symmetrically encrypt in the header
+/// - `header_metadata`     : additional data to symmetrically encrypt in the header
 /// - `authentication_data` : optional data used for authentication
 #[wasm_bindgen]
 pub fn webassembly_hybrid_encrypt(
@@ -194,7 +194,7 @@ pub fn webassembly_hybrid_encrypt(
     access_policy: String,
     pk: Uint8Array,
     plaintext: Uint8Array,
-    additional_data: Uint8Array,
+    header_metadata: Uint8Array,
     authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
     let policy = serde_json::from_slice(&policy_bytes.to_vec())
@@ -203,10 +203,10 @@ pub fn webassembly_hybrid_encrypt(
         .map_err(|e| JsValue::from_str(&format!("Error reading access policy: {e}")))?;
     let pk = PublicKey::try_from_bytes(&pk.to_vec())
         .map_err(|e| JsValue::from_str(&format!("Error parsing public key: {e}")))?;
-    let additional_data = if additional_data.is_null() {
+    let header_metadata = if header_metadata.is_null() {
         None
     } else {
-        Some(additional_data.to_vec())
+        Some(header_metadata.to_vec())
     };
 
     let authentication_data = if authentication_data.is_null() {
@@ -222,7 +222,7 @@ pub fn webassembly_hybrid_encrypt(
         &policy,
         &pk,
         &access_policy,
-        additional_data.as_deref(),
+        header_metadata.as_deref(),
         authentication_data.as_deref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Error encrypting header: {e}")))?;
@@ -300,7 +300,7 @@ pub fn webassembly_hybrid_decrypt(
         .map_err(|e| JsValue::from_str(&format!("Error decrypting ciphertext: {e}")))?;
 
     let mut ser = Serializer::new();
-    ser.write_vec(cleartext_header.additional_data.as_slice())
+    ser.write_vec(cleartext_header.header_metadata.as_slice())
         .map_err(|e| {
             JsValue::from_str(&format!(
                 "Cannot serialize the decrypted header metadata into response : {e}"

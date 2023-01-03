@@ -45,10 +45,10 @@ fn encrypt_header(
     policy: &Policy,
     access_policy_string: String,
     public_key: &PublicKey,
-    additional_data: &[u8],
+    header_metadata: &[u8],
     authentication_data: &[u8],
 ) -> Result<EncryptedHeader, Error> {
-    let additional_data = Uint8Array::from(additional_data);
+    let header_metadata = Uint8Array::from(header_metadata);
     let authentication_data = Uint8Array::from(authentication_data);
     let policy_bytes = Uint8Array::from(serde_json::to_vec(policy)?.as_slice());
     let public_key_bytes = Uint8Array::from(public_key.try_to_bytes()?.as_slice());
@@ -56,7 +56,7 @@ fn encrypt_header(
         policy_bytes,
         access_policy_string,
         public_key_bytes,
-        additional_data,
+        header_metadata,
         authentication_data,
     )
     .map_err(|e| Error::Other(e.as_string().unwrap()))?;
@@ -203,14 +203,14 @@ fn test_generate_keys() {
     // Encrypt / decrypt
     //
 
-    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
     let authentication_data = vec![10, 11, 12, 13, 14];
 
     let encrypted_header = encrypt_header(
         &policy,
         access_policy_string,
         &master_public_key,
-        &additional_data,
+        &header_metadata,
         &authentication_data,
     )
     .unwrap();

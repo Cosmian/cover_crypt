@@ -205,7 +205,7 @@ fn bench_header_encryption(c: &mut Criterion) {
     #[cfg(feature = "full_bench")]
     {
         // Do not bench encryption with metadata if a full benchmark is not running
-        let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
         let authenticated_data = vec![10, 11, 12, 13, 14];
         group.bench_function("1 partition, 1 access + metadata", |b| {
             b.iter(|| {
@@ -214,7 +214,7 @@ fn bench_header_encryption(c: &mut Criterion) {
                     &policy,
                     &mpk,
                     &access_policies[0],
-                    Some(&additional_data),
+                    Some(&header_metadata),
                     Some(&authenticated_data),
                 )
                 .expect("cannot encrypt header 1")
@@ -234,7 +234,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 
     let target_access_policy = "Department::FIN && Security Level::Confidential";
 
-    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
     let authenticated_data = vec![10, 11, 12, 13, 14];
 
     let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
@@ -272,8 +272,8 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
                 public_key_ptr.cast::<i8>(),
                 public_key_bytes.len() as i32,
                 target_access_policy.as_ptr(),
-                additional_data.as_ptr().cast::<i8>(),
-                additional_data.len() as i32,
+                header_metadata.as_ptr().cast::<i8>(),
+                header_metadata.len() as i32,
                 authenticated_data.as_ptr().cast::<i8>(),
                 authenticated_data.len() as i32,
             ))
@@ -292,7 +292,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
         .expect("cannot generate master keys");
 
     let policy_attributes = "Department::FIN && Security Level::Confidential";
-    let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
     let authenticated_data = vec![10, 11, 12, 13, 14];
 
     let policy_cs = CString::new(
@@ -339,8 +339,8 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
                 &mut header_bytes_len,
                 cache_handle,
                 target_policy_attributes.as_ptr(),
-                additional_data.as_ptr().cast::<i8>(),
-                additional_data.len() as i32,
+                header_metadata.as_ptr().cast::<i8>(),
+                header_metadata.len() as i32,
                 authenticated_data.as_ptr().cast::<i8>(),
                 authenticated_data.len() as i32,
             ))
@@ -414,7 +414,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     #[cfg(feature = "full_bench")]
     {
         // Do not bench decryption with metadata if a full benchmark is not running
-        let additional_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
         group.bench_function("1 partition, 1 access + metadata", |b| {
             b.iter(|| {
                 let (_, encrypted_header) = EncryptedHeader::generate(
@@ -422,7 +422,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                     &policy,
                     &mpk,
                     &access_policies[0],
-                    Some(&additional_data),
+                    Some(&header_metadata),
                     Some(&authenticated_data),
                 )
                 .expect("cannot encrypt header with metadata");
@@ -461,9 +461,9 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-    let mut additional_data = vec![0u8; 4096];
-    let additional_data_ptr = additional_data.as_mut_ptr().cast::<i8>();
-    let mut additional_data_len = additional_data.len() as c_int;
+    let mut header_metadata = vec![0u8; 4096];
+    let header_metadata_ptr = header_metadata.as_mut_ptr().cast::<i8>();
+    let mut header_metadata_len = header_metadata.len() as c_int;
 
     let user_decryption_key_bytes = user_decryption_key
         .try_to_bytes()
@@ -478,8 +478,8 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
             unwrap_ffi_error(h_aes_decrypt_header(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
-                additional_data_ptr,
-                &mut additional_data_len,
+                header_metadata_ptr,
+                &mut header_metadata_len,
                 header_bytes.as_ptr().cast::<i8>(),
                 header_bytes.len() as c_int,
                 authenticated_data.as_ptr().cast::<i8>(),
@@ -515,9 +515,9 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
     let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
     let mut symmetric_key_len = symmetric_key.len() as c_int;
 
-    let mut additional_data = vec![0u8; 4096];
-    let additional_data_ptr = additional_data.as_mut_ptr().cast::<i8>();
-    let mut additional_data_len = additional_data.len() as c_int;
+    let mut header_metadata = vec![0u8; 4096];
+    let header_metadata_ptr = header_metadata.as_mut_ptr().cast::<i8>();
+    let mut header_metadata_len = header_metadata.len() as c_int;
 
     let user_decryption_key_bytes = user_decryption_key
         .try_to_bytes()
@@ -541,8 +541,8 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
             unwrap_ffi_error(h_aes_decrypt_header_using_cache(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
-                additional_data_ptr,
-                &mut additional_data_len,
+                header_metadata_ptr,
+                &mut header_metadata_len,
                 header_bytes.as_ptr().cast::<i8>(),
                 header_bytes.len() as c_int,
                 authenticated_data.as_ptr().cast::<i8>(),

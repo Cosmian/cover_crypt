@@ -275,7 +275,7 @@ impl CoverCrypt {
 
         Ok((
             SymmetricKey(cleartext_header.symmetric_key),
-            PyBytes::new(py, &cleartext_header.additional_data).into(),
+            PyBytes::new(py, &cleartext_header.header_metadata).into(),
         ))
     }
 
@@ -364,7 +364,7 @@ impl CoverCrypt {
 
         Ok((
             PyBytes::new(py, &plaintext).into(),
-            PyBytes::new(py, &cleartext_header.additional_data).into(),
+            PyBytes::new(py, &cleartext_header.header_metadata).into(),
         ))
     }
 }

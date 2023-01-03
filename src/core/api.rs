@@ -64,7 +64,7 @@ pub trait CoverCrypt<
 
     type SymmetricKey: SymKey<SYM_KEY_LENGTH>;
 
-    /// Generate the master authority keys for supplied Policy
+    /// Generates the master authority keys for supplied Policy
     ///
     ///  - `policy` : Policy to use to generate the keys
     fn generate_master_keys(
@@ -72,7 +72,7 @@ pub trait CoverCrypt<
         policy: &Policy,
     ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error>;
 
-    /// Update the master keys according to this new policy.
+    /// Updates the master keys according to this new policy.
     ///
     /// When a partition exists in the new policy but not in the master keys,
     /// a new key pair is added to the master keys for that partition.
@@ -89,7 +89,7 @@ pub trait CoverCrypt<
         mpk: &mut Self::PublicKey,
     ) -> Result<(), Error>;
 
-    /// Generate a user secret key.
+    /// Generates a user secret key.
     ///
     /// A new user secret key does NOT include to old (i.e. rotated) partitions
     ///
@@ -103,7 +103,7 @@ pub trait CoverCrypt<
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error>;
 
-    /// Refresh the user key according to the given master key and user policy.
+    /// Refreshes the user key according to the given master key and user policy.
     ///
     /// The user key will be granted access to the current partitions, as
     /// determined by its access policy. If `preserve_old_partitions_access`
@@ -246,14 +246,14 @@ where
     /// - `policy`              : global policy
     /// - `public_key`          : `CoverCrypt` public key
     /// - `encryption_policy`   : access policy used for the encapsulation
-    /// - `additional_data`     : additional data to encrypt in the header
+    /// - `header_metadata`     : additional data to encrypt in the header
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &CoverCryptScheme,
         policy: &Policy,
         public_key: &CoverCryptScheme::PublicKey,
         encryption_policy: &AccessPolicy,
-        additional_data: Option<&[u8]>,
+        header_metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(DEM::Key, Self), Error> {
         // generate a symmetric key and its encapsulation
@@ -261,7 +261,7 @@ where
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
         // encrypt the additional data using the DEM with the encapsulated key
-        let ciphertext = match additional_data {
+        let ciphertext = match header_metadata {
             Some(d) => cover_crypt.encrypt(&symmetric_key, d, authentication_data)?,
             None => vec![],
         };
@@ -275,7 +275,7 @@ where
         ))
     }
 
-    /// Decrypt the header with the given user secret key.
+    /// Decrypts the header with the given user secret key.
     ///
     /// - `cover_crypt`         : `CoverCrypt` object
     /// - `usk`                 : `CoverCrypt` user secret key
@@ -287,24 +287,27 @@ where
         authentication_data: Option<&[u8]>,
     ) -> Result<CleartextHeader<SYM_KEY_LENGTH, DEM>, Error> {
         let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
-        let additional_data = if self.ciphertext.is_empty() {
+        let header_metadata = if self.ciphertext.is_empty() {
             vec![]
         } else {
             cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authentication_data)?
         };
         Ok(CleartextHeader {
             symmetric_key,
-            additional_data,
+            header_metadata,
         })
     }
 }
 
-/// A `ClearTextHeader` returned by the `decrypt_hybrid_header` function
+/// Structure containing all data encrypted in an `EncryptedHeader`.
+///
+/// - `symmetric_key`   : DEM key
+/// - `header_metadata`
 #[derive(Debug, PartialEq, Eq)]
 pub struct CleartextHeader<const KEY_LENGTH: usize, DEM>
 where
     DEM: Dem<KEY_LENGTH>,
 {
     pub symmetric_key: DEM::Key,
-    pub additional_data: Vec<u8>,
+    pub header_metadata: Vec<u8>,
 }

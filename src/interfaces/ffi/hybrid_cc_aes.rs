@@ -121,8 +121,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     header_bytes_len: *mut c_int,
     cache_handle: c_int,
     encryption_policy_ptr: *const c_char,
-    additional_data_ptr: *const c_char,
-    additional_data_len: c_int,
+    header_metadata_ptr: *const c_char,
+    header_metadata_len: c_int,
     authentication_data_ptr: *const c_char,
     authentication_data_len: c_int,
 ) -> c_int {
@@ -173,12 +173,12 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&encryption_policy));
 
     // Additional Data
-    let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
+    let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            additional_data_ptr.cast(),
-            additional_data_len as usize,
+            header_metadata_ptr.cast(),
+            header_metadata_len as usize,
         ))
     };
 
@@ -197,7 +197,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         &cache.policy,
         &cache.pk,
         &encryption_policy,
-        additional_data,
+        header_metadata,
         authentication_data,
     ));
 
@@ -237,8 +237,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     pk_ptr: *const c_char,
     pk_len: c_int,
     encryption_policy_ptr: *const c_char,
-    additional_data_ptr: *const c_char,
-    additional_data_len: c_int,
+    header_metadata_ptr: *const c_char,
+    header_metadata_len: c_int,
     authentication_data_ptr: *const c_char,
     authentication_data_len: c_int,
 ) -> c_int {
@@ -295,12 +295,12 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(&encryption_policy));
 
     // Additional Data
-    let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
+    let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            additional_data_ptr.cast(),
-            additional_data_len as usize,
+            header_metadata_ptr.cast(),
+            header_metadata_len as usize,
         ))
     };
 
@@ -319,7 +319,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         &policy,
         &pk,
         &encryption_policy,
-        additional_data,
+        header_metadata,
         authentication_data
     ));
 
@@ -425,14 +425,14 @@ pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> 
 /// Decrypts an encrypted header using a cache.
 /// Returns the symmetric key and additional data if available.
 ///
-/// No additional data will be returned if the `additional_data_ptr` is NULL.
+/// No additional data will be returned if the `header_metadata_ptr` is NULL.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
-    additional_data_ptr: *mut c_char,
-    additional_data_len: *mut c_int,
+    header_metadata_ptr: *mut c_char,
+    header_metadata_len: *mut c_int,
     encrypted_header_ptr: *const c_char,
     encrypted_header_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -501,16 +501,16 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         .copy_from_slice(&symmetric_key_bytes);
 
     // serialize additional data
-    if !additional_data_ptr.is_null() && *additional_data_len > 0 {
-        if (additional_data_len as usize) < header.additional_data.len() {
+    if !header_metadata_ptr.is_null() && *header_metadata_len > 0 {
+        if (header_metadata_len as usize) < header.header_metadata.len() {
             ffi_bail!(
                 "The pre-allocated additional data buffer is too small; need {} bytes",
-                header.additional_data.len()
+                header.header_metadata.len()
             );
         }
-        *additional_data_len = header.additional_data.len() as c_int;
-        std::slice::from_raw_parts_mut(additional_data_ptr.cast(), header.additional_data.len())
-            .copy_from_slice(&header.additional_data);
+        *header_metadata_len = header.header_metadata.len() as c_int;
+        std::slice::from_raw_parts_mut(header_metadata_ptr.cast(), header.header_metadata.len())
+            .copy_from_slice(&header.header_metadata);
     }
 
     0
@@ -523,14 +523,14 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
 /// Slower than using a cache but avoids handling the cache creation and
 /// destruction.
 ///
-/// No additional data will be returned if the `additional_data_ptr` is NULL.
+/// No additional data will be returned if the `header_metadata_ptr` is NULL.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_header(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
-    additional_data_ptr: *mut c_char,
-    additional_data_len: *mut c_int,
+    header_metadata_ptr: *mut c_char,
+    header_metadata_len: *mut c_int,
     encrypted_header_ptr: *const c_char,
     encrypted_header_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -598,19 +598,19 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         .copy_from_slice(&symmetric_key_bytes);
 
     // additional data
-    if !additional_data_ptr.is_null() && *additional_data_len > 0 {
-        if (additional_data_len as usize) < decrypted_header.additional_data.len() {
+    if !header_metadata_ptr.is_null() && *header_metadata_len > 0 {
+        if (header_metadata_len as usize) < decrypted_header.header_metadata.len() {
             ffi_bail!(
-                "The pre-allocated additional_data buffer is too small; need {} bytes",
-                decrypted_header.additional_data.len()
+                "The pre-allocated header_metadata buffer is too small; need {} bytes",
+                decrypted_header.header_metadata.len()
             );
         }
-        *additional_data_len = decrypted_header.additional_data.len() as c_int;
+        *header_metadata_len = decrypted_header.header_metadata.len() as c_int;
         std::slice::from_raw_parts_mut(
-            additional_data_ptr.cast(),
-            decrypted_header.additional_data.len(),
+            header_metadata_ptr.cast(),
+            decrypted_header.header_metadata.len(),
         )
-        .copy_from_slice(&decrypted_header.additional_data);
+        .copy_from_slice(&decrypted_header.header_metadata);
     }
 
     0
@@ -795,8 +795,8 @@ pub unsafe extern "C" fn h_aes_encrypt(
     encryption_policy_ptr: *const c_char,
     plaintext_ptr: *const c_char,
     plaintext_len: c_int,
-    additional_data_ptr: *const c_char,
-    additional_data_len: c_int,
+    header_metadata_ptr: *const c_char,
+    header_metadata_len: c_int,
     authentication_data_ptr: *const c_char,
     authentication_data_len: c_int,
 ) -> c_int {
@@ -847,12 +847,12 @@ pub unsafe extern "C" fn h_aes_encrypt(
         std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
 
     // Additional Data
-    let additional_data = if additional_data_ptr.is_null() || additional_data_len == 0 {
+    let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(
-            additional_data_ptr.cast(),
-            additional_data_len as usize,
+            header_metadata_ptr.cast(),
+            header_metadata_len as usize,
         ))
     };
 
@@ -871,7 +871,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
         &policy,
         &pk,
         &encryption_policy,
-        additional_data,
+        header_metadata,
         authentication_data
     ));
 
@@ -907,8 +907,8 @@ pub unsafe extern "C" fn h_aes_encrypt(
 pub unsafe extern "C" fn h_aes_decrypt(
     plaintext_ptr: *mut c_char,
     plaintext_len: *mut c_int,
-    additional_data_ptr: *mut c_char,
-    additional_data_len: *mut c_int,
+    header_metadata_ptr: *mut c_char,
+    header_metadata_len: *mut c_int,
     ciphertext_ptr: *const c_char,
     ciphertext_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -985,22 +985,22 @@ pub unsafe extern "C" fn h_aes_decrypt(
     std::slice::from_raw_parts_mut(plaintext_ptr.cast(), plaintext.len())
         .copy_from_slice(&plaintext);
 
-    if *additional_data_len > 0 && !decrypted_header.additional_data.is_empty() {
-        let allocated = *additional_data_len;
-        *additional_data_len = decrypted_header.additional_data.len() as c_int;
-        if allocated < *additional_data_len {
+    if *header_metadata_len > 0 && !decrypted_header.header_metadata.is_empty() {
+        let allocated = *header_metadata_len;
+        *header_metadata_len = decrypted_header.header_metadata.len() as c_int;
+        if allocated < *header_metadata_len {
             ffi_bail!(
                 "The pre-allocated additional data buffer is too small; need {} bytes",
-                *additional_data_len
+                *header_metadata_len
             );
         }
         std::slice::from_raw_parts_mut(
-            additional_data_ptr.cast(),
-            decrypted_header.additional_data.len(),
+            header_metadata_ptr.cast(),
+            decrypted_header.header_metadata.len(),
         )
-        .copy_from_slice(&decrypted_header.additional_data);
+        .copy_from_slice(&decrypted_header.header_metadata);
     } else {
-        *additional_data_len = 0;
+        *header_metadata_len = 0;
     }
 
     0

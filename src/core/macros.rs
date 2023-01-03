@@ -36,7 +36,7 @@ macro_rules! eakem_hash {
     };
 }
 
-/// Macro calling CoverCrypt [`setup()`](crate::core::cover_crypt_core::setup) with the correct
+/// Macro calling CoverCrypt [`setup()`](crate::core::cover_crypt::setup) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -54,7 +54,7 @@ macro_rules! setup {
     };
 }
 
-/// Macro calling CoverCrypt [`join()`](crate::core::cover_crypt_core::join) with the correct
+/// Macro calling CoverCrypt [`join()`](crate::core::cover_crypt::join) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -72,7 +72,7 @@ macro_rules! join {
     };
 }
 
-/// Macro calling CoverCrypt [`encaps()`](crate::core::cover_crypt_core::encaps) with the correct
+/// Macro calling CoverCrypt [`encaps()`](crate::core::cover_crypt::encaps) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -95,7 +95,7 @@ macro_rules! encaps {
     };
 }
 
-/// Macro calling CoverCrypt [`decaps()`](crate::core::cover_crypt_core::decaps) with the correct
+/// Macro calling CoverCrypt [`decaps()`](crate::core::cover_crypt::decaps) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -118,7 +118,7 @@ macro_rules! decaps {
     };
 }
 
-/// Macro calling CoverCrypt [`update()`](crate::core::cover_crypt_core::update) with the correct
+/// Macro calling CoverCrypt [`update()`](crate::core::cover_crypt::update) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -136,7 +136,7 @@ macro_rules! update {
     };
 }
 
-/// Macro calling CoverCrypt [`refresh()`](crate::core::cover_crypt_core::refresh) with the correct
+/// Macro calling CoverCrypt [`refresh()`](crate::core::cover_crypt::refresh) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined

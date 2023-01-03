@@ -162,7 +162,7 @@ class TestEncryption(unittest.TestCase):
         self.msk, self.pk = self.cc.generate_master_keys(self.policy)
 
         self.plaintext = b'My secret data'
-        self.additional_data = bytes([0, 0, 0, 0, 0, 0, 0, 1])
+        self.header_metadata = bytes([0, 0, 0, 0, 0, 0, 0, 1])
         self.authenticated_data = b'auth'
 
     def test_simple_encryption_decryption_without_metadata(self) -> None:
@@ -186,7 +186,7 @@ class TestEncryption(unittest.TestCase):
             'Secrecy::High && Country::France',
             self.pk,
             self.plaintext,
-            self.additional_data,
+            self.header_metadata,
             self.authenticated_data,
         )
 
@@ -201,7 +201,7 @@ class TestEncryption(unittest.TestCase):
             sec_high_fr_sp_user, ciphertext, self.authenticated_data
         )
         self.assertEqual(plaintext, self.plaintext)
-        self.assertEqual(header_metadata, bytes(self.additional_data))
+        self.assertEqual(header_metadata, bytes(self.header_metadata))
 
         # Wrong key
         sec_low_fr_sp_user = self.cc.generate_user_secret_key(
@@ -217,7 +217,7 @@ class TestEncryption(unittest.TestCase):
             'Secrecy::High && Country::France',
             self.pk,
             self.plaintext,
-            self.additional_data,
+            self.header_metadata,
             self.authenticated_data,
         )
 
@@ -238,7 +238,7 @@ class TestEncryption(unittest.TestCase):
             'Secrecy::High && Country::France',
             self.pk,
             new_plaintext,
-            self.additional_data,
+            self.header_metadata,
             self.authenticated_data,
         )
 
@@ -284,7 +284,7 @@ class TestEncryption(unittest.TestCase):
             self.policy,
             'Secrecy::Medium && Country::UK',
             self.pk,
-            self.additional_data,
+            self.header_metadata,
             self.authenticated_data,
         )
 
@@ -299,7 +299,7 @@ class TestEncryption(unittest.TestCase):
         decrypted_sym_key, decrypted_metadata = self.cc.decrypt_header(
             sec_med_uk_user, enc_header, self.authenticated_data
         )
-        self.assertEqual(decrypted_metadata, bytes(self.additional_data))
+        self.assertEqual(decrypted_metadata, bytes(self.header_metadata))
 
         decrypted_data = self.cc.decrypt_symmetric_block(
             decrypted_sym_key, ciphertext, self.authenticated_data

@@ -40,7 +40,7 @@ impl EncryptionTestVector {
 
         let plaintext_header =
             encrypted_header.decrypt(&cover_crypt, &user_key, authentication_data)?;
-        assert_eq!(plaintext_header.additional_data, header_metadata);
+        assert_eq!(plaintext_header.header_metadata, header_metadata);
         let plaintext = cover_crypt.decrypt(
             &plaintext_header.symmetric_key,
             &ciphertext,
