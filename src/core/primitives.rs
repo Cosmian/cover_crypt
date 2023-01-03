@@ -3,8 +3,8 @@
 
 use crate::{
     core::{
-        partitions::{filter_on_partition, Partition},
-        Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey,
+        partitions::Partition, Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey,
+        UserSecretKey,
     },
     Error,
 };
@@ -41,9 +41,11 @@ fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] 
 /// Generates the master secret key and master public key of the CoverCrypt
 /// scheme.
 ///
-/// TODO (TBZ): add ref to the paper for the algorithm.
+/// # Reference
 ///
-/// # Arguments
+/// Implements Algorithm 1 in Appendix B.
+///
+/// # Parameters
 ///
 /// - `rng`             : random number generator
 /// - `partitions`      : set of partition to be used
@@ -97,20 +99,22 @@ where
     (MasterSecretKey { u, v, s, x }, PublicKey { U, V, H })
 }
 
-/// Generates a user secret key for the given decryption sets.
+/// Generates a user secret key for the given decryption set.
 ///
-/// TODO (TBZ): add ref to the paper for the algorithm.
+/// # Reference
 ///
-/// # Arguments
+/// Implements Algorithm 2 in Appendix B.
+///
+/// # Parameters
 ///
 /// - `rng`             : random number generator
 /// - `msk`             : master secret key
 /// - `decryption_set`  : decryption set
-pub fn join<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R, KeyPair>(
+pub fn keygen<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R, KeyPair>(
     rng: &mut R,
     msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     decryption_set: &HashSet<Partition>,
-) -> Result<UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>, Error>
+) -> UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>
 where
     R: CryptoRng + RngCore,
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
@@ -125,13 +129,22 @@ where
 {
     let a = KeyPair::PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.u)) / &msk.v;
-    let x = filter_on_partition(decryption_set, &msk.x);
-    Ok(UserSecretKey { a, b, x })
+    let x = decryption_set
+        .iter()
+        .filter_map(|partition| msk.x.get(partition))
+        .cloned()
+        .collect();
+    UserSecretKey { a, b, x }
 }
 
-/// Generates the secret key encapsulation.
+/// Generates a CoverCrypt encapsulation of a random symmetric key. Returns
+/// both the symmetric key and its encapsulation.
 ///
-/// # Arguments
+/// # Reference
+///
+/// Implements Algorithm 3 in Appendix B.
+///
+/// # Parameters
 ///
 /// - `rng`             : secure random number generator
 /// - `mpk`             : master public key
@@ -147,13 +160,10 @@ pub fn encaps<
     rng: &mut impl CryptoRngCore,
     mpk: &PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
     encryption_set: &HashSet<Partition>,
-) -> Result<
-    (
-        SymmetricKey,
-        Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
-    ),
-    Error,
->
+) -> (
+    SymmetricKey,
+    Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
+)
 where
     SymmetricKey: SymKey<SYM_KEY_LENGTH>,
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
@@ -167,14 +177,14 @@ where
 {
     let mut K = [0; SYM_KEY_LENGTH];
     rng.fill_bytes(&mut K);
+
     let r = KeyPair::PrivateKey::new(rng);
     let C = &mpk.U * &r;
     let D = &mpk.V * &r;
     let mut E = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
         if let Some((pk_i, H_i)) = mpk.H.get(partition) {
-            let K_i = (H_i * &r).to_bytes();
-            let E_i = xor(&kdf!(SYM_KEY_LENGTH, &K_i), &K);
+            let E_i = xor(&K, &kdf!(SYM_KEY_LENGTH, &(H_i * &r).to_bytes()));
             if let Some(pk_i) = pk_i {
                 let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
                 // TODO TBZ: which coin to use ?
@@ -186,15 +196,25 @@ where
         } // else unknown target partition
     }
     let (tag, K) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K, KEY_GEN_INFO);
-    Ok((SymmetricKey::from_bytes(K), Encapsulation { C, D, tag, E }))
+    (SymmetricKey::from_bytes(K), Encapsulation { C, D, tag, E })
 }
 
-/// Decapsulates the secret key.
+/// Tries to decapsulate the given CoverCrypt encapsulation. Returns the
+/// encapsulated symmetric key.
 ///
-/// # Arguments
+/// # Error
 ///
-/// - `sk_j`                : user secret key
-/// - `encapsulation`       : symmetric key encapsulation
+/// An error is returned if the user decryption set does not match the
+/// encryption set used to generate the given encapsulation.
+///
+/// # Reference
+///
+/// Implements Algorithm 4 in Appendix B.
+///
+/// # Parameters
+///
+/// - `usk`             : user secret key
+/// - `encapsulation`   : symmetric key encapsulation
 pub fn decaps<
     const TAG_LENGTH: usize,
     const SYM_KEY_LENGTH: usize,
@@ -234,13 +254,13 @@ where
                         indcpa_dec(&mut E_j, &**EPQ_i, sk_j);
                         E_j
                     } else {
+                        // Classic sub-key cannot decrypt hybridized encapsulation.
                         continue;
                     }
                 }
                 KeyEncapsulation::ClassicEncapsulation(E_i) => **E_i,
             };
-            let K_j = (&precomp * x_j).to_bytes();
-            let K = xor(&kdf!(SYM_KEY_LENGTH, &K_j), &E_j);
+            let K = xor(&E_j, &kdf!(SYM_KEY_LENGTH, &(&precomp * x_j).to_bytes()));
             let (tag, K) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K, KEY_GEN_INFO);
             if tag == encapsulation.tag {
                 return Ok(SymmetricKey::from_bytes(K));
@@ -250,8 +270,7 @@ where
     Err(Error::InsufficientAccessPolicy)
 }
 
-/// Update the master secret key and master public key of the CoverCrypt
-/// scheme with the given list of partitions.
+/// Update the given master keys for the given list of partitions.
 ///
 /// If a partition exists in the keys but not in the list, it will be removed
 /// from the keys.
@@ -260,7 +279,19 @@ where
 /// to the keys, by adding a new partition key pair as performed in the setup
 /// procedure above.
 ///
-/// # Arguments
+/// If a partition exists in the list and in the keys, hybridization property
+/// will be set as given.
+///
+/// If a partition exists in the list and in the master secret key a new public
+/// sub-key is derived.
+///
+/// # Error
+///
+/// Due to library limitations, generating a new post-quantum public key from a
+/// given post-quantum secret key is not possible yet. Therefore, an error will
+/// be returned if no matching post-quantum public sub-key is found.
+///
+/// # Parameters
 ///
 /// - `rng`             : random number generator
 /// - `msk`             : master secret key
@@ -288,6 +319,8 @@ where
 
     for (partition, &is_hybridized) in partitions_set {
         if let Some((sk_i, x_i)) = msk.x.get(partition) {
+            // regenerate the public sub-key.
+            let H_i = &S * x_i;
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized {
                 let (pk_i, _) = mpk.H.get(partition).ok_or_else(|| {
@@ -299,9 +332,8 @@ where
                     if pk_i.is_some() {
                         (*sk_i, *pk_i)
                     } else {
-                        // Kyber public key cannot be computed from the secret key.
                         return Err(Error::CryptoError(
-                            "Master keys are not synchronized.".to_string(),
+                            "Kyber public key cannot be computed from the secret key.".to_string(),
                         ));
                     }
                 } else {
@@ -316,7 +348,7 @@ where
                 (None, None)
             };
             new_x.insert(partition.clone(), (sk_i, x_i.clone()));
-            new_H.insert(partition.clone(), (pk_i, &S * x_i));
+            new_H.insert(partition.clone(), (pk_i, H_i));
         } else {
             // Create new entry.
             let x_i = KeyPair::PrivateKey::new(rng);
@@ -342,43 +374,42 @@ where
     Ok(())
 }
 
-/// Refresh a user key from the master secret key and a list of partitions.
-/// The partitions MUST exist in the master secret key.
+/// Refresh a user key from the master secret key and the given decryption set.
 ///
-/// If a partition exists in the user key but is not in the list, it will be
-/// removed from the user key.
+/// If `keep_old_rights` is set to false, old sub-keys are removed.
 ///
-/// If a partition exists in the list, but not in the user key, it will be
-/// "added" to the user key, by copying the proper partition key from the master
-/// secret key
+/// If a partition exists in the list and in the master secret key, the
+/// associated sub-key is added to the user key.
+///
+/// # Parameters
+///
+/// - `msk`             : master secret key
+/// - `usk`             : user secret key
+/// - `decryption_set`  : set of partitions the user is granted the decryption right for
+/// - `keep_old_rights` : whether or not to keep old decryption rights
 pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
     msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
     usk: &mut UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
-    user_set: &HashSet<Partition>,
-    keep_old_accesses: bool,
-) -> Result<(), Error>
-where
+    decryption_set: &HashSet<Partition>,
+    keep_old_rights: bool,
+) where
     PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash,
 {
-    if !keep_old_accesses {
-        // generate a fresh key
+    if !keep_old_rights {
         usk.x = Default::default();
     }
 
-    // add keys for partitions that do not exist
-    for partition in user_set {
+    for partition in decryption_set {
         if let Some(x_i) = msk.x.get(partition) {
             usk.x.insert(x_i.clone());
         }
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{decaps, encaps, join, refresh, setup, update};
+    use crate::{decaps, encaps, keygen, refresh, setup, update};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
         symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
@@ -423,10 +454,10 @@ mod tests {
         // setup scheme
         let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
         // generate user secret keys
-        let mut usk0 = join!(&mut rng, &msk, &users_set[0])?;
-        let usk1 = join!(&mut rng, &msk, &users_set[1])?;
+        let mut usk0 = keygen!(&mut rng, &msk, &users_set[0]);
+        let usk1 = keygen!(&mut rng, &msk, &users_set[1]);
         // encapsulate for the target set
-        let (sym_key, encapsulation) = encaps!(&mut rng, &mpk, &target_set)?;
+        let (sym_key, encapsulation) = encaps!(&mut rng, &mpk, &target_set);
         // decapsulate for users 1 and 3
         let res0 = decaps!(&usk0, &encapsulation);
 
@@ -442,8 +473,8 @@ mod tests {
             HashMap::from([(dev_partition, true), (client_partition.clone(), false)]);
         let new_target_set = HashSet::from([client_partition.clone()]);
         update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh!(&msk, &mut usk0, &HashSet::from([client_partition]), false)?;
-        let (sym_key, new_encapsulation) = encaps!(&mut rng, &mpk, &new_target_set)?;
+        refresh!(&msk, &mut usk0, &HashSet::from([client_partition]), false);
+        let (sym_key, new_encapsulation) = encaps!(&mut rng, &mpk, &new_target_set);
 
         // New user key cannot decrypt old encapsulation.
         let res0 = decaps!(&usk0, &encapsulation);
@@ -511,11 +542,11 @@ mod tests {
         // setup scheme
         let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
         // create a user key with access to partition 1 and 2
-        let mut usk = join!(
+        let mut usk = keygen!(
             &mut rng,
             &msk,
             &HashSet::from([partition_1.clone(), partition_2.clone()])
-        )?;
+        );
 
         // now remove partition 1 and add partition 4
         let partition_4 = Partition(b"4".to_vec());
@@ -533,7 +564,7 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
             false
-        )?;
+        );
         assert!(!usk.x.contains(old_msk.x.get(&partition_1).unwrap()));
         assert!(usk.x.contains(msk.x.get(&partition_2).unwrap()));
         assert!(!usk.x.contains(old_msk.x.get(&partition_3).unwrap()));

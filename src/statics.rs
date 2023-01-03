@@ -1,6 +1,6 @@
 use crate::{
     core::{self, partitions},
-    decaps, encaps, join, refresh, setup, update, CoverCrypt, Error,
+    decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
 };
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
@@ -117,11 +117,11 @@ impl
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error> {
-        join!(
+        Ok(keygen!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             msk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, true)?
-        )
+        ))
     }
 
     fn refresh_user_secret_key(
@@ -137,7 +137,8 @@ impl
             usk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
             keep_old_accesses
-        )
+        );
+        Ok(())
     }
 
     fn encaps(
@@ -152,11 +153,11 @@ impl
         ),
         Error,
     > {
-        encaps!(
+        Ok(encaps!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             pk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, false)?
-        )
+        ))
     }
 
     fn decaps(

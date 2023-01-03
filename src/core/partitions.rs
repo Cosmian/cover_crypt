@@ -262,22 +262,6 @@ fn to_attribute_combinations(
     }
 }
 
-/// Retains `x`'s values which key are given in the `partition_set`.
-pub fn filter_on_partition<T: Clone + Hash + Eq>(
-    partition_set: &HashSet<Partition>,
-    x: &HashMap<Partition, T>,
-) -> HashSet<T> {
-    x.iter()
-        .filter_map(|(partition, x_i)| {
-            if partition_set.contains(partition) {
-                Some(x_i.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

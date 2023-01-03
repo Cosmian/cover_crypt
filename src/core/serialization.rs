@@ -416,14 +416,14 @@ mod tests {
         assert_eq!(mpk, mpk_, "Wrong `PublicKey` derserialization.");
 
         // Check CoverCrypt `UserSecretKey` serialization.
-        let usk = join!(&mut rng, &msk, &user_set)?;
+        let usk = keygen!(&mut rng, &msk, &user_set);
         let bytes = usk.try_to_bytes()?;
         assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
         let usk_ = UserSecretKey::try_from_bytes(&bytes)?;
         assert_eq!(usk, usk_, "Wrong `UserSecretKey` derserialization.");
 
         // Check CoverCrypt `Encapsulation` serialization.
-        let (_, encapsulation) = encaps!(&mut rng, &mpk, &target_set)?;
+        let (_, encapsulation) = encaps!(&mut rng, &mpk, &target_set);
         let bytes = encapsulation.try_to_bytes()?;
         assert_eq!(
             bytes.len(),

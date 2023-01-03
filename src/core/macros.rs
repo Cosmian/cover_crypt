@@ -54,16 +54,16 @@ macro_rules! setup {
     };
 }
 
-/// Macro calling CoverCrypt [`join()`](crate::core::primitives::join) with the correct
+/// Macro calling CoverCrypt [`keygen()`](crate::core::primitives::keygen) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
 /// - `type CsRng: `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
 /// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 #[macro_export]
-macro_rules! join {
+macro_rules! keygen {
     ($rng: expr, $msk: expr, $user_set: expr) => {
-        $crate::core::primitives::join::<
+        $crate::core::primitives::keygen::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
             CsRng,
