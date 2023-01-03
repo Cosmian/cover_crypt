@@ -414,9 +414,7 @@ fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
     Ok(())
 }
 
-unsafe fn generate_master_keys(
-    policy: &Policy,
-) -> Result<(MasterSecretKey, PublicKey), Error> {
+unsafe fn generate_master_keys(policy: &Policy) -> Result<(MasterSecretKey, PublicKey), Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();
@@ -512,10 +510,7 @@ fn test_ffi_keygen() -> Result<(), Error> {
     Ok(())
 }
 
-unsafe fn rotate_policy(
-    policy: &Policy,
-    attributes: &[Attribute],
-) -> Result<Policy, Error> {
+unsafe fn rotate_policy(policy: &Policy, attributes: &[Attribute]) -> Result<Policy, Error> {
     let policy_cs = CString::new(serde_json::to_string(&policy)?.as_str())
         .map_err(|e| Error::Other(e.to_string()))?;
     let policy_ptr = policy_cs.as_ptr();

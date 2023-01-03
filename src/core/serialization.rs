@@ -5,7 +5,7 @@ use crate::{
         partitions::Partition, Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey,
         UserSecretKey,
     },
-    CleartextHeader, CoverCrypt, Error, EncryptedHeader,
+    CleartextHeader, CoverCrypt, EncryptedHeader, Error,
 };
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,

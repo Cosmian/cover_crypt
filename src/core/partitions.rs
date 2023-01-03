@@ -196,9 +196,7 @@ pub fn access_policy_to_current_partitions(
         for partition in to_partitions(attr_combination, policy)? {
             let is_unique = set.insert(partition);
             if !is_unique {
-                return Err(Error::ExistingCombination(format!(
-                    "{attr_combination:?}"
-                )));
+                return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
             }
         }
     }

@@ -217,7 +217,8 @@ pub type EncryptedHeader = crate::core::api::EncryptedHeader<
 >;
 
 /// Convenience type
-pub type CleartextHeader = crate::core::api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
+pub type CleartextHeader =
+    crate::core::api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
 
 /// Convenience type: CoverCryptX25519Aes256 master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
