@@ -7,12 +7,10 @@ use abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 
 use crate::{
-    api::CoverCrypt,
     ffi_bail, ffi_not_null, ffi_unwrap,
-    interfaces::{
-        ffi::error::{set_last_error, FfiError},
-        statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
-    },
+    interfaces::ffi::error::{set_last_error, FfiError},
+    statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
+    CoverCrypt,
 };
 
 #[no_mangle]

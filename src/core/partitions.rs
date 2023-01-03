@@ -4,6 +4,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializer;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    hash::Hash,
     ops::Deref,
 };
 
@@ -195,7 +196,9 @@ pub fn access_policy_to_current_partitions(
         for partition in to_partitions(attr_combination, policy)? {
             let is_unique = set.insert(partition);
             if !is_unique {
-                return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
+                return Err(Error::ExistingCombination(format!(
+                    "{attr_combination:?}"
+                )));
             }
         }
     }
@@ -259,6 +262,22 @@ fn to_attribute_combinations(
         }
         AccessPolicy::All => Ok(vec![vec![]]),
     }
+}
+
+/// Retains `x`'s values which key are given in the `partition_set`.
+pub fn filter_on_partition<T: Clone + Hash + Eq>(
+    partition_set: &HashSet<Partition>,
+    x: &HashMap<Partition, T>,
+) -> HashSet<T> {
+    x.iter()
+        .filter_map(|(partition, x_i)| {
+            if partition_set.contains(partition) {
+                Some(x_i.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

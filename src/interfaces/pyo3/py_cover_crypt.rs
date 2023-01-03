@@ -1,22 +1,17 @@
+use crate::{
+    interfaces::pyo3::py_abe_policy::Policy,
+    statics::{
+        CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey as MasterSecretKeyRust,
+        PublicKey as PublicKeyRust, UserSecretKey as UserSecretKeyRust, DEM,
+    },
+    CoverCrypt as CoverCryptRust,
+};
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    symmetric_crypto::Dem,
-    symmetric_crypto::SymKey,
+    symmetric_crypto::{Dem, SymKey},
 };
 use pyo3::{exceptions::PyTypeError, prelude::*, types::PyBytes, PyErr};
-
-use crate::{
-    api::CoverCrypt as CoverCryptRust,
-    interfaces::{
-        pyo3::py_abe_policy::Policy,
-        statics::{
-            CoverCryptDem, CoverCryptX25519Aes256, EncryptedHeader,
-            MasterSecretKey as MasterSecretKeyRust, PublicKey as PublicKeyRust,
-            SymmetricKey as SymmetricKeyRust, UserSecretKey as UserSecretKeyRust,
-        },
-    },
-};
 
 // Pyo3 doc on classes
 // https://pyo3.rs/v0.16.2/class.html
@@ -37,7 +32,7 @@ pub struct UserSecretKey(UserSecretKeyRust);
 impl_key_byte!(UserSecretKey, UserSecretKeyRust);
 
 #[pyclass]
-pub struct SymmetricKey(SymmetricKeyRust);
+pub struct SymmetricKey(<DEM as Dem<{ DEM::KEY_LENGTH }>>::Key);
 
 #[pymethods]
 impl SymmetricKey {
@@ -48,8 +43,10 @@ impl SymmetricKey {
 
     /// Reads key from bytes
     #[staticmethod]
-    pub fn from_bytes(key_bytes: [u8; CoverCryptDem::KEY_LENGTH]) -> PyResult<Self> {
-        Ok(Self(SymmetricKeyRust::from_bytes(key_bytes)))
+    pub fn from_bytes(key_bytes: [u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH]) -> PyResult<Self> {
+        Ok(Self(<DEM as Dem<
+            { CoverCryptX25519Aes256::SYM_KEY_LENGTH },
+        >>::Key::from_bytes(key_bytes)))
     }
 }
 

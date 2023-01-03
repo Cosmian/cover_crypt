@@ -1,3 +1,20 @@
+use crate::{
+    interfaces::wasm_bindgen::{
+        generate_cc_keys::{
+            webassembly_generate_master_keys, webassembly_generate_user_secret_key,
+            webassembly_rotate_attributes,
+        },
+        hybrid_cc_aes::{
+            webassembly_decrypt_hybrid_header, webassembly_encrypt_hybrid_header,
+            webassembly_hybrid_decrypt, webassembly_hybrid_encrypt,
+        },
+    },
+    statics::{
+        CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
+        UserSecretKey,
+    },
+    CoverCrypt, Error,
+};
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 /// Test WASM bindgen functions prerequisites:
@@ -6,27 +23,6 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 ///   wasm_bindgen --lib`
 use js_sys::Uint8Array;
 use wasm_bindgen_test::wasm_bindgen_test;
-
-use super::generate_cc_keys::webassembly_rotate_attributes;
-use crate::{
-    api::CoverCrypt,
-    error::Error,
-    interfaces::{
-        statics::{
-            ClearTextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
-            UserSecretKey,
-        },
-        wasm_bindgen::{
-            generate_cc_keys::{
-                webassembly_generate_master_keys, webassembly_generate_user_secret_key,
-            },
-            hybrid_cc_aes::{
-                webassembly_decrypt_hybrid_header, webassembly_encrypt_hybrid_header,
-                webassembly_hybrid_decrypt, webassembly_hybrid_encrypt,
-            },
-        },
-    },
-};
 
 fn create_test_policy() -> Policy {
     //
@@ -74,7 +70,7 @@ fn decrypt_header(
     encrypted_header: &EncryptedHeader,
     user_decryption_key: &UserSecretKey,
     authentication_data: &[u8],
-) -> Result<ClearTextHeader, Error> {
+) -> Result<CleartextHeader, Error> {
     let authentication_data = Uint8Array::from(authentication_data);
     let encrypted_header_bytes =
         Uint8Array::from(encrypted_header.try_to_bytes().unwrap().as_slice());
@@ -82,7 +78,7 @@ fn decrypt_header(
     let decrypted_header_bytes =
         webassembly_decrypt_hybrid_header(sk_u, encrypted_header_bytes, authentication_data)
             .map_err(|e| Error::Other(e.as_string().unwrap()))?;
-    ClearTextHeader::try_from_bytes(&decrypted_header_bytes.to_vec())
+    CleartextHeader::try_from_bytes(&decrypted_header_bytes.to_vec())
         .map_err(|e| Error::JsonParsing(e.to_string()))
 }
 

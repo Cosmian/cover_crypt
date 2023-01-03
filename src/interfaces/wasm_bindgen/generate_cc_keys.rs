@@ -4,8 +4,8 @@
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
 use crate::{
-    api::CoverCrypt,
-    interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey},
+    statics::{CoverCryptX25519Aes256, MasterSecretKey},
+    CoverCrypt,
 };
 use abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
