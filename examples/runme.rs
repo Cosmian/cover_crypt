@@ -13,20 +13,33 @@ fn main() {
     // messages encrypted for `Security Level::Protected`.
     let sec_level = PolicyAxis::new(
         "Security Level",
-        &["Protected", "Confidential", "Top Secret"],
+        vec![
+            ("Protected", false),
+            ("Confidential", false),
+            ("Top Secret", true),
+        ],
         true,
     );
 
     // Another attribute axis will be department names.
     // This axis is *not* hierarchical.
-    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+    let department = PolicyAxis::new(
+        "Department",
+        vec![
+            ("R&D", false),
+            ("HR", false),
+            ("MKG", false),
+            ("FIN", false),
+        ],
+        false,
+    );
 
     // Generate a new `Policy` object with a 100 revocations allowed.
     let mut policy = Policy::new(100);
 
     // Add the two generated axes to the policy
-    policy.add_axis(&sec_level).unwrap();
-    policy.add_axis(&department).unwrap();
+    policy.add_axis(sec_level).unwrap();
+    policy.add_axis(department).unwrap();
 
     // Setup CoverCrypt and generate master keys
     let cover_crypt = CoverCryptX25519Aes256::default();

@@ -87,10 +87,7 @@ impl
     ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error> {
         Ok(setup!(
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
-            &partitions::all_partitions(policy)?
-                .into_iter()
-                .map(|partition| (partition, true))
-                .collect()
+            &partitions::generate_all_partitions(policy)?
         ))
     }
 
@@ -104,10 +101,7 @@ impl
             self.rng.lock().expect("Mutex lock failed!").deref_mut(),
             msk,
             mpk,
-            &partitions::all_partitions(policy)?
-                .into_iter()
-                .map(|partition| (partition, true))
-                .collect()
+            &partitions::generate_all_partitions(policy)?
         )
     }
 
@@ -262,27 +256,34 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
 >>::Encapsulation;
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::{core::partitions::Partition, CoverCrypt, Error};
     use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 
-    fn policy() -> Result<Policy, Error> {
+    pub fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
             "Security Level",
-            &[
-                "Protected",
-                "Low Secret",
-                "Medium Secret",
-                "High Secret",
-                "Top Secret",
+            vec![
+                ("Protected", false),
+                ("Confidential", false),
+                ("Top Secret", true),
             ],
             true,
         );
-        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+        let department = PolicyAxis::new(
+            "Department",
+            vec![
+                ("R&D", false),
+                ("HR", false),
+                ("MKG", false),
+                ("FIN", false),
+            ],
+            false,
+        );
         let mut policy = Policy::new(100);
-        policy.add_axis(&sec_level)?;
-        policy.add_axis(&department)?;
+        policy.add_axis(sec_level)?;
+        policy.add_axis(department)?;
         Ok(policy)
     }
 
@@ -307,8 +308,8 @@ mod tests {
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
         }
-        // 5 is the size of the security level axis
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
+        // 3 is the size of the security level axis
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 3);
         Ok(())
     }
 
@@ -317,25 +318,24 @@ mod tests {
         let mut policy = policy()?;
         let cover_crypt = CoverCryptX25519Aes256::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        let access_policy = AccessPolicy::from_boolean_expression(
-            "Department::MKG && Security Level::Medium Secret",
+        let decryption_policy = AccessPolicy::from_boolean_expression(
+            "Department::MKG && Security Level::Confidential",
         )?;
-        let mut usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let mut usk = cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
         let original_usk = usk.clone();
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
-        cover_crypt.refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, true)?;
-        // 3 partitions accessed by the user were rotated (MKG Medium Secret and MKG
-        // Protected)
-        assert_eq!(usk.x.len(), original_usk.x.len() + 3);
+        cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, true)?;
+        // 2 partitions accessed by the user were rotated (MKG Protected and Confidential)
+        assert_eq!(usk.x.len(), original_usk.x.len() + 2);
         for x_i in &original_usk.x {
             assert!(usk.x.contains(x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
-        cover_crypt.refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, false)?;
+        cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)?;
         // the user should still have access to the same number of partitions
         println!("{usk:?}");
         assert_eq!(usk.x.len(), original_usk.x.len());

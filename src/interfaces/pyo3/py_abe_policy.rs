@@ -74,12 +74,8 @@ pub struct PolicyAxis(PolicyAxisRust);
 #[pymethods]
 impl PolicyAxis {
     #[new]
-    fn new(name: &str, attributes: Vec<&str>, hierarchical: bool) -> Self {
-        Self(PolicyAxisRust::new(
-            name,
-            attributes.as_slice(),
-            hierarchical,
-        ))
+    fn new(name: &str, attributes: Vec<(&str, bool)>, hierarchical: bool) -> Self {
+        Self(PolicyAxisRust::new(name, attributes, hierarchical))
     }
 
     /// Returns the number of attributes belonging to this axis.
@@ -110,8 +106,8 @@ impl PolicyAxis {
     ///
     /// Returns:
     ///     List[str]
-    pub fn get_attributes(&self) -> Vec<String> {
-        self.0.attributes.clone()
+    pub fn get_attributes(&self) -> Vec<(String, bool)> {
+        self.0.attribute_properties.clone()
     }
 
     /// Checks whether the axis is hierarchical.
@@ -130,7 +126,7 @@ impl PolicyAxis {
     pub fn to_string(&self) -> String {
         format!(
             "{}: {:?}, hierarchical: {}",
-            &self.0.name, &self.0.attributes, &self.0.hierarchical
+            &self.0.name, &self.0.attribute_properties, &self.0.hierarchical
         )
     }
 }
@@ -154,7 +150,7 @@ impl Policy {
     /// Adds the given policy axis to the policy.
     pub fn add_axis(&mut self, axis: &PolicyAxis) -> PyResult<()> {
         self.0
-            .add_axis(&axis.0)
+            .add_axis(axis.0.clone())
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 

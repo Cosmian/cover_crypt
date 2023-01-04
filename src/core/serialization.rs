@@ -372,19 +372,35 @@ mod tests {
     fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
             "Security Level",
-            &[
-                "Protected",
-                "Low Secret",
-                "Medium Secret",
-                "High Secret",
-                "Top Secret",
+            vec![
+                ("Protected", false),
+                ("Low Secret", false),
+                ("Medium Secret", false),
+                ("High Secret", false),
+                ("Top Secret", true),
             ],
             true,
         );
-        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+
+        // Another attribute axis will be department names.
+        // This axis is *not* hierarchical.
+        let department = PolicyAxis::new(
+            "Department",
+            vec![
+                ("R&D", false),
+                ("HR", false),
+                ("MKG", false),
+                ("FIN", false),
+            ],
+            false,
+        );
+
+        // Generate a new `Policy` object with a 100 revocations allowed.
         let mut policy = Policy::new(100);
-        policy.add_axis(&sec_level)?;
-        policy.add_axis(&department)?;
+
+        // Add the two generated axes to the policy
+        policy.add_axis(sec_level).unwrap();
+        policy.add_axis(department).unwrap();
         Ok(policy)
     }
 

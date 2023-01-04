@@ -4,9 +4,8 @@ version = 3
 
 [[package]]
 name = "abe_policy"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c7ff4c05215e2282ad617c529a1430696e40be870eb6aeda70c2b28afe69fde"
+version = "2.0.0"
+source = "git+https://github.com/Cosmian/abe_policy.git?branch=feature/add_hybridization_hints#8a84c78d45fce2b425c64dcd76239600cf3e3c7d"
 dependencies = [
  "serde",
  "serde_json",

@@ -10,12 +10,12 @@ use crate::{
         },
     },
     statics::{
-        CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
-        UserSecretKey,
+        tests::policy, CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey,
+        PublicKey, UserSecretKey,
     },
     CoverCrypt, Error,
 };
-use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 /// Test WASM bindgen functions prerequisites:
 /// - `cargo install wasm-bindgen-cli`
@@ -23,23 +23,6 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 ///   wasm_bindgen --lib`
 use js_sys::Uint8Array;
 use wasm_bindgen_test::wasm_bindgen_test;
-
-fn create_test_policy() -> Policy {
-    //
-    // Policy settings
-    //
-    let sec_level = PolicyAxis::new(
-        "Security Level",
-        &["Protected", "Confidential", "Top Secret"],
-        true,
-    );
-    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
-    let mut policy = Policy::new(100);
-    policy.add_axis(&sec_level).unwrap();
-    policy.add_axis(&department).unwrap();
-    policy.rotate(&Attribute::new("Department", "FIN")).unwrap();
-    policy
-}
 
 fn encrypt_header(
     policy: &Policy,
@@ -87,7 +70,7 @@ fn test_encrypt_decrypt() {
     //
     // Policy settings
     //
-    let policy = create_test_policy();
+    let policy = policy().unwrap();
     let access_policy_string = "Department::FIN && Security Level::Top Secret";
 
     //
@@ -147,7 +130,7 @@ fn test_generate_keys() {
     //
     // Policy settings
     //
-    let policy = create_test_policy();
+    let policy = policy().unwrap();
     let serialized_policy = serde_json::to_vec(&policy).unwrap();
 
     //

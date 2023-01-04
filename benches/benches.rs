@@ -30,13 +30,26 @@ use {
 fn policy() -> Result<Policy, Error> {
     let sec_level = PolicyAxis::new(
         "Security Level",
-        &["Protected", "Confidential", "Top Secret"],
+        vec![
+            ("Protected", false),
+            ("Confidential", false),
+            ("Top Secret", true),
+        ],
         true,
     );
-    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+    let department = PolicyAxis::new(
+        "Department",
+        vec![
+            ("R&D", false),
+            ("HR", false),
+            ("MKG", false),
+            ("FIN", false),
+        ],
+        false,
+    );
     let mut policy = Policy::new(100);
-    policy.add_axis(&sec_level)?;
-    policy.add_axis(&department)?;
+    policy.add_axis(sec_level)?;
+    policy.add_axis(department)?;
     policy.rotate(&Attribute::new("Department", "FIN"))?;
     Ok(policy)
 }

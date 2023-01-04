@@ -1,26 +1,27 @@
-use super::{
-    generate_cc_keys::{
-        h_generate_master_keys, h_generate_user_secret_key, h_refresh_user_secret_key,
-        h_update_master_keys,
-    },
-    hybrid_cc_aes::{
-        h_access_policy_expression_to_json, h_aes_create_decryption_cache,
-        h_aes_create_encryption_cache, h_aes_decrypt, h_aes_decrypt_header,
-        h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
-        h_aes_destroy_encryption_cache, h_aes_encrypt, h_aes_encrypt_header,
-        h_aes_encrypt_header_using_cache,
-    },
-};
 use crate::{
     core::partitions::Partition,
-    interfaces::ffi::{error::get_last_error, generate_cc_keys::h_rotate_attributes},
+    interfaces::ffi::{
+        error::get_last_error,
+        generate_cc_keys::h_rotate_attributes,
+        generate_cc_keys::{
+            h_generate_master_keys, h_generate_user_secret_key, h_refresh_user_secret_key,
+            h_update_master_keys,
+        },
+        hybrid_cc_aes::{
+            h_access_policy_expression_to_json, h_aes_create_decryption_cache,
+            h_aes_create_encryption_cache, h_aes_decrypt, h_aes_decrypt_header,
+            h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
+            h_aes_destroy_encryption_cache, h_aes_encrypt, h_aes_encrypt_header,
+            h_aes_encrypt_header_using_cache,
+        },
+    },
     statics::{
-        CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey,
-        UserSecretKey, DEM,
+        tests::policy, CleartextHeader, CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey,
+        PublicKey, UserSecretKey, DEM,
     },
     CoverCrypt, Error,
 };
-use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
 use std::{
     ffi::{CStr, CString},
@@ -148,23 +149,6 @@ unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
     } else {
         Ok(())
     }
-}
-
-pub fn policy() -> Result<Policy, Error> {
-    //
-    // Policy settings
-    //
-    let sec_level = PolicyAxis::new(
-        "Security Level",
-        &["Protected", "Confidential", "Top Secret"],
-        true,
-    );
-    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
-    let mut policy = Policy::new(100);
-    policy.add_axis(&sec_level)?;
-    policy.add_axis(&department)?;
-    policy.rotate(&Attribute::new("Department", "FIN"))?;
-    Ok(policy)
 }
 
 #[test]
@@ -374,19 +358,7 @@ unsafe fn decrypt_header_using_cache(
 #[test]
 fn test_ffi_hybrid_header_using_cache() -> Result<(), Error> {
     unsafe {
-        //
-        // Policy settings
-        //
-        let sec_level = PolicyAxis::new(
-            "Security Level",
-            &["Protected", "Confidential", "Top Secret"],
-            true,
-        );
-        let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
-        let mut policy = Policy::new(100);
-        policy.add_axis(&sec_level)?;
-        policy.add_axis(&department)?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let policy = policy()?;
 
         //
         // CoverCrypt setup
