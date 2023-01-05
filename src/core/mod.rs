@@ -5,7 +5,7 @@
 
 use self::partitions::Partition;
 use cosmian_crypto_core::KeyTrait;
-use pqc_kyber::{KYBER_CIPHERTEXTBYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
+use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
@@ -62,7 +62,7 @@ pub struct UserSecretKey<
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum KeyEncapsulation<const SYM_KEY_LENGTH: usize> {
     ClassicEncapsulation(Box<[u8; SYM_KEY_LENGTH]>),
-    HybridEncapsulation(Box<[u8; KYBER_CIPHERTEXTBYTES]>),
+    HybridEncapsulation(Box<[u8; KYBER_INDCPA_BYTES]>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
