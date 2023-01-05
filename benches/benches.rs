@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
     statics::{CoverCryptX25519Aes256, EncryptedHeader},
     CoverCrypt, Error,
@@ -28,12 +28,20 @@ use {
 
 // Policy settings
 fn policy() -> Result<Policy, Error> {
+    let hybridization = PolicyAxis::new(
+        "Hybridization",
+        vec![
+            ("Hybridized", EncryptionHint::Hybridized),
+            ("Classic", EncryptionHint::Classic),
+        ],
+        false,
+    );
     let sec_level = PolicyAxis::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
             ("Confidential", EncryptionHint::Classic),
-            ("Top Secret", EncryptionHint::Hybridized),
+            ("Top Secret", EncryptionHint::Classic),
         ],
         true,
     );
@@ -48,6 +56,7 @@ fn policy() -> Result<Policy, Error> {
         false,
     );
     let mut policy = Policy::new(100);
+    policy.add_axis(hybridization)?;
     policy.add_axis(sec_level)?;
     policy.add_axis(department)?;
     Ok(policy)
@@ -58,51 +67,100 @@ fn policy() -> Result<Policy, Error> {
 ///
 /// Access policies with more than one partition are generated only if
 /// `--features full_bench` is passed.
+///
+/// Access policies with hybridization hints are generated only if
+/// `--features hybridized_bench` is passed
 fn get_access_policies() -> (AccessPolicy, Vec<AccessPolicy>) {
-    // Access policy with 1 partition
-    #[allow(unused_mut)]
-    let mut access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
-
-    #[cfg(feature = "full_bench")]
+    #[cfg(feature = "hybridized_bench")]
     {
-        // Access policy with 2 partition
-        access_policies.push(
+        // Access policy with 1 partition
+        #[allow(unused_mut)]
+        let mut access_policies = vec![AccessPolicy::from_boolean_expression(
+            "Hybridization::Hybridized && Department::FIN && Security Level::Protected",
+        )
+        .unwrap()];
+
+        #[cfg(feature = "full_bench")]
+        {
+            // Access policy with 2 partition
+            access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::FIN || Department::HR) && Security Level::Protected",
+                "Hybridization::Hybridized && (Department::FIN || Department::HR) && Security Level::Protected",
             )
             .unwrap(),
         );
 
-        // Access policy with 3 partition
-        access_policies.push(AccessPolicy::from_boolean_expression(
-            "(Department::FIN || Department::HR || Department::MKG) && Security Level::Protected",
+            // Access policy with 3 partition
+            access_policies.push(AccessPolicy::from_boolean_expression(
+            "Hybridization::Hybridized && (Department::FIN || Department::HR || Department::MKG) && Security Level::Protected",
         )
         .unwrap());
 
-        // Access policy with 4 partition
-        access_policies.push( AccessPolicy::from_boolean_expression(
-                "(Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+            // Access policy with 4 partition
+            access_policies.push( AccessPolicy::from_boolean_expression(
+                "Hybridization::Hybridized && (Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
                 Level::Protected",
         )
             .unwrap());
 
-        // Access policy with 5 partition
-        access_policies.push(AccessPolicy::from_boolean_expression(
-        "((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
-         Level::Protected) || (Department::HR && Security Level::Top Secret)",
+            // Access policy with 5 partition
+            access_policies.push(AccessPolicy::from_boolean_expression( "Hybridization::Hybridized && (((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret))",
     )
     .unwrap());
+        }
+
+        let user_access_policy = AccessPolicy::from_boolean_expression(
+            "Hybridization::Hybridized && Department::FIN && Security Level::Protected",
+        )
+        .unwrap();
+
+        (user_access_policy, access_policies)
     }
+    #[cfg(not(feature = "hybridized_bench"))]
+    {
+        // Access policy with 1 partition
+        #[allow(unused_mut)]
+        let mut access_policies = vec![AccessPolicy::from_boolean_expression(
+            "Hybridization::Classic && Department::FIN && Security Level::Protected",
+        )
+        .unwrap()];
 
-    let user_access_policy =
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap();
+        #[cfg(feature = "full_bench")]
+        {
+            // Access policy with 2 partition
+            access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "Hybridization::Classic && (Department::FIN || Department::HR) && Security Level::Protected",
+            )
+            .unwrap(),
+        );
 
-    (user_access_policy, access_policies)
+            // Access policy with 3 partition
+            access_policies.push(AccessPolicy::from_boolean_expression(
+            "Hybridization::Classic && (Department::FIN || Department::HR || Department::MKG) && Security Level::Protected",
+        )
+        .unwrap());
+
+            // Access policy with 4 partition
+            access_policies.push( AccessPolicy::from_boolean_expression(
+                "Hybridization::Classic && (Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security \
+                Level::Protected",
+        )
+            .unwrap());
+
+            // Access policy with 5 partition
+            access_policies.push(AccessPolicy::from_boolean_expression( "Hybridization::Classic && (((Department::FIN || Department::HR || Department::MKG || Department::R&D) && Security Level::Protected) || (Department::HR && Security Level::Top Secret))",
+    )
+    .unwrap());
+        }
+
+        let user_access_policy = AccessPolicy::from_boolean_expression(
+            "Hybridization::Classic && Department::FIN && Security Level::Protected",
+        )
+        .unwrap();
+
+        (user_access_policy, access_policies)
+    }
 }
 
 /// Generate encrypted header with some additional data
@@ -136,14 +194,16 @@ fn bench_serialization(c: &mut Criterion) {
     let (msk, mpk) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
+
     println!("bench header encryption size: ");
-    for (n_partition, access_policy) in access_policies.iter().enumerate() {
+
+    for (i, access_policy) in access_policies.iter().enumerate() {
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, access_policy, None, None)
                 .expect("cannot encrypt header 1");
         println!(
             "{} partition(s): {} bytes",
-            n_partition + 1,
+            i + 1,
             encrypted_header.try_to_bytes().unwrap().len(),
         );
     }

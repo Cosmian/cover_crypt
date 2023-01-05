@@ -27,6 +27,7 @@ debug = true
 [features]
 ffi = ["lazy_static", "interface"]
 full_bench = ["interface"]
+hybridized_bench = []
 python = ["pyo3", "interface"]
 wasm_bindgen = ["js-sys", "wasm-bindgen", "interface"]
 interface = []
