@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
     statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey},
     CoverCrypt, Error,
@@ -11,19 +11,19 @@ fn policy() -> Result<Policy, Error> {
     let sec_level = PolicyAxis::new(
         "Security Level",
         vec![
-            ("Protected", false),
-            ("Confidential", false),
-            ("Top Secret", true),
+            ("Protected", EncryptionHint::Classic),
+            ("Confidential", EncryptionHint::Classic),
+            ("Top Secret", EncryptionHint::Hybridized),
         ],
         true,
     );
     let department = PolicyAxis::new(
         "Department",
         vec![
-            ("R&D", false),
-            ("HR", false),
-            ("MKG", false),
-            ("FIN", false),
+            ("R&D", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
         ],
         false,
     );

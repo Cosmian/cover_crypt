@@ -8,6 +8,7 @@ use crate::{
     },
     Error,
 };
+use abe_policy::EncryptionHint;
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     kdf,
@@ -52,7 +53,7 @@ fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] 
 /// - `is_hybridized`   : `true` if the setup should produced hybridized keys
 pub fn setup<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R, KeyPair>(
     rng: &mut impl CryptoRngCore,
-    partitions: &HashMap<Partition, bool>,
+    partitions: &HashMap<Partition, EncryptionHint>,
 ) -> (
     MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
@@ -81,7 +82,7 @@ where
         let x_i = KeyPair::PrivateKey::new(rng);
         let H_i = &S * &x_i;
 
-        let (sk_pq, pk_pq) = if is_hybridized {
+        let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
             let (mut sk, mut pk) = (
                 [0; KYBER_INDCPA_SECRETKEYBYTES],
                 [0; KYBER_INDCPA_PUBLICKEYBYTES],
@@ -301,7 +302,7 @@ pub fn update<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     mpk: &mut PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
-    partitions_set: &HashMap<Partition, bool>,
+    partitions_set: &HashMap<Partition, EncryptionHint>,
 ) -> Result<(), Error>
 where
     KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
@@ -322,7 +323,7 @@ where
             // regenerate the public sub-key.
             let H_i = &S * x_i;
             // Set the correct hybridization property.
-            let (sk_i, pk_i) = if is_hybridized {
+            let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
                 let (pk_i, _) = mpk.H.get(partition).ok_or_else(|| {
                     // Kyber public key cannot be computed from the secret key.
                     Error::CryptoError("Master keys are not synchronized.".to_string())
@@ -353,7 +354,7 @@ where
             // Create new entry.
             let x_i = KeyPair::PrivateKey::new(rng);
             let H_i = &S * &x_i;
-            let (sk_pq, pk_pq) = if is_hybridized {
+            let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
                 let (mut sk_pq, mut pk_pq) = (
                     [0; KYBER_INDCPA_SECRETKEYBYTES],
                     [0; KYBER_INDCPA_PUBLICKEYBYTES],
@@ -439,8 +440,8 @@ mod tests {
         let dev_partition = Partition(b"dev".to_vec());
         // partition list
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), true),
-            (dev_partition.clone(), false),
+            (admin_partition.clone(), EncryptionHint::Classic),
+            (dev_partition.clone(), EncryptionHint::Hybridized),
         ]);
         // user list
         let users_set = vec![
@@ -469,8 +470,10 @@ mod tests {
 
         // Change partition
         let client_partition = Partition(b"client".to_vec());
-        let new_partitions_set =
-            HashMap::from([(dev_partition, true), (client_partition.clone(), false)]);
+        let new_partitions_set = HashMap::from([
+            (dev_partition, EncryptionHint::Classic),
+            (client_partition.clone(), EncryptionHint::Hybridized),
+        ]);
         let new_target_set = HashSet::from([client_partition.clone()]);
         update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
         refresh!(&msk, &mut usk0, &HashSet::from([client_partition]), false);
@@ -505,8 +508,10 @@ mod tests {
         let partition_1 = Partition(b"1".to_vec());
         let partition_2 = Partition(b"2".to_vec());
         // partition list
-        let partitions_set =
-            HashMap::from([(partition_1.clone(), true), (partition_2.clone(), true)]);
+        let partitions_set = HashMap::from([
+            (partition_1.clone(), EncryptionHint::Classic),
+            (partition_2.clone(), EncryptionHint::Hybridized),
+        ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
@@ -514,8 +519,10 @@ mod tests {
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition(b"3".to_vec());
-        let new_partitions_set =
-            HashMap::from([(partition_2.clone(), true), (partition_3.clone(), false)]);
+        let new_partitions_set = HashMap::from([
+            (partition_2.clone(), EncryptionHint::Hybridized),
+            (partition_3.clone(), EncryptionHint::Classic),
+        ]);
         update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
         assert!(!msk.x.contains_key(&partition_1));
         assert!(msk.x.contains_key(&partition_2));
@@ -533,9 +540,9 @@ mod tests {
         let partition_3 = Partition(b"3".to_vec());
         // partition list
         let partitions_set = HashMap::from([
-            (partition_1.clone(), true),
-            (partition_2.clone(), true),
-            (partition_3.clone(), true),
+            (partition_1.clone(), EncryptionHint::Hybridized),
+            (partition_2.clone(), EncryptionHint::Hybridized),
+            (partition_3.clone(), EncryptionHint::Hybridized),
         ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
@@ -551,9 +558,9 @@ mod tests {
         // now remove partition 1 and add partition 4
         let partition_4 = Partition(b"4".to_vec());
         let new_partition_set = HashMap::from([
-            (partition_2.clone(), true),
-            (partition_3.clone(), false),
-            (partition_4.clone(), false),
+            (partition_2.clone(), EncryptionHint::Hybridized),
+            (partition_3.clone(), EncryptionHint::Classic),
+            (partition_4.clone(), EncryptionHint::Classic),
         ]);
         // update the master keys
         let old_msk = msk.clone();

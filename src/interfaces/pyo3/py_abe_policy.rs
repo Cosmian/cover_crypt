@@ -1,4 +1,6 @@
-use abe_policy::{Attribute as AttributeRust, Policy as PolicyRust, PolicyAxis as PolicyAxisRust};
+use abe_policy::{
+    Attribute as AttributeRust, EncryptionHint, Policy as PolicyRust, PolicyAxis as PolicyAxisRust,
+};
 use pyo3::{
     exceptions::{PyException, PyTypeError},
     prelude::*,
@@ -66,7 +68,7 @@ impl Attribute {
 ///
 /// Args:
 ///         name (str): axis name
-///         attributes (List[str]): name of the attributes on this axis
+///         attributes (List[str], bool): name of the attributes on this axis and encryption hint
 ///         hierarchical (bool): set the axis to be hierarchical
 #[pyclass]
 pub struct PolicyAxis(PolicyAxisRust);
@@ -75,6 +77,16 @@ pub struct PolicyAxis(PolicyAxisRust);
 impl PolicyAxis {
     #[new]
     fn new(name: &str, attributes: Vec<(&str, bool)>, hierarchical: bool) -> Self {
+        let attributes = attributes
+            .into_iter()
+            .map(|(name, is_hybridized)| {
+                if is_hybridized {
+                    (name, EncryptionHint::Hybridized)
+                } else {
+                    (name, EncryptionHint::Classic)
+                }
+            })
+            .collect();
         Self(PolicyAxisRust::new(name, attributes, hierarchical))
     }
 
@@ -107,7 +119,11 @@ impl PolicyAxis {
     /// Returns:
     ///     List[str]
     pub fn get_attributes(&self) -> Vec<(String, bool)> {
-        self.0.attribute_properties.clone()
+        self.0
+            .attribute_properties
+            .iter()
+            .map(|(name, hint)| (name.clone(), *hint == EncryptionHint::Hybridized))
+            .collect()
     }
 
     /// Checks whether the axis is hierarchical.

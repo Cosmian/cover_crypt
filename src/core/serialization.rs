@@ -354,10 +354,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::statics::CoverCryptX25519Aes256;
+    use crate::statics::{tests::policy, CoverCryptX25519Aes256};
 
     use super::*;
-    use abe_policy::{AccessPolicy, Policy, PolicyAxis};
+    use abe_policy::{AccessPolicy, EncryptionHint};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
         symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
@@ -369,49 +369,14 @@ mod tests {
     #[allow(clippy::upper_case_acronyms)]
     type DEM = Aes256GcmCrypto;
 
-    fn policy() -> Result<Policy, Error> {
-        let sec_level = PolicyAxis::new(
-            "Security Level",
-            vec![
-                ("Protected", false),
-                ("Low Secret", false),
-                ("Medium Secret", false),
-                ("High Secret", false),
-                ("Top Secret", true),
-            ],
-            true,
-        );
-
-        // Another attribute axis will be department names.
-        // This axis is *not* hierarchical.
-        let department = PolicyAxis::new(
-            "Department",
-            vec![
-                ("R&D", false),
-                ("HR", false),
-                ("MKG", false),
-                ("FIN", false),
-            ],
-            false,
-        );
-
-        // Generate a new `Policy` object with a 100 revocations allowed.
-        let mut policy = Policy::new(100);
-
-        // Add the two generated axes to the policy
-        policy.add_axis(sec_level).unwrap();
-        policy.add_axis(department).unwrap();
-        Ok(policy)
-    }
-
     #[test]
     fn test_serialization() -> Result<(), Error> {
         // Setup
         let admin_partition = Partition(b"admin".to_vec());
         let dev_partition = Partition(b"dev".to_vec());
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), true),
-            (dev_partition.clone(), false),
+            (admin_partition.clone(), EncryptionHint::Hybridized),
+            (dev_partition.clone(), EncryptionHint::Classic),
         ]);
         let user_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         let target_set = HashSet::from([admin_partition, dev_partition]);
@@ -458,7 +423,7 @@ mod tests {
         let user_policy =
             AccessPolicy::from_boolean_expression("Department::MKG && Security Level::Top Secret")?;
         let encryption_policy = AccessPolicy::from_boolean_expression(
-            "Department::MKG && Security Level::Medium Secret",
+            "Department::MKG && Security Level::Confidential",
         )?;
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let usk = cc.generate_user_secret_key(&msk, &user_policy, &policy)?;

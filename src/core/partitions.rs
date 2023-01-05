@@ -1,5 +1,5 @@
 use crate::Error;
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy};
 use cosmian_crypto_core::bytes_ser_de::Serializer;
 use std::{
     collections::{HashMap, HashSet},
@@ -68,7 +68,9 @@ impl From<&[u8]> for Partition {
 /// returned with a hint about whether hybridized encryption should be used.
 ///
 /// - `policy`  : policy from which to generate partitions
-pub fn generate_all_partitions(policy: &Policy) -> Result<HashMap<Partition, bool>, Error> {
+pub fn generate_all_partitions(
+    policy: &Policy,
+) -> Result<HashMap<Partition, EncryptionHint>, Error> {
     let mut attr_values_per_axis = HashMap::with_capacity(policy.axes.len());
     for (axis_name, (attribute_names, _)) in &policy.axes {
         let mut values = Vec::with_capacity(attribute_names.len());
@@ -107,7 +109,7 @@ fn generate_current_attriubte_partitions(
     attributes: &[Attribute],
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
-    let mut current_attr_value_per_axis = HashMap::<String, Vec<(u32, bool)>>::new();
+    let mut current_attr_value_per_axis = HashMap::<String, Vec<(u32, EncryptionHint)>>::new();
     for attribute in attributes.iter() {
         let entry = current_attr_value_per_axis
             .entry(attribute.axis.clone())
@@ -158,10 +160,10 @@ fn generate_current_attriubte_partitions(
 fn combine_attribute_values(
     current_axis: usize,
     axes: &[String],
-    attr_values_per_axis: &HashMap<String, Vec<(u32, bool)>>,
-) -> Result<Vec<(Vec<u32>, bool)>, Error> {
+    attr_values_per_axis: &HashMap<String, Vec<(u32, EncryptionHint)>>,
+) -> Result<Vec<(Vec<u32>, EncryptionHint)>, Error> {
     let current_axis_name = match axes.get(current_axis) {
-        None => return Ok(vec![(vec![], false)]),
+        None => return Ok(vec![(vec![], EncryptionHint::Classic)]),
         Some(axis) => axis,
     };
 
@@ -180,7 +182,7 @@ fn combine_attribute_values(
             let mut combined = Vec::with_capacity(1 + other_values.len());
             combined.push(*current_values);
             combined.extend_from_slice(other_values);
-            combinations.push((combined, is_hybridized | is_other_hybridized));
+            combinations.push((combined, *is_hybridized | *is_other_hybridized));
         }
     }
     Ok(combinations)
