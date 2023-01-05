@@ -50,7 +50,6 @@ fn policy() -> Result<Policy, Error> {
     let mut policy = Policy::new(100);
     policy.add_axis(sec_level)?;
     policy.add_axis(department)?;
-    policy.rotate(&Attribute::new("Department", "FIN"))?;
     Ok(policy)
 }
 

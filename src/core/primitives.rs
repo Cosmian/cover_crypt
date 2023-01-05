@@ -440,8 +440,8 @@ mod tests {
         let dev_partition = Partition(b"dev".to_vec());
         // partition list
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), EncryptionHint::Classic),
-            (dev_partition.clone(), EncryptionHint::Hybridized),
+            (admin_partition.clone(), EncryptionHint::Hybridized),
+            (dev_partition.clone(), EncryptionHint::Classic),
         ]);
         // user list
         let users_set = vec![
@@ -449,16 +449,30 @@ mod tests {
             HashSet::from([admin_partition.clone(), dev_partition.clone()]),
         ];
         // target set
-        let target_set = HashSet::from([admin_partition]);
+        let admin_target_set = HashSet::from([admin_partition.clone()]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
         let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
+        let admin_secret_subkeys = msk.x.get(&admin_partition);
+        assert!(admin_secret_subkeys.is_some());
+        assert!(admin_secret_subkeys.unwrap().0.is_some());
+        let dev_secret_subkeys = msk.x.get(&dev_partition);
+        assert!(dev_secret_subkeys.is_some());
+        assert!(dev_secret_subkeys.unwrap().0.is_none());
         // generate user secret keys
         let mut usk0 = keygen!(&mut rng, &msk, &users_set[0]);
         let usk1 = keygen!(&mut rng, &msk, &users_set[1]);
         // encapsulate for the target set
-        let (sym_key, encapsulation) = encaps!(&mut rng, &mpk, &target_set);
+        let (sym_key, encapsulation) = encaps!(&mut rng, &mpk, &admin_target_set);
+
+        assert_eq!(encapsulation.E.len(), 1);
+        for key_encapsulation in &encapsulation.E {
+            if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
+                panic!("Wrong hybridization type");
+            }
+        }
+
         // decapsulate for users 1 and 3
         let res0 = decaps!(&usk0, &encapsulation);
 
@@ -472,12 +486,29 @@ mod tests {
         let client_partition = Partition(b"client".to_vec());
         let new_partitions_set = HashMap::from([
             (dev_partition, EncryptionHint::Classic),
-            (client_partition.clone(), EncryptionHint::Hybridized),
+            (client_partition.clone(), EncryptionHint::Classic),
         ]);
-        let new_target_set = HashSet::from([client_partition.clone()]);
+        let client_target_set = HashSet::from([client_partition.clone()]);
         update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh!(&msk, &mut usk0, &HashSet::from([client_partition]), false);
-        let (sym_key, new_encapsulation) = encaps!(&mut rng, &mpk, &new_target_set);
+        refresh!(
+            &msk,
+            &mut usk0,
+            &HashSet::from([client_partition.clone()]),
+            false
+        );
+
+        let client_secret_subkeys = msk.x.get(&client_partition);
+        assert!(client_secret_subkeys.is_some());
+        assert!(client_secret_subkeys.unwrap().0.is_none());
+
+        let (sym_key, new_encapsulation) = encaps!(&mut rng, &mpk, &client_target_set);
+
+        assert_eq!(new_encapsulation.E.len(), 1);
+        for key_encapsulation in &new_encapsulation.E {
+            if let KeyEncapsulation::HybridEncapsulation(_) = key_encapsulation {
+                panic!("Wrong hybridization type");
+            }
+        }
 
         // New user key cannot decrypt old encapsulation.
         let res0 = decaps!(&usk0, &encapsulation);
