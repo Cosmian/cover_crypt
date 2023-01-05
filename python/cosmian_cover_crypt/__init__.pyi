@@ -49,7 +49,7 @@ class PolicyAxis:
             hierarchical (bool): set the axis to be hierarchical
     """
 
-    def __init__(self, name: str, attributes: List[str], hierarchical: bool): ...
+    def __init__(self, name: str, attributes: List[Tuple[str, bool]], hierarchical: bool): ...
     def len(self) -> int:
         """Returns the number of attributes belonging to this axis.
 
