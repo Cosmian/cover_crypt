@@ -105,7 +105,7 @@ pub fn generate_all_partitions(
 ///
 /// - `attributes`  : list of attributes
 /// - `policy`      : global policy data
-fn generate_current_attriubte_partitions(
+fn generate_current_attribute_partitions(
     attributes: &[Attribute],
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
@@ -168,7 +168,7 @@ fn combine_attribute_values(
     };
 
     let current_axis_values = attr_values_per_axis.get(current_axis_name).ok_or_else(|| {
-        Error::CryptoError(format!(
+        Error::Other(format!(
             "no attribute value found for axis: {current_axis_name}",
         ))
     })?;
@@ -182,7 +182,16 @@ fn combine_attribute_values(
             let mut combined = Vec::with_capacity(1 + other_values.len());
             combined.push(*current_values);
             combined.extend_from_slice(other_values);
-            combinations.push((combined, *is_hybridized | *is_other_hybridized));
+            combinations.push((
+                combined,
+                if (*is_hybridized == EncryptionHint::Hybridized)
+                    || (*is_other_hybridized == EncryptionHint::Hybridized)
+                {
+                    EncryptionHint::Hybridized
+                } else {
+                    EncryptionHint::Classic
+                },
+            ));
         }
     }
     Ok(combinations)
@@ -202,7 +211,7 @@ pub fn access_policy_to_current_partitions(
         access_policy.to_attribute_combinations(policy, follow_hierarchical_axes)?;
     let mut res = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
-        for partition in generate_current_attriubte_partitions(attr_combination, policy)? {
+        for partition in generate_current_attribute_partitions(attr_combination, policy)? {
             let is_unique = res.insert(partition);
             if !is_unique {
                 return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
@@ -259,7 +268,7 @@ mod tests {
         // this should create the combination of the first attribute
         // with all those of the second axis
         let partitions_0 =
-            generate_current_attriubte_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
+            generate_current_attribute_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
@@ -269,7 +278,7 @@ mod tests {
 
         // this should create the single combination of the first attribute
         // of the first axis with that of the second axis
-        let partitions_1 = generate_current_attriubte_partitions(
+        let partitions_1 = generate_current_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
@@ -282,7 +291,7 @@ mod tests {
 
         // this should create the 2 combinations of the first attribute
         // of the first axis with that the wo of the second axis
-        let partitions_2 = generate_current_attriubte_partitions(
+        let partitions_2 = generate_current_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
@@ -302,7 +311,7 @@ mod tests {
 
         // this should create the single combination of the first attribute
         // of the first axis with that of the second axis
-        let partitions_3 = generate_current_attriubte_partitions(
+        let partitions_3 = generate_current_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),

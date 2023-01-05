@@ -325,15 +325,16 @@ where
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
                 let (pk_i, _) = mpk.H.get(partition).ok_or_else(|| {
-                    // Kyber public key cannot be computed from the secret key.
-                    Error::CryptoError("Master keys are not synchronized.".to_string())
+                    Error::KeyError(
+                        "Kyber public key cannot be computed from the secret key.".to_string(),
+                    )
                 })?;
 
                 if sk_i.is_some() {
                     if pk_i.is_some() {
                         (*sk_i, *pk_i)
                     } else {
-                        return Err(Error::CryptoError(
+                        return Err(Error::KeyError(
                             "Kyber public key cannot be computed from the secret key.".to_string(),
                         ));
                     }
@@ -454,18 +455,25 @@ mod tests {
         let mut rng = CsRng::from_entropy();
         // setup scheme
         let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
+
+        // The admin partition matches a hybridized sub-key.
         let admin_secret_subkeys = msk.x.get(&admin_partition);
         assert!(admin_secret_subkeys.is_some());
         assert!(admin_secret_subkeys.unwrap().0.is_some());
+
+        // The developer partition matches a classic sub-key.
         let dev_secret_subkeys = msk.x.get(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_none());
-        // generate user secret keys
-        let mut usk0 = keygen!(&mut rng, &msk, &users_set[0]);
-        let usk1 = keygen!(&mut rng, &msk, &users_set[1]);
-        // encapsulate for the target set
+
+        // Generate user secret keys.
+        let mut dev_usk = keygen!(&mut rng, &msk, &users_set[0]);
+        let admin_usk = keygen!(&mut rng, &msk, &users_set[1]);
+
+        // Encapsulate key for the admin target set.
         let (sym_key, encapsulation) = encaps!(&mut rng, &mpk, &admin_target_set);
 
+        // The encapsulation holds a unique, hybridized key encapsulation.
         assert_eq!(encapsulation.E.len(), 1);
         for key_encapsulation in &encapsulation.E {
             if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
@@ -473,36 +481,51 @@ mod tests {
             }
         }
 
-        // decapsulate for users 1 and 3
-        let res0 = decaps!(&usk0, &encapsulation);
-
+        // Developer is unable to decapsulate.
+        let res0 = decaps!(&dev_usk, &encapsulation);
         assert!(res0.is_err(), "User 0 shouldn't be able to decapsulate!");
 
-        let res1 = decaps!(&usk1, &encapsulation)?;
-
+        // Admin is able to decapsulate.
+        let res1 = decaps!(&admin_usk, &encapsulation)?;
         assert_eq!(sym_key, res1, "Wrong decapsulation for user 1!");
 
-        // Change partition
+        // Change partitions
         let client_partition = Partition(b"client".to_vec());
         let new_partitions_set = HashMap::from([
-            (dev_partition, EncryptionHint::Classic),
+            (dev_partition.clone(), EncryptionHint::Hybridized),
             (client_partition.clone(), EncryptionHint::Classic),
         ]);
         let client_target_set = HashSet::from([client_partition.clone()]);
+
         update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
         refresh!(
             &msk,
-            &mut usk0,
-            &HashSet::from([client_partition.clone()]),
+            &mut dev_usk,
+            &HashSet::from([dev_partition.clone()]),
             false
         );
 
+        // The dev partition matches a hybridized sub-key.
+        let dev_secret_subkeys = msk.x.get(&dev_partition);
+        assert!(dev_secret_subkeys.is_some());
+        assert!(dev_secret_subkeys.unwrap().0.is_some());
+
+        // The client partition matches a classic sub-key.
         let client_secret_subkeys = msk.x.get(&client_partition);
         assert!(client_secret_subkeys.is_some());
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
+        // The developer now has a hybridized key.
+        assert_eq!(dev_usk.x.len(), 1);
+        for key_encapsulation in &encapsulation.E {
+            if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
+                panic!("Wrong hybridization type");
+            }
+        }
+
         let (sym_key, new_encapsulation) = encaps!(&mut rng, &mpk, &client_target_set);
 
+        // Client encapsulation holds a unique, classic key encapsulation.
         assert_eq!(new_encapsulation.E.len(), 1);
         for key_encapsulation in &new_encapsulation.E {
             if let KeyEncapsulation::HybridEncapsulation(_) = key_encapsulation {
@@ -510,24 +533,25 @@ mod tests {
             }
         }
 
-        // New user key cannot decrypt old encapsulation.
-        let res0 = decaps!(&usk0, &encapsulation);
+        // The developer is unable to decapsulate.
+        let res0 = decaps!(&dev_usk, &encapsulation);
         assert!(
             res0.is_err(),
             "User 0 should not be able to decapsulate the old encapsulation."
         );
 
-        // Old user key cannot decrypt new encapsulation.
-        let res1 = decaps!(&usk1, &new_encapsulation);
+        // The admin is unable to decapsulate.
+        let res1 = decaps!(&admin_usk, &new_encapsulation);
         assert!(
             res1.is_err(),
             "User 1 should not be able to decapsulate the new encapsulation."
         );
 
-        // New user key can decrypt new encapsulation.
-        let res0 = decaps!(&usk0, &new_encapsulation);
+        // Client is able to decapsulate.
+        let client_usk = keygen!(&mut rng, &msk, &HashSet::from([client_partition]));
+        let res0 = decaps!(&client_usk, &new_encapsulation);
         match res0 {
-            Err(err) => panic!("User 0 should be able to decapsulate: got error {err:?}"),
+            Err(err) => panic!("Client should be able to decapsulate: {err:?}"),
             Ok(res) => assert_eq!(sym_key, res, "Wrong decapsulation."),
         }
 

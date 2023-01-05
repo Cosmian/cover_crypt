@@ -174,7 +174,7 @@ impl
             plaintext,
             authentication_data,
         )
-        .map_err(|e| Error::CryptoError(e.to_string()))
+        .map_err(Error::CryptoCoreError)
     }
 
     fn decrypt(
@@ -188,7 +188,7 @@ impl
             ciphertext,
             authentication_data,
         )
-        .map_err(|e| Error::CryptoError(e.to_string()))
+        .map_err(Error::CryptoCoreError)
     }
 }
 

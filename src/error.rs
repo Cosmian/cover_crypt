@@ -12,7 +12,9 @@ pub enum Error {
     #[error("Unknown partition {0}")]
     UnknownPartition(String),
     #[error("{0}")]
-    CryptoError(String),
+    CryptoCoreError(CryptoCoreError),
+    #[error("{0}")]
+    KeyError(String),
     #[error(transparent)]
     PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
@@ -73,13 +75,7 @@ impl From<KyberError> for Error {
 
 impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
-        match e {
-            CryptoCoreError::SizeError { given, expected } => {
-                Self::InvalidSize(format!("expected: {expected}, given: {given}"))
-            }
-            CryptoCoreError::InvalidSize(e) => Self::InvalidSize(e),
-            e => Self::CryptoError(e.to_string()),
-        }
+        Self::CryptoCoreError(e)
     }
 }
 
