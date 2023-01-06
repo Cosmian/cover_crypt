@@ -1,9 +1,8 @@
-# CoverCrypt &emsp; [![Build Status]][actions] [![Latest Version]][crates.io]
+# CoverCrypt
 
-[build status]: https://img.shields.io/github/workflow/status/Cosmian/cosmian_cover_crypt/CI%20checks/main
-[actions]: https://github.com/Cosmian/cosmian_cover_crypt/actions?query=branch%3Amain
-[latest version]: https://img.shields.io/crates/v/cosmian_cover_crypt.svg
-[crates.io]: https://crates.io/crates/cosmian_cover_crypt
+![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/ci.yml/badge.svg)
+![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/build.yml/badge.svg)
+![latest version](<https://img.shields.io/crates/v/cosmian_cover_crypt.svg>)
 
 Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
 creating ciphertexts for a set of attributes and issuing user keys with access
@@ -20,6 +19,7 @@ policies over these attributes.
   - [Secret key encapsulation](#secret-key-encapsulation)
   - [Secret key decapsulation](#secret-key-decapsulation)
 - [Documentation](#documentation)
+- [Releases](#releases)
 
 <!-- tocstop -->
 
@@ -319,3 +319,7 @@ It also contains an interesting discussion about the implementation.
 
 The developer documentation can be found on
 [doc.rs](https://docs.rs/cosmian_cover_crypt/6.0.8/cosmian_cover_crypt/index.html)
+
+## Releases
+
+All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com).
