@@ -20,13 +20,13 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
 #[wasm_bindgen]
 pub fn webassembly_encrypt_hybrid_header(
-    policy_bytes: Uint8Array,
+    policy: String,
     access_policy: String,
     public_key_bytes: Uint8Array,
     header_metadata: Uint8Array,
     authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
-    let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
+    let policy = serde_json::from_str(&policy)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(&access_policy)
         .map_err(|e| JsValue::from_str(&format!("Error reading access policy: {e}")))?;
@@ -190,14 +190,14 @@ pub fn webassembly_decrypt_symmetric_block(
 /// - `authentication_data` : optional data used for authentication
 #[wasm_bindgen]
 pub fn webassembly_hybrid_encrypt(
-    policy_bytes: Uint8Array,
+    policy: String,
     access_policy: String,
     pk: Uint8Array,
     plaintext: Uint8Array,
     header_metadata: Uint8Array,
     authentication_data: Uint8Array,
 ) -> Result<Uint8Array, JsValue> {
-    let policy = serde_json::from_slice(&policy_bytes.to_vec())
+    let policy = serde_json::from_str(&policy)
         .map_err(|e| JsValue::from_str(&format!("Error parsing policy: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(&access_policy)
         .map_err(|e| JsValue::from_str(&format!("Error reading access policy: {e}")))?;

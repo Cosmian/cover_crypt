@@ -1,7 +1,7 @@
+use wasm_bindgen::prelude::*;
+
 pub mod generate_cc_keys;
 pub mod hybrid_cc_aes;
-
-use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {

@@ -1,25 +1,19 @@
-// needed to remove wasm_bindgen warnings
-#![allow(non_upper_case_globals)]
-#![allow(clippy::unused_unit)]
-// Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
-
 use crate::{
     statics::{CoverCryptX25519Aes256, MasterSecretKey},
     CoverCrypt,
 };
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 
 /// Generate the master authority keys for supplied Policy
 ///
-///  - `policy_bytes` : Policy to use to generate the keys (serialized from
-///    JSON)
+/// - `policy`  : global policy data (JSON)
 #[wasm_bindgen]
-pub fn webassembly_generate_master_keys(policy_bytes: Uint8Array) -> Result<Uint8Array, JsValue> {
-    let policy: Policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
-        .map_err(|e| JsValue::from_str(&format!("Error deserializing policy:{e}")))?;
+pub fn webassembly_generate_master_keys(policy_bytes: String) -> Result<Uint8Array, JsValue> {
+    let policy = Policy::parse_and_convert(&policy_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
 
     //
     // Setup CoverCrypt
@@ -51,16 +45,16 @@ pub fn webassembly_generate_master_keys(policy_bytes: Uint8Array) -> Result<Uint
 ///
 /// - `msk_bytes`           : master secret key in bytes
 /// - `access_policy_str`   : user access policy (boolean expression as string)
-/// - `policy_bytes`        : global policy (serialized from JSON)
+/// - `policy`              : global policy data (JSON)
 #[wasm_bindgen]
 pub fn webassembly_generate_user_secret_key(
     msk_bytes: Uint8Array,
     access_policy_str: &str,
-    policy_bytes: Uint8Array,
+    policy: String,
 ) -> Result<Uint8Array, JsValue> {
     let msk = MasterSecretKey::try_from_bytes(msk_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing secret key: {e}")))?;
-    let policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
+    let policy = Policy::parse_and_convert(&policy)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing access policy: {e}")))?;
@@ -73,43 +67,4 @@ pub fn webassembly_generate_user_secret_key(
         .try_to_bytes()
         .map_err(|e| JsValue::from_str(&format!("Error serializing user key: {e}")))?;
     Ok(Uint8Array::from(user_key_bytes.as_slice()))
-}
-
-/// Rotate attributes, changing their underlying values with that of an unused
-/// slot
-///
-/// - `attributes_bytes`    : user access policy (boolean expression as string)
-/// - `policy_bytes`        : global policy (serialized from JSON)
-#[wasm_bindgen]
-pub fn webassembly_rotate_attributes(
-    attributes_bytes: Uint8Array,
-    policy_bytes: Uint8Array,
-) -> Result<String, JsValue> {
-    let attributes: Vec<Attribute> =
-        serde_json::from_slice(attributes_bytes.to_vec().as_slice())
-            .map_err(|e| JsValue::from_str(&format!("Error deserializing attributes: {e}")))?;
-    let mut policy: Policy = serde_json::from_slice(policy_bytes.to_vec().as_slice())
-        .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
-
-    //
-    // Rotate attributes of the current policy
-    for attr in &attributes {
-        policy
-            .rotate(attr)
-            .map_err(|e| JsValue::from_str(&format!("Error rotating attribute: {e}")))?;
-    }
-
-    Ok(policy.to_string())
-}
-
-/// Converts a boolean expression containing an access policy
-/// into a JSON access policy which can be used in Vendor Attributes
-#[wasm_bindgen]
-pub fn webassembly_parse_boolean_access_policy(
-    boolean_expression: &str,
-) -> Result<String, JsValue> {
-    let access_policy = AccessPolicy::from_boolean_expression(boolean_expression)
-        .map_err(|e| JsValue::from_str(&format!("Error parsing the access policy: {e}")))?;
-    serde_json::to_string(&access_policy)
-        .map_err(|e| JsValue::from_str(&format!("Error serializing the access policy: {e}")))
 }
