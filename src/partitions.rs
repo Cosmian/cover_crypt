@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn test_combine_attribute_values() -> Result<(), Error> {
         let mut policy = policy()?;
-        let axes: Vec<String> = policy.axes.keys().into_iter().cloned().collect();
+        let axes: Vec<String> = policy.axes.keys().cloned().collect();
 
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 

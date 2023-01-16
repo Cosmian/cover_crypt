@@ -145,16 +145,15 @@ pub unsafe extern "C" fn set_error(error_message_ptr: *const c_char) -> i32 {
     ffi_not_null!(error_message_ptr, "error message");
     let error_message = match CStr::from_ptr(error_message_ptr).to_str() {
         Ok(msg) => msg.to_owned(),
-        Err(_e) => {
-            set_last_error(FfiError::Generic(
-                "sse_client_update: invalid error message".to_owned(),
-            ));
+        Err(e) => {
+            set_last_error(FfiError::Generic(format!(
+                "failed to set error message: {e}"
+            )));
             return 1;
         }
     };
     set_last_error(FfiError::Generic(error_message));
     0
-    //
 }
 
 /// Get the most recent error as utf-8 bytes, clearing it in the process.
