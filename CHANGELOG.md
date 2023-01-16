@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [8.0.2] - 2022-12-06
+
+### Added
+
+- CI: verify inter-compatibility between Java, JS, Flutter and python
+
+---
+
 ## [8.0.1] - 2022-12-06
 
 ### Fixed
