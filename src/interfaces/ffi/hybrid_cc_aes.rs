@@ -160,8 +160,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         cache
     } else {
         set_last_error(FfiError::Generic(format!(
-            "Hybrid Cipher: no encryption cache with handle: {}",
-            cache_handle
+            "Hybrid Cipher: no encryption cache with handle: {cache_handle}"
         )));
         return 1;
     };
@@ -401,10 +400,7 @@ pub unsafe extern "C" fn h_aes_create_decryption_cache(
     let usk = match UserSecretKey::try_from_bytes(usk_bytes) {
         Ok(key) => key,
         Err(e) => {
-            ffi_bail!(format!(
-                "Hybrid Cipher: invalid user decryption key: {:?}",
-                e
-            ));
+            ffi_bail!(format!("Hybrid Cipher: invalid user decryption key: {e:?}"));
         }
     };
 
@@ -473,8 +469,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         cache
     } else {
         set_last_error(FfiError::Generic(format!(
-            "Hybrid Cipher: no decryption cache with handle: {}",
-            cache_handle
+            "Hybrid Cipher: no decryption cache with handle: {cache_handle}"
         )));
         return 1;
     };

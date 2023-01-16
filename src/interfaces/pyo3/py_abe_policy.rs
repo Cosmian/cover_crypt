@@ -20,6 +20,22 @@ impl Attribute {
         Self(AttributeRust::new(axis, name))
     }
 
+    /// Gets the corresponding axis of the attribute.
+    ///
+    /// Returns:
+    ///     str
+    pub fn get_axis(&self) -> &str {
+        &self.0.axis
+    }
+
+    /// Gets the attribute name.
+    ///
+    /// Returns:
+    ///     str
+    pub fn get_name(&self) -> &str {
+        &self.0.name
+    }
+
     /// Creates a string representation of the attribute
     ///
     /// Returns:
@@ -80,6 +96,30 @@ impl PolicyAxis {
     ///     bool
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Gets axis name.
+    ///
+    /// Returns:
+    ///     str
+    pub fn get_name(&self) -> &str {
+        &self.0.name
+    }
+
+    /// Gets the list of attributes in the axis.
+    ///
+    /// Returns:
+    ///     List[str]
+    pub fn get_attributes(&self) -> Vec<String> {
+        self.0.attributes.clone()
+    }
+
+    /// Checks whether the axis is hierarchical.
+    ///
+    /// Returns:
+    ///     bool
+    pub fn is_hierarchical(&self) -> bool {
+        self.0.hierarchical
     }
 
     /// Creates a string representation of the policy axis

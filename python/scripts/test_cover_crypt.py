@@ -14,13 +14,15 @@ from cosmian_cover_crypt import (
 
 class TestPolicy(unittest.TestCase):
     def test_attribute(self) -> None:
-        att = Attribute('Country', 'France')
-        self.assertEqual(att.to_string(), 'Country::France')
-        self.assertEqual(
-            Attribute.from_string('Country::France').to_string(), 'Country::France'
-        )
+        attr = Attribute('Country', 'France')
+        self.assertEqual(attr.to_string(), 'Country::France')
 
-    def test_policy_creation_rotation(self) -> None:
+        new_attr = Attribute.from_string('Country::Japan')
+        self.assertIsInstance(new_attr, Attribute)
+        self.assertEqual(new_attr.get_axis(), 'Country')
+        self.assertEqual(new_attr.get_name(), 'Japan')
+
+    def test_policy_axis(self) -> None:
         country_axis = PolicyAxis(
             'Country', ['France', 'UK', 'Spain', 'Germany'], False
         )
@@ -33,9 +35,21 @@ class TestPolicy(unittest.TestCase):
             secrecy_axis.to_string(),
             'Secrecy: ["Low", "Medium", "High"], hierarchical: true',
         )
+
+        self.assertTrue(PolicyAxis('Test', [], False).is_empty())
+        self.assertEqual(country_axis.len(), 4)
+        self.assertEqual(len(country_axis.get_attributes()), 4)
+        self.assertFalse(country_axis.is_hierarchical())
+        self.assertTrue(secrecy_axis.is_hierarchical())
+        self.assertEqual(secrecy_axis.get_name(), 'Secrecy')
+
+    def test_policy_creation_rotation(self) -> None:
+
         policy = Policy(100)
-        policy.add_axis(country_axis)
-        policy.add_axis(secrecy_axis)
+        policy.add_axis(
+            PolicyAxis('Country', ['France', 'UK', 'Spain', 'Germany'], False)
+        )
+        policy.add_axis(PolicyAxis('Secrecy', ['Low', 'Medium', 'High'], True))
         # test attributes
         attributes = policy.attributes()
         self.assertEqual(len(attributes), 4 + 3)
