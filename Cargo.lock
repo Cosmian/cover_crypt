@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "abe_policy"
-version = "3.0.0"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6a9fea6e7cc20aee5af407f152a0dc80cc8f8170ad6fe7dce40e96452ef8c48"
+checksum = "bf18b502ba66015f0174c37181e993db5eed3a0219e41ef7aae8aba691ff7e38"
 dependencies = [
  "js-sys",
  "serde",
@@ -199,12 +199,12 @@ dependencies = [
  "abe_policy",
  "base64",
  "cosmian_crypto_core",
+ "cosmian_kyber",
  "criterion",
  "hex",
  "js-sys",
  "lazy_static",
  "leb128",
- "pqc_kyber",
  "pyo3",
  "serde",
  "serde_json",
@@ -231,6 +231,18 @@ dependencies = [
  "sha3",
  "thiserror",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_kyber"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a237461adc46a23e02445b544ad7095fb818ba36039af919d9b88df28ba0c73"
+dependencies = [
+ "getrandom 0.2.8",
+ "rand",
+ "rand_core 0.6.4",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -582,17 +594,6 @@ name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
-
-[[package]]
-name = "pqc_kyber"
-version = "0.3.0"
-source = "git+https://github.com/Argyle-Software/kyber#d3d990309059c649d2700290c30275d2baa52377"
-dependencies = [
- "getrandom 0.2.8",
- "rand",
- "rand_core 0.6.4",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "proc-macro2"

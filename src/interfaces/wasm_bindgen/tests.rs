@@ -160,7 +160,7 @@ fn test_generate_keys() {
 
     let access_policy_string = "Security Level::Confidential".to_string();
     let attributes = Array::new();
-    attributes.push(&JsValue::from(JsString::from(access_policy_string.clone())));
+    attributes.push(&JsString::from(access_policy_string.as_str()));
     let new_policy = webassembly_rotate_attributes(
         Attributes::from(JsValue::from(attributes)),
         policy_bytes.clone(),
