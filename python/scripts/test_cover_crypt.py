@@ -35,12 +35,12 @@ class TestPolicy(unittest.TestCase):
         )
         self.assertEqual(
             country_axis.to_string(),
-            'Country: [("France", Classic), ("UK", Classic), ("Spain", Classic), ("Germany", Classic)], hierarchical: false',
+            'Country: [AxisAttributePorperties { name: "France", encryption_hint: Classic }, AxisAttributePorperties { name: "UK", encryption_hint: Classic }, AxisAttributePorperties { name: "Spain", encryption_hint: Classic }, AxisAttributePorperties { name: "Germany", encryption_hint: Classic }], hierarchical: false'
         )
         secrecy_axis = PolicyAxis('Secrecy', [('Low', False), ('Medium', False), ('High', True)], True)
         self.assertEqual(
             secrecy_axis.to_string(),
-            'Secrecy: [("Low", Classic), ("Medium", Classic), ("High", Hybridized)], hierarchical: true',
+            'Secrecy: [AxisAttributePorperties { name: "Low", encryption_hint: Classic }, AxisAttributePorperties { name: "Medium", encryption_hint: Classic }, AxisAttributePorperties { name: "High", encryption_hint: Hybridized }], hierarchical: true'
         )
 
         self.assertTrue(PolicyAxis('Test', [], False).is_empty())
