@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 ///
 /// - `policy`  : global policy data (JSON)
 #[wasm_bindgen]
-pub fn webassembly_generate_master_keys(policy_bytes: String) -> Result<Uint8Array, JsValue> {
+pub fn webassembly_generate_master_keys(policy_bytes: Vec<u8>) -> Result<Uint8Array, JsValue> {
     let policy = Policy::parse_and_convert(&policy_bytes)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
 
@@ -50,11 +50,11 @@ pub fn webassembly_generate_master_keys(policy_bytes: String) -> Result<Uint8Arr
 pub fn webassembly_generate_user_secret_key(
     msk_bytes: Uint8Array,
     access_policy_str: &str,
-    policy: String,
+    policy_bytes: Vec<u8>,
 ) -> Result<Uint8Array, JsValue> {
     let msk = MasterSecretKey::try_from_bytes(msk_bytes.to_vec().as_slice())
         .map_err(|e| JsValue::from_str(&format!("Error deserializing secret key: {e}")))?;
-    let policy = Policy::parse_and_convert(&policy)
+    let policy = Policy::parse_and_convert(&policy_bytes)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing policy: {e}")))?;
     let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
         .map_err(|e| JsValue::from_str(&format!("Error deserializing access policy: {e}")))?;

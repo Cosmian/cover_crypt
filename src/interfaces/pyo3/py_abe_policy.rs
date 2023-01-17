@@ -120,9 +120,14 @@ impl PolicyAxis {
     ///     List[str]
     pub fn get_attributes(&self) -> Vec<(String, bool)> {
         self.0
-            .attribute_properties
+            .attributes_properties
             .iter()
-            .map(|(name, hint)| (name.clone(), *hint == EncryptionHint::Hybridized))
+            .map(|attribute_properties| {
+                (
+                    attribute_properties.name.clone(),
+                    attribute_properties.encryption_hint == EncryptionHint::Hybridized,
+                )
+            })
             .collect()
     }
 
@@ -142,7 +147,7 @@ impl PolicyAxis {
     pub fn to_string(&self) -> String {
         format!(
             "{}: {:?}, hierarchical: {}",
-            &self.0.name, &self.0.attribute_properties, &self.0.hierarchical
+            &self.0.name, &self.0.attributes_properties, &self.0.hierarchical
         )
     }
 }

@@ -72,9 +72,9 @@ pub fn generate_all_partitions(
     policy: &Policy,
 ) -> Result<HashMap<Partition, EncryptionHint>, Error> {
     let mut attr_values_per_axis = HashMap::with_capacity(policy.axes.len());
-    for (axis_name, (attribute_names, _)) in &policy.axes {
-        let mut values = Vec::with_capacity(attribute_names.len());
-        for attr_name in attribute_names {
+    for (axis_name, axis_properties) in &policy.axes {
+        let mut values = Vec::with_capacity(axis_properties.attribute_names.len());
+        for attr_name in &axis_properties.attribute_names {
             let attribute = Attribute::new(axis_name, attr_name);
             // Hybridization hint is interleaved to allow easy combinations.
             let is_hybridized = policy.attribute_hybridization_hint(&attribute)?;
@@ -122,10 +122,11 @@ fn generate_current_attribute_partitions(
 
     // When an axis is not mentioned in the attribute list, all the attribute
     // from this axis are used.
-    for (axis, (attribute_names, _hierarchical)) in &policy.axes {
+    for (axis, axis_properties) in &policy.axes {
         if !current_attr_value_per_axis.contains_key(axis) {
             // gather all the latest value for that axis
-            let values = attribute_names
+            let values = axis_properties
+                .attribute_names
                 .iter()
                 .map(|name| {
                     let attribute = Attribute::new(axis, name);
@@ -233,7 +234,7 @@ mod tests {
         let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
         for axis in axes {
             let mut axis_attributes: Vec<(Attribute, u32)> = vec![];
-            for name in &policy.axes[axis].0 {
+            for name in &policy.axes[axis].attribute_names {
                 let attribute = Attribute::new(axis, name);
                 let value = policy.attribute_current_value(&attribute)?;
                 axis_attributes.push((attribute, value));
@@ -355,8 +356,8 @@ mod tests {
         // add the partitions associated with the HR department: combine with
         // all attributes of the Security Level axis
         let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
-        let (security_levels, _) = policy.axes.get("Security Level").unwrap();
-        for attr_name in security_levels {
+        let axis_properties = policy.axes.get("Security Level").unwrap();
+        for attr_name in &axis_properties.attribute_names {
             let attr_value =
                 policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
             let mut partition = vec![hr_value, attr_value];

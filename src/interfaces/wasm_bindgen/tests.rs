@@ -36,7 +36,7 @@ fn encrypt_header(
 ) -> Result<EncryptedHeader, Error> {
     let header_metadata = Uint8Array::from(header_metadata);
     let authentication_data = Uint8Array::from(authentication_data);
-    let policy_bytes = serde_json::to_string(&policy)?;
+    let policy_bytes = serde_json::to_vec(&policy)?;
     let public_key_bytes = Uint8Array::from(public_key.try_to_bytes()?.as_slice());
     let encrypted_header = webassembly_encrypt_hybrid_header(
         policy_bytes,
@@ -80,15 +80,15 @@ fn test_encrypt_decrypt() {
     // CoverCrypt setup
     //
 
-    let serialized_policy = serde_json::to_string(&policy).unwrap();
-    let master_keys = webassembly_generate_master_keys(serialized_policy.clone())
+    let policy_bytes = serde_json::to_vec(&policy).unwrap();
+    let master_keys = webassembly_generate_master_keys(policy_bytes.clone())
         .unwrap()
         .to_vec();
     let msk_len = u32::from_be_bytes(<[u8; 4]>::try_from(&master_keys[..4]).unwrap()) as usize;
     let usk = webassembly_generate_user_secret_key(
         Uint8Array::from(&master_keys[4..msk_len + 4]),
         access_policy_string,
-        serialized_policy.clone(),
+        policy_bytes.clone(),
     )
     .unwrap()
     .to_vec();
@@ -102,7 +102,7 @@ fn test_encrypt_decrypt() {
     let plaintext = "My secret message!";
 
     let res = webassembly_hybrid_encrypt(
-        serialized_policy,
+        policy_bytes,
         access_policy_string.to_string(),
         Uint8Array::from(&master_keys[4 + msk_len..]),
         Uint8Array::from(plaintext.as_bytes()),
@@ -133,11 +133,11 @@ fn test_generate_keys() {
     // Policy settings
     //
     let policy = policy().unwrap();
-    let policy_string = serde_json::to_string(&policy).unwrap();
+    let policy_bytes = serde_json::to_vec(&policy).unwrap();
 
     //
     // Generate master keys
-    let master_keys = webassembly_generate_master_keys(policy_string.clone()).unwrap();
+    let master_keys = webassembly_generate_master_keys(policy_bytes.clone()).unwrap();
     let master_keys_vec = master_keys.to_vec();
     let msk_size = u32::from_be_bytes(master_keys_vec[0..4].try_into().unwrap()) as usize;
     let msk_bytes = &master_keys_vec[4..4 + msk_size];
@@ -152,7 +152,7 @@ fn test_generate_keys() {
     let usk_bytes = webassembly_generate_user_secret_key(
         Uint8Array::from(msk_bytes),
         "Department::FIN && Security Level::Top Secret",
-        policy_string.clone(),
+        policy_bytes.clone(),
     )
     .unwrap()
     .to_vec();
@@ -163,7 +163,7 @@ fn test_generate_keys() {
     attributes.push(&JsValue::from(JsString::from(access_policy_string.clone())));
     let new_policy = webassembly_rotate_attributes(
         Attributes::from(JsValue::from(attributes)),
-        policy_string.clone(),
+        policy_bytes.clone(),
     )
     .unwrap();
 
@@ -203,7 +203,7 @@ fn test_generate_keys() {
     let usk_bytes = webassembly_generate_user_secret_key(
         Uint8Array::from(secret_key_bytes),
         "Security Level::Confidential",
-        policy_string,
+        policy_bytes,
     )
     .unwrap()
     .to_vec();

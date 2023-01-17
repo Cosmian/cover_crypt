@@ -4,7 +4,9 @@ version = 3
 
 [[package]]
 name = "abe_policy"
-version = "2.1.0"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6a9fea6e7cc20aee5af407f152a0dc80cc8f8170ad6fe7dce40e96452ef8c48"
 dependencies = [
  "js-sys",
  "serde",
@@ -594,9 +596,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.49"
+version = "1.0.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57a8eca9f9c4ffde41714334dee777596264c7825420f521abc92b5b5deb63a5"
+checksum = "6ef7d57beacfaf2d8aee5937dab7b7f28de3cb8b1828479bb5de2a7106f2bae2"
 dependencies = [
  "unicode-ident",
 ]

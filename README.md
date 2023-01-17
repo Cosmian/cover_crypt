@@ -138,27 +138,30 @@ The size of the serialized keys and encapsulation is given by the following form
 
 ```c
 3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition)
+		+ PRIVATE_KEY_LENGTH + 1 [+ INDCPA_KYBER_PRIVATE_KEY_LENGTH])
 ```
 
 - public key:
 
 ```c
 2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PUBLIC_KEY_LENGTH)
+    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition)
+    		+ PUBLIC_KEY_LENGTH + 1 [+ INDCPA_KYBER_PUBLIC_KEY_LENGTH])
 ```
 
 - user secret key:
 
 ```c
 2 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition) + PRIVATE_KEY_LENGTH)
+    + partition.len() * (PRIVATE_KEY_LENGTH + 1 [+ INDCPA_KYBER_PRIVATE_KEY_LENGTH])
 ```
 
 - encapsulation:
 
 ```c
-2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) + sum(TAG_LENGTH + PRIVATE_KEY_LENGTH)
+2 * PUBLIC_KEY_LENGTH + TAG_LENGTH + LEB128_sizeof(partitions.len())
+	+ partition.len() * [INDCPA_KYBER_CIPHERTEXT_LENGTH | PUBLIC_KEY_LENGTH]
 ```
 
 - encrypted header (see below):
@@ -167,23 +170,23 @@ The size of the serialized keys and encapsulation is given by the following form
 sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
 ```
 
-NOTE: For our implementation `CoverCryptX25519Aes256`:
+**NOTE**: For our implementation `CoverCryptX25519Aes256`:
 
 - `PUBLIC_KEY_LENGTH` is 32 bytes
 - `PRIVATE_KEY_LENGTH` is 32 bytes
 - `TAG_LENGTH` is 32 bytes
 - `DEM_ENCRYPTION_OVERHEAD` is 28 bytes (12 bytes for the MAC tag and 16 bytes for the nonce)
-- `LEB128_sizeof(partitions.len())` is equal to 1 byte if the number of partitions is less than `2^7`
+- `LEB128_sizeof(n)` is equal to 1 byte if `n` is less than `2^7`
 
-Below id given the size of an encapsulation given a number of partitions.
+<!--Below id given the size of an encapsulation given a number of partitions.-->
 
-| Nb. of partitions | encapsulation size (in bytes) |
-| ----------------- | ----------------------------- |
-| 1                 | 129                           |
-| 2                 | 193                           |
-| 3                 | 257                           |
-| 4                 | 321                           |
-| 5                 | 385                           |
+<!--| Nb. of partitions | encapsulation size (in bytes) |-->
+<!--| ----------------- | ----------------------------- |-->
+<!--| 1                 | 129                           |-->
+<!--| 2                 | 193                           |-->
+<!--| 3                 | 257                           |-->
+<!--| 4                 | 321                           |-->
+<!--| 5                 | 385                           |-->
 
 ### Secret key encapsulation
 
