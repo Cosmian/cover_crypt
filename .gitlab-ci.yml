@@ -204,8 +204,8 @@ benchmarks:
   before_script:
     - apt update && apt install -y gnuplot
   script:
-    - cargo bench --features full_bench
     - cargo bench --features full_bench,hybridized_bench
+    - cargo bench --features full_bench
   when: manual
 
 #
