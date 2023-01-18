@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [9.0.0] - 2023-01-16
+
+### Changed
+
+- hybridized version of CoverCrypt using Kyber
+- all serializations
+- directory structure
+- most of `core::partition`
+
+---
+
 ## [8.0.2] - 2022-12-06
 
 ### Added
@@ -172,7 +183,6 @@ All notable changes to this project will be documented in this file.
 ---
 
 ---
-
 ## [6.0.4] - 2022-09-28
 
 ### Added

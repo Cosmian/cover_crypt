@@ -49,7 +49,7 @@ class PolicyAxis:
             hierarchical (bool): set the axis to be hierarchical
     """
 
-    def __init__(self, name: str, attributes: List[str], hierarchical: bool): ...
+    def __init__(self, name: str, attributes: List[Tuple[str, bool]], hierarchical: bool): ...
     def len(self) -> int:
         """Returns the number of attributes belonging to this axis.
 
@@ -339,7 +339,7 @@ class CoverCrypt:
         policy: Policy,
         access_policy_str: str,
         public_key: PublicKey,
-        additional_data: Optional[bytes] = ...,
+        header_metadata: Optional[bytes] = ...,
         authentication_data: Optional[bytes] = ...,
     ) -> Tuple[SymmetricKey, bytes]:
         """Generates an encrypted header. A header contains the following elements:
@@ -351,7 +351,7 @@ class CoverCrypt:
             policy (Policy): global policy
             access_policy_str (str): access policy
             public_key (PublicKey): CoverCrypt public key
-            additional_data (Optional[bytes]): additional data to encrypt with the header
+            header_metadata (Optional[bytes]): additional data to encrypt with the header
             authentication_data (Optional[bytes]): authentication data to use in symmetric encryption
 
         Returns:
