@@ -16,7 +16,7 @@ use cosmian_crypto_core::{
     symmetric_crypto::SymKey,
     KeyTrait,
 };
-use cosmian_kyber::{
+use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
 };
@@ -429,9 +429,9 @@ mod tests {
     #[test]
     fn test_kyber() {
         let mut rng = CsRng::from_entropy();
-        let keypair = cosmian_kyber::keypair(&mut rng);
-        let (ct, ss) = cosmian_kyber::encapsulate(&keypair.public, &mut rng).unwrap();
-        let res = cosmian_kyber::decapsulate(&ct, &keypair.secret).unwrap();
+        let keypair = pqc_kyber::keypair(&mut rng);
+        let (ct, ss) = pqc_kyber::encapsulate(&keypair.public, &mut rng).unwrap();
+        let res = pqc_kyber::decapsulate(&ct, &keypair.secret).unwrap();
         assert_eq!(ss, res, "Decapsulation failed!");
     }
 

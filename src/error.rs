@@ -4,7 +4,7 @@ use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 
 use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "hybrid")]
-use cosmian_kyber::KyberError;
+use pqc_kyber::KyberError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

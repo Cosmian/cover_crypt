@@ -5,7 +5,7 @@
 
 use self::partitions::Partition;
 use cosmian_crypto_core::KeyTrait;
-use cosmian_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
+use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
