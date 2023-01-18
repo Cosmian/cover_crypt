@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/ci.yml/badge.svg)
 ![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/build.yml/badge.svg)
-![latest version](<https://img.shields.io/crates/v/cosmian_cover_crypt.svg>)
+![latest version](https://img.shields.io/crates/v/cosmian_cover_crypt.svg)
 
 Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
 creating ciphertexts for a set of attributes and issuing user keys with access
@@ -55,7 +55,7 @@ To build the Python interface, run:
 maturin build --release --features python
 ```
 
-__Note__: when a new function or class is added to the PyO3 interface, its
+**Note**: when a new function or class is added to the PyO3 interface, its
 signature needs to be added to
 [`__init__.pyi`](./python/cosmian_cover_crypt/__init__.pyi).
 
@@ -198,20 +198,18 @@ provided in the API. An encrypted header holds an encapsulation and a symmetric
 ciphertext of an optional additional data. This additional data can be useful
 to store metadata.
 
-__Note__: encapsulations grow bigger with the size of the target set of rights
+| Nb. of partitions | Encapsulation time |
+| ----------------- | ------------------ |
+| 1                 | 260                |
+| 2                 | 390                |
+| 3                 | 518                |
+| 4                 | 663                |
+| 5                 | 791                |
+
+**Note**: encapsulations grow bigger with the size of the target set of rights
 and so does the encapsulation time. The following benchmark gives the size of
 the encrypted header and the encryption time given the number of rights in the
 target set (one right = one partition).
-
-```c
-Bench header encryption size: 1 partition: 126 bytes, 3 partitions: 190 bytes
-
-Header encryption/1 partition
-                        time:   [187.07 µs 187.10 µs 187.14 µs]
-
-Header encryption/3 partitions
-                        time:   [319.33 µs 319.41 µs 319.51 µs]
-```
 
 ### Secret key decapsulation
 
@@ -219,13 +217,15 @@ A user can retrieve the symmetric key needed to decrypt a CoverCrypt ciphertext
 by decrypting the associated `EncryptedHeader`. This is only possible if the
 user secret keys contains the appropriate rights.
 
-```c
-Header decryption/1 partition access
-                        time:   [252.55 µs 252.66 µs 252.79 µs]
+The following table gives the decryption time given the size (in number of
+partitions) of the user secret key (vertically) and the encapsulation
+(horizontally).
 
-Header decryption/3 partition access
-                        time:   [318.59 µs 318.66 µs 318.74 µs]
-```
+| Nb. of partitions (`usk` vs `encapsulation`, 1 match) | 1   | 2   | 3   | 4   | 5   |
+| ----------------------------------------------------- | --- | --- | --- | --- | --- |
+| 1                                                     | 215 | 276 | 330 | 344 | 399 |
+| 2                                                     | 314 | 385 | 476 | 534 | 634 |
+| 3                                                     | 388 | 528 | 666 | 815 | 847 |
 
 ## Documentation
 
