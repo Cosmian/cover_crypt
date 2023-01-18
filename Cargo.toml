@@ -33,7 +33,7 @@ wasm_bindgen = ["js-sys", "wasm-bindgen", "interface"]
 interface = []
 
 [dependencies]
-abe_policy = { version = "3.0", features = ["wasm_bindgen"]}
+abe_policy = { version = "3.0", features = ["wasm_bindgen"] }
 cosmian_crypto_core = "5.0"
 hex = "0.4"
 leb128 = "0.2"
