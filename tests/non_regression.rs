@@ -1,6 +1,39 @@
-#![cfg(feature = "interfaces")]
+#![cfg(feature = "interface")]
 
-#[derive(Debug, Serialize, Deserialize)]
+use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
+use cosmian_cover_crypt::{
+    statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey, UserSecretKey},
+    CoverCrypt, Error,
+};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
+
+pub fn policy() -> Result<Policy, Error> {
+    let sec_level = PolicyAxis::new(
+        "Security Level",
+        vec![
+            ("Protected", EncryptionHint::Classic),
+            ("Confidential", EncryptionHint::Classic),
+            ("Top Secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    );
+    let department = PolicyAxis::new(
+        "Department",
+        vec![
+            ("R&D", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+        ],
+        false,
+    );
+    let mut policy = Policy::new(100);
+    policy.add_axis(sec_level)?;
+    policy.add_axis(department)?;
+    Ok(policy)
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct EncryptionTestVector {
     encryption_policy: String,
     plaintext: String,
@@ -10,7 +43,7 @@ struct EncryptionTestVector {
 }
 
 impl EncryptionTestVector {
-    fn decrypt(&self, user_key: &str) -> Result<(), CoverCryptError> {
+    fn decrypt(&self, user_key: &str) -> Result<(), Error> {
         let user_key = UserSecretKey::try_from_bytes(&base64::decode(user_key).unwrap())?;
 
         let ciphertext = base64::decode(&self.ciphertext).unwrap();
@@ -58,7 +91,7 @@ impl EncryptionTestVector {
         plaintext: &str,
         header_metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
-    ) -> Result<EncryptionTestVector, CoverCryptError> {
+    ) -> Result<EncryptionTestVector, Error> {
         let cover_crypt = CoverCryptX25519Aes256::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
@@ -91,18 +124,14 @@ impl EncryptionTestVector {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct UserSecretKeyTestVector {
     access_policy: String,
     key: String,
 }
 
 impl UserSecretKeyTestVector {
-    pub fn new(
-        msk: &MasterSecretKey,
-        policy: &Policy,
-        access_policy: &str,
-    ) -> Result<Self, CoverCryptError> {
+    pub fn new(msk: &MasterSecretKey, policy: &Policy, access_policy: &str) -> Result<Self, Error> {
         Ok(Self {
             key: base64::encode(
                 CoverCryptX25519Aes256::default()
@@ -118,21 +147,21 @@ impl UserSecretKeyTestVector {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct NonRegressionTestVector {
     public_key: String,
     master_secret_key: String,
     policy: String,
     top_secret_mkg_fin_key: UserSecretKeyTestVector,
-    medium_secret_mkg_key: UserSecretKeyTestVector,
+    confidential_mkg_key: UserSecretKeyTestVector,
     top_secret_fin_key: UserSecretKeyTestVector,
-    low_secret_mkg_test_vector: EncryptionTestVector,
+    protected_mkg_test_vector: EncryptionTestVector,
     top_secret_mkg_test_vector: EncryptionTestVector,
-    low_secret_fin_test_vector: EncryptionTestVector,
+    protected_fin_test_vector: EncryptionTestVector,
 }
 
 impl NonRegressionTestVector {
-    pub fn new() -> Result<Self, CoverCryptError> {
+    pub fn new() -> Result<Self, Error> {
         //
         // Policy settings
         //
@@ -161,10 +190,10 @@ impl NonRegressionTestVector {
                 &policy,
                 "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
             )?,
-            medium_secret_mkg_key: UserSecretKeyTestVector::new(
+            confidential_mkg_key: UserSecretKeyTestVector::new(
                 &msk,
                 &policy,
-                "Security Level::Medium Secret && Department::MKG",
+                "Security Level::Confidential && Department::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
                 &msk,
@@ -182,20 +211,20 @@ impl NonRegressionTestVector {
                 Some(&authentication_data),
             )?,
 
-            low_secret_mkg_test_vector: EncryptionTestVector::new(
+            protected_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
                 &policy,
-                "Department::MKG && Security Level::Low Secret",
-                "low_secret_mkg_plaintext",
+                "Department::MKG && Security Level::Protected",
+                "protected_mkg_plaintext",
                 Some(&header_metadata),
                 None,
             )?,
 
-            low_secret_fin_test_vector: EncryptionTestVector::new(
+            protected_fin_test_vector: EncryptionTestVector::new(
                 &mpk,
                 &policy,
-                "Department::FIN && Security Level::Low Secret",
-                "low_secret_fin_plaintext",
+                "Department::FIN && Security Level::Protected",
+                "protected_fin_plaintext",
                 None,
                 None,
             )?,
@@ -203,12 +232,12 @@ impl NonRegressionTestVector {
         Ok(reg_vectors)
     }
 
-    fn verify(&self) -> Result<(), CoverCryptError> {
+    fn verify(&self) -> Result<(), Error> {
         // top_secret_fin_key
-        self.low_secret_fin_test_vector
+        self.protected_fin_test_vector
             .decrypt(&self.top_secret_fin_key.key)?;
         assert!(self
-            .low_secret_mkg_test_vector
+            .protected_mkg_test_vector
             .decrypt(&self.top_secret_fin_key.key)
             .is_err());
         assert!(self
@@ -217,30 +246,30 @@ impl NonRegressionTestVector {
             .is_err());
 
         // top_secret_mkg_fin_key
-        self.low_secret_fin_test_vector
+        self.protected_fin_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
-        self.low_secret_mkg_test_vector
+        self.protected_mkg_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
         self.top_secret_mkg_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
 
-        // medium_secret_mkg_key
+        // confidential_mkg_key
         assert!(self
-            .low_secret_fin_test_vector
-            .decrypt(&self.medium_secret_mkg_key.key)
+            .protected_fin_test_vector
+            .decrypt(&self.confidential_mkg_key.key)
             .is_err());
-        self.low_secret_mkg_test_vector
-            .decrypt(&self.medium_secret_mkg_key.key)?;
+        self.protected_mkg_test_vector
+            .decrypt(&self.confidential_mkg_key.key)?;
         assert!(self
             .top_secret_mkg_test_vector
-            .decrypt(&self.medium_secret_mkg_key.key)
+            .decrypt(&self.confidential_mkg_key.key)
             .is_err());
         Ok(())
     }
 }
 
 #[test]
-fn test_generate_non_regression_vector() -> Result<(), CoverCryptError> {
+fn test_generate_non_regression_vector() -> Result<(), Error> {
     let _reg_vector = NonRegressionTestVector::new()?;
     // uncomment this to regenerate new test vector
     //std::fs::write(
@@ -253,8 +282,8 @@ fn test_generate_non_regression_vector() -> Result<(), CoverCryptError> {
 }
 
 #[test]
-fn test_non_regression() -> Result<(), CoverCryptError> {
+fn test_non_regression() -> Result<(), Error> {
     let reg_vector: NonRegressionTestVector =
-        serde_json::from_str(include_str!("../../tests_data/non_regression_vector.json"))?;
+        serde_json::from_str(include_str!("../tests_data/non_regression_vector.json"))?;
     reg_vector.verify()
 }

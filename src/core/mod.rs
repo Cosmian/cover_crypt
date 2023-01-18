@@ -19,7 +19,7 @@ pub mod partitions;
 pub mod primitives;
 
 #[cfg(feature = "interface")]
-mod serialization;
+pub mod serialization;
 
 /// Length of the EAKEM tag
 // TODO TBZ: use as constant generic ?
