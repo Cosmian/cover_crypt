@@ -13,11 +13,11 @@ jobs:
     with:
       project-name: cover_crypt
       toolchain: stable
-      kms-version: 4.0.1
+      kms-version: 4.1.0
       regression-filename: non_regression_vector.json
       branch-java: main
       branch-js: feature/use_cover_crypt_v9.0
       branch-flutter: main
-      branch-python: main
+      branch-python: feature/kms
       bench-features: full_bench,hybridized_bench
     secrets: inherit
