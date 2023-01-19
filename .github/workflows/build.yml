@@ -13,7 +13,7 @@ jobs:
     with:
       project-name: cover_crypt
       toolchain: stable
-      kms-version: 4.0.1
+      kms-version: feature-use-cover-crypt-v9
       regression-filename: non_regression_vector.json
       branch-java: main
       branch-js: feature/use_cover_crypt_v9.0
