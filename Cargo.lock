@@ -5,8 +5,6 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef229583182edc07ce2549e3c60b391d85355e767a460bb3a5849b4780a648b"
 dependencies = [
  "js-sys",
  "serde",

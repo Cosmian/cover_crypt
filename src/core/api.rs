@@ -294,7 +294,7 @@ where
         };
         Ok(CleartextHeader {
             symmetric_key,
-            header_metadata,
+            metadata: header_metadata,
         })
     }
 }
@@ -302,12 +302,12 @@ where
 /// Structure containing all data encrypted in an `EncryptedHeader`.
 ///
 /// - `symmetric_key`   : DEM key
-/// - `header_metadata` : additional data symmetrically encrypted in a header
+/// - `metadata`        : additional data symmetrically encrypted in a header
 #[derive(Debug, PartialEq, Eq)]
 pub struct CleartextHeader<const KEY_LENGTH: usize, DEM>
 where
     DEM: Dem<KEY_LENGTH>,
 {
     pub symmetric_key: DEM::Key,
-    pub header_metadata: Vec<u8>,
+    pub metadata: Vec<u8>,
 }

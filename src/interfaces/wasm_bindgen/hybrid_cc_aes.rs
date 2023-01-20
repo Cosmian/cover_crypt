@@ -300,7 +300,7 @@ pub fn webassembly_hybrid_decrypt(
         .map_err(|e| JsValue::from_str(&format!("Error decrypting ciphertext: {e}")))?;
 
     let mut ser = Serializer::new();
-    ser.write_vec(cleartext_header.header_metadata.as_slice())
+    ser.write_vec(cleartext_header.metadata.as_slice())
         .map_err(|e| {
             JsValue::from_str(&format!(
                 "Cannot serialize the decrypted header metadata into response : {e}"
