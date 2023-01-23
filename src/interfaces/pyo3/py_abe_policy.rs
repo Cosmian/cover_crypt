@@ -6,7 +6,7 @@ use abe_policy::{
 use pyo3::{
     exceptions::{PyException, PyTypeError, PyValueError},
     prelude::*,
-    types::PyList,
+    types::{PyBytes, PyList},
 };
 
 /// An attribute in a policy group is characterized by the axis policy name
@@ -218,16 +218,18 @@ impl Policy {
     }
 
     /// Formats policy to json.
-    pub fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.0).map_err(|e| PyException::new_err(e.to_string()))
+    pub fn to_bytes(&self, py: Python) -> PyResult<Py<PyBytes>> {
+        serde_json::to_vec(&self.0)
+            .map(|bytes| PyBytes::new(py, bytes.as_slice()).into())
+            .map_err(|e| PyException::new_err(e.to_string()))
     }
 
-    /// Reads policy from a string in json format.
+    /// Reads policy from bytes.
     #[staticmethod]
-    pub fn from_json(policy_json: &str) -> PyResult<Self> {
-        let policy: PolicyRust = serde_json::from_str(policy_json)
-            .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
-        Ok(Self(policy))
+    pub fn from_bytes(bytes: &PyBytes) -> PyResult<Self> {
+        serde_json::from_slice(bytes.as_bytes())
+            .map(Self)
+            .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))
     }
 
     /// Returns a string representation of the policy.

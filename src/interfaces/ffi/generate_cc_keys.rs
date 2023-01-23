@@ -11,11 +11,15 @@ use crate::{
 };
 
 #[no_mangle]
-/// Generate the master authority keys for supplied Policy
+/// Generates the master authority keys for supplied Policy.
 ///
-///  - `master_keys_ptr`    : Output buffer containing both master keys
-///  - `master_keys_len`    : Size of the output buffer
-///  - `policy_ptr`         : Policy to use to generate the keys
+///  - `msk_ptr`    : Output buffer containing the master secret key
+///  - `msk_len`    : Size of the master secret key output buffer
+///  - `mpk_ptr`    : Output buffer containing the master public key
+///  - `mpk_len`    : Size of the master public key output buffer
+///  - `policy_ptr` : Policy to use to generate the keys
+///  - `policy_len` : Size of the `Policy` to use to generate the keys
+///
 /// # Safety
 pub unsafe extern "C" fn h_generate_master_keys(
     msk_ptr: *mut c_char,

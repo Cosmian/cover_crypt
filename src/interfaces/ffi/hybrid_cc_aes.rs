@@ -100,8 +100,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
     header_bytes_len: *mut c_int,
     cache_handle: c_int,
     encryption_policy_ptr: *const c_char,
-    metadata_ptr: *const c_char,
-    metadata_len: c_int,
+    header_metadata_ptr: *const c_char,
+    header_metadata_len: c_int,
     authentication_data_ptr: *const c_char,
     authentication_data_len: c_int,
 ) -> c_int {
@@ -110,10 +110,14 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         &encryption_policy_bytes
     ));
 
-    let metadata = if metadata_ptr.is_null() || metadata_len == 0 {
+    let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
     } else {
-        Some(ffi_read_bytes!("metadata", metadata_ptr, metadata_len))
+        Some(ffi_read_bytes!(
+            "header metadata",
+            header_metadata_ptr,
+            header_metadata_len
+        ))
     };
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
@@ -142,7 +146,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         &cache.policy,
         &cache.mpk,
         &encryption_policy,
-        metadata,
+        header_metadata,
         authentication_data,
     ));
 
@@ -179,8 +183,8 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     mpk_ptr: *const c_char,
     mpk_len: c_int,
     encryption_policy_ptr: *const c_char,
-    metadata_ptr: *const c_char,
-    metadata_len: c_int,
+    header_metadata_ptr: *const c_char,
+    header_metadata_len: c_int,
     authentication_data_ptr: *const c_char,
     authentication_data_len: c_int,
 ) -> c_int {
@@ -195,10 +199,14 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         &encryption_policy_bytes
     ));
 
-    let metadata = if metadata_ptr.is_null() || metadata_len == 0 {
+    let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
     } else {
-        Some(ffi_read_bytes!("metadata", metadata_ptr, metadata_len))
+        Some(ffi_read_bytes!(
+            "header metadata",
+            header_metadata_ptr,
+            header_metadata_len
+        ))
     };
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
@@ -216,7 +224,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         &policy,
         &mpk,
         &encryption_policy,
-        metadata,
+        header_metadata,
         authentication_data
     ));
 
@@ -296,16 +304,17 @@ pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> 
 
 #[no_mangle]
 /// Decrypts an encrypted header using a cache. Returns the symmetric key and
-/// metadata if any.
+/// header metadata if any.
 ///
-/// No metadata is returned if `metadata_ptr` is `NULL` or `metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
+/// `header_metadata_len` is `0`.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
-    metadata_ptr: *mut c_char,
-    metadata_len: *mut c_int,
+    header_metadata_ptr: *mut c_char,
+    header_metadata_len: *mut c_int,
     encrypted_header_ptr: *const c_char,
     encrypted_header_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -355,25 +364,32 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         symmetric_key_len
     );
 
-    // serialize metadata
-    if !metadata_ptr.is_null() && *metadata_len > 0 {
-        ffi_write_bytes!("metadata", &header.metadata, metadata_ptr, metadata_len);
+    // serialize header metadata
+    if !header_metadata_ptr.is_null() && *header_metadata_len > 0 {
+        ffi_write_bytes!(
+            "header metadata",
+            &header.metadata,
+            header_metadata_ptr,
+            header_metadata_len
+        );
     }
 
     0
 }
 
 #[no_mangle]
-/// Decrypts an encrypted header, returning the symmetric key and metadata if any.
+/// Decrypts an encrypted header, returning the symmetric key and header
+/// metadata if any.
 ///
-/// No metadata is returned if `metadata_ptr` is `NULL` or `metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
+/// `header_metadata_len` is `0`.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_header(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
-    metadata_ptr: *mut c_char,
-    metadata_len: *mut c_int,
+    header_metadata_ptr: *mut c_char,
+    header_metadata_len: *mut c_int,
     encrypted_header_ptr: *const c_char,
     encrypted_header_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -415,7 +431,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         symmetric_key_len
     );
 
-    if metadata_ptr.is_null() || *metadata_len == 0 {
+    if header_metadata_ptr.is_null() || *header_metadata_len == 0 {
         let null_ptr = null_mut::<c_char>();
         let null_len = &mut 0;
         ffi_write_bytes!("metadata", &decrypted_header.metadata, null_ptr, null_len);
@@ -423,8 +439,8 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         ffi_write_bytes!(
             "metadata",
             &decrypted_header.metadata,
-            metadata_ptr,
-            metadata_len
+            header_metadata_ptr,
+            header_metadata_len
         );
     }
 
@@ -534,8 +550,8 @@ pub unsafe extern "C" fn h_aes_encrypt(
     encryption_policy_ptr: *const c_char,
     plaintext_ptr: *const c_char,
     plaintext_len: c_int,
-    metadata_ptr: *const c_char,
-    metadata_len: c_int,
+    header_metadata_ptr: *const c_char,
+    header_metadata_len: c_int,
     authentication_data_ptr: *const c_char,
     authentication_data_len: c_int,
 ) -> c_int {
@@ -552,10 +568,14 @@ pub unsafe extern "C" fn h_aes_encrypt(
     let mpk_bytes = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
     let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes));
 
-    let metadata = if metadata_ptr.is_null() || metadata_len == 0 {
+    let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
     } else {
-        Some(ffi_read_bytes!("metadata", metadata_ptr, metadata_len))
+        Some(ffi_read_bytes!(
+            "header metadata",
+            header_metadata_ptr,
+            header_metadata_len
+        ))
     };
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
@@ -573,7 +593,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
         &policy,
         &mpk,
         &encryption_policy,
-        metadata,
+        header_metadata,
         authentication_data
     ));
 
@@ -597,14 +617,15 @@ pub unsafe extern "C" fn h_aes_encrypt(
 #[no_mangle]
 /// Hybrid decrypt some content
 ///
-/// No metadata is returned if `metadata_ptr` is `NULL` or `metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
+/// `header_metadata_len` is `0`.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt(
     plaintext_ptr: *mut c_char,
     plaintext_len: *mut c_int,
-    metadata_ptr: *mut c_char,
-    metadata_len: *mut c_int,
+    header_metadata_ptr: *mut c_char,
+    header_metadata_len: *mut c_int,
     ciphertext_ptr: *const c_char,
     ciphertext_len: c_int,
     authentication_data_ptr: *const c_char,
@@ -649,16 +670,21 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
     ffi_write_bytes!("plaintext", &plaintext, plaintext_ptr, plaintext_len);
 
-    if metadata_ptr.is_null() || *metadata_len == 0 {
+    if header_metadata_ptr.is_null() || *header_metadata_len == 0 {
         let null_ptr = null_mut::<c_char>();
         let null_len = &mut 0;
-        ffi_write_bytes!("metadata", &decrypted_header.metadata, null_ptr, null_len);
+        ffi_write_bytes!(
+            "header metadata",
+            &decrypted_header.metadata,
+            null_ptr,
+            null_len
+        );
     } else {
         ffi_write_bytes!(
-            "metadata",
+            "header metadata",
             &decrypted_header.metadata,
-            metadata_ptr,
-            metadata_len
+            header_metadata_ptr,
+            header_metadata_len
         );
     }
 

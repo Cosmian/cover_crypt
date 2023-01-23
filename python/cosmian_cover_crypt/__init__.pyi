@@ -141,8 +141,8 @@ class Policy:
         Returns:
             int
         """
-    def to_json(self) -> str:
-        """Formats policy to json.
+    def to_bytes(self) -> bytes:
+        """Formats policy to bytes.
 
         Returns:
             str
@@ -154,8 +154,8 @@ class Policy:
             Policy
         """
     @staticmethod
-    def from_json(policy_json: str) -> Policy:
-        """Reads policy from a string in json format.
+    def from_bytes(policy_json: bytes) -> Policy:
+        """Reads policy from bytes.
 
         Args:
             policy_json (str)

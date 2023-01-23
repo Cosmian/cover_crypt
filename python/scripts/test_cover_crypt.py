@@ -91,14 +91,14 @@ class TestPolicy(unittest.TestCase):
         copy_policy = policy.deep_copy()
         self.assertIsInstance(copy_policy, Policy)
 
-        json_str = policy.to_json()
-        self.assertEqual(json_str, copy_policy.to_json())
+        json_str = policy.to_bytes()
+        self.assertEqual(json_str, copy_policy.to_bytes())
 
-        deserialized_policy = Policy.from_json(json_str)
+        deserialized_policy = Policy.from_bytes(json_str)
         self.assertIsInstance(deserialized_policy, Policy)
 
         with self.assertRaises(Exception):
-            Policy.from_json('wrong data format')
+            Policy.from_bytes('wrong data format'.encode())
 
 
 class TestKeyGeneration(unittest.TestCase):
