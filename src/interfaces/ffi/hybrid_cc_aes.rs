@@ -597,6 +597,8 @@ pub unsafe extern "C" fn h_aes_encrypt(
 #[no_mangle]
 /// Hybrid decrypt some content
 ///
+/// No metadata is returned if `metadata_ptr` is `NULL` or `metadata_len` is `0`.
+///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt(
     plaintext_ptr: *mut c_char,

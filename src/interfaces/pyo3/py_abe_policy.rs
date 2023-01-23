@@ -72,8 +72,8 @@ impl Attribute {
 /// Args:
 ///         name (str): axis name
 ///         attributes (List[str], bool): name of the attributes on this axis
-/// and encryption hint         hierarchical (bool): set the axis to be
-/// hierarchical
+/// and encryption hint
+///         hierarchical (bool): set the axis to be hierarchical
 #[pyclass]
 pub struct PolicyAxis(PolicyAxisRust);
 
@@ -99,7 +99,7 @@ impl PolicyAxis {
                     ))
                 }
             })
-            .collect::<Result<Vec<(&str, EncryptionHint)>, _>>()?;
+            .collect::<Result<_, _>>()?;
 
         Ok(Self(PolicyAxisRust::new(name, attributes, hierarchical)))
     }

@@ -163,8 +163,8 @@ impl CoverCrypt {
     /// Parameters:
     ///
     /// - `symmetric_key`       : symmetric key
-    /// - `plaintext`     : plaintext to encrypt
-    /// - `authentication_data`  : associated data to be passed to the DEM scheme
+    /// - `plaintext`           : plaintext to encrypt
+    /// - `authentication_data` : associated data to be passed to the DEM scheme
     ///
     /// Returns: ciphertext bytes
     pub fn encrypt_symmetric_block(
@@ -187,7 +187,7 @@ impl CoverCrypt {
     ///
     /// - `symmetric_key`       : symmetric key
     /// - `ciphertext`          : ciphertext
-    /// - `authentication_data`  : associated data to be passed to the DEM scheme
+    /// - `authentication_data` : associated data to be passed to the DEM scheme
     ///
     /// Returns: plaintext bytes
     pub fn decrypt_symmetric_block(
@@ -256,7 +256,7 @@ impl CoverCrypt {
     ///
     /// - `usk`                     : user secret key
     /// - `encrypted_header_bytes`  : encrypted header bytes
-    /// - `authentication_data`      : authentication data to use in symmetric decryption
+    /// - `authentication_data`     : authentication data to use in symmetric decryption
     ///
     /// Returns: (SymmetricKey, header metadata bytes)
     pub fn decrypt_header(
@@ -289,7 +289,7 @@ impl CoverCrypt {
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
     /// - `header_metadata`     : additional data to symmetrically encrypt in the header
-    /// - `authentication_data`  : authentication data to use in symmetric encryptions
+    /// - `authentication_data` : authentication data to use in symmetric encryptions
     ///
     /// Returns: ciphertext bytes
     #[allow(clippy::too_many_arguments)]
@@ -336,7 +336,7 @@ impl CoverCrypt {
     ///
     /// - `usk`                 : user secret key
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
-    /// - `authentication_data`  : authentication data to use in symmetric decryptions
+    /// - `authentication_data` : authentication data to use in symmetric decryptions
     ///
     ///  Returns: (plaintext bytes, header metadata bytes)
     pub fn decrypt(
