@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [9.0.1] - 2023-01-24
+
+### Bug Fixes
+
+- Flutter repository
+- Test on java branch
+
 ---
 
 ## [9.0.0] - 2023-01-20

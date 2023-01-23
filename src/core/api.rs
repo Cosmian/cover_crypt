@@ -1,4 +1,4 @@
-//! Defines the CoverCrypt API.
+//! Defines the `CoverCrypt` API.
 
 use crate::Error;
 use abe_policy::{AccessPolicy, Policy};

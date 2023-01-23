@@ -1,4 +1,4 @@
-//! Implements the core functionalities of CoverCrypt.
+//! Implements the core functionalities of `CoverCrypt`.
 
 // Allows using the paper notations.
 #![allow(non_snake_case)]

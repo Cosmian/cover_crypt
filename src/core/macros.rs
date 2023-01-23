@@ -36,7 +36,7 @@ macro_rules! eakem_hash {
     };
 }
 
-/// Macro calling CoverCrypt [`setup()`](crate::core::primitives::setup) with the correct
+/// Macro calling `CoverCrypt` [`setup()`](crate::core::primitives::setup) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -54,7 +54,7 @@ macro_rules! setup {
     };
 }
 
-/// Macro calling CoverCrypt [`keygen()`](crate::core::primitives::keygen) with the correct
+/// Macro calling `CoverCrypt` [`keygen()`](crate::core::primitives::keygen) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -72,7 +72,7 @@ macro_rules! keygen {
     };
 }
 
-/// Macro calling CoverCrypt [`encaps()`](crate::core::primitives::encaps) with the correct
+/// Macro calling `CoverCrypt` [`encaps()`](crate::core::primitives::encaps) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -95,7 +95,7 @@ macro_rules! encaps {
     };
 }
 
-/// Macro calling CoverCrypt [`decaps()`](crate::core::primitives::decaps) with the correct
+/// Macro calling `CoverCrypt` [`decaps()`](crate::core::primitives::decaps) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -118,7 +118,7 @@ macro_rules! decaps {
     };
 }
 
-/// Macro calling CoverCrypt [`update()`](crate::core::primitives::update) with the correct
+/// Macro calling `CoverCrypt` [`update()`](crate::core::primitives::update) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
@@ -136,7 +136,7 @@ macro_rules! update {
     };
 }
 
-/// Macro calling CoverCrypt [`refresh()`](crate::core::primitives::refresh) with the correct
+/// Macro calling `CoverCrypt` [`refresh()`](crate::core::primitives::refresh) with the correct
 /// generic parameters.
 ///
 /// *NOTE*: the following objects should be defined

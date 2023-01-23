@@ -96,7 +96,7 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
 #[no_mangle]
 /// Updates the master keys according to the given policy.
 ///
-/// Cf (`CoverCrypt::update_master_keys`)[CoverCrypt::update_master_keys].
+/// Cf (`CoverCrypt::update_master_keys`)[`CoverCrypt::update_master_keys`].
 ///
 /// - `updated_msk_ptr` : Output buffer containing the updated master secret key
 /// - `updated_msk_len` : Size of the updated master secret key output buffer

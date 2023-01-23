@@ -1,4 +1,4 @@
-//! Implements the serialization methods for the CoverCrypt objects.
+//! Implements the serialization methods for the `CoverCrypt` objects.
 
 use crate::{
     core::{

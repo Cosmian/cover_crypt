@@ -91,7 +91,7 @@ impl EncryptionTestVector {
         plaintext: &str,
         header_metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
-    ) -> Result<EncryptionTestVector, Error> {
+    ) -> Result<Self, Error> {
         let cover_crypt = CoverCryptX25519Aes256::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
@@ -114,7 +114,7 @@ impl EncryptionTestVector {
             Some(ad) => base64::encode(ad),
             None => String::new(),
         };
-        Ok(EncryptionTestVector {
+        Ok(Self {
             encryption_policy: encryption_policy.to_string(),
             plaintext: base64::encode(plaintext),
             ciphertext: base64::encode(encrypted_bytes),
@@ -179,7 +179,7 @@ impl NonRegressionTestVector {
         let header_metadata = 1u32.to_be_bytes().to_vec();
         let authentication_data = 2u32.to_be_bytes().to_vec();
 
-        let reg_vectors = NonRegressionTestVector {
+        let reg_vectors = Self {
             public_key: base64::encode(mpk.try_to_bytes()?),
             master_secret_key: base64::encode(msk.try_to_bytes()?),
             policy: base64::encode(serde_json::to_vec(&policy)?),

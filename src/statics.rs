@@ -9,7 +9,7 @@ use cosmian_crypto_core::{
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Dem},
     CsRng,
 };
-use std::{ops::DerefMut, sync::Mutex};
+use std::sync::Mutex;
 
 pub const TAG_LENGTH: usize = 32;
 pub const SYM_KEY_LENGTH: usize = 32;
@@ -17,7 +17,7 @@ pub type KeyPair = X25519KeyPair;
 #[allow(clippy::upper_case_acronyms)]
 pub type DEM = Aes256GcmCrypto;
 
-/// Instantiate a CoverCrypt type with AES GCM 256 as DEM
+/// Instantiate a `CoverCrypt` type with AES GCM 256 as DEM
 #[derive(Debug)]
 pub struct CoverCryptX25519Aes256 {
     rng: Mutex<CsRng>,
@@ -86,7 +86,7 @@ impl
         policy: &Policy,
     ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error> {
         Ok(setup!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             &partitions::generate_all_partitions(policy)?
         ))
     }
@@ -98,7 +98,7 @@ impl
         mpk: &mut Self::PublicKey,
     ) -> Result<(), Error> {
         update!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
             &partitions::generate_all_partitions(policy)?
@@ -112,7 +112,7 @@ impl
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error> {
         Ok(keygen!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, true)?
         ))
@@ -148,7 +148,7 @@ impl
         Error,
     > {
         Ok(encaps!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
             &partitions::access_policy_to_current_partitions(access_policy, policy, false)?
         ))
@@ -169,7 +169,7 @@ impl
         authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         <Aes256GcmCrypto as Dem<{ Self::SYM_KEY_LENGTH }>>::encrypt(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             symmetric_key,
             plaintext,
             authentication_data,
@@ -215,7 +215,7 @@ pub type EncryptedHeader = crate::core::api::EncryptedHeader<
 pub type CleartextHeader =
     crate::core::api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
 
-/// Convenience type: CoverCryptX25519Aes256 master secret key
+/// Convenience type: `CoverCryptX25519Aes256` master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -225,7 +225,7 @@ pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     Aes256GcmCrypto,
 >>::MasterSecretKey;
 
-/// Convenience type: CoverCryptX25519Aes256 public key
+/// Convenience type: `CoverCryptX25519Aes256` public key
 pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -235,7 +235,7 @@ pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
     Aes256GcmCrypto,
 >>::PublicKey;
 
-/// Convenience type: CoverCryptX25519Aes256 user secret key
+/// Convenience type: `CoverCryptX25519Aes256` user secret key
 pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -245,7 +245,7 @@ pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     Aes256GcmCrypto,
 >>::UserSecretKey;
 
-/// Convenience type: CoverCryptX25519Aes256 encapsulation
+/// Convenience type: `CoverCryptX25519Aes256` encapsulation
 pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },

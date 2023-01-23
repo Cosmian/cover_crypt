@@ -1,4 +1,4 @@
-//! Implements the cryptographic primitives of CoverCrypt, based on
+//! Implements the cryptographic primitives of `CoverCrypt`, based on
 //! `bib/CoverCrypt.pdf`.
 
 use crate::{
@@ -39,7 +39,7 @@ fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] 
     res
 }
 
-/// Generates the master secret key and master public key of the CoverCrypt
+/// Generates the master secret key and master public key of the `CoverCrypt`
 /// scheme.
 ///
 /// # Reference
@@ -138,7 +138,7 @@ where
     UserSecretKey { a, b, x }
 }
 
-/// Generates a CoverCrypt encapsulation of a random symmetric key. Returns
+/// Generates a `CoverCrypt` encapsulation of a random symmetric key. Returns
 /// both the symmetric key and its encapsulation.
 ///
 /// # Reference
@@ -200,7 +200,7 @@ where
     (SymmetricKey::from_bytes(K), Encapsulation { C, D, tag, E })
 }
 
-/// Tries to decapsulate the given CoverCrypt encapsulation. Returns the
+/// Tries to decapsulate the given `CoverCrypt` encapsulation. Returns the
 /// encapsulated symmetric key.
 ///
 /// # Error
