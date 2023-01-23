@@ -13,6 +13,9 @@ policies over these attributes.
 - [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
   - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+  - [Building the library for `cloudproof_java` or `cloudproof_flutter`:](#building-the-library-for-cloudproof_java-or-cloudproof_flutter)
+  - [Build the library for `cloudproof_js`](#build-the-library-for-cloudproof_js)
+  - [Build the library for `cloudproof_python`](#build-the-library-for-cloudproof_python)
 - [Features and Benchmarks](#features-and-benchmarks)
   - [Key generation](#key-generation)
   - [Serialization](#serialization)
@@ -93,6 +96,30 @@ cargo bench
 ### Building the library for a different glibc
 
 Go to the [build](build/glibc-2.17/) directory for an example on how to build for GLIBC 2.17
+
+### Building the library for `cloudproof_java` or `cloudproof_flutter`
+
+From the root directory:
+
+```bash
+cargo build --release --features ffi
+```
+
+### Build the library for `cloudproof_js`
+
+From the root directory:
+
+```bash
+cargo build --release --features wasm_bindgen
+```
+
+### Build the library for `cloudproof_python`
+
+From the root directory:
+
+```bash
+maturin build --release --features python
+```
 
 ## Features and Benchmarks
 
@@ -199,7 +226,7 @@ ciphertext of an optional additional data. This additional data can be useful
 to store metadata.
 
 | Nb. of partitions | Encapsulation time |
-| ----------------- | ------------------ |
+|-------------------|--------------------|
 | 1                 | 260                |
 | 2                 | 390                |
 | 3                 | 518                |
@@ -222,7 +249,7 @@ partitions) of the user secret key (vertically) and the encapsulation
 (horizontally).
 
 | Nb. of partitions (`usk` vs `encapsulation`, 1 match) | 1   | 2   | 3   | 4   | 5   |
-| ----------------------------------------------------- | --- | --- | --- | --- | --- |
+|-------------------------------------------------------|-----|-----|-----|-----|-----|
 | 1                                                     | 215 | 276 | 330 | 344 | 399 |
 | 2                                                     | 314 | 385 | 476 | 534 | 634 |
 | 3                                                     | 388 | 528 | 666 | 815 | 847 |
