@@ -1,8 +1,8 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
-use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
-    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader},
+    statics::{CoverCryptX25519Aes256, EncryptedHeader},
     CoverCrypt,
 };
 
@@ -13,20 +13,33 @@ fn main() {
     // messages encrypted for `Security Level::Protected`.
     let sec_level = PolicyAxis::new(
         "Security Level",
-        &["Protected", "Confidential", "Top Secret"],
+        vec![
+            ("Protected", EncryptionHint::Classic),
+            ("Confidential", EncryptionHint::Classic),
+            ("Top Secret", EncryptionHint::Hybridized),
+        ],
         true,
     );
 
     // Another attribute axis will be department names.
     // This axis is *not* hierarchical.
-    let department = PolicyAxis::new("Department", &["R&D", "HR", "MKG", "FIN"], false);
+    let department = PolicyAxis::new(
+        "Department",
+        vec![
+            ("R&D", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+        ],
+        false,
+    );
 
     // Generate a new `Policy` object with a 100 revocations allowed.
     let mut policy = Policy::new(100);
 
     // Add the two generated axes to the policy
-    policy.add_axis(&sec_level).unwrap();
-    policy.add_axis(&department).unwrap();
+    policy.add_axis(sec_level).unwrap();
+    policy.add_axis(department).unwrap();
 
     // Setup CoverCrypt and generate master keys
     let cover_crypt = CoverCryptX25519Aes256::default();

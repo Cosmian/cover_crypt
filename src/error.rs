@@ -1,8 +1,9 @@
 //! Error type for the crate
 
-use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
-
 use cosmian_crypto_core::CryptoCoreError;
+#[cfg(feature = "hybrid")]
+use pqc_kyber::KyberError;
+use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,7 +11,9 @@ pub enum Error {
     #[error("Unknown partition {0}")]
     UnknownPartition(String),
     #[error("{0}")]
-    CryptoError(CryptoCoreError),
+    CryptoCoreError(CryptoCoreError),
+    #[error("{0}")]
+    KeyError(String),
     #[error(transparent)]
     PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
@@ -62,22 +65,16 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
-impl From<CryptoCoreError> for Error {
-    fn from(e: CryptoCoreError) -> Self {
-        match e {
-            CryptoCoreError::SizeError { given, expected } => {
-                Self::InvalidSize(format!("expected: {expected}, given: {given}"))
-            }
-            CryptoCoreError::InvalidSize(e) => Self::InvalidSize(e),
-            e => Self::CryptoError(e),
-        }
+#[cfg(feature = "hybrid")]
+impl From<KyberError> for Error {
+    fn from(e: KyberError) -> Self {
+        Self::CryptoError(e.to_string())
     }
 }
 
-#[cfg(feature = "ffi")]
-impl From<std::ffi::NulError> for Error {
-    fn from(e: std::ffi::NulError) -> Self {
-        Self::Other(format!("FFI error: {e}"))
+impl From<CryptoCoreError> for Error {
+    fn from(e: CryptoCoreError) -> Self {
+        Self::CryptoCoreError(e)
     }
 }
 

@@ -1,7 +1,5 @@
 //! Implement interfaces with other languages.
 
-pub mod statics;
-
 #[cfg(feature = "ffi")]
 pub mod ffi;
 

@@ -1,22 +1,17 @@
+use crate::{
+    interfaces::pyo3::py_abe_policy::Policy,
+    statics::{
+        CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey as MasterSecretKeyRust,
+        PublicKey as PublicKeyRust, UserSecretKey as UserSecretKeyRust, DEM,
+    },
+    CoverCrypt as CoverCryptRust,
+};
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    symmetric_crypto::Dem,
-    symmetric_crypto::SymKey,
+    symmetric_crypto::{Dem, SymKey},
 };
 use pyo3::{exceptions::PyTypeError, prelude::*, types::PyBytes, PyErr};
-
-use crate::{
-    api::CoverCrypt as CoverCryptRust,
-    interfaces::{
-        pyo3::py_abe_policy::Policy,
-        statics::{
-            CoverCryptDem, CoverCryptX25519Aes256, EncryptedHeader,
-            MasterSecretKey as MasterSecretKeyRust, PublicKey as PublicKeyRust,
-            SymmetricKey as SymmetricKeyRust, UserSecretKey as UserSecretKeyRust,
-        },
-    },
-};
 
 // Pyo3 doc on classes
 // https://pyo3.rs/v0.16.2/class.html
@@ -37,7 +32,7 @@ pub struct UserSecretKey(UserSecretKeyRust);
 impl_key_byte!(UserSecretKey, UserSecretKeyRust);
 
 #[pyclass]
-pub struct SymmetricKey(SymmetricKeyRust);
+pub struct SymmetricKey(<DEM as Dem<{ DEM::KEY_LENGTH }>>::Key);
 
 #[pymethods]
 impl SymmetricKey {
@@ -48,8 +43,10 @@ impl SymmetricKey {
 
     /// Reads key from bytes
     #[staticmethod]
-    pub fn from_bytes(key_bytes: [u8; CoverCryptDem::KEY_LENGTH]) -> PyResult<Self> {
-        Ok(Self(SymmetricKeyRust::from_bytes(key_bytes)))
+    pub fn from_bytes(key_bytes: [u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH]) -> PyResult<Self> {
+        Ok(Self(<DEM as Dem<
+            { CoverCryptX25519Aes256::SYM_KEY_LENGTH },
+        >>::Key::from_bytes(key_bytes)))
     }
 }
 
@@ -166,8 +163,8 @@ impl CoverCrypt {
     /// Parameters:
     ///
     /// - `symmetric_key`       : symmetric key
-    /// - `plaintext`     : plaintext to encrypt
-    /// - `authentication_data`  : associated data to be passed to the DEM scheme
+    /// - `plaintext`           : plaintext to encrypt
+    /// - `authentication_data` : associated data to be passed to the DEM scheme
     ///
     /// Returns: ciphertext bytes
     pub fn encrypt_symmetric_block(
@@ -190,7 +187,7 @@ impl CoverCrypt {
     ///
     /// - `symmetric_key`       : symmetric key
     /// - `ciphertext`          : ciphertext
-    /// - `authentication_data`  : associated data to be passed to the DEM scheme
+    /// - `authentication_data` : associated data to be passed to the DEM scheme
     ///
     /// Returns: plaintext bytes
     pub fn decrypt_symmetric_block(
@@ -259,7 +256,7 @@ impl CoverCrypt {
     ///
     /// - `usk`                     : user secret key
     /// - `encrypted_header_bytes`  : encrypted header bytes
-    /// - `authentication_data`      : authentication data to use in symmetric decryption
+    /// - `authentication_data`     : authentication data to use in symmetric decryption
     ///
     /// Returns: (SymmetricKey, header metadata bytes)
     pub fn decrypt_header(
@@ -278,7 +275,7 @@ impl CoverCrypt {
 
         Ok((
             SymmetricKey(cleartext_header.symmetric_key),
-            PyBytes::new(py, &cleartext_header.additional_data).into(),
+            PyBytes::new(py, &cleartext_header.metadata).into(),
         ))
     }
 
@@ -292,7 +289,7 @@ impl CoverCrypt {
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
     /// - `header_metadata`     : additional data to symmetrically encrypt in the header
-    /// - `authentication_data`  : authentication data to use in symmetric encryptions
+    /// - `authentication_data` : authentication data to use in symmetric encryptions
     ///
     /// Returns: ciphertext bytes
     #[allow(clippy::too_many_arguments)]
@@ -339,7 +336,7 @@ impl CoverCrypt {
     ///
     /// - `usk`                 : user secret key
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
-    /// - `authentication_data`  : authentication data to use in symmetric decryptions
+    /// - `authentication_data` : authentication data to use in symmetric decryptions
     ///
     ///  Returns: (plaintext bytes, header metadata bytes)
     pub fn decrypt(
@@ -367,7 +364,7 @@ impl CoverCrypt {
 
         Ok((
             PyBytes::new(py, &plaintext).into(),
-            PyBytes::new(py, &cleartext_header.additional_data).into(),
+            PyBytes::new(py, &cleartext_header.metadata).into(),
         ))
     }
 }

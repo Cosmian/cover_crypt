@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 
 class Attribute:
     """An attribute in a policy group is characterized by the axis policy name
@@ -45,11 +45,19 @@ class PolicyAxis:
 
     Args:
             name (str): axis name
-            attributes (List[str]): name of the attributes on this axis
+            attributes (List[Union[str, Tuple[str, bool]]]): properties of the attributes:
+
+                - name of the attribute
+                - boolean to activate post quantum encryption on this attribute
             hierarchical (bool): set the axis to be hierarchical
     """
 
-    def __init__(self, name: str, attributes: List[str], hierarchical: bool): ...
+    def __init__(
+        self,
+        name: str,
+        attributes: List[Union[str, Tuple[str, bool]]],
+        hierarchical: bool,
+    ): ...
     def len(self) -> int:
         """Returns the number of attributes belonging to this axis.
 
@@ -133,8 +141,8 @@ class Policy:
         Returns:
             int
         """
-    def to_json(self) -> str:
-        """Formats policy to json.
+    def to_bytes(self) -> bytes:
+        """Formats policy to bytes.
 
         Returns:
             str
@@ -146,8 +154,8 @@ class Policy:
             Policy
         """
     @staticmethod
-    def from_json(policy_json: str) -> Policy:
-        """Reads policy from a string in json format.
+    def from_bytes(policy_json: bytes) -> Policy:
+        """Reads policy from bytes.
 
         Args:
             policy_json (str)
@@ -339,7 +347,7 @@ class CoverCrypt:
         policy: Policy,
         access_policy_str: str,
         public_key: PublicKey,
-        additional_data: Optional[bytes] = ...,
+        header_metadata: Optional[bytes] = ...,
         authentication_data: Optional[bytes] = ...,
     ) -> Tuple[SymmetricKey, bytes]:
         """Generates an encrypted header. A header contains the following elements:
@@ -351,7 +359,7 @@ class CoverCrypt:
             policy (Policy): global policy
             access_policy_str (str): access policy
             public_key (PublicKey): CoverCrypt public key
-            additional_data (Optional[bytes]): additional data to encrypt with the header
+            header_metadata (Optional[bytes]): additional data to encrypt with the header
             authentication_data (Optional[bytes]): authentication data to use in symmetric encryption
 
         Returns:
