@@ -1,9 +1,12 @@
+use std::result::Result;
+
 use abe_policy::{
     Attribute as AttributeRust, EncryptionHint, Policy as PolicyRust, PolicyAxis as PolicyAxisRust,
 };
 use pyo3::{
-    exceptions::{PyException, PyTypeError},
+    exceptions::{PyException, PyTypeError, PyValueError},
     prelude::*,
+    types::{PyBytes, PyList},
 };
 
 /// An attribute in a policy group is characterized by the axis policy name
@@ -68,7 +71,8 @@ impl Attribute {
 ///
 /// Args:
 ///         name (str): axis name
-///         attributes (List[str], bool): name of the attributes on this axis and encryption hint
+///         attributes (List[str], bool): name of the attributes on this axis
+/// and encryption hint
 ///         hierarchical (bool): set the axis to be hierarchical
 #[pyclass]
 pub struct PolicyAxis(PolicyAxisRust);
@@ -76,18 +80,28 @@ pub struct PolicyAxis(PolicyAxisRust);
 #[pymethods]
 impl PolicyAxis {
     #[new]
-    fn new(name: &str, attributes: Vec<(&str, bool)>, hierarchical: bool) -> Self {
+    fn new(name: &str, attributes: &PyList, hierarchical: bool) -> PyResult<Self> {
+        // attributes use Classic encryption if not specified
         let attributes = attributes
             .into_iter()
-            .map(|(name, is_hybridized)| {
-                if is_hybridized {
-                    (name, EncryptionHint::Hybridized)
+            .map(|attr| {
+                if let Ok(name) = attr.extract::<&str>() {
+                    Ok((name, EncryptionHint::Classic))
+                } else if let Ok((name, is_hybridized)) = attr.extract::<(&str, bool)>() {
+                    if is_hybridized {
+                        Ok((name, EncryptionHint::Hybridized))
+                    } else {
+                        Ok((name, EncryptionHint::Classic))
+                    }
                 } else {
-                    (name, EncryptionHint::Classic)
+                    Err(PyValueError::new_err(
+                        "Attributes should be of type List[str] or List[Tuple[str, bool]].",
+                    ))
                 }
             })
-            .collect();
-        Self(PolicyAxisRust::new(name, attributes, hierarchical))
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self(PolicyAxisRust::new(name, attributes, hierarchical)))
     }
 
     /// Returns the number of attributes belonging to this axis.
@@ -204,16 +218,18 @@ impl Policy {
     }
 
     /// Formats policy to json.
-    pub fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.0).map_err(|e| PyException::new_err(e.to_string()))
+    pub fn to_bytes(&self, py: Python) -> PyResult<Py<PyBytes>> {
+        serde_json::to_vec(&self.0)
+            .map(|bytes| PyBytes::new(py, bytes.as_slice()).into())
+            .map_err(|e| PyException::new_err(e.to_string()))
     }
 
-    /// Reads policy from a string in json format.
+    /// Reads policy from bytes.
     #[staticmethod]
-    pub fn from_json(policy_json: &str) -> PyResult<Self> {
-        let policy: PolicyRust = serde_json::from_str(policy_json)
-            .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))?;
-        Ok(Self(policy))
+    pub fn from_bytes(bytes: &PyBytes) -> PyResult<Self> {
+        serde_json::from_slice(bytes.as_bytes())
+            .map(Self)
+            .map_err(|e| PyTypeError::new_err(format!("Error deserializing attributes: {e}")))
     }
 
     /// Returns a string representation of the policy.

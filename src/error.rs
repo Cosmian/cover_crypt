@@ -1,10 +1,9 @@
 //! Error type for the crate
 
-use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
-
 use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "hybrid")]
 use pqc_kyber::KyberError;
+use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -76,13 +75,6 @@ impl From<KyberError> for Error {
 impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         Self::CryptoCoreError(e)
-    }
-}
-
-#[cfg(feature = "ffi")]
-impl From<std::ffi::NulError> for Error {
-    fn from(e: std::ffi::NulError) -> Self {
-        Self::Other(format!("FFI error: {e}"))
     }
 }
 

@@ -15,10 +15,24 @@ from cosmian_cover_crypt import (
 class TestPolicy(unittest.TestCase):
     def policy(self) -> Policy:
         policy = Policy(100)
-        policy.add_axis(PolicyAxis('Country', [('France', False), ('UK', False), ('Spain', False), ('Germany', False)], False))
-        policy.add_axis(PolicyAxis('Secrecy', [('Low', False), ('Medium', False), ('High', True)], True))
+        policy.add_axis(
+            PolicyAxis(
+                'Country',
+                [
+                    ('France', False),
+                    ('UK', False),
+                    ('Spain', False),
+                    ('Germany', False),
+                ],
+                False,
+            )
+        )
+        policy.add_axis(
+            PolicyAxis(
+                'Secrecy', [('Low', False), ('Medium', False), ('High', True)], True
+            )
+        )
         return policy
-
 
     def test_attribute(self) -> None:
         attr = Attribute('Country', 'France')
@@ -31,16 +45,22 @@ class TestPolicy(unittest.TestCase):
 
     def test_policy_axis(self) -> None:
         country_axis = PolicyAxis(
-            'Country', [('France', False), ('UK', False), ('Spain', False), ('Germany', False)], False
+            'Country',
+            [('France', False), ('UK', False), 'Spain', 'Germany'],
+            False,
         )
         self.assertEqual(
             country_axis.to_string(),
-            'Country: [AxisAttributePorperties { name: "France", encryption_hint: Classic }, AxisAttributePorperties { name: "UK", encryption_hint: Classic }, AxisAttributePorperties { name: "Spain", encryption_hint: Classic }, AxisAttributePorperties { name: "Germany", encryption_hint: Classic }], hierarchical: false'
+            'Country: [AxisAttributePorperties { name: "France", encryption_hint: Classic }, AxisAttributePorperties { name: "UK", encryption_hint: Classic }, AxisAttributePorperties { name: "Spain", encryption_hint: Classic }, AxisAttributePorperties { name: "Germany", encryption_hint: Classic }], hierarchical: false',
         )
-        secrecy_axis = PolicyAxis('Secrecy', [('Low', False), ('Medium', False), ('High', True)], True)
+        secrecy_axis = PolicyAxis(
+            'Secrecy',
+            [('Low', False), 'Medium', ('High', True)],
+            True,
+        )
         self.assertEqual(
             secrecy_axis.to_string(),
-            'Secrecy: [AxisAttributePorperties { name: "Low", encryption_hint: Classic }, AxisAttributePorperties { name: "Medium", encryption_hint: Classic }, AxisAttributePorperties { name: "High", encryption_hint: Hybridized }], hierarchical: true'
+            'Secrecy: [AxisAttributePorperties { name: "Low", encryption_hint: Classic }, AxisAttributePorperties { name: "Medium", encryption_hint: Classic }, AxisAttributePorperties { name: "High", encryption_hint: Hybridized }], hierarchical: true',
         )
 
         self.assertTrue(PolicyAxis('Test', [], False).is_empty())
@@ -71,20 +91,26 @@ class TestPolicy(unittest.TestCase):
         copy_policy = policy.deep_copy()
         self.assertIsInstance(copy_policy, Policy)
 
-        json_str = policy.to_json()
-        self.assertEqual(json_str, copy_policy.to_json())
+        json_str = policy.to_bytes()
+        self.assertEqual(json_str, copy_policy.to_bytes())
 
-        deserialized_policy = Policy.from_json(json_str)
+        deserialized_policy = Policy.from_bytes(json_str)
         self.assertIsInstance(deserialized_policy, Policy)
 
         with self.assertRaises(Exception):
-            Policy.from_json('wrong data format')
+            Policy.from_bytes('wrong data format'.encode())
 
 
 class TestKeyGeneration(unittest.TestCase):
     def setUp(self) -> None:
-        country_axis = PolicyAxis( 'Country', [('France', False), ('UK', False), ('Spain', False), ('Germany', False)], False)
-        secrecy_axis = PolicyAxis('Secrecy', [('Low', False), ('Medium', False), ('High', True)], True)
+        country_axis = PolicyAxis(
+            'Country',
+            [('France', False), ('UK', False), ('Spain', False), ('Germany', False)],
+            False,
+        )
+        secrecy_axis = PolicyAxis(
+            'Secrecy', [('Low', False), ('Medium', False), ('High', True)], True
+        )
         self.policy = Policy(100)
         self.policy.add_axis(country_axis)
         self.policy.add_axis(secrecy_axis)
@@ -145,8 +171,14 @@ class TestKeyGeneration(unittest.TestCase):
 
 class TestEncryption(unittest.TestCase):
     def setUp(self) -> None:
-        country_axis = PolicyAxis( 'Country', [('France', False), ('UK', False), ('Spain', False), ('Germany', False)], False)
-        secrecy_axis = PolicyAxis('Secrecy', [('Low', False), ('Medium', False), ('High', True)], True)
+        country_axis = PolicyAxis(
+            'Country',
+            [('France', False), ('UK', False), ('Spain', False), ('Germany', False)],
+            False,
+        )
+        secrecy_axis = PolicyAxis(
+            'Secrecy', [('Low', False), ('Medium', False), ('High', True)], True
+        )
         self.policy = Policy(100)
         self.policy.add_axis(country_axis)
         self.policy.add_axis(secrecy_axis)

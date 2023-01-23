@@ -9,14 +9,10 @@ use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {
     cosmian_cover_crypt::{
-        interfaces::ffi::{
-            error::get_last_error,
-            hybrid_cc_aes::{
-                h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,
-                h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
-                h_aes_destroy_encryption_cache, h_aes_encrypt_header,
-                h_aes_encrypt_header_using_cache,
-            },
+        interfaces::ffi::hybrid_cc_aes::{
+            h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,
+            h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
+            h_aes_destroy_encryption_cache, h_aes_encrypt_header, h_aes_encrypt_header_using_cache,
         },
         statics::PublicKey,
     },
@@ -306,13 +302,9 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
     let header_bytes_ptr = header_bytes_key.as_mut_ptr().cast::<i8>();
     let mut header_bytes_len = header_bytes_key.len() as c_int;
 
-    let policy_cs = CString::new(
-        serde_json::to_string(&policy)
-            .expect("cannot convert policy to string")
-            .as_str(),
-    )
-    .expect("cannot create CString from String converted policy");
-    let policy_ptr = policy_cs.as_ptr();
+    let policy_bytes = serde_json::to_vec(&policy).unwrap();
+    let policy_ptr = policy_bytes.as_ptr().cast();
+    let policy_len = policy_bytes.len() as c_int;
 
     let public_key_bytes = public_key
         .try_to_bytes()
@@ -330,6 +322,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
                 header_bytes_ptr,
                 &mut header_bytes_len,
                 policy_ptr,
+                policy_len,
                 public_key_ptr.cast::<i8>(),
                 public_key_bytes.len() as i32,
                 target_access_policy.as_ptr(),
@@ -356,13 +349,9 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
     let authenticated_data = vec![10, 11, 12, 13, 14];
 
-    let policy_cs = CString::new(
-        serde_json::to_string(&policy)
-            .expect("cannot convert policy to string")
-            .as_str(),
-    )
-    .expect("cannot create CString from String converted policy");
-    let policy_ptr = policy_cs.as_ptr();
+    let policy_bytes = serde_json::to_vec(&policy).unwrap();
+    let policy_ptr = policy_bytes.as_ptr().cast();
+    let policy_len = policy_bytes.len() as c_int;
 
     let public_key_bytes = public_key
         .try_to_bytes()
@@ -374,6 +363,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
         unwrap_ffi_error(h_aes_create_encryption_cache(
             &mut cache_handle,
             policy_ptr,
+            policy_len,
             public_key_ptr,
             public_key_bytes.len() as i32,
         ))
@@ -417,6 +407,8 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
+    use abe_policy::interfaces::ffi::error::get_last_error;
+
     if val != 0 {
         let mut message_bytes_key = vec![0u8; 4096];
         let message_bytes_ptr = message_bytes_key.as_mut_ptr().cast::<i8>();

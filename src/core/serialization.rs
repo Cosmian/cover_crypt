@@ -329,14 +329,14 @@ where
 
     #[inline]
     fn length(&self) -> usize {
-        KEY_LENGTH + to_leb128_len(self.header_metadata.len()) + self.header_metadata.len()
+        KEY_LENGTH + to_leb128_len(self.metadata.len()) + self.metadata.len()
     }
 
     /// Tries to serialize the cleartext header.
     #[inline]
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
-        n += ser.write_vec(&self.header_metadata)?;
+        n += ser.write_vec(&self.metadata)?;
         Ok(n)
     }
 
@@ -347,7 +347,7 @@ where
         let header_metadata = de.read_vec()?;
         Ok(Self {
             symmetric_key,
-            header_metadata,
+            metadata: header_metadata,
         })
     }
 }

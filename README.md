@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/ci.yml/badge.svg)
 ![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/build.yml/badge.svg)
-![latest version](<https://img.shields.io/crates/v/cosmian_cover_crypt.svg>)
+![latest version](https://img.shields.io/crates/v/cosmian_cover_crypt.svg)
 
 Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
 creating ciphertexts for a set of attributes and issuing user keys with access
@@ -13,6 +13,9 @@ policies over these attributes.
 - [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
   - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
+  - [Building the library for `cloudproof_java` or `cloudproof_flutter`:](#building-the-library-for-cloudproof_java-or-cloudproof_flutter)
+  - [Build the library for `cloudproof_js`](#build-the-library-for-cloudproof_js)
+  - [Build the library for `cloudproof_python`](#build-the-library-for-cloudproof_python)
 - [Features and Benchmarks](#features-and-benchmarks)
   - [Key generation](#key-generation)
   - [Serialization](#serialization)
@@ -55,7 +58,7 @@ To build the Python interface, run:
 maturin build --release --features python
 ```
 
-__Note__: when a new function or class is added to the PyO3 interface, its
+**Note**: when a new function or class is added to the PyO3 interface, its
 signature needs to be added to
 [`__init__.pyi`](./python/cosmian_cover_crypt/__init__.pyi).
 
@@ -93,6 +96,30 @@ cargo bench
 ### Building the library for a different glibc
 
 Go to the [build](build/glibc-2.17/) directory for an example on how to build for GLIBC 2.17
+
+### Building the library for `cloudproof_java` or `cloudproof_flutter`
+
+From the root directory:
+
+```bash
+cargo build --release --features ffi
+```
+
+### Build the library for `cloudproof_js`
+
+From the root directory:
+
+```bash
+cargo build --release --features wasm_bindgen
+```
+
+### Build the library for `cloudproof_python`
+
+From the root directory:
+
+```bash
+maturin build --release --features python
+```
 
 ## Features and Benchmarks
 
@@ -139,7 +166,7 @@ The size of the serialized keys and encapsulation is given by the following form
 ```c
 3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
     + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition)
-		+ PRIVATE_KEY_LENGTH + 1 [+ INDCPA_KYBER_PRIVATE_KEY_LENGTH])
+  + PRIVATE_KEY_LENGTH + 1 [+ INDCPA_KYBER_PRIVATE_KEY_LENGTH])
 ```
 
 - public key:
@@ -147,7 +174,7 @@ The size of the serialized keys and encapsulation is given by the following form
 ```c
 2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
     + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition)
-    		+ PUBLIC_KEY_LENGTH + 1 [+ INDCPA_KYBER_PUBLIC_KEY_LENGTH])
+    + PUBLIC_KEY_LENGTH + 1 [+ INDCPA_KYBER_PUBLIC_KEY_LENGTH])
 ```
 
 - user secret key:
@@ -161,7 +188,7 @@ The size of the serialized keys and encapsulation is given by the following form
 
 ```c
 2 * PUBLIC_KEY_LENGTH + TAG_LENGTH + LEB128_sizeof(partitions.len())
-	+ partition.len() * [INDCPA_KYBER_CIPHERTEXT_LENGTH | PUBLIC_KEY_LENGTH]
+ + partition.len() * [INDCPA_KYBER_CIPHERTEXT_LENGTH | PUBLIC_KEY_LENGTH]
 ```
 
 - encrypted header (see below):
@@ -198,20 +225,18 @@ provided in the API. An encrypted header holds an encapsulation and a symmetric
 ciphertext of an optional additional data. This additional data can be useful
 to store metadata.
 
-__Note__: encapsulations grow bigger with the size of the target set of rights
+| Nb. of partitions | Encapsulation time |
+|-------------------|--------------------|
+| 1                 | 260                |
+| 2                 | 390                |
+| 3                 | 518                |
+| 4                 | 663                |
+| 5                 | 791                |
+
+**Note**: encapsulations grow bigger with the size of the target set of rights
 and so does the encapsulation time. The following benchmark gives the size of
 the encrypted header and the encryption time given the number of rights in the
 target set (one right = one partition).
-
-```c
-Bench header encryption size: 1 partition: 126 bytes, 3 partitions: 190 bytes
-
-Header encryption/1 partition
-                        time:   [187.07 µs 187.10 µs 187.14 µs]
-
-Header encryption/3 partitions
-                        time:   [319.33 µs 319.41 µs 319.51 µs]
-```
 
 ### Secret key decapsulation
 
@@ -219,13 +244,15 @@ A user can retrieve the symmetric key needed to decrypt a CoverCrypt ciphertext
 by decrypting the associated `EncryptedHeader`. This is only possible if the
 user secret keys contains the appropriate rights.
 
-```c
-Header decryption/1 partition access
-                        time:   [252.55 µs 252.66 µs 252.79 µs]
+The following table gives the decryption time given the size (in number of
+partitions) of the user secret key (vertically) and the encapsulation
+(horizontally).
 
-Header decryption/3 partition access
-                        time:   [318.59 µs 318.66 µs 318.74 µs]
-```
+| Nb. of partitions (`usk` vs `encapsulation`, 1 match) | 1   | 2   | 3   | 4   | 5   |
+|-------------------------------------------------------|-----|-----|-----|-----|-----|
+| 1                                                     | 215 | 276 | 330 | 344 | 399 |
+| 2                                                     | 314 | 385 | 476 | 534 | 634 |
+| 3                                                     | 388 | 528 | 666 | 815 | 847 |
 
 ## Documentation
 
