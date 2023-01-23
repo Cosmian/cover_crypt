@@ -1,9 +1,12 @@
+use std::result::Result;
+
 use abe_policy::{
     Attribute as AttributeRust, EncryptionHint, Policy as PolicyRust, PolicyAxis as PolicyAxisRust,
 };
 use pyo3::{
-    exceptions::{PyException, PyTypeError},
+    exceptions::{PyException, PyTypeError, PyValueError},
     prelude::*,
+    types::PyList,
 };
 
 /// An attribute in a policy group is characterized by the axis policy name
@@ -68,26 +71,37 @@ impl Attribute {
 ///
 /// Args:
 ///         name (str): axis name
-///         attributes (List[str], bool): name of the attributes on this axis and encryption hint
-///         hierarchical (bool): set the axis to be hierarchical
+///         attributes (List[str], bool): name of the attributes on this axis
+/// and encryption hint         hierarchical (bool): set the axis to be
+/// hierarchical
 #[pyclass]
 pub struct PolicyAxis(PolicyAxisRust);
 
 #[pymethods]
 impl PolicyAxis {
     #[new]
-    fn new(name: &str, attributes: Vec<(&str, bool)>, hierarchical: bool) -> Self {
+    fn new(name: &str, attributes: &PyList, hierarchical: bool) -> PyResult<Self> {
+        // attributes use Classic encryption if not specified
         let attributes = attributes
             .into_iter()
-            .map(|(name, is_hybridized)| {
-                if is_hybridized {
-                    (name, EncryptionHint::Hybridized)
+            .map(|attr| {
+                if let Ok(name) = attr.extract::<&str>() {
+                    Ok((name, EncryptionHint::Classic))
+                } else if let Ok((name, is_hybridized)) = attr.extract::<(&str, bool)>() {
+                    if is_hybridized {
+                        Ok((name, EncryptionHint::Hybridized))
+                    } else {
+                        Ok((name, EncryptionHint::Classic))
+                    }
                 } else {
-                    (name, EncryptionHint::Classic)
+                    Err(PyValueError::new_err(
+                        "Attributes should be of type List[str] or List[Tuple[str, bool]].",
+                    ))
                 }
             })
-            .collect();
-        Self(PolicyAxisRust::new(name, attributes, hierarchical))
+            .collect::<Result<Vec<(&str, EncryptionHint)>, _>>()?;
+
+        Ok(Self(PolicyAxisRust::new(name, attributes, hierarchical)))
     }
 
     /// Returns the number of attributes belonging to this axis.

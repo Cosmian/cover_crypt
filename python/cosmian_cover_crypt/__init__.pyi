@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 
 class Attribute:
     """An attribute in a policy group is characterized by the axis policy name
@@ -45,11 +45,19 @@ class PolicyAxis:
 
     Args:
             name (str): axis name
-            attributes (List[str]): name of the attributes on this axis
+            attributes (List[Union[str, Tuple[str, bool]]]): properties of the attributes:
+
+                - name of the attribute
+                - boolean to activate post quantum encryption on this attribute
             hierarchical (bool): set the axis to be hierarchical
     """
 
-    def __init__(self, name: str, attributes: List[Tuple[str, bool]], hierarchical: bool): ...
+    def __init__(
+        self,
+        name: str,
+        attributes: List[Union[str, Tuple[str, bool]]],
+        hierarchical: bool,
+    ): ...
     def len(self) -> int:
         """Returns the number of attributes belonging to this axis.
 
