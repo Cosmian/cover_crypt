@@ -775,8 +775,7 @@ unsafe fn decrypt(
     let plaintext =
         std::slice::from_raw_parts(plaintext_ptr.cast(), plaintext_len as usize).to_vec();
     let header_metadata =
-        std::slice::from_raw_parts(metadata_ptr.cast(), metadata_len as usize)
-            .to_vec();
+        std::slice::from_raw_parts(metadata_ptr.cast(), metadata_len as usize).to_vec();
 
     Ok((plaintext, header_metadata))
 }
