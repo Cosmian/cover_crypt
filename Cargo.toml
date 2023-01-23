@@ -33,7 +33,7 @@ wasm_bindgen = ["js-sys", "wasm-bindgen", "interface"]
 interface = []
 
 [dependencies]
-abe_policy = { path = "../abe_policy", features = ["ffi", "wasm_bindgen"] }
+abe_policy = { git = "https://github.com/Cosmian/abe_policy", branch = "feature/add_ffi_interface", features = ["ffi", "wasm_bindgen"] }
 cosmian_crypto_core = "5.0"
 hex = "0.4"
 leb128 = "0.2"

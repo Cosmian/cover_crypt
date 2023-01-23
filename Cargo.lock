@@ -5,6 +5,7 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.2"
+source = "git+https://github.com/Cosmian/abe_policy?branch=feature/add_ffi_interface#ed3728b5e1588b5ac5b58314146e845e4b8b650c"
 dependencies = [
  "js-sys",
  "serde",

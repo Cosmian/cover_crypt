@@ -170,7 +170,7 @@ The size of the serialized keys and encapsulation is given by the following form
 sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
 ```
 
-__NOTE__: For our implementation `CoverCryptX25519Aes256`:
+**NOTE**: For our implementation `CoverCryptX25519Aes256`:
 
 - `PUBLIC_KEY_LENGTH` is 32 bytes
 - `PRIVATE_KEY_LENGTH` is 32 bytes
