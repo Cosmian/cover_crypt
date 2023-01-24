@@ -25,7 +25,7 @@ name = "benches"
 debug = true
 
 [features]
-ffi = ["lazy_static", "interface"]
+ffi = ["cosmian_ffi", "lazy_static", "interface"]
 full_bench = ["interface"]
 hybridized_bench = []
 python = ["pyo3", "interface"]
@@ -33,7 +33,7 @@ wasm_bindgen = ["js-sys", "wasm-bindgen", "interface"]
 interface = []
 
 [dependencies]
-abe_policy = { version = "3.0", features = ["interface", "ffi", "wasm_bindgen"] }
+abe_policy = { path = "../abe_policy", features = ["interface", "ffi", "wasm_bindgen"] }
 cosmian_crypto_core = "5.0"
 hex = "0.4"
 leb128 = "0.2"
@@ -49,6 +49,7 @@ js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
 pyo3 = { version = "0.17", features = ["extension-module", "abi3", "abi3-py37", "generate-import-lib"], optional = true }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
+cosmian_ffi = { path = "../cosmian_ffi", optional = true }
 
 [dev-dependencies]
 base64 = "0.13"

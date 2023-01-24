@@ -407,13 +407,13 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
 
 #[cfg(feature = "ffi")]
 unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
-    use abe_policy::interfaces::ffi::error::get_last_error;
+    use cosmian_ffi::error::get_error;
 
     if val != 0 {
         let mut message_bytes_key = vec![0u8; 4096];
         let message_bytes_ptr = message_bytes_key.as_mut_ptr().cast::<i8>();
         let mut message_bytes_len = message_bytes_key.len() as c_int;
-        get_last_error(message_bytes_ptr, &mut message_bytes_len);
+        get_error(message_bytes_ptr, &mut message_bytes_len);
         let cstr = CStr::from_ptr(message_bytes_ptr);
         Err(Error::Other(format!("FFI ERROR: {}", cstr.to_str()?)))
     } else {

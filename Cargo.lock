@@ -5,9 +5,8 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fb6fb73e9fc8d8aea5aebe9fa914c950bcb506683b833374147b56d6bf5dc65"
 dependencies = [
+ "cosmian_ffi",
  "js-sys",
  "serde",
  "serde_json",
@@ -199,6 +198,7 @@ dependencies = [
  "abe_policy",
  "base64",
  "cosmian_crypto_core",
+ "cosmian_ffi",
  "criterion",
  "hex",
  "js-sys",
@@ -231,6 +231,13 @@ dependencies = [
  "sha3",
  "thiserror",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_ffi"
+version = "1.0.0"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]

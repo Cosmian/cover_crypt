@@ -18,11 +18,9 @@ use crate::{
     },
     CoverCrypt, Error,
 };
-use abe_policy::{
-    interfaces::ffi::{error::get_last_error, policy::h_rotate_attribute},
-    AccessPolicy, Attribute, Policy,
-};
+use abe_policy::{interfaces::ffi::policy::h_rotate_attribute, AccessPolicy, Attribute, Policy};
 use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
+use cosmian_ffi::error::get_error;
 use std::{
     ffi::{CStr, CString},
     os::raw::c_int,
@@ -140,7 +138,7 @@ unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
         let mut message_bytes_key = vec![0u8; 8128];
         let message_bytes_ptr = message_bytes_key.as_mut_ptr().cast();
         let mut message_bytes_len = message_bytes_key.len() as c_int;
-        get_last_error(message_bytes_ptr, &mut message_bytes_len);
+        get_error(message_bytes_ptr, &mut message_bytes_len);
         let cstr = CStr::from_ptr(message_bytes_ptr);
         Err(Error::Other(
             cstr.to_str()

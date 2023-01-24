@@ -1,9 +1,8 @@
 use std::os::raw::{c_char, c_int};
 
-use abe_policy::{
-    ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes, AccessPolicy, Policy,
-};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_ffi::{ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes};
 
 use crate::{
     statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
