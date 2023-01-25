@@ -2,12 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [9.0.1] - 2023-01-24
+---
+
+## [9.0.1] - 2023-01-25
 
 ### Bug Fixes
 
-- Flutter repository
-- Test on java branch
+- Java and flutter repositories
+- Interfaces (Java integration)
+
+### Features
+
+- Add benches manually triggerable
 
 ---
 
