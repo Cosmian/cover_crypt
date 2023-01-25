@@ -5,6 +5,7 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.5"
+source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#2f32168652430637ccc55ff9fb2475079586d7a6"
 dependencies = [
  "cosmian_ffi",
  "js-sys",
@@ -193,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "9.0.0"
+version = "9.0.1"
 dependencies = [
  "abe_policy",
  "base64",
@@ -236,6 +237,7 @@ dependencies = [
 [[package]]
 name = "cosmian_ffi"
 version = "1.0.0"
+source = "git+https://github.com/Cosmian/cosmian_ffi#b478b11dbd7b2403203dd60b0b41b488258d87a5"
 dependencies = [
  "thiserror",
 ]
