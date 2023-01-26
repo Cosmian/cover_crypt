@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.5"
-source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#374d06c38fbeb36b7b37a3bdce8e993bdff78ca6"
+source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#86e9e39062030770982a65fca04d9bf8f62a1e3b"
 dependencies = [
  "cosmian_ffi",
  "js-sys",
@@ -237,7 +237,7 @@ dependencies = [
 [[package]]
 name = "cosmian_ffi"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/cosmian_ffi#9523f9dda43799ba992149a5aad7fd4ce90d30b0"
+source = "git+https://github.com/Cosmian/cosmian_ffi#d042c1292d871befe4ecca16293026551490d7f2"
 dependencies = [
  "thiserror",
 ]
@@ -426,9 +426,9 @@ dependencies = [
 
 [[package]]
 name = "indoc"
-version = "1.0.8"
+version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2d6f23ffea9d7e76c53eee25dfb67bcd8fde7f1198b0855350698c9f07c780"
+checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
 name = "inout"

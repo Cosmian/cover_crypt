@@ -41,8 +41,16 @@ pub unsafe extern "C" fn h_generate_master_keys(
     // Serialize master keys and write to output buffers.
     let msk_bytes = ffi_unwrap!(msk.try_to_bytes());
     let mpk_bytes = ffi_unwrap!(mpk.try_to_bytes());
-    ffi_write_bytes!("msk", &msk_bytes, msk_ptr, msk_len);
-    ffi_write_bytes!("mpk", &mpk_bytes, mpk_ptr, mpk_len);
+
+    println!("Rust MSK bytes length: {}", msk_bytes.len());
+    println!("Rust MSK allocated length: {}", *msk_len);
+    println!("Rust MPK bytes length: {}", mpk_bytes.len());
+    println!("Rust MPK allocated length: {}", *mpk_len);
+
+    ffi_write_bytes!("msk", &msk_bytes, msk_ptr, msk_len, "mpk", &mpk_bytes, mpk_ptr, mpk_len);
+
+    println!("Rust updated MSK length: {}", *msk_len);
+    println!("Rust updated MPK length: {}", *mpk_len);
 
     0
 }
@@ -136,8 +144,16 @@ pub unsafe extern "C" fn h_update_master_keys(
     // Serialize the master keys and write to the output buffers.
     let msk_bytes = ffi_unwrap!(msk.try_to_bytes());
     let mpk_bytes = ffi_unwrap!(mpk.try_to_bytes());
-    ffi_write_bytes!("msk", &msk_bytes, updated_msk_ptr, updated_msk_len);
-    ffi_write_bytes!("mpk", &mpk_bytes, updated_mpk_ptr, updated_mpk_len);
+    ffi_write_bytes!(
+        "msk",
+        &msk_bytes,
+        updated_msk_ptr,
+        updated_msk_len,
+        "mpk",
+        &mpk_bytes,
+        updated_mpk_ptr,
+        updated_mpk_len
+    );
 
     0
 }

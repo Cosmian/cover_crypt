@@ -60,9 +60,9 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     //
     // Read input from buffers.
     let policy = ffi_read_bytes!("policy", policy_ptr, policy_len);
-    let policy = ffi_unwrap!(Policy::parse_and_convert(policy));
+    let policy = ffi_unwrap!(Policy::try_from(policy));
     let mpk = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
-    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk));
+    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk), "mpk");
 
     let cache = EncryptionCache { policy, mpk };
     let id = NEXT_ENCRYPTION_CACHE_ID.fetch_add(1, Ordering::Acquire);
@@ -189,10 +189,10 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     authentication_data_len: c_int,
 ) -> c_int {
     let policy = ffi_read_bytes!("policy", policy_ptr, policy_len);
-    let policy = ffi_unwrap!(Policy::parse_and_convert(policy));
+    let policy = ffi_unwrap!(Policy::try_from(policy));
 
     let mpk = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
-    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk));
+    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk), "mpk");
 
     let encryption_policy_bytes = ffi_read_string!("encryption policy", encryption_policy_ptr);
     let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
@@ -277,7 +277,7 @@ pub unsafe extern "C" fn h_aes_create_decryption_cache(
     usk_len: c_int,
 ) -> i32 {
     let usk_bytes = ffi_read_bytes!("usk", usk_ptr, usk_len);
-    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes), "usk");
 
     let cache = DecryptionCache { usk };
     let id = NEXT_DECRYPTION_CACHE_ID.fetch_add(1, Ordering::Acquire);
@@ -398,13 +398,16 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     usk_len: c_int,
 ) -> c_int {
     let usk_bytes = ffi_read_bytes!("usk", usk_ptr, usk_len);
-    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes), "usk");
     let encrypted_header_bytes = ffi_read_bytes!(
         "encrypted header",
         encrypted_header_ptr,
         encrypted_header_len
     );
-    let encrypted_header = ffi_unwrap!(EncryptedHeader::try_from_bytes(encrypted_header_bytes));
+    let encrypted_header = ffi_unwrap!(
+        EncryptedHeader::try_from_bytes(encrypted_header_bytes),
+        "encrypted header"
+    );
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
@@ -564,7 +567,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
     let plaintext = ffi_read_bytes!("plaintext", plaintext_ptr, plaintext_len);
 
     let mpk_bytes = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
-    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes));
+    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes), "mpk");
 
     let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
@@ -631,7 +634,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
     usk_len: c_int,
 ) -> c_int {
     let usk_bytes = ffi_read_bytes!("usk", usk_ptr, usk_len);
-    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes), "usk");
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
