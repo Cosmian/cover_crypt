@@ -54,7 +54,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
 /// - `usk_len`             : Size of the output buffer
 /// - `msk_ptr`             : Master secret key (required for this generation)
 /// - `msk_len`             : Master secret key length
-/// - `access_policy_ptr`   : null terminated access policy string
+/// - `user_policy_ptr`   : null terminated access policy string
 /// - `policy_ptr`          : bytes of the policyused to generate the keys
 /// - `policy_len`          : length of the policy (in bytes)
 /// # Safety
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
     usk_len: *mut c_int,
     msk_ptr: *const c_char,
     msk_len: c_int,
-    access_policy_ptr: *const c_char,
+    user_policy_ptr: *const c_char,
     policy_ptr: *const c_char,
     policy_len: c_int,
 ) -> c_int {
@@ -73,15 +73,16 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
     let msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
     let policy_bytes = ffi_read_bytes!("policy", policy_ptr, policy_len);
     let policy = ffi_unwrap!(Policy::parse_and_convert(policy_bytes));
-    let access_policy_string = ffi_read_string!("access policy", access_policy_ptr);
-    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
-        access_policy_string.as_str()
+    let user_policy_string = ffi_read_string!("access policy", user_policy_ptr);
+    println!("user policy read form FFI: {user_policy_string}");
+    let user_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
+        user_policy_string.as_str()
     ));
 
     // Generate user secret key.
     let usk = ffi_unwrap!(CoverCryptX25519Aes256::default().generate_user_secret_key(
         &msk,
-        &access_policy,
+        &user_policy,
         &policy
     ));
 

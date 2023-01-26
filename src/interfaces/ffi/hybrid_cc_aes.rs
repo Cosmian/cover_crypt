@@ -15,7 +15,6 @@ use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
     os::raw::{c_char, c_int},
-    ptr::null_mut,
     sync::{
         atomic::{AtomicI32, Ordering},
         RwLock,
@@ -305,8 +304,7 @@ pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> 
 /// Decrypts an encrypted header using a cache. Returns the symmetric key and
 /// header metadata if any.
 ///
-/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
-/// `header_metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL`.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
@@ -364,7 +362,9 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
     );
 
     // serialize header metadata
-    if !header_metadata_ptr.is_null() && *header_metadata_len > 0 {
+    if header_metadata_ptr.is_null() {
+        *header_metadata_len = 0;
+    } else {
         ffi_write_bytes!(
             "header metadata",
             &header.metadata,
@@ -380,8 +380,7 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
 /// Decrypts an encrypted header, returning the symmetric key and header
 /// metadata if any.
 ///
-/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
-/// `header_metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL`.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt_header(
@@ -430,13 +429,11 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         symmetric_key_len
     );
 
-    if header_metadata_ptr.is_null() || *header_metadata_len == 0 {
-        let null_ptr = null_mut::<c_char>();
-        let null_len = &mut 0;
-        ffi_write_bytes!("metadata", &decrypted_header.metadata, null_ptr, null_len);
+    if header_metadata_ptr.is_null() {
+        *header_metadata_len = 0;
     } else {
         ffi_write_bytes!(
-            "metadata",
+            "header metadata",
             &decrypted_header.metadata,
             header_metadata_ptr,
             header_metadata_len
@@ -616,8 +613,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
 #[no_mangle]
 /// Hybrid decrypt some content
 ///
-/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
-/// `header_metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL`.
 ///
 /// # Safety
 pub unsafe extern "C" fn h_aes_decrypt(
@@ -669,15 +665,8 @@ pub unsafe extern "C" fn h_aes_decrypt(
 
     ffi_write_bytes!("plaintext", &plaintext, plaintext_ptr, plaintext_len);
 
-    if header_metadata_ptr.is_null() || *header_metadata_len == 0 {
-        let null_ptr = null_mut::<c_char>();
-        let null_len = &mut 0;
-        ffi_write_bytes!(
-            "header metadata",
-            &decrypted_header.metadata,
-            null_ptr,
-            null_len
-        );
+    if header_metadata_ptr.is_null() {
+        *header_metadata_len = 0;
     } else {
         ffi_write_bytes!(
             "header metadata",

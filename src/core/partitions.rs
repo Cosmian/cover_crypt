@@ -210,12 +210,14 @@ pub fn access_policy_to_current_partitions(
 ) -> Result<HashSet<Partition>, Error> {
     let attr_combinations =
         access_policy.to_attribute_combinations(policy, follow_hierarchical_axes)?;
+    println!("All combinations: {attr_combinations:?}");
     let mut res = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
+        println!("{attr_combination:?}");
         for partition in generate_current_attribute_partitions(attr_combination, policy)? {
             let is_unique = res.insert(partition);
             if !is_unique {
-                return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
+                return Err(Error::ExistingCombination(attr_combination.to_vec(), attr_combinations));
             }
         }
     }
