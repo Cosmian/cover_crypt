@@ -74,7 +74,6 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
     let policy_bytes = ffi_read_bytes!("policy", policy_ptr, policy_len);
     let policy = ffi_unwrap!(Policy::parse_and_convert(policy_bytes));
     let user_policy_string = ffi_read_string!("access policy", user_policy_ptr);
-    println!("user policy read form FFI: {user_policy_string}");
     let user_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
         user_policy_string.as_str()
     ));
@@ -144,7 +143,8 @@ pub unsafe extern "C" fn h_update_master_keys(
 }
 
 #[no_mangle]
-/// Refreshes the user secret key according to the given master key and access policy.
+/// Refreshes the user secret key according to the given master key and access
+/// policy.
 ///
 /// Cf [`CoverCrypt::refresh_user_secret_key()`](CoverCrypt::refresh_user_secret_key).
 ///

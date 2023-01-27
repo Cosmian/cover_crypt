@@ -1,3 +1,10 @@
+use abe_policy::AccessPolicy;
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    symmetric_crypto::{Dem, SymKey},
+};
+use pyo3::{exceptions::PyTypeError, prelude::*, types::PyBytes, PyErr};
+
 use crate::{
     interfaces::pyo3::py_abe_policy::Policy,
     statics::{
@@ -6,12 +13,6 @@ use crate::{
     },
     CoverCrypt as CoverCryptRust,
 };
-use abe_policy::AccessPolicy;
-use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
-    symmetric_crypto::{Dem, SymKey},
-};
-use pyo3::{exceptions::PyTypeError, prelude::*, types::PyBytes, PyErr};
 
 // Pyo3 doc on classes
 // https://pyo3.rs/v0.16.2/class.html
@@ -124,10 +125,12 @@ impl CoverCrypt {
         }
     }
 
-    /// Refreshes the user key according to the given master key and access policy.
+    /// Refreshes the user key according to the given master key and access
+    /// policy.
     ///
-    /// The user key will be granted access to the current partitions, as determined by its access policy.
-    /// If `preserve_old_partitions_access` is set, the user access to rotated partitions will be preserved
+    /// The user key will be granted access to the current partitions, as
+    /// determined by its access policy. If `preserve_old_partitions_access`
+    /// is set, the user access to rotated partitions will be preserved
     ///
     /// Parameters:
     ///
@@ -135,7 +138,8 @@ impl CoverCrypt {
     /// - `access_policy`       : the access policy of the user key
     /// - `msk`                 : master secret key
     /// - `policy`              : global policy of the master secret key
-    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before rotation) should be kept
+    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
+    ///   rotation) should be kept
     pub fn refresh_user_secret_key(
         &self,
         usk: &mut UserSecretKey,
@@ -208,7 +212,8 @@ impl CoverCrypt {
 
     /// Generates an encrypted header. A header contains the following elements:
     ///
-    /// - `encapsulation_size`  : the size of the symmetric key encapsulation (u32)
+    /// - `encapsulation_size`  : the size of the symmetric key encapsulation
+    ///   (u32)
     /// - `encapsulation`       : symmetric key encapsulation using CoverCrypt
     /// - `encrypted_metadata`  : Optional metadata encrypted using the DEM
     ///
@@ -218,7 +223,8 @@ impl CoverCrypt {
     /// - `access_policy_str`   : access policy
     /// - `public_key`          : CoverCrypt public key
     /// - `header_metadata`     : additional data to encrypt with the header
-    /// - `authentication_data`  : authentication data to use in symmetric encryption
+    /// - `authentication_data`  : authentication data to use in symmetric
+    ///   encryption
     ///
     /// Returns: (SymmetricKey, ciphertext bytes)
     pub fn encrypt_header(
@@ -256,7 +262,8 @@ impl CoverCrypt {
     ///
     /// - `usk`                     : user secret key
     /// - `encrypted_header_bytes`  : encrypted header bytes
-    /// - `authentication_data`     : authentication data to use in symmetric decryption
+    /// - `authentication_data`     : authentication data to use in symmetric
+    ///   decryption
     ///
     /// Returns: (SymmetricKey, header metadata bytes)
     pub fn decrypt_header(
@@ -288,8 +295,10 @@ impl CoverCrypt {
     /// - `access_policy_str`   : access policy
     /// - `pk`                  : CoverCrypt public key
     /// - `plaintext`           : plaintext to encrypt using the DEM
-    /// - `header_metadata`     : additional data to symmetrically encrypt in the header
-    /// - `authentication_data` : authentication data to use in symmetric encryptions
+    /// - `header_metadata`     : additional data to symmetrically encrypt in
+    ///   the header
+    /// - `authentication_data` : authentication data to use in symmetric
+    ///   encryptions
     ///
     /// Returns: ciphertext bytes
     #[allow(clippy::too_many_arguments)]
@@ -336,7 +345,8 @@ impl CoverCrypt {
     ///
     /// - `usk`                 : user secret key
     /// - `encrypted_bytes`     : encrypted header || symmetric ciphertext
-    /// - `authentication_data` : authentication data to use in symmetric decryptions
+    /// - `authentication_data` : authentication data to use in symmetric
+    ///   decryptions
     ///
     ///  Returns: (plaintext bytes, header metadata bytes)
     pub fn decrypt(

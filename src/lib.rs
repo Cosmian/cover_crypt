@@ -25,5 +25,6 @@ pub mod statics;
 #[cfg(feature = "interface")]
 pub mod interfaces;
 
-pub use self::core::api::{CleartextHeader, CoverCrypt, EncryptedHeader};
 pub use error::Error;
+
+pub use self::core::api::{CleartextHeader, CoverCrypt, EncryptedHeader};

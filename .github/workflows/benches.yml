@@ -1,6 +1,7 @@
 ---
 name: Benches on demand
 
+# on: push
 on: workflow_dispatch
 
 jobs:

@@ -43,6 +43,7 @@ fn policy() -> Result<Policy, Error> {
                     ("HR", EncryptionHint::Classic),
                     ("MKG", EncryptionHint::Classic),
                     ("FIN", EncryptionHint::Classic),
+                    ("CYBER", EncryptionHint::Hybridized),
                 ],
                 false,
             ),
@@ -67,6 +68,7 @@ fn policy() -> Result<Policy, Error> {
                     ("HR", EncryptionHint::Hybridized),
                     ("MKG", EncryptionHint::Hybridized),
                     ("FIN", EncryptionHint::Hybridized),
+                    ("CYBER", EncryptionHint::Hybridized),
                 ],
                 false,
             ),
@@ -89,19 +91,18 @@ fn policy() -> Result<Policy, Error> {
 fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // Access policy with 1 partition
     #[allow(unused_mut)]
-    let mut access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
+    let mut access_policies = vec![
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+            .unwrap(),
+    ];
 
     #[cfg(feature = "full_bench")]
     {
         // Access policy with 2 partition
         access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || (Department::HR && Security Level::Confidential)",
+                "(Department::FIN && Security Level::Protected) || (Department::HR && Security \
+                 Level::Confidential)",
             )
             .unwrap(),
         );
@@ -109,36 +110,39 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         // Access policy with 3 partition
         access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || ((Department::HR || Department::MKG) && Security Level::Confidential)",
+                "(Department::FIN && Security Level::Protected) || ((Department::HR || \
+                 Department::MKG) && Security Level::Confidential)",
             )
             .unwrap(),
         );
 
         // Access policy with 4 partition
-        access_policies.push( AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || ((Department::HR || Department::MKG || Department::R&D) && Security Level::Confidential)",
-        )
-            .unwrap());
+        access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::FIN && Security Level::Protected) || ((Department::HR || \
+                 Department::MKG || Department::R&D) && Security Level::Confidential)",
+            )
+            .unwrap(),
+        );
 
         // Access policy with 5 partition
-        access_policies.push(AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || ((Department::HR || Department::MKG || Department::R&D) && Security Level::Confidential) \
-                    || (Department::HR && Security Level::Top Secret)",
-    )
-    .unwrap());
+        access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::FIN && Security Level::Protected) || ((Department::HR || \
+                 Department::MKG || Department::R&D) && Security Level::Confidential) || \
+                 (Department::HR && Security Level::Top Secret)",
+            )
+            .unwrap(),
+        );
     }
 
     // The intersection between the user access policies and the encryption
     // policies is always "Department::FIN && Security Level::Protected" only.
     #[allow(unused_mut)]
-    let mut user_access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
+    let mut user_access_policies = vec![
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+            .unwrap(),
+    ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -148,10 +152,27 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
             )
             .unwrap(),
         );
-        user_access_policies.push(AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Department::MKG && Department::HR) && Security Level::Protected",
-        )
-        .unwrap());
+        user_access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::FIN && Department::MKG && Department::HR) && Security \
+                 Level::Protected",
+            )
+            .unwrap(),
+        );
+        user_access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::R&D && Department::FIN && Department::MKG && Department::HR) && \
+                 Security Level::Protected",
+            )
+            .unwrap(),
+        );
+        user_access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::R&D && Department::FIN && Department::MKG && Department::HR && \
+                 Department::CYBER) && Security Level::Protected",
+            )
+            .unwrap(),
+        );
     }
 
     (user_access_policies, access_policies)
@@ -441,7 +462,11 @@ fn bench_header_decryption(c: &mut Criterion) {
     for (n_partitions_usk, usk) in user_decryption_keys.iter().enumerate() {
         for (n_partition_ct, access_policy) in access_policies.iter().enumerate() {
             group.bench_function(
-                &format!("ciphertexts with {} partition(s), usk with {} partitions", n_partition_ct + 1, n_partitions_usk + 1),
+                &format!(
+                    "ciphertexts with {} partition(s), usk with {} partitions",
+                    n_partition_ct + 1,
+                    n_partitions_usk + 1
+                ),
                 |b| {
                     b.iter(|| {
                         let (_, encrypted_header) = EncryptedHeader::generate(
@@ -453,12 +478,22 @@ fn bench_header_decryption(c: &mut Criterion) {
                             Some(&authenticated_data),
                         )
                         .unwrap_or_else(|_| {
-                                panic!("cannot encrypt header for {} ciphertext partition(s), {} usk partition(s)", n_partition_ct + 1, n_partitions_usk)
+                            panic!(
+                                "cannot encrypt header for {} ciphertext partition(s), {} usk \
+                                 partition(s)",
+                                n_partition_ct + 1,
+                                n_partitions_usk
+                            )
                         });
                         encrypted_header
                             .decrypt(&cover_crypt, usk, Some(&authenticated_data))
                             .unwrap_or_else(|_| {
-                                panic!("cannot decrypt header for {} ciphertext partition(s), {} usk partition(s)", n_partition_ct + 1, n_partitions_usk)
+                                panic!(
+                                    "cannot decrypt header for {} ciphertext partition(s), {} usk \
+                                     partition(s)",
+                                    n_partition_ct + 1,
+                                    n_partitions_usk
+                                )
                             });
                     })
                 },

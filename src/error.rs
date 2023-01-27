@@ -1,10 +1,11 @@
 //! Error type for the crate
 
+use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
+
 use abe_policy::Attribute;
 use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "hybrid")]
 use pqc_kyber::KyberError;
-use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -34,8 +35,8 @@ pub enum Error {
     #[error("could not decode number of attributes in encrypted message")]
     DecodingAttributeNumber,
     #[error(
-        "Unable to decrypt the header. User decryption key has not the right policy to \
-         decrypt this input."
+        "Unable to decrypt the header. User decryption key has not the right policy to decrypt \
+         this input."
     )]
     InsufficientAccessPolicy,
     #[error("Conversion failed: {0}")]

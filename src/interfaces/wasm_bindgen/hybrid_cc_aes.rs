@@ -3,10 +3,6 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
-use crate::{
-    statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
-    CoverCrypt,
-};
 use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
@@ -15,6 +11,11 @@ use cosmian_crypto_core::{
 };
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
+
+use crate::{
+    statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
+    CoverCrypt,
+};
 
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1 << 30;
 
@@ -186,7 +187,8 @@ pub fn webassembly_decrypt_symmetric_block(
 /// - `attribute_bytes`     : serialized attributes to use in the encapsulation
 /// - `pk`                  : CoverCrypt public key
 /// - `plaintext`           : message to encrypt with the DEM
-/// - `header_metadata`     : additional data to symmetrically encrypt in the header
+/// - `header_metadata`     : additional data to symmetrically encrypt in the
+///   header
 /// - `authentication_data` : optional data used for authentication
 #[wasm_bindgen]
 pub fn webassembly_hybrid_encrypt(
@@ -249,11 +251,12 @@ pub fn webassembly_hybrid_encrypt(
 /// with the header metadata as associated data.
 ///
 /// - `usk_bytes`           : serialized user secret key
-/// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM ciphertext
+/// - `encrypted_bytes`     : concatenation of the encrypted header and the DEM
+///   ciphertext
 /// - `authentication_data` : optional data used for authentication
 ///
-/// Return the decrypted data (additional data in header and cleartext) as a binary format:
-/// 1. LEB128 length of the additional data bytes
+/// Return the decrypted data (additional data in header and cleartext) as a
+/// binary format: 1. LEB128 length of the additional data bytes
 /// 2. additional data bytes
 /// 3. cleartext bytes
 #[wasm_bindgen]

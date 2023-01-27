@@ -3,13 +3,15 @@
 // Allows using the paper notations.
 #![allow(non_snake_case)]
 
-use self::partitions::Partition;
-use cosmian_crypto_core::KeyTrait;
-use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
 };
+
+use cosmian_crypto_core::KeyTrait;
+use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
+
+use self::partitions::Partition;
 
 #[macro_use]
 pub mod macros;

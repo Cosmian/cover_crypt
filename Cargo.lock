@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.5"
-source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#98be0040489fbd1852d21d6fdd7b75a0c2bde43c"
+source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#374d06c38fbeb36b7b37a3bdce8e993bdff78ca6"
 dependencies = [
  "cosmian_ffi",
  "js-sys",
@@ -114,9 +114,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.0.78"
+version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a20104e2335ce8a659d6dd92a51a767a0c062599c73b343fd152cb401e828c3d"
+checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 
 [[package]]
 name = "cfg-if"
@@ -237,7 +237,7 @@ dependencies = [
 [[package]]
 name = "cosmian_ffi"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/cosmian_ffi#a3c4393bc5b6005da02a3eb14f3586c10dbf69a5"
+source = "git+https://github.com/Cosmian/cosmian_ffi#9523f9dda43799ba992149a5aad7fd4ce90d30b0"
 dependencies = [
  "thiserror",
 ]

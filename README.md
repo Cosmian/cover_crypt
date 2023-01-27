@@ -16,11 +16,12 @@ policies over these attributes.
   - [Building the library for `cloudproof_java` or `cloudproof_flutter`](#building-the-library-for-cloudproof_java-or-cloudproof_flutter)
   - [Build the library for `cloudproof_js`](#build-the-library-for-cloudproof_js)
   - [Build the library for `cloudproof_python`](#build-the-library-for-cloudproof_python)
-- [Features and Benchmarks](#features-and-benchmarks)
+- [Features](#features)
   - [Key generation](#key-generation)
   - [Serialization](#serialization)
   - [Secret key encapsulation](#secret-key-encapsulation)
   - [Secret key decapsulation](#secret-key-decapsulation)
+- [Benchmarks](#benchmarks)
 - [Documentation](#documentation)
 - [Releases](#releases)
 
@@ -121,7 +122,7 @@ From the root directory:
 maturin build --release --features python
 ```
 
-## Features and Benchmarks
+## Features
 
 In CoverCrypt, messages are encrypted using a symmetric scheme. The right
 management is performed by a novel asymmetric scheme which is used to
@@ -134,9 +135,6 @@ This design brings several advantages:
 - encapsulation can be performed without the need to store any sensitive
   information (public cryptography);
 - encryption is as fast as symmetric schemes can be.
-
-The benchmarks presented in this section are run on a Intel(R) Core(TM)
-i7-10750H CPU @ 3.20GHz.
 
 ### Key generation
 
@@ -205,16 +203,6 @@ sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
 - `DEM_ENCRYPTION_OVERHEAD` is 28 bytes (12 bytes for the MAC tag and 16 bytes for the nonce)
 - `LEB128_sizeof(n)` is equal to 1 byte if `n` is less than `2^7`
 
-<!--Below id given the size of an encapsulation given a number of partitions.-->
-
-<!--| Nb. of partitions | encapsulation size (in bytes) |-->
-<!--| ----------------- | ----------------------------- |-->
-<!--| 1                 | 129                           |-->
-<!--| 2                 | 193                           |-->
-<!--| 3                 | 257                           |-->
-<!--| 4                 | 321                           |-->
-<!--| 5                 | 385                           |-->
-
 ### Secret key encapsulation
 
 This is the core of the CoverCrypt scheme. It allows creating a symmetric key
@@ -225,18 +213,28 @@ provided in the API. An encrypted header holds an encapsulation and a symmetric
 ciphertext of an optional additional data. This additional data can be useful
 to store metadata.
 
-| Nb. of partitions | Encapsulation time |
-|-------------------|--------------------|
-| 1                 | 260                |
-| 2                 | 390                |
-| 3                 | 518                |
-| 4                 | 663                |
-| 5                 | 791                |
+Classic implementation sizes:
+
+| Nb. of partitions | Encapsulation size (in bytes) | User decryption key size (in bytes) |
+|-------------------|-------------------------------|-------------------------------------|
+| 1                 | 131                           | 98                                  |
+| 2                 | 164                           | 131                                 |
+| 3                 | 197                           | 164                                 |
+| 4                 | 230                           | 197                                 |
+| 5                 | 263                           | 1382                                |
+
+Post-quantum implementation sizes:
+
+| Nb. of partitions | Encapsulation size (in bytes) | User decryption key size (in bytes) |
+|-------------------|-------------------------------|-------------------------------------|
+| 1                 | 1187                          | 1250                                |
+| 2                 | 2276                          | 2435                                |
+| 3                 | 3365                          | 3620                                |
+| 4                 | 4454                          | 4805                                |
+| 5                 | 5543                          | 5990                                |
 
 **Note**: encapsulations grow bigger with the size of the target set of rights
-and so does the encapsulation time. The following benchmark gives the size of
-the encrypted header and the encryption time given the number of rights in the
-target set (one right = one partition).
+and so does the encapsulation time.
 
 ### Secret key decapsulation
 
@@ -244,24 +242,19 @@ A user can retrieve the symmetric key needed to decrypt a CoverCrypt ciphertext
 by decrypting the associated `EncryptedHeader`. This is only possible if the
 user secret keys contains the appropriate rights.
 
-The following table gives the decryption time given the size (in number of
-partitions) of the user secret key (vertically) and the encapsulation
-(horizontally).
+## Benchmarks
 
-| Nb. of partitions (`usk` vs `encapsulation`, 1 match) | 1   | 2   | 3   | 4   | 5   |
-|-------------------------------------------------------|-----|-----|-----|-----|-----|
-| 1                                                     | 215 | 276 | 330 | 344 | 399 |
-| 2                                                     | 314 | 385 | 476 | 534 | 634 |
-| 3                                                     | 388 | 528 | 666 | 815 | 847 |
+The benchmarks presented in this section are run on a Intel(R) Xeon(R) Platinum 8171M CPU @ 2.60GHz.
+
+[CoverCrypt classic implementation](./benches/BENCHMARKS_classic.md)
+[CoverCrypt post-quantum implementation](./benches/BENCHMARKS_hybridized.md)
 
 ## Documentation
 
-A formal description and proof of the CoverCrypt scheme is given in
-[this paper](./bib/CoverCrypt.pdf).
+A formal description and proof of the CoverCrypt scheme is given in [this paper](./bib/CoverCrypt.pdf).
 It also contains an interesting discussion about the implementation.
 
-The developer documentation can be found on
-[doc.rs](https://docs.rs/cosmian_cover_crypt/6.0.8/cosmian_cover_crypt/index.html)
+The developer documentation can be found on [doc.rs](https://docs.rs/cosmian_cover_crypt/6.0.8/cosmian_cover_crypt/index.html)
 
 ## Releases
 

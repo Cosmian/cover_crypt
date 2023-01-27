@@ -1,3 +1,12 @@
+use std::{
+    ffi::{CStr, CString},
+    os::raw::c_int,
+};
+
+use abe_policy::{interfaces::ffi::h_rotate_attribute, AccessPolicy, Attribute, Policy};
+use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
+use cosmian_ffi::error::h_get_error;
+
 use crate::{
     core::partitions::Partition,
     interfaces::ffi::{
@@ -17,13 +26,6 @@ use crate::{
         PublicKey, UserSecretKey, DEM,
     },
     CoverCrypt, Error,
-};
-use abe_policy::{interfaces::ffi::h_rotate_attribute, AccessPolicy, Attribute, Policy};
-use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
-use cosmian_ffi::error::h_get_error;
-use std::{
-    ffi::{CStr, CString},
-    os::raw::c_int,
 };
 
 unsafe fn encrypt_header(

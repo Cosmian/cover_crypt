@@ -1,7 +1,5 @@
-use crate::{
-    core::{self, partitions},
-    decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
-};
+use std::sync::Mutex;
+
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::{curve25519::X25519KeyPair, DhKeyPair},
@@ -9,7 +7,11 @@ use cosmian_crypto_core::{
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Dem},
     CsRng,
 };
-use std::sync::Mutex;
+
+use crate::{
+    core::{self, partitions},
+    decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
+};
 
 pub const TAG_LENGTH: usize = 32;
 pub const SYM_KEY_LENGTH: usize = 32;
@@ -39,35 +41,6 @@ impl
         DEM,
     > for CoverCryptX25519Aes256
 {
-    const SYM_KEY_LENGTH: usize = DEM::KEY_LENGTH;
-
-    type MasterSecretKey =
-        core::MasterSecretKey<
-            { Self::PRIVATE_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PrivateKey,
-        >;
-
-    type UserSecretKey =
-        core::UserSecretKey<
-            { Self::PRIVATE_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PrivateKey,
-        >;
-
-    type PublicKey =
-        core::PublicKey<
-            { Self::PUBLIC_KEY_LENGTH },
-            <X25519KeyPair as DhKeyPair<
-                { Self::PUBLIC_KEY_LENGTH },
-                { Self::PRIVATE_KEY_LENGTH },
-            >>::PublicKey,
-        >;
-
     type Encapsulation =
         core::Encapsulation<
             TAG_LENGTH,
@@ -78,8 +51,33 @@ impl
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PublicKey,
         >;
-
+    type MasterSecretKey =
+        core::MasterSecretKey<
+            { Self::PRIVATE_KEY_LENGTH },
+            <X25519KeyPair as DhKeyPair<
+                { Self::PUBLIC_KEY_LENGTH },
+                { Self::PRIVATE_KEY_LENGTH },
+            >>::PrivateKey,
+        >;
+    type PublicKey =
+        core::PublicKey<
+            { Self::PUBLIC_KEY_LENGTH },
+            <X25519KeyPair as DhKeyPair<
+                { Self::PUBLIC_KEY_LENGTH },
+                { Self::PRIVATE_KEY_LENGTH },
+            >>::PublicKey,
+        >;
     type SymmetricKey = <DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key;
+    type UserSecretKey =
+        core::UserSecretKey<
+            { Self::PRIVATE_KEY_LENGTH },
+            <X25519KeyPair as DhKeyPair<
+                { Self::PUBLIC_KEY_LENGTH },
+                { Self::PRIVATE_KEY_LENGTH },
+            >>::PrivateKey,
+        >;
+
+    const SYM_KEY_LENGTH: usize = DEM::KEY_LENGTH;
 
     fn generate_master_keys(
         &self,
@@ -257,9 +255,10 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
 
 #[cfg(test)]
 pub mod tests {
+    use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
+
     use super::*;
     use crate::{core::partitions::Partition, CoverCrypt, Error};
-    use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
 
     pub fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
@@ -329,7 +328,8 @@ pub mod tests {
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, true)?;
-        // 2 partitions accessed by the user were rotated (MKG Protected and Confidential)
+        // 2 partitions accessed by the user were rotated (MKG Protected and
+        // Confidential)
         assert_eq!(usk.x.len(), original_usk.x.len() + 2);
         for x_i in &original_usk.x {
             assert!(usk.x.contains(x_i));
@@ -443,9 +443,11 @@ pub mod tests {
         )?;
 
         // Decryption fails without refreshing the user key
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_err());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_err()
+        );
 
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
@@ -458,9 +460,11 @@ pub mod tests {
         )?;
 
         // The refreshed key can decrypt the header
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         Ok(())
     }

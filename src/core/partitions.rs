@@ -1,12 +1,14 @@
-use crate::Error;
-use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy};
-use cosmian_crypto_core::bytes_ser_de::Serializer;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     ops::Deref,
 };
+
+use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy};
+use cosmian_crypto_core::bytes_ser_de::Serializer;
+
+use crate::Error;
 
 /// Partition associated to a subset. It corresponds to a combination
 /// of attributes across all axes.
@@ -155,9 +157,11 @@ fn generate_current_attribute_partitions(
 
 /// Generates all cross-axes combinations of attribute values.
 ///
-/// - `current_axis`            : axis for which to combine values with other axes
+/// - `current_axis`            : axis for which to combine values with other
+///   axes
 /// - `axes`                    : list of axes
-/// - `attr_values_per_axis`    : map axes with their associated attribute values
+/// - `attr_values_per_axis`    : map axes with their associated attribute
+///   values
 fn combine_attribute_values(
     current_axis: usize,
     axes: &[String],
@@ -198,11 +202,13 @@ fn combine_attribute_values(
     Ok(combinations)
 }
 
-/// Generates an `AccessPolicy` into the list of corresponding current partitions.
+/// Generates an `AccessPolicy` into the list of corresponding current
+/// partitions.
 ///
 /// - `access_policy`               : access policy to convert
 /// - `policy`                      : global policy data
-/// - `follow_hierarchical_axes`    : set to `true` to combine lower axis attributes
+/// - `follow_hierarchical_axes`    : set to `true` to combine lower axis
+///   attributes
 pub fn access_policy_to_current_partitions(
     access_policy: &AccessPolicy,
     policy: &Policy,
@@ -210,14 +216,15 @@ pub fn access_policy_to_current_partitions(
 ) -> Result<HashSet<Partition>, Error> {
     let attr_combinations =
         access_policy.to_attribute_combinations(policy, follow_hierarchical_axes)?;
-    println!("All combinations: {attr_combinations:?}");
     let mut res = HashSet::with_capacity(attr_combinations.len());
     for attr_combination in &attr_combinations {
-        println!("{attr_combination:?}");
         for partition in generate_current_attribute_partitions(attr_combination, policy)? {
             let is_unique = res.insert(partition);
             if !is_unique {
-                return Err(Error::ExistingCombination(attr_combination.to_vec(), attr_combinations));
+                return Err(Error::ExistingCombination(
+                    attr_combination.clone(),
+                    attr_combinations,
+                ));
             }
         }
     }

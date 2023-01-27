@@ -236,14 +236,16 @@ impl NonRegressionTestVector {
         // top_secret_fin_key
         self.protected_fin_test_vector
             .decrypt(&self.top_secret_fin_key.key)?;
-        assert!(self
-            .protected_mkg_test_vector
-            .decrypt(&self.top_secret_fin_key.key)
-            .is_err());
-        assert!(self
-            .top_secret_mkg_test_vector
-            .decrypt(&self.top_secret_fin_key.key)
-            .is_err());
+        assert!(
+            self.protected_mkg_test_vector
+                .decrypt(&self.top_secret_fin_key.key)
+                .is_err()
+        );
+        assert!(
+            self.top_secret_mkg_test_vector
+                .decrypt(&self.top_secret_fin_key.key)
+                .is_err()
+        );
 
         // top_secret_mkg_fin_key
         self.protected_fin_test_vector
@@ -254,16 +256,18 @@ impl NonRegressionTestVector {
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
 
         // confidential_mkg_key
-        assert!(self
-            .protected_fin_test_vector
-            .decrypt(&self.confidential_mkg_key.key)
-            .is_err());
+        assert!(
+            self.protected_fin_test_vector
+                .decrypt(&self.confidential_mkg_key.key)
+                .is_err()
+        );
         self.protected_mkg_test_vector
             .decrypt(&self.confidential_mkg_key.key)?;
-        assert!(self
-            .top_secret_mkg_test_vector
-            .decrypt(&self.confidential_mkg_key.key)
-            .is_err());
+        assert!(
+            self.top_secret_mkg_test_vector
+                .decrypt(&self.confidential_mkg_key.key)
+                .is_err()
+        );
         Ok(())
     }
 }

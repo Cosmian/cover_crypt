@@ -36,15 +36,17 @@ macro_rules! eakem_hash {
     };
 }
 
-/// Macro calling `CoverCrypt` [`setup()`](crate::core::primitives::setup) with the correct
-/// generic parameters.
+/// Macro calling `CoverCrypt` [`setup()`](crate::core::primitives::setup) with
+/// the correct generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
-/// - `type CsRng: `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
-/// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
+/// - `type CsRng:
+///   `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
+/// - `type KeyPair:
+///   `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 #[macro_export]
 macro_rules! setup {
-    ($rng: expr, $partition_set: expr) => {
+    ($rng:expr, $partition_set:expr) => {
         $crate::core::primitives::setup::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
@@ -54,15 +56,17 @@ macro_rules! setup {
     };
 }
 
-/// Macro calling `CoverCrypt` [`keygen()`](crate::core::primitives::keygen) with the correct
-/// generic parameters.
+/// Macro calling `CoverCrypt` [`keygen()`](crate::core::primitives::keygen)
+/// with the correct generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
-/// - `type CsRng: `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
-/// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
+/// - `type CsRng:
+///   `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
+/// - `type KeyPair:
+///   `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 #[macro_export]
 macro_rules! keygen {
-    ($rng: expr, $msk: expr, $user_set: expr) => {
+    ($rng:expr, $msk:expr, $user_set:expr) => {
         $crate::core::primitives::keygen::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
@@ -72,18 +76,20 @@ macro_rules! keygen {
     };
 }
 
-/// Macro calling `CoverCrypt` [`encaps()`](crate::core::primitives::encaps) with the correct
-/// generic parameters.
+/// Macro calling `CoverCrypt` [`encaps()`](crate::core::primitives::encaps)
+/// with the correct generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
-/// - `type CsRng: `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
+/// - `type CsRng:
+///   `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
 /// - `const TAG_LENGTH: usize` the length of the EAKEM TAG
 /// - `const SYM_KEY_LENGTH: usize` the length of the symmetric key
-/// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
+/// - `type KeyPair:
+///   `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 /// - `type DEM: `[`Dem`](cosmian_crypto_core::symmetric_crypto::Dem)
 #[macro_export]
 macro_rules! encaps {
-    ($rng: expr, $pk: expr, $target_set: expr) => {
+    ($rng:expr, $pk:expr, $target_set:expr) => {
         $crate::core::primitives::encaps::<
             TAG_LENGTH,
             SYM_KEY_LENGTH,
@@ -95,18 +101,20 @@ macro_rules! encaps {
     };
 }
 
-/// Macro calling `CoverCrypt` [`decaps()`](crate::core::primitives::decaps) with the correct
-/// generic parameters.
+/// Macro calling `CoverCrypt` [`decaps()`](crate::core::primitives::decaps)
+/// with the correct generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
-/// - `type CsRng: `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
+/// - `type CsRng:
+///   `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
 /// - `const TAG_LENGTH: usize` the length of the EAKEM TAG
 /// - `const SYM_KEY_LENGTH: usize` the length of the symmetric key
-/// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
+/// - `type KeyPair:
+///   `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 /// - `type DEM: `[`Dem`](cosmian_crypto_core::symmetric_crypto::Dem)
 #[macro_export]
 macro_rules! decaps {
-    ($sk: expr, $encapsulation: expr ) => {
+    ($sk:expr, $encapsulation:expr) => {
         $crate::core::primitives::decaps::<
             TAG_LENGTH,
             SYM_KEY_LENGTH,
@@ -118,15 +126,17 @@ macro_rules! decaps {
     };
 }
 
-/// Macro calling `CoverCrypt` [`update()`](crate::core::primitives::update) with the correct
-/// generic parameters.
+/// Macro calling `CoverCrypt` [`update()`](crate::core::primitives::update)
+/// with the correct generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
-/// - `type CsRng: `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
-/// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
+/// - `type CsRng:
+///   `[`CryptRngCore`](cosmian_crypto_core::reexport::rand_core::CryptoRngCore)
+/// - `type KeyPair:
+///   `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 #[macro_export]
 macro_rules! update {
-    ($rng: expr, $msk: expr, $mpk: expr, $partition_set: expr) => {
+    ($rng:expr, $msk:expr, $mpk:expr, $partition_set:expr) => {
         $crate::core::primitives::update::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
@@ -136,14 +146,15 @@ macro_rules! update {
     };
 }
 
-/// Macro calling `CoverCrypt` [`refresh()`](crate::core::primitives::refresh) with the correct
-/// generic parameters.
+/// Macro calling `CoverCrypt` [`refresh()`](crate::core::primitives::refresh)
+/// with the correct generic parameters.
 ///
 /// *NOTE*: the following objects should be defined
-/// - `type KeyPair: `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
+/// - `type KeyPair:
+///   `[`DhKeyPair`](cosmian_crypto_core::asymmetric_crypto::DhKeyPair)
 #[macro_export]
 macro_rules! refresh {
-    ($msk: expr, $usk: expr, $user_set: expr, $keep_old_access: expr) => {
+    ($msk:expr, $usk:expr, $user_set:expr, $keep_old_access:expr) => {
         $crate::core::primitives::refresh::<
             { KeyPair::PRIVATE_KEY_LENGTH },
             <KeyPair as DhKeyPair<

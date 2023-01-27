@@ -1,9 +1,14 @@
 #![allow(dead_code)]
 
-use crate::{
-    statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
-    CoverCrypt,
+use std::{
+    collections::HashMap,
+    os::raw::{c_char, c_int},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        RwLock,
+    },
 };
+
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
@@ -12,13 +17,10 @@ use cosmian_crypto_core::{
 };
 use cosmian_ffi::{ffi_bail, ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes};
 use lazy_static::lazy_static;
-use std::{
-    collections::HashMap,
-    os::raw::{c_char, c_int},
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        RwLock,
-    },
+
+use crate::{
+    statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
+    CoverCrypt,
 };
 
 // -------------------------------
