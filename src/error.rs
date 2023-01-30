@@ -1,10 +1,10 @@
 //! Error type for the crate
 
-use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 use abe_policy::Attribute;
 use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "hybrid")]
 use pqc_kyber::KyberError;
+use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]

@@ -25,7 +25,7 @@ name = "benches"
 debug = true
 
 [features]
-ffi = ["cosmian_ffi", "lazy_static", "interface"]
+ffi = ["cosmian_ffi", "interface"]
 full_bench = ["interface"]
 hybridized_bench = []
 python = ["pyo3", "interface"]
@@ -47,7 +47,6 @@ zeroize = "1.5"
 # Optional dependencies
 cosmian_ffi = { git = "https://github.com/Cosmian/cosmian_ffi", optional = true }
 js-sys = { version = "0.3", optional = true }
-lazy_static = { version = "1.4", optional = true }
 pyo3 = { version = "0.17", features = ["extension-module", "abi3", "abi3-py37", "generate-import-lib"], optional = true }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
 

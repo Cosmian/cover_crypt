@@ -9,11 +9,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 #[cfg(feature = "ffi")]
 use {
     cosmian_cover_crypt::{
-        interfaces::ffi::hybrid_cc_aes::{
-            h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,
-            h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
-            h_aes_destroy_encryption_cache, h_aes_encrypt_header, h_aes_encrypt_header_using_cache,
-        },
+        interfaces::ffi::hybrid_cc_aes::{h_aes_decrypt_header, h_aes_encrypt_header},
         statics::PublicKey,
     },
     std::{
@@ -91,10 +87,11 @@ fn policy() -> Result<Policy, Error> {
 fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // Access policy with 1 partition
     #[allow(unused_mut)]
-    let mut access_policies = vec![
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap(),
-    ];
+    let mut access_policies =
+        vec![
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+                .unwrap(),
+        ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -139,10 +136,11 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // The intersection between the user access policies and the encryption
     // policies is always "Department::FIN && Security Level::Protected" only.
     #[allow(unused_mut)]
-    let mut user_access_policies = vec![
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap(),
-    ];
+    let mut user_access_policies =
+        vec![
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+                .unwrap(),
+        ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -358,75 +356,6 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 }
 
 #[cfg(feature = "ffi")]
-fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
-    let policy = policy().expect("cannot generate policy");
-
-    let cover_crypt = CoverCryptX25519Aes256::default();
-    let (_msk, public_key) = cover_crypt
-        .generate_master_keys(&policy)
-        .expect("cannot generate master keys");
-
-    let policy_attributes = "Department::FIN && Security Level::Confidential";
-    let header_metadata = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let authenticated_data = vec![10, 11, 12, 13, 14];
-
-    let policy_bytes = serde_json::to_vec(&policy).unwrap();
-    let policy_ptr = policy_bytes.as_ptr().cast();
-    let policy_len = policy_bytes.len() as c_int;
-
-    let public_key_bytes = public_key
-        .try_to_bytes()
-        .expect("cannot convert public key to bytes");
-    let public_key_ptr = public_key_bytes.as_ptr().cast::<i8>();
-
-    let mut cache_handle: i32 = 0;
-    unsafe {
-        unwrap_ffi_error(h_aes_create_encryption_cache(
-            &mut cache_handle,
-            policy_ptr,
-            policy_len,
-            public_key_ptr,
-            public_key_bytes.len() as i32,
-        ))
-        .expect("cannot create aes encryption cache");
-    }
-
-    let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
-    let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
-    let mut symmetric_key_len = symmetric_key.len() as c_int;
-
-    let mut header_bytes_key = vec![0u8; 4096];
-    let header_bytes_ptr = header_bytes_key.as_mut_ptr().cast::<i8>();
-    let mut header_bytes_len = header_bytes_key.len() as c_int;
-
-    let target_policy_attributes = CString::new(policy_attributes)
-        .expect("cannot create CString from String converted policy attributes");
-
-    c.bench_function("FFI AES header encryption using cache", |b| {
-        b.iter(|| unsafe {
-            unwrap_ffi_error(h_aes_encrypt_header_using_cache(
-                symmetric_key_ptr,
-                &mut symmetric_key_len,
-                header_bytes_ptr,
-                &mut header_bytes_len,
-                cache_handle,
-                target_policy_attributes.as_ptr(),
-                header_metadata.as_ptr().cast::<i8>(),
-                header_metadata.len() as i32,
-                authenticated_data.as_ptr().cast::<i8>(),
-                authenticated_data.len() as i32,
-            ))
-            .expect("Failed unwrapping FFI AES encrypt header operation")
-        })
-    });
-
-    unsafe {
-        unwrap_ffi_error(h_aes_destroy_encryption_cache(cache_handle))
-            .expect("cannot destroy encryption cache");
-    }
-}
-
-#[cfg(feature = "ffi")]
 unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
     use cosmian_ffi::error::h_get_error;
 
@@ -556,73 +485,6 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "ffi")]
-fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
-    let policy = policy().expect("cannot generate policy");
-
-    let authenticated_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-    let cover_crypt = CoverCryptX25519Aes256::default();
-    let (msk, public_key) = cover_crypt
-        .generate_master_keys(&policy)
-        .expect("cannot generate master keys");
-    let encrypted_header =
-        generate_encrypted_header(&cover_crypt, &public_key, &authenticated_data);
-
-    let access_policy =
-        AccessPolicy::new("Department", "FIN") & AccessPolicy::new("Security Level", "Top Secret");
-    let user_decryption_key = cover_crypt
-        .generate_user_secret_key(&msk, &access_policy, &policy)
-        .expect("cannot generate user private key");
-
-    let mut symmetric_key = vec![0u8; CoverCryptX25519Aes256::SYM_KEY_LENGTH];
-    let symmetric_key_ptr = symmetric_key.as_mut_ptr().cast::<i8>();
-    let mut symmetric_key_len = symmetric_key.len() as c_int;
-
-    let mut header_metadata = vec![0u8; 4096];
-    let header_metadata_ptr = header_metadata.as_mut_ptr().cast::<i8>();
-    let mut header_metadata_len = header_metadata.len() as c_int;
-
-    let user_decryption_key_bytes = user_decryption_key
-        .try_to_bytes()
-        .expect("cannot convert public key to bytes");
-    let user_decryption_key_ptr = user_decryption_key_bytes.as_ptr().cast::<i8>();
-
-    let mut cache_handle = 0;
-    unsafe {
-        unwrap_ffi_error(h_aes_create_decryption_cache(
-            &mut cache_handle,
-            user_decryption_key_ptr,
-            user_decryption_key_bytes.len() as i32,
-        ))
-        .expect("cannot create aes decryption cache");
-    }
-
-    let header_bytes = encrypted_header.try_to_bytes().unwrap();
-
-    c.bench_function("FFI AES header decryption using cache", |b| {
-        b.iter(|| unsafe {
-            unwrap_ffi_error(h_aes_decrypt_header_using_cache(
-                symmetric_key_ptr,
-                &mut symmetric_key_len,
-                header_metadata_ptr,
-                &mut header_metadata_len,
-                header_bytes.as_ptr().cast::<i8>(),
-                header_bytes.len() as c_int,
-                authenticated_data.as_ptr().cast::<i8>(),
-                authenticated_data.len() as c_int,
-                cache_handle,
-            ))
-            .expect("Failed unwrapping FFI AES encrypt header operation")
-        })
-    });
-
-    unsafe {
-        unwrap_ffi_error(h_aes_destroy_decryption_cache(cache_handle))
-            .expect("cannot destroy encryption cache");
-    }
-}
-
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
@@ -644,9 +506,7 @@ criterion_group!(
     config = Criterion::default().sample_size(5000);
     targets =
         bench_ffi_header_encryption,
-        bench_ffi_header_encryption_using_cache,
         bench_ffi_header_decryption,
-        bench_ffi_header_decryption_using_cache
 );
 
 #[cfg(all(feature = "ffi", feature = "full_bench"))]

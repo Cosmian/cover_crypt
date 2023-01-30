@@ -443,11 +443,9 @@ pub mod tests {
         )?;
 
         // Decryption fails without refreshing the user key
-        assert!(
-            encrypted_header
-                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-                .is_err()
-        );
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_err());
 
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
@@ -460,11 +458,9 @@ pub mod tests {
         )?;
 
         // The refreshed key can decrypt the header
-        assert!(
-            encrypted_header
-                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-                .is_ok()
-        );
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
 
         Ok(())
     }
