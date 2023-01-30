@@ -9,4 +9,3 @@ cargo criterion --features full_bench,hybridized_bench --message-format=json | c
 
 sed -i "s/❌ //g" benches/BENCHMARKS*.md
 # sed -i "s/✅ //g" benches/BENCHMARKS*.md
-<
