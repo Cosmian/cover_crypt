@@ -271,12 +271,11 @@ impl NonRegressionTestVector {
 #[test]
 fn test_generate_non_regression_vector() -> Result<(), Error> {
     let _reg_vector = NonRegressionTestVector::new()?;
-    // uncomment this to regenerate new test vector
-    //std::fs::write(
-    //"tests_data/non_regression_vector.json",
-    //serde_json::to_string(&_reg_vector).unwrap(),
-    //)
-    //.unwrap();
+    std::fs::write(
+        "target/non_regression_vector.json",
+        serde_json::to_string(&_reg_vector).unwrap(),
+    )
+    .unwrap();
 
     Ok(())
 }

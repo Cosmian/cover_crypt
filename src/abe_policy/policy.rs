@@ -332,7 +332,7 @@ impl Policy {
 
         // Recursive call. Above checks ensure no empty list can be returned.
         let other_values =
-            Policy::combine_attribute_values(current_axis + 1, axes, attr_values_per_axis)?;
+            Self::combine_attribute_values(current_axis + 1, axes, attr_values_per_axis)?;
 
         let mut combinations = Vec::with_capacity(current_axis_values.len() * other_values.len());
         for (current_values, is_hybridized) in current_axis_values {
@@ -376,7 +376,7 @@ impl Policy {
 
         // Combine axes values into partitions.
         let axes = attr_values_per_axis.keys().cloned().collect::<Vec<_>>();
-        let combinations = Policy::combine_attribute_values(0, &axes, &attr_values_per_axis)?;
+        let combinations = Self::combine_attribute_values(0, &axes, &attr_values_per_axis)?;
         let mut res = HashMap::with_capacity(combinations.len());
         for (combination, is_hybridized) in combinations {
             res.insert(
