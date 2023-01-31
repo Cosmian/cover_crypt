@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "9.0.1"
+version = "10.0.0"
 dependencies = [
  "base64",
  "cosmian_crypto_core",
@@ -223,7 +223,8 @@ dependencies = [
 [[package]]
 name = "cosmian_ffi"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/cosmian_ffi#a07f0f2341d48b438aa96a260ba18aaf1b4cd0e5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4032ec32d5f388ec0e1b268179ea8210a336f2f093c6c4148bdd66b16b2aedd"
 dependencies = [
  "thiserror",
 ]
