@@ -157,9 +157,9 @@ struct NonRegressionTestVector {
     top_secret_mkg_fin_key: UserSecretKeyTestVector,
     medium_secret_mkg_key: UserSecretKeyTestVector,
     top_secret_fin_key: UserSecretKeyTestVector,
-    protected_mkg_test_vector: EncryptionTestVector,
+    low_secret_mkg_test_vector: EncryptionTestVector,
     top_secret_mkg_test_vector: EncryptionTestVector,
-    protected_fin_test_vector: EncryptionTestVector,
+    low_secret_fin_test_vector: EncryptionTestVector,
 }
 
 impl NonRegressionTestVector {
@@ -213,19 +213,19 @@ impl NonRegressionTestVector {
                 Some(&authentication_data),
             )?,
 
-            protected_mkg_test_vector: EncryptionTestVector::new(
+            low_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
                 &policy,
-                "Department::MKG && Security Level::Protected",
+                "Department::MKG && Security Level::Low Secret",
                 "protected_mkg_plaintext",
                 Some(&header_metadata),
                 None,
             )?,
 
-            protected_fin_test_vector: EncryptionTestVector::new(
+            low_secret_fin_test_vector: EncryptionTestVector::new(
                 &mpk,
                 &policy,
-                "Department::FIN && Security Level::Protected",
+                "Department::FIN && Security Level::Low Secret",
                 "protected_fin_plaintext",
                 None,
                 None,
@@ -236,10 +236,10 @@ impl NonRegressionTestVector {
 
     fn verify(&self) -> Result<(), Error> {
         // top_secret_fin_key
-        self.protected_fin_test_vector
+        self.low_secret_fin_test_vector
             .decrypt(&self.top_secret_fin_key.key)?;
         assert!(self
-            .protected_mkg_test_vector
+            .low_secret_mkg_test_vector
             .decrypt(&self.top_secret_fin_key.key)
             .is_err());
         assert!(self
@@ -248,19 +248,19 @@ impl NonRegressionTestVector {
             .is_err());
 
         // top_secret_mkg_fin_key
-        self.protected_fin_test_vector
+        self.low_secret_fin_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
-        self.protected_mkg_test_vector
+        self.low_secret_mkg_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
         self.top_secret_mkg_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
 
         // medium_secret_mkg_key
         assert!(self
-            .protected_fin_test_vector
+            .low_secret_fin_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
-        self.protected_mkg_test_vector
+        self.low_secret_mkg_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)?;
         assert!(self
             .top_secret_mkg_test_vector
