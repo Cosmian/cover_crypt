@@ -221,10 +221,7 @@ pub fn access_policy_to_current_partitions(
         for partition in generate_current_attribute_partitions(attr_combination, policy)? {
             let is_unique = res.insert(partition);
             if !is_unique {
-                return Err(Error::ExistingCombination(
-                    attr_combination.clone(),
-                    attr_combinations,
-                ));
+                return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
             }
         }
     }

@@ -203,6 +203,7 @@ dependencies = [
  "criterion",
  "hex",
  "js-sys",
+ "lazy_static",
  "leb128",
  "pqc_kyber",
  "pyo3",

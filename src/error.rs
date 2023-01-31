@@ -1,6 +1,5 @@
 //! Error type for the crate
 
-use abe_policy::Attribute;
 use cosmian_crypto_core::CryptoCoreError;
 #[cfg(feature = "hybrid")]
 use pqc_kyber::KyberError;
@@ -19,8 +18,8 @@ pub enum Error {
     PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
     AttributeNotFound(String),
-    #[error("Combination {0:?} already exists in {1:?}")]
-    ExistingCombination(Vec<Attribute>, Vec<Vec<Attribute>>),
+    #[error("Combination {0} already exists")]
+    ExistingCombination(String),
     #[error("invalid size: {0}")]
     InvalidSize(String),
     #[error("Empty secret key")]

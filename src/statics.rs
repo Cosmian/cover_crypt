@@ -41,18 +41,17 @@ impl
         DEM,
     > for CoverCryptX25519Aes256
 {
-    type Encapsulation =
-        core::Encapsulation<
-            TAG_LENGTH,
-            { Self::SYM_KEY_LENGTH },
-            { Self::PUBLIC_KEY_LENGTH },
+    const SYM_KEY_LENGTH: usize = DEM::KEY_LENGTH;
+    type MasterSecretKey =
+        core::MasterSecretKey<
+            { Self::PRIVATE_KEY_LENGTH },
             <X25519KeyPair as DhKeyPair<
                 { Self::PUBLIC_KEY_LENGTH },
                 { Self::PRIVATE_KEY_LENGTH },
-            >>::PublicKey,
+            >>::PrivateKey,
         >;
-    type MasterSecretKey =
-        core::MasterSecretKey<
+    type UserSecretKey =
+        core::UserSecretKey<
             { Self::PRIVATE_KEY_LENGTH },
             <X25519KeyPair as DhKeyPair<
                 { Self::PUBLIC_KEY_LENGTH },
@@ -67,17 +66,18 @@ impl
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PublicKey,
         >;
-    type SymmetricKey = <DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key;
-    type UserSecretKey =
-        core::UserSecretKey<
-            { Self::PRIVATE_KEY_LENGTH },
+    type Encapsulation =
+        core::Encapsulation<
+            TAG_LENGTH,
+            { Self::SYM_KEY_LENGTH },
+            { Self::PUBLIC_KEY_LENGTH },
             <X25519KeyPair as DhKeyPair<
                 { Self::PUBLIC_KEY_LENGTH },
                 { Self::PRIVATE_KEY_LENGTH },
-            >>::PrivateKey,
+            >>::PublicKey,
         >;
 
-    const SYM_KEY_LENGTH: usize = DEM::KEY_LENGTH;
+    type SymmetricKey = <DEM as Dem<{ Self::SYM_KEY_LENGTH }>>::Key;
 
     fn generate_master_keys(
         &self,
