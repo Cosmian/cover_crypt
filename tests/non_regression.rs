@@ -12,7 +12,9 @@ pub fn policy() -> Result<Policy, Error> {
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
-            ("Confidential", EncryptionHint::Classic),
+            ("Low Secret", EncryptionHint::Classic),
+            ("Medium Secret", EncryptionHint::Classic),
+            ("High Secret", EncryptionHint::Classic),
             ("Top Secret", EncryptionHint::Hybridized),
         ],
         true,
@@ -153,7 +155,7 @@ struct NonRegressionTestVector {
     master_secret_key: String,
     policy: String,
     top_secret_mkg_fin_key: UserSecretKeyTestVector,
-    confidential_mkg_key: UserSecretKeyTestVector,
+    medium_secret_mkg_key: UserSecretKeyTestVector,
     top_secret_fin_key: UserSecretKeyTestVector,
     protected_mkg_test_vector: EncryptionTestVector,
     top_secret_mkg_test_vector: EncryptionTestVector,
@@ -190,10 +192,10 @@ impl NonRegressionTestVector {
                 &policy,
                 "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
             )?,
-            confidential_mkg_key: UserSecretKeyTestVector::new(
+            medium_secret_mkg_key: UserSecretKeyTestVector::new(
                 &msk,
                 &policy,
-                "Security Level::Confidential && Department::MKG",
+                "Security Level::Medium Secret && Department::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
                 &msk,
@@ -253,16 +255,16 @@ impl NonRegressionTestVector {
         self.top_secret_mkg_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
 
-        // confidential_mkg_key
+        // medium_secret_mkg_key
         assert!(self
             .protected_fin_test_vector
-            .decrypt(&self.confidential_mkg_key.key)
+            .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
         self.protected_mkg_test_vector
-            .decrypt(&self.confidential_mkg_key.key)?;
+            .decrypt(&self.medium_secret_mkg_key.key)?;
         assert!(self
             .top_secret_mkg_test_vector
-            .decrypt(&self.confidential_mkg_key.key)
+            .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
         Ok(())
     }
