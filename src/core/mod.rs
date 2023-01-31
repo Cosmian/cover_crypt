@@ -11,13 +11,12 @@ use std::{
 use cosmian_crypto_core::KeyTrait;
 use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
-use self::partitions::Partition;
+use crate::abe_policy::Partition;
 
 #[macro_use]
 pub mod macros;
 
 pub mod api;
-pub mod partitions;
 pub mod primitives;
 
 #[cfg(feature = "interface")]

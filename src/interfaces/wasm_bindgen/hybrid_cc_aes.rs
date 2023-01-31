@@ -3,7 +3,6 @@
 #![allow(clippy::unused_unit)]
 // Wait for `wasm-bindgen` issue 2774: https://github.com/rustwasm/wasm-bindgen/issues/2774
 
-use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::{Dem, SymKey},
@@ -13,6 +12,7 @@ use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 
 use crate::{
+    abe_policy::AccessPolicy,
     statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
     CoverCrypt,
 };

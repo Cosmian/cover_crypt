@@ -3,12 +3,11 @@ use std::{
     os::raw::c_int,
 };
 
-use abe_policy::{interfaces::ffi::h_rotate_attribute, AccessPolicy, Attribute, Policy};
 use cosmian_crypto_core::{bytes_ser_de::Serializable, symmetric_crypto::Dem, KeyTrait};
 use cosmian_ffi::error::h_get_error;
 
 use crate::{
-    core::partitions::Partition,
+    abe_policy::{interfaces::ffi::h_rotate_attribute, AccessPolicy, Attribute, Partition, Policy},
     interfaces::ffi::{
         generate_cc_keys::{
             h_generate_master_keys, h_generate_user_secret_key, h_refresh_user_secret_key,

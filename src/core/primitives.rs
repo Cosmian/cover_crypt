@@ -7,7 +7,6 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 
-use abe_policy::EncryptionHint;
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     kdf,
@@ -21,10 +20,8 @@ use pqc_kyber::{
 };
 
 use crate::{
-    core::{
-        partitions::Partition, Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey,
-        UserSecretKey,
-    },
+    abe_policy::{EncryptionHint, Partition},
+    core::{Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey},
     Error,
 };
 

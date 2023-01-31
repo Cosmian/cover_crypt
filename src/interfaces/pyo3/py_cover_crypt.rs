@@ -1,4 +1,3 @@
-use abe_policy::AccessPolicy;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::{Dem, SymKey},
@@ -6,6 +5,7 @@ use cosmian_crypto_core::{
 use pyo3::{exceptions::PyTypeError, prelude::*, types::PyBytes, PyErr};
 
 use crate::{
+    abe_policy::AccessPolicy,
     interfaces::pyo3::py_abe_policy::Policy,
     statics::{
         CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey as MasterSecretKeyRust,

@@ -1,0 +1,1 @@
+{"last_attribute_value":7,"max_attribute_creations":100,"axes":{"Department":[["R&D","HR","MKG","FIN"],false],"Security Level":[["Protected","Confidential","Top Secret"],true]},"attributes":{"Department::MKG":[6],"Department::FIN":[7],"Department::HR":[5],"Security Level::Top Secret":[3],"Security Level::Protected":[1],"Security Level::Confidential":[2],"Department::R&D":[4]}}

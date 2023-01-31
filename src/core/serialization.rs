@@ -14,10 +14,8 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    core::{
-        partitions::Partition, Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey,
-        UserSecretKey,
-    },
+    abe_policy::Partition,
+    core::{Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey},
     CleartextHeader, CoverCrypt, EncryptedHeader, Error,
 };
 
@@ -356,7 +354,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use abe_policy::{AccessPolicy, EncryptionHint};
+    use crate::abe_policy::{AccessPolicy, EncryptionHint};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
         symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,

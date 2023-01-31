@@ -1,6 +1,5 @@
 use std::sync::Mutex;
 
-use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::{
     asymmetric_crypto::{curve25519::X25519KeyPair, DhKeyPair},
     reexport::rand_core::SeedableRng,
@@ -9,8 +8,8 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    core::{self, partitions},
-    decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
+    abe_policy::{AccessPolicy, Policy},
+    core, decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
 };
 
 pub const TAG_LENGTH: usize = 32;
@@ -85,7 +84,7 @@ impl
     ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error> {
         Ok(setup!(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            &partitions::generate_all_partitions(policy)?
+            &policy.generate_all_partitions()?
         ))
     }
 
@@ -99,7 +98,7 @@ impl
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            &partitions::generate_all_partitions(policy)?
+            &policy.generate_all_partitions()?
         )
     }
 
@@ -112,7 +111,7 @@ impl
         Ok(keygen!(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?
+            &policy.access_policy_to_current_partitions(access_policy, true)?
         ))
     }
 
@@ -127,7 +126,7 @@ impl
         refresh!(
             msk,
             usk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
+            &policy.access_policy_to_current_partitions(access_policy, true)?,
             keep_old_accesses
         );
         Ok(())
@@ -148,7 +147,7 @@ impl
         Ok(encaps!(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, false)?
+            &policy.access_policy_to_current_partitions(access_policy, false)?
         ))
     }
 
@@ -255,10 +254,11 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
 
 #[cfg(test)]
 pub mod tests {
-    use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
-
     use super::*;
-    use crate::{core::partitions::Partition, CoverCrypt, Error};
+    use crate::{
+        abe_policy::{AccessPolicy, Attribute, EncryptionHint, Partition, Policy, PolicyAxis},
+        CoverCrypt, Error,
+    };
 
     pub fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(

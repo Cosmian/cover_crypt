@@ -5,7 +5,6 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 
-use abe_policy::{AccessPolicy, Policy};
 #[cfg(feature = "interface")]
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::{
@@ -13,7 +12,10 @@ use cosmian_crypto_core::{
     symmetric_crypto::{Dem, SymKey},
 };
 
-use crate::Error;
+use crate::{
+    abe_policy::{AccessPolicy, Policy},
+    Error,
+};
 
 /// This trait is the main entry point for the core functionalities.
 ///
