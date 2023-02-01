@@ -46,7 +46,7 @@ pub struct EncryptionCache {
 /// reused when encrypting messages which avoids passing these objects to Rust
 /// in each call.
 ///
-/// WARNING: [`h_aes_destroy_encrypt_cache()`](h_aes_destroy_encryption_cache)
+/// WARNING: [`h_destroy_encrypt_cache()`](h_destroy_encryption_cache)
 /// should be called to reclaim the cache memory.
 ///
 /// # Safety
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn h_create_encryption_cache(
 #[no_mangle]
 /// Reclaims the memory of the cache.
 ///
-/// Cf [`h_aes_create_encrypt_cache()`](h_aes_create_encryption_cache).
+/// Cf [`h_create_encrypt_cache()`](h_create_encryption_cache).
 ///
 /// # Safety
 pub unsafe extern "C" fn h_destroy_encryption_cache(cache_handle: c_int) -> c_int {
@@ -259,9 +259,9 @@ pub struct DecryptionCache {
 /// Creates a cache containing the user secret key. This cache can be reused
 /// when decrypting messages which avoids passing this key to Rust in each call.
 ///
-/// Cf [`h_aes_decrypt_header_using_cache()`](h_aes_decrypt_header_using_cache).
+/// Cf [`h_decrypt_header_using_cache()`](h_decrypt_header_using_cache).
 ///
-/// WARNING: [`h_aes_destroy_decryption_cache()`](h_aes_destroy_decryption_cache)
+/// WARNING: [`h_destroy_decryption_cache()`](h_destroy_decryption_cache)
 /// should be called to reclaim the cache memory.
 ///
 /// # Safety
