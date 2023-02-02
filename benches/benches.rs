@@ -43,7 +43,7 @@ fn policy() -> Result<Policy, Error> {
                     ("HR", EncryptionHint::Classic),
                     ("MKG", EncryptionHint::Classic),
                     ("FIN", EncryptionHint::Classic),
-                    ("CYBER", EncryptionHint::Hybridized),
+                    ("CYBER", EncryptionHint::Classic),
                 ],
                 false,
             ),

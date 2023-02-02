@@ -221,7 +221,7 @@ Classic implementation sizes:
 | 2                 | 164                           | 131                                 |
 | 3                 | 197                           | 164                                 |
 | 4                 | 230                           | 197                                 |
-| 5                 | 263                           | 1382                                |
+| 5                 | 263                           | 230                                 |
 
 Post-quantum implementation sizes:
 
