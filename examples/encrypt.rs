@@ -1,5 +1,5 @@
-use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
+    abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
     statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey},
     CoverCrypt, Error,
 };

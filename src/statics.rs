@@ -1,15 +1,16 @@
-use crate::{
-    core::{self, partitions},
-    decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
-};
-use abe_policy::{AccessPolicy, Policy};
+use std::sync::Mutex;
+
 use cosmian_crypto_core::{
     asymmetric_crypto::{curve25519::X25519KeyPair, DhKeyPair},
     reexport::rand_core::SeedableRng,
     symmetric_crypto::{aes_256_gcm_pure::Aes256GcmCrypto, Dem},
     CsRng,
 };
-use std::{ops::DerefMut, sync::Mutex};
+
+use crate::{
+    abe_policy::{AccessPolicy, Policy},
+    core, decaps, encaps, keygen, refresh, setup, update, CoverCrypt, Error,
+};
 
 pub const TAG_LENGTH: usize = 32;
 pub const SYM_KEY_LENGTH: usize = 32;
@@ -17,7 +18,7 @@ pub type KeyPair = X25519KeyPair;
 #[allow(clippy::upper_case_acronyms)]
 pub type DEM = Aes256GcmCrypto;
 
-/// Instantiate a CoverCrypt type with AES GCM 256 as DEM
+/// Instantiate a `CoverCrypt` type with AES GCM 256 as DEM
 #[derive(Debug)]
 pub struct CoverCryptX25519Aes256 {
     rng: Mutex<CsRng>,
@@ -40,7 +41,6 @@ impl
     > for CoverCryptX25519Aes256
 {
     const SYM_KEY_LENGTH: usize = DEM::KEY_LENGTH;
-
     type MasterSecretKey =
         core::MasterSecretKey<
             { Self::PRIVATE_KEY_LENGTH },
@@ -49,7 +49,6 @@ impl
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PrivateKey,
         >;
-
     type UserSecretKey =
         core::UserSecretKey<
             { Self::PRIVATE_KEY_LENGTH },
@@ -58,7 +57,6 @@ impl
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PrivateKey,
         >;
-
     type PublicKey =
         core::PublicKey<
             { Self::PUBLIC_KEY_LENGTH },
@@ -67,7 +65,6 @@ impl
                 { Self::PRIVATE_KEY_LENGTH },
             >>::PublicKey,
         >;
-
     type Encapsulation =
         core::Encapsulation<
             TAG_LENGTH,
@@ -86,8 +83,8 @@ impl
         policy: &Policy,
     ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error> {
         Ok(setup!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
-            &partitions::generate_all_partitions(policy)?
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &policy.generate_all_partitions()?
         ))
     }
 
@@ -98,10 +95,10 @@ impl
         mpk: &mut Self::PublicKey,
     ) -> Result<(), Error> {
         update!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            &partitions::generate_all_partitions(policy)?
+            &policy.generate_all_partitions()?
         )
     }
 
@@ -112,9 +109,9 @@ impl
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error> {
         Ok(keygen!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?
+            &policy.access_policy_to_current_partitions(access_policy, true)?
         ))
     }
 
@@ -129,7 +126,7 @@ impl
         refresh!(
             msk,
             usk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, true)?,
+            &policy.access_policy_to_current_partitions(access_policy, true)?,
             keep_old_accesses
         );
         Ok(())
@@ -148,9 +145,9 @@ impl
         Error,
     > {
         Ok(encaps!(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &partitions::access_policy_to_current_partitions(access_policy, policy, false)?
+            &policy.access_policy_to_current_partitions(access_policy, false)?
         ))
     }
 
@@ -169,7 +166,7 @@ impl
         authentication_data: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         <Aes256GcmCrypto as Dem<{ Self::SYM_KEY_LENGTH }>>::encrypt(
-            self.rng.lock().expect("Mutex lock failed!").deref_mut(),
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
             symmetric_key,
             plaintext,
             authentication_data,
@@ -215,7 +212,7 @@ pub type EncryptedHeader = crate::core::api::EncryptedHeader<
 pub type CleartextHeader =
     crate::core::api::CleartextHeader<{ Aes256GcmCrypto::KEY_LENGTH }, Aes256GcmCrypto>;
 
-/// Convenience type: CoverCryptX25519Aes256 master secret key
+/// Convenience type: `CoverCryptX25519Aes256` master secret key
 pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -225,7 +222,7 @@ pub type MasterSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     Aes256GcmCrypto,
 >>::MasterSecretKey;
 
-/// Convenience type: CoverCryptX25519Aes256 public key
+/// Convenience type: `CoverCryptX25519Aes256` public key
 pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -235,7 +232,7 @@ pub type PublicKey = <CoverCryptX25519Aes256 as CoverCrypt<
     Aes256GcmCrypto,
 >>::PublicKey;
 
-/// Convenience type: CoverCryptX25519Aes256 user secret key
+/// Convenience type: `CoverCryptX25519Aes256` user secret key
 pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -245,7 +242,7 @@ pub type UserSecretKey = <CoverCryptX25519Aes256 as CoverCrypt<
     Aes256GcmCrypto,
 >>::UserSecretKey;
 
-/// Convenience type: CoverCryptX25519Aes256 encapsulation
+/// Convenience type: `CoverCryptX25519Aes256` encapsulation
 pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
     TAG_LENGTH,
     { Aes256GcmCrypto::KEY_LENGTH },
@@ -258,8 +255,10 @@ pub type Encapsulation = <CoverCryptX25519Aes256 as CoverCrypt<
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::{core::partitions::Partition, CoverCrypt, Error};
-    use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
+    use crate::{
+        abe_policy::{AccessPolicy, Attribute, EncryptionHint, Partition, Policy, PolicyAxis},
+        CoverCrypt, Error,
+    };
 
     pub fn policy() -> Result<Policy, Error> {
         let sec_level = PolicyAxis::new(
@@ -329,7 +328,8 @@ pub mod tests {
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, true)?;
-        // 2 partitions accessed by the user were rotated (MKG Protected and Confidential)
+        // 2 partitions accessed by the user were rotated (MKG Protected and
+        // Confidential)
         assert_eq!(usk.x.len(), original_usk.x.len() + 2);
         for x_i in &original_usk.x {
             assert!(usk.x.contains(x_i));

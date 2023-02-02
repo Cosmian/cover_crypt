@@ -5,6 +5,8 @@ use cosmian_crypto_core::CryptoCoreError;
 use pqc_kyber::KyberError;
 use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
 use thiserror::Error;
+#[cfg(feature = "wasm_bindgen")]
+use wasm_bindgen::JsValue;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -14,10 +16,34 @@ pub enum Error {
     CryptoCoreError(CryptoCoreError),
     #[error("{0}")]
     KeyError(String),
-    #[error(transparent)]
-    PolicyError(#[from] abe_policy::Error),
     #[error("attribute not found: {0}")]
     AttributeNotFound(String),
+    #[error("{} is missing{}",
+        .item.clone().unwrap_or_else(|| "attribute".to_string()),
+        match .axis_name {
+            Some(axis) => format!(" in axis {axis}"),
+            None => String::new(),
+    })]
+    MissingAttribute {
+        item: Option<String>,
+        axis_name: Option<String>,
+    },
+    #[error("No axis given")]
+    MissingAxis,
+    #[error("unsupported operator {0}")]
+    UnsupportedOperator(String),
+    #[error("attribute capacity overflow")]
+    CapacityOverflow,
+    #[error("policy {0} already exists")]
+    ExistingPolicy(String),
+    #[error("invalid boolean expression: {0}")]
+    InvalidBooleanExpression(String),
+    #[error("invalid attribute: {0}")]
+    InvalidAttribute(String),
+    #[error("invalid axis: {0}")]
+    InvalidAxis(String),
+    #[error("deserialization error: {0}")]
+    DeserializationError(serde_json::Error),
     #[error("Combination {0} already exists")]
     ExistingCombination(String),
     #[error("invalid size: {0}")]
@@ -33,14 +59,12 @@ pub enum Error {
     #[error("could not decode number of attributes in encrypted message")]
     DecodingAttributeNumber,
     #[error(
-        "Unable to decrypt the header. User decryption key has not the right policy to \
-         decrypt this input."
+        "Unable to decrypt the header. User decryption key has not the right policy to decrypt \
+         this input."
     )]
     InsufficientAccessPolicy,
     #[error("Conversion failed: {0}")]
     ConversionFailed(String),
-    #[error("Invalid boolean expression: {0}")]
-    InvalidAttribute(String),
     #[error("json parsing error: {0}")]
     JsonParsing(String),
     #[error("{0}")]
@@ -88,5 +112,12 @@ impl From<std::str::Utf8Error> for Error {
 impl From<Error> for pyo3::PyErr {
     fn from(e: Error) -> Self {
         pyo3::exceptions::PyException::new_err(format!("{e}"))
+    }
+}
+
+#[cfg(feature = "wasm_bindgen")]
+impl From<Error> for JsValue {
+    fn from(e: Error) -> Self {
+        Self::from_str(&e.to_string())
     }
 }

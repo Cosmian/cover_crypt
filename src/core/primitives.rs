@@ -1,14 +1,12 @@
-//! Implements the cryptographic primitives of CoverCrypt, based on
+//! Implements the cryptographic primitives of `CoverCrypt`, based on
 //! `bib/CoverCrypt.pdf`.
 
-use crate::{
-    core::{
-        partitions::Partition, Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey,
-        UserSecretKey,
-    },
-    Error,
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    ops::{Add, Div, Mul, Sub},
 };
-use abe_policy::EncryptionHint;
+
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     kdf,
@@ -20,10 +18,11 @@ use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    ops::{Add, Div, Mul, Sub},
+
+use crate::{
+    abe_policy::{EncryptionHint, Partition},
+    core::{Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey},
+    Error,
 };
 
 /// Additional information to generate symmetric key using the KDF.
@@ -39,7 +38,7 @@ fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] 
     res
 }
 
-/// Generates the master secret key and master public key of the CoverCrypt
+/// Generates the master secret key and master public key of the `CoverCrypt`
 /// scheme.
 ///
 /// # Reference
@@ -138,7 +137,7 @@ where
     UserSecretKey { a, b, x }
 }
 
-/// Generates a CoverCrypt encapsulation of a random symmetric key. Returns
+/// Generates a `CoverCrypt` encapsulation of a random symmetric key. Returns
 /// both the symmetric key and its encapsulation.
 ///
 /// # Reference
@@ -200,7 +199,7 @@ where
     (SymmetricKey::from_bytes(K), Encapsulation { C, D, tag, E })
 }
 
-/// Tries to decapsulate the given CoverCrypt encapsulation. Returns the
+/// Tries to decapsulate the given `CoverCrypt` encapsulation. Returns the
 /// encapsulated symmetric key.
 ///
 /// # Error
@@ -387,7 +386,8 @@ where
 ///
 /// - `msk`             : master secret key
 /// - `usk`             : user secret key
-/// - `decryption_set`  : set of partitions the user is granted the decryption right for
+/// - `decryption_set`  : set of partitions the user is granted the decryption
+///   right for
 /// - `keep_old_rights` : whether or not to keep old decryption rights
 pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
     msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
@@ -410,12 +410,13 @@ pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{decaps, encaps, keygen, refresh, setup, update};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
         symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
     };
+
+    use super::*;
+    use crate::{decaps, encaps, keygen, refresh, setup, update};
 
     //
     // Define types and constants used in the tests
