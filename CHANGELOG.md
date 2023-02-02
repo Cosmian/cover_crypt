@@ -4,18 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [9.0.1] - 2023-01-25
+## [10.0.0] - 2023-02-02
 
-### Bug Fixes
+### Documentation
 
-- Java and flutter repositories
-- Interfaces (Java integration)
+- Update readme with benchmarks and sizes
 
 ### Features
 
-- Add benches manually triggerable
+- Merge AbePolicy
 
----
+### Ci
+
+- Update kms version
+- Rebase externals repos
 
 ## [9.0.0] - 2023-01-20
 
