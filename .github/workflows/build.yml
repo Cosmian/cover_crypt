@@ -16,8 +16,8 @@ jobs:
       kms-version: 4.2.0
       regression-filename: non_regression_vector.json
       branch-java: feature/use_cover_crypt_v9
-      branch-js: feature/use_cover_crypt_v9.0
-      branch-flutter: feature/add_github_ci
-      branch-python: feature/kms
+      branch-js: develop
+      branch-flutter: develop
+      branch-python: develop
       bench-features: full_bench,hybridized_bench
     secrets: inherit
