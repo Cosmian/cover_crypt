@@ -1,7 +1,7 @@
 #![cfg(feature = "interface")]
 
 use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy, Policy, PolicyAxis},
     statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey, UserSecretKey},
     CoverCrypt, Error,
 };
@@ -33,6 +33,27 @@ pub fn policy() -> Result<Policy, Error> {
     policy.add_axis(sec_level)?;
     policy.add_axis(department)?;
     Ok(policy)
+}
+
+//#[test]
+//fn write_policy() {
+//let _policy = policy().unwrap();
+//std::fs::write("tests/policy.json", serde_json::to_vec(&_policy).unwrap()).unwrap();
+//}
+
+/// Read policy from a file. Assert `LegacyPolicy` is convertible into a `Policy`.
+#[test]
+fn read_policy() {
+    // Can read a `Policy`
+    let policy_str = include_bytes!("../tests_data/policy.json");
+    Policy::try_from(policy_str.as_slice()).unwrap();
+
+    // Can read a `LegacyPolicy`
+    let legacy_policy_str = include_bytes!("../tests_data/legacy_policy.json");
+    serde_json::from_slice::<LegacyPolicy>(legacy_policy_str).unwrap();
+
+    // Can read `LegacyPolicy` as `Policy`
+    Policy::try_from(legacy_policy_str.as_slice()).unwrap();
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
