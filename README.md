@@ -254,7 +254,7 @@ The benchmarks presented in this section are run on a Intel(R) Xeon(R) Platinum 
 A formal description and proof of the CoverCrypt scheme is given in [this paper](./bib/CoverCrypt.pdf).
 It also contains an interesting discussion about the implementation.
 
-The developer documentation can be found on [doc.rs](https://docs.rs/cosmian_cover_crypt/6.0.8/cosmian_cover_crypt/index.html)
+The developer documentation can be found on [doc.rs](https://docs.rs/cosmian_cover_crypt/latest/cosmian_cover_crypt/index.html)
 
 ## Releases
 
