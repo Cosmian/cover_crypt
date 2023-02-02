@@ -17,7 +17,7 @@ jobs:
       regression-filename: non_regression_vector.json
       branch-java: feature/use_cover_crypt_v9
       branch-js: develop
-      branch-flutter: develop
+      branch-flutter: feature/add_github_ci
       branch-python: develop
       bench-features: full_bench,hybridized_bench
     secrets: inherit
