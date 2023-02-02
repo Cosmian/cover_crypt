@@ -70,7 +70,9 @@ pub fn webassembly_add_axis(policy: Vec<u8>, axis: String) -> Result<Vec<u8>, Js
 /// slot
 ///
 /// - `attributes`  : user access policy (boolean expression as string)
-/// - `policy`      : global policy data (JSON)
+/// - `policy`      : global policy data (bytes)
+///
+/// Returns the `rotated` policy
 #[wasm_bindgen]
 pub fn webassembly_rotate_attributes(
     attributes: Attributes,
