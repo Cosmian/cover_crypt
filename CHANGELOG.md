@@ -13,10 +13,11 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - Merge AbePolicy
+- Adapt FFI, WASM and pyo3 interfaces
 
 ### Ci
 
-- Update kms version
+- Update KMS version
 - Rebase externals repos
 
 ## [9.0.0] - 2023-01-20
