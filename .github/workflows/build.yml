@@ -15,9 +15,9 @@ jobs:
       toolchain: stable
       kms-version: 4.2.0
       regression-filename: non_regression_vector.json
-      branch-java: develop
-      branch-js: develop
-      branch-flutter: develop
-      branch-python: develop
+      branch-java: main
+      branch-js: main
+      branch-flutter: main
+      branch-python: main
       bench-features: full_bench,hybridized_bench
     secrets: inherit
