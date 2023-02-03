@@ -1,11 +1,12 @@
-use crate::{
-    statics::{CoverCryptX25519Aes256, MasterSecretKey},
-    CoverCrypt,
-};
-use abe_policy::{AccessPolicy, Policy};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
+
+use crate::{
+    abe_policy::{AccessPolicy, Policy},
+    statics::{CoverCryptX25519Aes256, MasterSecretKey},
+    CoverCrypt,
+};
 
 /// Generate the master authority keys for supplied Policy
 ///

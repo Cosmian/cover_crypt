@@ -1,21 +1,22 @@
-//! Implements the core functionalities of CoverCrypt.
+//! Implements the core functionalities of `CoverCrypt`.
 
 // Allows using the paper notations.
 #![allow(non_snake_case)]
 
-use self::partitions::Partition;
-use cosmian_crypto_core::KeyTrait;
-use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
 };
 
+use cosmian_crypto_core::KeyTrait;
+use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
+
+use crate::abe_policy::Partition;
+
 #[macro_use]
 pub mod macros;
 
 pub mod api;
-pub mod partitions;
 pub mod primitives;
 
 #[cfg(feature = "interface")]

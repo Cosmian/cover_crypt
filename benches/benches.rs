@@ -1,5 +1,5 @@
-use abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis};
 use cosmian_cover_crypt::{
+    abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis},
     statics::{CoverCryptX25519Aes256, EncryptedHeader},
     CoverCrypt, Error,
 };
@@ -10,9 +10,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use {
     cosmian_cover_crypt::{
         interfaces::ffi::hybrid_cc_aes::{
-            h_aes_create_decryption_cache, h_aes_create_encryption_cache, h_aes_decrypt_header,
-            h_aes_decrypt_header_using_cache, h_aes_destroy_decryption_cache,
-            h_aes_destroy_encryption_cache, h_aes_encrypt_header, h_aes_encrypt_header_using_cache,
+            h_create_decryption_cache, h_create_encryption_cache, h_decrypt_header,
+            h_decrypt_header_using_cache, h_destroy_decryption_cache, h_destroy_encryption_cache,
+            h_encrypt_header, h_encrypt_header_using_cache,
         },
         statics::PublicKey,
     },
@@ -43,6 +43,7 @@ fn policy() -> Result<Policy, Error> {
                     ("HR", EncryptionHint::Classic),
                     ("MKG", EncryptionHint::Classic),
                     ("FIN", EncryptionHint::Classic),
+                    ("CYBER", EncryptionHint::Classic),
                 ],
                 false,
             ),
@@ -67,6 +68,7 @@ fn policy() -> Result<Policy, Error> {
                     ("HR", EncryptionHint::Hybridized),
                     ("MKG", EncryptionHint::Hybridized),
                     ("FIN", EncryptionHint::Hybridized),
+                    ("CYBER", EncryptionHint::Hybridized),
                 ],
                 false,
             ),
@@ -100,8 +102,8 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         // Access policy with 2 partition
         access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || (Department::HR && Security Level::Confidential)",
+                "(Department::FIN && Security Level::Protected) || (Department::HR && Security \
+                 Level::Confidential)",
             )
             .unwrap(),
         );
@@ -109,26 +111,30 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         // Access policy with 3 partition
         access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || ((Department::HR || Department::MKG) && Security Level::Confidential)",
+                "(Department::FIN && Security Level::Protected) || ((Department::HR || \
+                 Department::MKG) && Security Level::Confidential)",
             )
             .unwrap(),
         );
 
         // Access policy with 4 partition
-        access_policies.push( AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || ((Department::HR || Department::MKG || Department::R&D) && Security Level::Confidential)",
-        )
-            .unwrap());
+        access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::FIN && Security Level::Protected) || ((Department::HR || \
+                 Department::MKG || Department::R&D) && Security Level::Confidential)",
+            )
+            .unwrap(),
+        );
 
         // Access policy with 5 partition
-        access_policies.push(AccessPolicy::from_boolean_expression(
-                "(Department::FIN && Security Level::Protected) \
-                    || ((Department::HR || Department::MKG || Department::R&D) && Security Level::Confidential) \
-                    || (Department::HR && Security Level::Top Secret)",
-    )
-    .unwrap());
+        access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::FIN && Security Level::Protected) || ((Department::HR || \
+                 Department::MKG || Department::R&D) && Security Level::Confidential) || \
+                 (Department::HR && Security Level::Top Secret)",
+            )
+            .unwrap(),
+        );
     }
 
     // The intersection between the user access policies and the encryption
@@ -148,10 +154,27 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
             )
             .unwrap(),
         );
-        user_access_policies.push(AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Department::MKG && Department::HR) && Security Level::Protected",
-        )
-        .unwrap());
+        user_access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::FIN && Department::MKG && Department::HR) && Security \
+                 Level::Protected",
+            )
+            .unwrap(),
+        );
+        user_access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::R&D && Department::FIN && Department::MKG && Department::HR) && \
+                 Security Level::Protected",
+            )
+            .unwrap(),
+        );
+        user_access_policies.push(
+            AccessPolicy::from_boolean_expression(
+                "(Department::R&D && Department::FIN && Department::MKG && Department::HR && \
+                 Department::CYBER) && Security Level::Protected",
+            )
+            .unwrap(),
+        );
     }
 
     (user_access_policies, access_policies)
@@ -316,7 +339,7 @@ fn bench_ffi_header_encryption(c: &mut Criterion) {
 
     c.bench_function("FFI AES header encryption", |b| {
         b.iter(|| unsafe {
-            unwrap_ffi_error(h_aes_encrypt_header(
+            unwrap_ffi_error(h_encrypt_header(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
                 header_bytes_ptr,
@@ -360,7 +383,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
 
     let mut cache_handle: i32 = 0;
     unsafe {
-        unwrap_ffi_error(h_aes_create_encryption_cache(
+        unwrap_ffi_error(h_create_encryption_cache(
             &mut cache_handle,
             policy_ptr,
             policy_len,
@@ -383,7 +406,7 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
 
     c.bench_function("FFI AES header encryption using cache", |b| {
         b.iter(|| unsafe {
-            unwrap_ffi_error(h_aes_encrypt_header_using_cache(
+            unwrap_ffi_error(h_encrypt_header_using_cache(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
                 header_bytes_ptr,
@@ -400,20 +423,20 @@ fn bench_ffi_header_encryption_using_cache(c: &mut Criterion) {
     });
 
     unsafe {
-        unwrap_ffi_error(h_aes_destroy_encryption_cache(cache_handle))
+        unwrap_ffi_error(h_destroy_encryption_cache(cache_handle))
             .expect("cannot destroy encryption cache");
     }
 }
 
 #[cfg(feature = "ffi")]
 unsafe fn unwrap_ffi_error(val: i32) -> Result<(), Error> {
-    use abe_policy::interfaces::ffi::error::get_last_error;
+    use cosmian_ffi::error::h_get_error;
 
     if val != 0 {
         let mut message_bytes_key = vec![0u8; 4096];
         let message_bytes_ptr = message_bytes_key.as_mut_ptr().cast::<i8>();
         let mut message_bytes_len = message_bytes_key.len() as c_int;
-        get_last_error(message_bytes_ptr, &mut message_bytes_len);
+        h_get_error(message_bytes_ptr, &mut message_bytes_len);
         let cstr = CStr::from_ptr(message_bytes_ptr);
         Err(Error::Other(format!("FFI ERROR: {}", cstr.to_str()?)))
     } else {
@@ -441,7 +464,11 @@ fn bench_header_decryption(c: &mut Criterion) {
     for (n_partitions_usk, usk) in user_decryption_keys.iter().enumerate() {
         for (n_partition_ct, access_policy) in access_policies.iter().enumerate() {
             group.bench_function(
-                &format!("ciphertexts with {} partition(s), usk with {} partitions", n_partition_ct + 1, n_partitions_usk + 1),
+                &format!(
+                    "ciphertexts with {} partition(s), usk with {} partitions",
+                    n_partition_ct + 1,
+                    n_partitions_usk + 1
+                ),
                 |b| {
                     b.iter(|| {
                         let (_, encrypted_header) = EncryptedHeader::generate(
@@ -453,12 +480,22 @@ fn bench_header_decryption(c: &mut Criterion) {
                             Some(&authenticated_data),
                         )
                         .unwrap_or_else(|_| {
-                                panic!("cannot encrypt header for {} ciphertext partition(s), {} usk partition(s)", n_partition_ct + 1, n_partitions_usk)
+                            panic!(
+                                "cannot encrypt header for {} ciphertext partition(s), {} usk \
+                                 partition(s)",
+                                n_partition_ct + 1,
+                                n_partitions_usk
+                            )
                         });
                         encrypted_header
                             .decrypt(&cover_crypt, usk, Some(&authenticated_data))
                             .unwrap_or_else(|_| {
-                                panic!("cannot decrypt header for {} ciphertext partition(s), {} usk partition(s)", n_partition_ct + 1, n_partitions_usk)
+                                panic!(
+                                    "cannot decrypt header for {} ciphertext partition(s), {} usk \
+                                     partition(s)",
+                                    n_partition_ct + 1,
+                                    n_partitions_usk
+                                )
                             });
                     })
                 },
@@ -504,7 +541,7 @@ fn bench_ffi_header_decryption(c: &mut Criterion) {
 
     c.bench_function("FFI AES header decryption", |b| {
         b.iter(|| unsafe {
-            unwrap_ffi_error(h_aes_decrypt_header(
+            unwrap_ffi_error(h_decrypt_header(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
                 header_metadata_ptr,
@@ -555,7 +592,7 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
 
     let mut cache_handle = 0;
     unsafe {
-        unwrap_ffi_error(h_aes_create_decryption_cache(
+        unwrap_ffi_error(h_create_decryption_cache(
             &mut cache_handle,
             user_decryption_key_ptr,
             user_decryption_key_bytes.len() as i32,
@@ -567,7 +604,7 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
 
     c.bench_function("FFI AES header decryption using cache", |b| {
         b.iter(|| unsafe {
-            unwrap_ffi_error(h_aes_decrypt_header_using_cache(
+            unwrap_ffi_error(h_decrypt_header_using_cache(
                 symmetric_key_ptr,
                 &mut symmetric_key_len,
                 header_metadata_ptr,
@@ -583,7 +620,7 @@ fn bench_ffi_header_decryption_using_cache(c: &mut Criterion) {
     });
 
     unsafe {
-        unwrap_ffi_error(h_aes_destroy_decryption_cache(cache_handle))
+        unwrap_ffi_error(h_destroy_decryption_cache(cache_handle))
             .expect("cannot destroy encryption cache");
     }
 }

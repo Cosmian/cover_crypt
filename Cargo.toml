@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "9.0.0"
+version = "10.0.0"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
@@ -25,7 +25,7 @@ name = "benches"
 debug = true
 
 [features]
-ffi = ["lazy_static", "interface"]
+ffi = ["cosmian_ffi", "lazy_static", "interface"]
 full_bench = ["interface"]
 hybridized_bench = []
 python = ["pyo3", "interface"]
@@ -33,7 +33,6 @@ wasm_bindgen = ["js-sys", "wasm-bindgen", "interface"]
 interface = []
 
 [dependencies]
-abe_policy = { version = "3.0", features = ["interface", "ffi", "wasm_bindgen"] }
 cosmian_crypto_core = "5.0"
 hex = "0.4"
 leb128 = "0.2"
@@ -45,6 +44,7 @@ thiserror = "1.0"
 zeroize = "1.5"
 
 # Optional dependencies
+cosmian_ffi = { version = "1.0", optional = true }
 js-sys = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
 pyo3 = { version = "0.17", features = ["extension-module", "abi3", "abi3-py37", "generate-import-lib"], optional = true }

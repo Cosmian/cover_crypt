@@ -1,11 +1,10 @@
 use std::os::raw::{c_char, c_int};
 
-use abe_policy::{
-    ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes, AccessPolicy, Policy,
-};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_ffi::{ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes};
 
 use crate::{
+    abe_policy::{AccessPolicy, Policy},
     statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
     CoverCrypt,
 };
@@ -42,8 +41,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
     // Serialize master keys and write to output buffers.
     let msk_bytes = ffi_unwrap!(msk.try_to_bytes());
     let mpk_bytes = ffi_unwrap!(mpk.try_to_bytes());
-    ffi_write_bytes!("msk", &msk_bytes, msk_ptr, msk_len);
-    ffi_write_bytes!("mpk", &mpk_bytes, mpk_ptr, mpk_len);
+    ffi_write_bytes!("msk", &msk_bytes, msk_ptr, msk_len, "mpk", &mpk_bytes, mpk_ptr, mpk_len);
 
     0
 }
@@ -55,7 +53,7 @@ pub unsafe extern "C" fn h_generate_master_keys(
 /// - `usk_len`             : Size of the output buffer
 /// - `msk_ptr`             : Master secret key (required for this generation)
 /// - `msk_len`             : Master secret key length
-/// - `access_policy_ptr`   : null terminated access policy string
+/// - `user_policy_ptr`   : null terminated access policy string
 /// - `policy_ptr`          : bytes of the policyused to generate the keys
 /// - `policy_len`          : length of the policy (in bytes)
 /// # Safety
@@ -64,7 +62,7 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
     usk_len: *mut c_int,
     msk_ptr: *const c_char,
     msk_len: c_int,
-    access_policy_ptr: *const c_char,
+    user_policy_ptr: *const c_char,
     policy_ptr: *const c_char,
     policy_len: c_int,
 ) -> c_int {
@@ -74,15 +72,15 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
     let msk = ffi_unwrap!(MasterSecretKey::try_from_bytes(msk_bytes));
     let policy_bytes = ffi_read_bytes!("policy", policy_ptr, policy_len);
     let policy = ffi_unwrap!(Policy::parse_and_convert(policy_bytes));
-    let access_policy_string = ffi_read_string!("access policy", access_policy_ptr);
-    let access_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
-        access_policy_string.as_str()
+    let user_policy_string = ffi_read_string!("access policy", user_policy_ptr);
+    let user_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
+        user_policy_string.as_str()
     ));
 
     // Generate user secret key.
     let usk = ffi_unwrap!(CoverCryptX25519Aes256::default().generate_user_secret_key(
         &msk,
-        &access_policy,
+        &user_policy,
         &policy
     ));
 
@@ -96,7 +94,7 @@ pub unsafe extern "C" fn h_generate_user_secret_key(
 #[no_mangle]
 /// Updates the master keys according to the given policy.
 ///
-/// Cf (`CoverCrypt::update_master_keys`)[CoverCrypt::update_master_keys].
+/// Cf (`CoverCrypt::update_master_keys`)[`CoverCrypt::update_master_keys`].
 ///
 /// - `updated_msk_ptr` : Output buffer containing the updated master secret key
 /// - `updated_msk_len` : Size of the updated master secret key output buffer
@@ -137,14 +135,23 @@ pub unsafe extern "C" fn h_update_master_keys(
     // Serialize the master keys and write to the output buffers.
     let msk_bytes = ffi_unwrap!(msk.try_to_bytes());
     let mpk_bytes = ffi_unwrap!(mpk.try_to_bytes());
-    ffi_write_bytes!("msk", &msk_bytes, updated_msk_ptr, updated_msk_len);
-    ffi_write_bytes!("mpk", &mpk_bytes, updated_mpk_ptr, updated_mpk_len);
+    ffi_write_bytes!(
+        "msk",
+        &msk_bytes,
+        updated_msk_ptr,
+        updated_msk_len,
+        "mpk",
+        &mpk_bytes,
+        updated_mpk_ptr,
+        updated_mpk_len
+    );
 
     0
 }
 
 #[no_mangle]
-/// Refreshes the user secret key according to the given master key and access policy.
+/// Refreshes the user secret key according to the given master key and access
+/// policy.
 ///
 /// Cf [`CoverCrypt::refresh_user_secret_key()`](CoverCrypt::refresh_user_secret_key).
 ///

@@ -1,26 +1,26 @@
 #![allow(dead_code)]
 
-use crate::{
-    statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
-    CoverCrypt,
+use std::{
+    collections::HashMap,
+    os::raw::{c_char, c_int},
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        RwLock,
+    },
 };
-use abe_policy::{
-    ffi_bail, ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes, AccessPolicy, Policy,
-};
+
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     symmetric_crypto::{Dem, SymKey},
     KeyTrait,
 };
+use cosmian_ffi::{ffi_bail, ffi_read_bytes, ffi_read_string, ffi_unwrap, ffi_write_bytes};
 use lazy_static::lazy_static;
-use std::{
-    collections::HashMap,
-    os::raw::{c_char, c_int},
-    ptr::null_mut,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        RwLock,
-    },
+
+use crate::{
+    abe_policy::{AccessPolicy, Policy},
+    statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey, DEM},
+    CoverCrypt,
 };
 
 // -------------------------------
@@ -46,11 +46,11 @@ pub struct EncryptionCache {
 /// reused when encrypting messages which avoids passing these objects to Rust
 /// in each call.
 ///
-/// WARNING: [`h_aes_destroy_encrypt_cache()`](h_aes_destroy_encryption_cache)
+/// WARNING: [`h_destroy_encrypt_cache()`](h_destroy_encryption_cache)
 /// should be called to reclaim the cache memory.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_create_encryption_cache(
+pub unsafe extern "C" fn h_create_encryption_cache(
     cache_handle: *mut c_int,
     policy_ptr: *const c_char,
     policy_len: c_int,
@@ -60,9 +60,9 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
     //
     // Read input from buffers.
     let policy = ffi_read_bytes!("policy", policy_ptr, policy_len);
-    let policy = ffi_unwrap!(Policy::parse_and_convert(policy));
+    let policy = ffi_unwrap!(Policy::try_from(policy));
     let mpk = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
-    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk));
+    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk), "mpk");
 
     let cache = EncryptionCache { policy, mpk };
     let id = NEXT_ENCRYPTION_CACHE_ID.fetch_add(1, Ordering::Acquire);
@@ -78,10 +78,10 @@ pub unsafe extern "C" fn h_aes_create_encryption_cache(
 #[no_mangle]
 /// Reclaims the memory of the cache.
 ///
-/// Cf [`h_aes_create_encrypt_cache()`](h_aes_create_encryption_cache).
+/// Cf [`h_create_encrypt_cache()`](h_create_encryption_cache).
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_destroy_encryption_cache(cache_handle: c_int) -> c_int {
+pub unsafe extern "C" fn h_destroy_encryption_cache(cache_handle: c_int) -> c_int {
     let mut map = ENCRYPTION_CACHE_MAP
         .write()
         .expect("A write mutex on encryption cache failed");
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn h_aes_destroy_encryption_cache(cache_handle: c_int) -> 
 /// Encrypts a header using an encryption cache.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
+pub unsafe extern "C" fn h_encrypt_header_using_cache(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
     header_bytes_ptr: *mut c_char,
@@ -154,10 +154,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
         "symmetric key",
         symmetric_key.as_bytes(),
         symmetric_key_ptr,
-        symmetric_key_len
-    );
-
-    ffi_write_bytes!(
+        symmetric_key_len,
         "encrypted header",
         &ffi_unwrap!(encrypted_header.try_to_bytes()),
         header_bytes_ptr,
@@ -173,7 +170,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header_using_cache(
 ///
 /// The symmetric key and header bytes are returned in the first OUT parameters
 /// # Safety
-pub unsafe extern "C" fn h_aes_encrypt_header(
+pub unsafe extern "C" fn h_encrypt_header(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
     header_bytes_ptr: *mut c_char,
@@ -189,10 +186,10 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
     authentication_data_len: c_int,
 ) -> c_int {
     let policy = ffi_read_bytes!("policy", policy_ptr, policy_len);
-    let policy = ffi_unwrap!(Policy::parse_and_convert(policy));
+    let policy = ffi_unwrap!(Policy::try_from(policy));
 
     let mpk = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
-    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk));
+    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk), "mpk");
 
     let encryption_policy_bytes = ffi_read_string!("encryption policy", encryption_policy_ptr);
     let encryption_policy = ffi_unwrap!(AccessPolicy::from_boolean_expression(
@@ -232,10 +229,7 @@ pub unsafe extern "C" fn h_aes_encrypt_header(
         "symmetric key",
         symmetric_key.as_bytes(),
         symmetric_key_ptr,
-        symmetric_key_len
-    );
-
-    ffi_write_bytes!(
+        symmetric_key_len,
         "encrypted header",
         &ffi_unwrap!(encrypted_header.try_to_bytes()),
         header_bytes_ptr,
@@ -265,19 +259,19 @@ pub struct DecryptionCache {
 /// Creates a cache containing the user secret key. This cache can be reused
 /// when decrypting messages which avoids passing this key to Rust in each call.
 ///
-/// Cf [`h_aes_decrypt_header_using_cache()`](h_aes_decrypt_header_using_cache).
+/// Cf [`h_decrypt_header_using_cache()`](h_decrypt_header_using_cache).
 ///
-/// WARNING: [`h_aes_destroy_decryption_cache()`](h_aes_destroy_decryption_cache)
+/// WARNING: [`h_destroy_decryption_cache()`](h_destroy_decryption_cache)
 /// should be called to reclaim the cache memory.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_create_decryption_cache(
+pub unsafe extern "C" fn h_create_decryption_cache(
     cache_handle: *mut c_int,
     usk_ptr: *const c_char,
     usk_len: c_int,
 ) -> i32 {
     let usk_bytes = ffi_read_bytes!("usk", usk_ptr, usk_len);
-    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes), "usk");
 
     let cache = DecryptionCache { usk };
     let id = NEXT_DECRYPTION_CACHE_ID.fetch_add(1, Ordering::Acquire);
@@ -294,7 +288,7 @@ pub unsafe extern "C" fn h_aes_create_decryption_cache(
 /// Reclaims decryption cache memory.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> c_int {
+pub unsafe extern "C" fn h_destroy_decryption_cache(cache_handle: c_int) -> c_int {
     let mut map = DECRYPTION_CACHE_MAP
         .write()
         .expect("A write mutex on decryption cache failed");
@@ -306,11 +300,10 @@ pub unsafe extern "C" fn h_aes_destroy_decryption_cache(cache_handle: c_int) -> 
 /// Decrypts an encrypted header using a cache. Returns the symmetric key and
 /// header metadata if any.
 ///
-/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
-/// `header_metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL`.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
+pub unsafe extern "C" fn h_decrypt_header_using_cache(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
     header_metadata_ptr: *mut c_char,
@@ -356,17 +349,20 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
         authentication_data
     ));
 
-    // Symmetric Key
-    ffi_write_bytes!(
-        "symmetric key",
-        header.symmetric_key.as_bytes(),
-        symmetric_key_ptr,
-        symmetric_key_len
-    );
-
-    // serialize header metadata
-    if !header_metadata_ptr.is_null() && *header_metadata_len > 0 {
+    if header_metadata_ptr.is_null() {
+        *header_metadata_len = 0;
         ffi_write_bytes!(
+            "symmetric key",
+            header.symmetric_key.as_bytes(),
+            symmetric_key_ptr,
+            symmetric_key_len
+        );
+    } else {
+        ffi_write_bytes!(
+            "symmetric key",
+            header.symmetric_key.as_bytes(),
+            symmetric_key_ptr,
+            symmetric_key_len,
             "header metadata",
             &header.metadata,
             header_metadata_ptr,
@@ -381,11 +377,10 @@ pub unsafe extern "C" fn h_aes_decrypt_header_using_cache(
 /// Decrypts an encrypted header, returning the symmetric key and header
 /// metadata if any.
 ///
-/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
-/// `header_metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL`.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_decrypt_header(
+pub unsafe extern "C" fn h_decrypt_header(
     symmetric_key_ptr: *mut c_char,
     symmetric_key_len: *mut c_int,
     header_metadata_ptr: *mut c_char,
@@ -398,13 +393,16 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
     usk_len: c_int,
 ) -> c_int {
     let usk_bytes = ffi_read_bytes!("usk", usk_ptr, usk_len);
-    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes), "usk");
     let encrypted_header_bytes = ffi_read_bytes!(
         "encrypted header",
         encrypted_header_ptr,
         encrypted_header_len
     );
-    let encrypted_header = ffi_unwrap!(EncryptedHeader::try_from_bytes(encrypted_header_bytes));
+    let encrypted_header = ffi_unwrap!(
+        EncryptedHeader::try_from_bytes(encrypted_header_bytes),
+        "encrypted header"
+    );
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
@@ -423,21 +421,21 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
         authentication_data
     ));
 
-    // Symmetric Key
-    ffi_write_bytes!(
-        "symmetric key",
-        decrypted_header.symmetric_key.as_bytes(),
-        symmetric_key_ptr,
-        symmetric_key_len
-    );
-
-    if header_metadata_ptr.is_null() || *header_metadata_len == 0 {
-        let null_ptr = null_mut::<c_char>();
-        let null_len = &mut 0;
-        ffi_write_bytes!("metadata", &decrypted_header.metadata, null_ptr, null_len);
+    if header_metadata_ptr.is_null() {
+        *header_metadata_len = 0;
+        ffi_write_bytes!(
+            "symmetric key",
+            decrypted_header.symmetric_key.as_bytes(),
+            symmetric_key_ptr,
+            symmetric_key_len
+        );
     } else {
         ffi_write_bytes!(
-            "metadata",
+            "symmetric key",
+            decrypted_header.symmetric_key.as_bytes(),
+            symmetric_key_ptr,
+            symmetric_key_len,
+            "header metadata",
             &decrypted_header.metadata,
             header_metadata_ptr,
             header_metadata_len
@@ -450,14 +448,14 @@ pub unsafe extern "C" fn h_aes_decrypt_header(
 #[no_mangle]
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_symmetric_encryption_overhead() -> c_int {
+pub unsafe extern "C" fn h_symmetric_encryption_overhead() -> c_int {
     DEM::ENCRYPTION_OVERHEAD as c_int
 }
 
 #[no_mangle]
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_encrypt_block(
+pub unsafe extern "C" fn h_dem_encrypt(
     ciphertext_ptr: *mut c_char,
     ciphertext_len: *mut c_int,
     symmetric_key_ptr: *const c_char,
@@ -497,7 +495,7 @@ pub unsafe extern "C" fn h_aes_encrypt_block(
 #[no_mangle]
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_decrypt_block(
+pub unsafe extern "C" fn h_dem_decrypt(
     plaintext_ptr: *mut c_char,
     plaintext_len: *mut c_int,
     symmetric_key_ptr: *const c_char,
@@ -540,7 +538,7 @@ pub unsafe extern "C" fn h_aes_decrypt_block(
 /// Hybrid encrypt some content
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_encrypt(
+pub unsafe extern "C" fn h_hybrid_encrypt(
     ciphertext_ptr: *mut c_char,
     ciphertext_len: *mut c_int,
     policy_ptr: *const c_char,
@@ -566,7 +564,7 @@ pub unsafe extern "C" fn h_aes_encrypt(
     let plaintext = ffi_read_bytes!("plaintext", plaintext_ptr, plaintext_len);
 
     let mpk_bytes = ffi_read_bytes!("mpk", mpk_ptr, mpk_len);
-    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes));
+    let mpk = ffi_unwrap!(PublicKey::try_from_bytes(mpk_bytes), "mpk");
 
     let header_metadata = if header_metadata_ptr.is_null() || header_metadata_len == 0 {
         None
@@ -615,13 +613,12 @@ pub unsafe extern "C" fn h_aes_encrypt(
 }
 
 #[no_mangle]
-/// Hybrid decrypt some content
+/// Hybrid decrypt some content.
 ///
-/// No header metadata is returned if `header_metadata_ptr` is `NULL` or
-/// `header_metadata_len` is `0`.
+/// No header metadata is returned if `header_metadata_ptr` is `NULL`.
 ///
 /// # Safety
-pub unsafe extern "C" fn h_aes_decrypt(
+pub unsafe extern "C" fn h_hybrid_decrypt(
     plaintext_ptr: *mut c_char,
     plaintext_len: *mut c_int,
     header_metadata_ptr: *mut c_char,
@@ -634,7 +631,7 @@ pub unsafe extern "C" fn h_aes_decrypt(
     usk_len: c_int,
 ) -> c_int {
     let usk_bytes = ffi_read_bytes!("usk", usk_ptr, usk_len);
-    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes));
+    let usk = ffi_unwrap!(UserSecretKey::try_from_bytes(usk_bytes), "usk");
 
     let authentication_data = if authentication_data_ptr.is_null() || authentication_data_len == 0 {
         None
@@ -668,19 +665,15 @@ pub unsafe extern "C" fn h_aes_decrypt(
         authentication_data,
     ));
 
-    ffi_write_bytes!("plaintext", &plaintext, plaintext_ptr, plaintext_len);
-
-    if header_metadata_ptr.is_null() || *header_metadata_len == 0 {
-        let null_ptr = null_mut::<c_char>();
-        let null_len = &mut 0;
-        ffi_write_bytes!(
-            "header metadata",
-            &decrypted_header.metadata,
-            null_ptr,
-            null_len
-        );
+    if header_metadata_ptr.is_null() {
+        *header_metadata_len = 0;
+        ffi_write_bytes!("plaintext", &plaintext, plaintext_ptr, plaintext_len);
     } else {
         ffi_write_bytes!(
+            "plaintext",
+            &plaintext,
+            plaintext_ptr,
+            plaintext_len,
             "header metadata",
             &decrypted_header.metadata,
             header_metadata_ptr,

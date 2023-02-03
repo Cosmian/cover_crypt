@@ -19,11 +19,13 @@
 
 mod error;
 
+pub mod abe_policy;
 pub mod core;
 pub mod statics;
 
 #[cfg(feature = "interface")]
 pub mod interfaces;
 
-pub use self::core::api::{CleartextHeader, CoverCrypt, EncryptedHeader};
 pub use error::Error;
+
+pub use self::core::api::{CleartextHeader, CoverCrypt, EncryptedHeader};

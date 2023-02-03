@@ -4,8 +4,8 @@ language = "C"
 [parse]
 parse_deps = true
 exclude = []
-extra_bindings = ["abe_policy"]
-include = ["abe_policy"]
+extra_bindings = ["cosmian_ffi"]
+include = ["cosmian_ffi"]
 
 [defines]
 "target_os = ios" = "TARGET_OS_IOS"

@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [10.0.0] - 2023-02-02
+
+### Documentation
+
+- Update readme with benchmarks and sizes
+
+### Features
+
+- Merge AbePolicy
+- Adapt FFI, WASM and pyo3 interfaces
+
+### Ci
+
+- Update KMS version
+- Rebase externals repos
+
 ## [9.0.0] - 2023-01-20
 
 ### Changed

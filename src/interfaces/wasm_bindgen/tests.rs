@@ -1,4 +1,17 @@
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
+/// Test WASM bindgen functions prerequisites:
+/// - `cargo install wasm-bindgen-cli`
+/// - `cargo test --target wasm32-unknown-unknown --release --features
+///   wasm_bindgen --lib`
+use js_sys::{Array, JsString, Uint8Array};
+use wasm_bindgen::JsValue;
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::{
+    abe_policy::{
+        interfaces::wasm_bindgen::{webassembly_rotate_attributes, Attributes},
+        Policy,
+    },
     interfaces::wasm_bindgen::{
         generate_cc_keys::{
             webassembly_generate_master_keys, webassembly_generate_user_secret_key,
@@ -14,18 +27,6 @@ use crate::{
     },
     CoverCrypt, Error,
 };
-use abe_policy::{
-    interfaces::wasm_bindgen::{webassembly_rotate_attributes, Attributes},
-    Policy,
-};
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
-/// Test WASM bindgen functions prerequisites:
-/// - `cargo install wasm-bindgen-cli`
-/// - `cargo test --target wasm32-unknown-unknown --release --features
-///   wasm_bindgen --lib`
-use js_sys::{Array, JsString, Uint8Array};
-use wasm_bindgen::JsValue;
-use wasm_bindgen_test::wasm_bindgen_test;
 
 fn encrypt_header(
     policy: &Policy,

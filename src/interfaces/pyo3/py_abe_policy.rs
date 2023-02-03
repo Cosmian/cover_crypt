@@ -1,6 +1,6 @@
 use std::result::Result;
 
-use abe_policy::{
+use crate::abe_policy::{
     Attribute as AttributeRust, EncryptionHint, Policy as PolicyRust, PolicyAxis as PolicyAxisRust,
 };
 use pyo3::{

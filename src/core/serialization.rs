@@ -1,22 +1,22 @@
-//! Implements the serialization methods for the CoverCrypt objects.
+//! Implements the serialization methods for the `CoverCrypt` objects.
 
-use crate::{
-    core::{
-        partitions::Partition, Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey,
-        UserSecretKey,
-    },
-    CleartextHeader, CoverCrypt, EncryptedHeader, Error,
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    ops::{Add, Div, Mul, Sub},
 };
+
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
     symmetric_crypto::{Dem, SymKey},
     KeyTrait,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    ops::{Add, Div, Mul, Sub},
+
+use crate::{
+    abe_policy::Partition,
+    core::{Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey},
+    CleartextHeader, CoverCrypt, EncryptedHeader, Error,
 };
 
 impl<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> Serializable
@@ -354,14 +354,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::statics::{tests::policy, CoverCryptX25519Aes256};
-
-    use super::*;
-    use abe_policy::{AccessPolicy, EncryptionHint};
+    use crate::abe_policy::{AccessPolicy, EncryptionHint};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
         symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
     };
+
+    use super::*;
+    use crate::statics::{tests::policy, CoverCryptX25519Aes256};
 
     const TAG_LENGTH: usize = 32;
     const SYM_KEY_LENGTH: usize = 32;

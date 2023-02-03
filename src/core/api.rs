@@ -1,16 +1,20 @@
-//! Defines the CoverCrypt API.
+//! Defines the `CoverCrypt` API.
 
-use crate::Error;
-use abe_policy::{AccessPolicy, Policy};
+use std::{
+    fmt::Debug,
+    ops::{Add, Div, Mul, Sub},
+};
+
 #[cfg(feature = "interface")]
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
     symmetric_crypto::{Dem, SymKey},
 };
-use std::{
-    fmt::Debug,
-    ops::{Add, Div, Mul, Sub},
+
+use crate::{
+    abe_policy::{AccessPolicy, Policy},
+    Error,
 };
 
 /// This trait is the main entry point for the core functionalities.
@@ -103,7 +107,8 @@ pub trait CoverCrypt<
         policy: &Policy,
     ) -> Result<Self::UserSecretKey, Error>;
 
-    /// Refreshes the user key according to the given master key and user policy.
+    /// Refreshes the user key according to the given master key and user
+    /// policy.
     ///
     /// The user key will be granted access to the current partitions, as
     /// determined by its access policy. If `preserve_old_partitions_access`
@@ -239,14 +244,16 @@ where
         + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
     CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
 {
-    /// Generates an encrypted header for a random key and the given metadata. Returns the
-    /// encrypted header along with the symmetric key encapsulated in this header.
+    /// Generates an encrypted header for a random key and the given metadata.
+    /// Returns the encrypted header along with the symmetric key
+    /// encapsulated in this header.
     ///
     /// - `cover_crypt`         : `CoverCrypt` object
     /// - `policy`              : global policy
     /// - `public_key`          : `CoverCrypt` public key
     /// - `encryption_policy`   : access policy used for the encapsulation
-    /// - `header_metadata`     : additional data symmetrically encrypted in the header
+    /// - `header_metadata`     : additional data symmetrically encrypted in the
+    ///   header
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &CoverCryptScheme,
@@ -260,7 +267,8 @@ where
         let (symmetric_key, encapsulation) =
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
-        // encrypt the metadata using the DEM with the authentication_data and the encapsulated key
+        // encrypt the metadata using the DEM with the authentication_data and the
+        // encapsulated key
         let ciphertext = match header_metadata {
             Some(d) => cover_crypt.encrypt(&symmetric_key, d, authentication_data)?,
             None => vec![],
