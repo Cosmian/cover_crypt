@@ -1,24 +1,35 @@
-use cosmian_cover_crypt::statics::{CoverCryptX25519Aes256, EncryptedHeader, UserSecretKey};
-
 fn main() {
-    #[cfg(feature = "interface")]
+    #[cfg(feature = "serialization")]
     {
+        use base64::{
+            alphabet::STANDARD,
+            engine::{GeneralPurpose, GeneralPurposeConfig},
+            Engine,
+        };
+        use cosmian_cover_crypt::{
+            api::EncryptedHeader, interfaces::statics::UserSecretKey, CoverCryptStruct,
+        };
         use cosmian_crypto_core::bytes_ser_de::Serializable;
 
-        const USK: &str = "6f66df35eee5cabbff488b84fd7c42c947ab69a773ad32fe849506b7ce09c601f71ae4ee445046381dd7e24ae12546ab6749a2fae2de8c52908075ced96e1200030201084f6a28c52be77bcb09c2552f50efe2e7ac75d9fdf9790379e26b1ce7f6c0e70f0202088f8b985e341d8cf58abfea93008bd2ddae8856e3812c1f6a6a45deacc82d490402030845bae75126228b245c250a2b99c371828498b635e6d9a954c333ae1ef2af0609";
+        const USK: &str = "sUBriVEsM8HowAKOsIs9Y5p+Xa8JwJf84rlBHXzfkg+BJ6PzK79cT37Wsku5pMVKrfi/eIWhufC2pjYNMBOUAgMAH+waKc6AuwtAaYXXUAJA0K/uc5A22nXEShVXykjZ8QIBuNMsBrpSQaW0hAZ0AFvJTlwSM2BgI8m5k4wj3kQQ9NaP4cK6VvwyFlx7ZwwMZkJoCSgfiPvN4XqeWmiw/hehgjU2HkgYDQJf9QABaUoa74qM42SBnNubVVVnPvO5zrZ++NgoIHt4VPJfsMu157i6bakhOEWJy/CduXYGqedOGsNpj+gq0VsanjqeJ9gZ6sKjCknGoTxbEipIrPUO5jqJLzmJilS0ycAhR1mYlGU9yApPithxeIMaQFAAegOUTVFDFausKPbDZ1IYEWyftONyaaelMyJF4eCQIWILEihLuoscwGkVlYmRttcNVrLDW3yHN/cFQgiBSNVOi/RTLSpdsaMtattwDcaEiRUvCxe2gfaCYQV9zPIsdfAG2TIf2MPLcqUu0EBnIohX/TKyOTavt7HB76d/pCWT7sceu/YldifCYUoWABA8GbnF6DurlVwhfYUKhThnchbP3mgsEUsy+vQlWIwvrwxgpgqaabNSwJIUCXttY6kYNjJbL5pkahaAnxYLRMcvvKfGtzwlX7ewINAFrMSUBua8abWzgIa2NWlt2/ON7tKrVIaqRMYs8KFJSSsQ4bGEhZfBjWEYacAho8bFMuqamQgxaJhyj/J+tZrA24A5ckmPSPeGOIKealWkQmy8f0oAPVsOGaQFcBwLMPe4qRl49tpM6kRgpsyOkeQYOdpQ7Rue0xMKR+UhdPJkzYcGoVlAIGRmvSQzamw0kEYYV6yWr7AHiiqPZ/AuS7RcYUzPB0tSZ9BSdJKSX1jGf2aCbPPD8DxQ6VVPqWOekHshGGBOEzqBPhxtpfQB/lhl2KG/XOgUB6Kqs/zF14oLvlBL2XU2fCaj76ydrdOlo5JSSLKU2pkWASMLNGIM5TUqBsi/D4A9lLlqW5dDOik4ujNLbMAl4Yt4HxOe+pGKhFexfwJBgdCB6IBsatK/nWnIMuW9ZZFbUQG7oTOuFMKvurQ2OsyWa9VA06ldDFWIOQyzgydm2pp3XnXKaJElyYMSE1Ef4KRgEqgYA6J8yNIoI0o092y/HUxAoWWc5PesDmeqbbaLFEFdAqJ4gerNbtS1uAQWIsJzHAC2pGgxmLE7WkaD1IQ3fFgTHPOR97EdlbbM5YGa78mUpHqS0NpYQpbHluRUbyJ9uyIcvAxHewmIKIfDKnZ1z+YG/sIccCY+tFlGxBApSym1tgRBREcgkcYUAogq5nsKY5mvhXxICTCU4WtxZLxl17CC6du5pRSH+9hAMvI2C5R/6udvXkaYc0Ki35WsO5QAHlOVLBwbKLfM9xlhPkFf9qkqgKoMfqEJDcOn79QfOVFFqSfDI9Ep7Wl2YMK3r1apC2gw9xmwjBsMkEYLq2lNH4l0OqGpXDpAQCMwyTEOs5XHjWpsgxIvDId3HDu2DCBKYhUavtYHSgHNUeITVraWmhI9ygkBVMJKLfUGIVq/UwQvhzeVFePNhhN59HuWSjCyonWG6iFQeCCb9Dq0z2DNowiOnVdDWIM5g7BRTgSKBBlE/kArtfaDPyCXENUnwOZDpka63VMCNGak45IkSPT5SN7pdkPW9uIQBaAb04uYPbnALTij4xUzLwkAqXQvjNzwE8/0JzoWmWfdf9zdi1jdzpG1ZTqir0h74gc=";
 
-        const HEADER: &str = "52a42fe78eb999ce9260f341b5eb469c222842751ae08fe9b711565114de6152ac900268869849e612977e11edf623b75663f539412345198a6126893c73fd3e0303be17efd142467ae66c44561ed2e9cbe0cd4a32e8f35906f3b1b53da84be1db867e50d16ef06f0c15a18b3509cb5db36c58621323d7988127a5570e513e2332888426f738e1eceda64864904cffbc0b95de3f8ef00192edf863c39763dea6171cbeb285c045420553fade414ba40e5a729221dfd5747f4e7b4df2b845";
+        const HEADER: &str = "dkKN4Ga3BcJyspF5FntqHYwXI/yoUugzqcF0DPCluyUckuqbpXDRgSWdnyh5k0wCNAD6BgOR3WXjjrg6bF/mR/ICzF1XqtqK5Fn0uZ7FgYkBAbjlkpf7VV3M7BrwEB1FIJ2ZhekRLPayJvvTTdE6DY9ddr3IbuzEiMASs2P5nRabJe+p1xLJ9Yp1+8roV6GgWy37m7ysu24nxtKKPiyCIh29zxt4WjG+rJZOS0iJ2ETEjGPG5yyY7LYsOwsp6tQlb/XGmqd91TxjobKOnRceYRV29E1vj/uwzyT8OtRfWVITK1v1ku4knbWPhXFGVdiUpME+QqZIrjulMPI/AKoABa925Eq8h7UM64p91288I5Lq+S8+ysIaJv2nlydxb9BZBg/NeG5YGD+NIKm0EXoDekmbX91rLktO0cgFYEhNm+43BvLLXoyD7iU2bT7dQKNMUxMyoDvhB40aOkTWKJGCFnnrLf+oSxGDkCWTNaWYCJ3qygxjETGdigQzV6bzaGh2f/pjAzRHwKJHgywW4E2BCGrM4BJZvjhl44sZ14HWLofl3hNzLfrdJLFZz7Ua3PxHlidQ+ZsZSOW61G9Xt5vwHYZDtQOMVcX7tyNTNmMoIlghHjm66H8JDtuiduy08VE+7/Bk2anWhljNX2f2a/+hOjMbzqG+zaAtgpppylkvG/WlR1xLohGlLKdAWYRETIrI0oKi8RKFNHdnuPCZRDHlHDjhc273rPvsn7FlolSSTxbjvyTacB7jNwKfxW32eEK82p04GQyVN5uEBQBZUG4heNnoba54ybeU66PbOOclgE+LoblnvE0lqv8VxbCvbM3VVxTJ0rMj8ZshcxEWDv1v8E1JkGeq3QcDK/Ww1wBDuwLhxY8xbKmD40bmS8nGkRTLDuyhtg009oboT4+SL83Dz5WXEBcwO2m8Noor0QgtMjuyCAR92gvNSvewk03Q6X80W5Rd+tvw6HMwnoevpKge56akgXnQPnx76h78jIrEZ8FDZ7g6dlqPf7Lr9PnWQKhVHZwh1CBN0Rbb0ylumpvkiSCV7kF1tqPE89LO31jmYdULuQmMclKRst+SdXWSM7t2J/CeFmTgSiJ896P95imsC3XcWvmJqk+qlBNynP/Azmn775H59UHj21t8z2sFYwYkDfDRyBSxVLW/08nz+9vVy05qmrUqej/Iv4sHHjE3cgLCD+rjPOHssoFdr4ubG441N+1HpvoxFbo0Yk/fNH9JzqQj09eA4Wx6t3fjOWYJ8CESyK7lKBANYrQ5IdYuY3tk/Z3uR/uYff2pKu6xuisLF66FVC80WokFlvCEoYLLJs/q2/16mMo7cqkbhI0SLJgaAK8wIvJUS64Xxb3+SVVPYkeVFywrAb89J0kg6txXIuOfHxGcDZu7QaEPQUos7pwnbZBeXb/Q1RHbEE6cXr1pGB6wU+0gABNzLLTRNHuu2qm33myLkNQRilOyR7EqrDmLwY3ysGE5tmxYH5+zEu7nR/rkozqwpueGmrDMibRRw14kLRCNh6YkqvKsbSg1Tg0EKZe2eLGG0mmgj5jcYqusRcVtAA==";
+
+        let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
+        let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
 
         let cc = CoverCryptX25519Aes256::default();
-        let usk = UserSecretKey::try_from_bytes(&hex::decode(USK.as_bytes()).unwrap()).unwrap();
+        let usk =
+            UserSecretKey::try_from_bytes(&transcoder.decode(USK.as_bytes()).unwrap()).unwrap();
         let encrypted_header =
-            EncryptedHeader::try_from_bytes(&hex::decode(HEADER.as_bytes()).unwrap()).unwrap();
-        for _ in 0..100 {
+            EncryptedHeader::try_from_bytes(&transcoder.decode(HEADER.as_bytes()).unwrap())
+                .unwrap();
+        for _ in 0..1000 {
             encrypted_header
                 .decrypt(&cc, &usk, None)
                 .expect("cannot decrypt hybrid header");
         }
     }
-    #[cfg(not(feature = "interface"))]
-    println!("Use the `interface` feature to run this example")
+    #[cfg(not(feature = "serialization"))]
+    println!("Use the `serialization` feature to run this example")
 }

@@ -5,7 +5,7 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 
-#[cfg(feature = "interface")]
+#[cfg(feature = "serialization")]
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::{
     asymmetric_crypto::DhKeyPair,
@@ -46,24 +46,24 @@ pub trait CoverCrypt<
     const PUBLIC_KEY_LENGTH: usize = PK_LENGTH;
     const PRIVATE_KEY_LENGTH: usize = SK_LENGTH;
 
-    #[cfg(not(feature = "interface"))]
+    #[cfg(not(feature = "serialization"))]
     type MasterSecretKey: PartialEq + Eq;
-    #[cfg(feature = "interface")]
+    #[cfg(feature = "serialization")]
     type MasterSecretKey: PartialEq + Eq + Serializable<Error = Error>;
 
-    #[cfg(not(feature = "interface"))]
+    #[cfg(not(feature = "serialization"))]
     type UserSecretKey: PartialEq + Eq;
-    #[cfg(feature = "interface")]
+    #[cfg(feature = "serialization")]
     type UserSecretKey: PartialEq + Eq + Serializable<Error = Error>;
 
-    #[cfg(not(feature = "interface"))]
+    #[cfg(not(feature = "serialization"))]
     type PublicKey: PartialEq + Eq;
-    #[cfg(feature = "interface")]
+    #[cfg(feature = "serialization")]
     type PublicKey: PartialEq + Eq + Serializable<Error = Error>;
 
-    #[cfg(not(feature = "interface"))]
+    #[cfg(not(feature = "serialization"))]
     type Encapsulation: PartialEq + Eq;
-    #[cfg(feature = "interface")]
+    #[cfg(feature = "serialization")]
     type Encapsulation: PartialEq + Eq + Serializable<Error = Error>;
 
     type SymmetricKey: SymKey<SYM_KEY_LENGTH>;
@@ -215,23 +215,14 @@ pub struct EncryptedHeader<
 }
 
 impl<
-        const TAG_LENGTH: usize,
-        const SYM_KEY_LENGTH: usize,
-        const PK_LENGTH: usize,
-        const SK_LENGTH: usize,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
-    EncryptedHeader<
-        TAG_LENGTH,
-        SYM_KEY_LENGTH,
-        PK_LENGTH,
-        SK_LENGTH,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
+    const TAG_LENGTH: usize,
+    const SYM_KEY_LENGTH: usize,
+    const PK_LENGTH: usize,
+    const SK_LENGTH: usize,
+    KeyPair,
+    DEM,
+    CoverCryptScheme,
+> EncryptedHeader<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM, CoverCryptScheme>
 where
     KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
     DEM: Dem<SYM_KEY_LENGTH>,

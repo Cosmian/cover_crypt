@@ -1,4 +1,4 @@
-use std::{fmt::Display, hash::Hash, ops::Deref};
+use std::{hash::Hash, ops::Deref};
 
 use cosmian_crypto_core::bytes_ser_de::Serializer;
 
@@ -28,7 +28,7 @@ impl Partition {
         // the actual size in bytes will be at least equal to the length
         let mut ser = Serializer::with_capacity(attribute_values.len());
         for value in attribute_values {
-            ser.write_u64(u64::from(value))?;
+            ser.write_leb128_u64(u64::from(value))?;
         }
         Ok(Self(ser.finalize()))
     }
@@ -39,12 +39,6 @@ impl Deref for Partition {
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl Display for Partition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", hex::encode(&self.0))
     }
 }
 
@@ -62,18 +56,19 @@ impl From<&[u8]> for Partition {
 
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::bytes_ser_de::Deserializer;
+
     use super::*;
 
     #[test]
     fn test_partitions() -> Result<(), Error> {
         let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
         let partition = Partition::from_attribute_values(values.clone())?;
-        let bytes = partition.0;
-        let mut readable = &bytes[..];
         // values are sorted n Partition
         values.sort_unstable();
+        let mut de = Deserializer::new(&partition);
         for v in values {
-            let val = leb128::read::unsigned(&mut readable).expect("Should read number") as u32;
+            let val = de.read_leb128_u64().unwrap() as u32;
             assert_eq!(v, val);
         }
         Ok(())

@@ -14,6 +14,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [11.0.0] - 2023-02-28
+
+
+### Changed
+
+- use 16-bytes tag
+
+### Removed
+
+- unneeded dependencies
+- inline macros
+- serde whereever possible
+- interfaces
+
+---
+
 ## [10.0.0] - 2023-02-02
 
 ### Documentation
@@ -29,6 +45,8 @@ All notable changes to this project will be documented in this file.
 
 - Update KMS version
 - Rebase externals repos
+
+---
 
 ## [9.0.0] - 2023-01-20
 
