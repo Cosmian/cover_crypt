@@ -3,7 +3,6 @@ use cosmian_cover_crypt::{
     statics::{CoverCryptX25519Aes256, EncryptedHeader},
     CoverCrypt, Error,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 // Policy settings
@@ -75,11 +74,10 @@ fn policy() -> Result<Policy, Error> {
 fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // Access policy with 1 partition
     #[allow(unused_mut)]
-    let mut access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
+    let mut access_policies = vec![
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+            .unwrap(),
+    ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -124,11 +122,10 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // The intersection between the user access policies and the encryption
     // policies is always "Department::FIN && Security Level::Protected" only.
     #[allow(unused_mut)]
-    let mut user_access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
+    let mut user_access_policies = vec![
+        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+            .unwrap(),
+    ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -166,6 +163,8 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
 
 #[cfg(feature = "full_bench")]
 fn bench_serialization(c: &mut Criterion) {
+    use cosmian_crypto_core::bytes_ser_de::Serializable;
+
     let policy = policy().expect("cannot generate policy");
     let (user_access_policies, access_policies) = get_access_policies();
     let cover_crypt = CoverCryptX25519Aes256::default();
@@ -339,4 +338,8 @@ config = Criterion::default().sample_size(5000);
 targets = bench_serialization
 );
 
+#[cfg(feature = "full_bench")]
+criterion_main!(benches, benches_serialization);
+
+#[cfg(not(feature = "full_bench"))]
 criterion_main!(benches);

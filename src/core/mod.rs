@@ -19,7 +19,7 @@ pub mod macros;
 pub mod api;
 pub mod primitives;
 
-#[cfg(feature = "interface")]
+#[cfg(feature = "serialization")]
 pub mod serialization;
 
 /// Length of the EAKEM tag

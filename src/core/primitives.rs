@@ -29,7 +29,6 @@ use crate::{
 pub(crate) const KEY_GEN_INFO: &[u8] = b"key generation info";
 
 /// Xor the two given byte arrays.
-#[inline]
 fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] {
     let mut res = [0; LENGTH];
     for (i, byte) in res.iter_mut().enumerate() {

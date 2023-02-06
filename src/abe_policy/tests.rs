@@ -1,5 +1,5 @@
 use crate::{
-    abe_policy::{Attribute, EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
     error::Error,
 };
 
@@ -87,4 +87,17 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
         )
     }
     Ok(())
+}
+
+#[test]
+fn test_access_policy_equality() {
+    let ap1 = "(Department::FIN || Department::MKG) && Security Level::Top Secret";
+    let ap2 = "Security Level::Top Secret && (Department::FIN || Department::MKG)";
+    let ap3 = "Security Level::Top Secret && (Department::FIN || Department::HR)";
+    let ap1 = AccessPolicy::from_boolean_expression(ap1).unwrap();
+    let ap2 = AccessPolicy::from_boolean_expression(ap2).unwrap();
+    let ap3 = AccessPolicy::from_boolean_expression(ap3).unwrap();
+    assert_eq!(ap1, ap2);
+    assert_eq!(ap2, ap2);
+    assert_ne!(ap2, ap3);
 }

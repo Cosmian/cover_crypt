@@ -4,8 +4,6 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use serde::{Deserialize, Serialize};
-
 use crate::{
     abe_policy::{policy::Policy, Attribute},
     Error,
@@ -14,7 +12,7 @@ use crate::{
 /// An `AccessPolicy` is a boolean expression over attributes.
 ///
 /// Only `positive` literals are allowed (no negation).
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum AccessPolicy {
     Attr(Attribute),
     And(Box<AccessPolicy>, Box<AccessPolicy>),
@@ -75,50 +73,6 @@ impl AccessPolicy {
             Self::Or(l, r) => l.to_u32(attribute_mapping) + r.to_u32(attribute_mapping),
             Self::All => 0,
         }
-    }
-
-    /// Generates an access policy from a map of policy access names to policy
-    /// attributes. The axes are `ORed` between each others while the attributes
-    /// of each axis are `AND`ed.
-    ///
-    /// ```
-    /// use std::collections::HashMap;
-    /// use cosmian_cover_crypt::abe_policy::AccessPolicy;
-    ///
-    /// let axes = serde_json::from_str(
-    ///     r#"{
-    ///     "Department": ["HR","FIN"],
-    ///     "Level": ["level_2"]
-    /// }"#
-    /// )
-    /// .unwrap();
-    ///
-    /// let access_policy = AccessPolicy::from_axes(&axes);
-    /// assert_eq!(
-    ///     access_policy.unwrap(),
-    ///     (AccessPolicy::new("Department", "HR") | AccessPolicy::new("Department", "FIN")) & AccessPolicy::new("Level", "level_2"),
-    /// );
-    /// ```
-    pub fn from_axes(axes_attributes: &HashMap<String, Vec<String>>) -> Result<Self, Error> {
-        let mut access_policies = Vec::with_capacity(axes_attributes.len());
-        for (axis, attributes) in axes_attributes {
-            access_policies.push(
-                attributes
-                    .iter()
-                    .map(|x| Attribute::new(axis, x).into())
-                    .reduce(BitOr::bitor)
-                    .ok_or_else(|| Error::MissingAttribute {
-                        item: None,
-                        axis_name: Some(axis.clone()),
-                    })?,
-            );
-        }
-        let access_policy = access_policies
-            .iter()
-            .cloned()
-            .reduce(BitAnd::bitand)
-            .ok_or(Error::MissingAxis)?;
-        Ok(access_policy)
     }
 
     /// This function is finding the right closing parenthesis in the boolean
@@ -404,7 +358,7 @@ impl AccessPolicy {
                 let axis_parameters = policy
                     .axes
                     .get(&attr.axis)
-                    .ok_or_else(|| Error::InvalidAxis(attr.axis.clone()))?;
+                    .ok_or_else(|| Error::AxisNotFound(attr.axis.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
                 if axis_parameters.is_hierarchical && follow_hierarchical_axes {
                     // add attribute values for all attributes below the given one
