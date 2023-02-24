@@ -50,7 +50,7 @@ fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] 
 /// - `rng`             : random number generator
 /// - `partitions`      : set of partition to be used
 /// - `is_hybridized`   : `true` if the setup should produced hybridized keys
-pub fn setup<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R, KeyPair>(
+pub fn setup<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, KeyPair>(
     rng: &mut impl CryptoRngCore,
     partitions: &HashMap<Partition, EncryptionHint>,
 ) -> (
@@ -297,7 +297,7 @@ where
 /// - `msk`             : master secret key
 /// - `mpk`             : master public key
 /// - `partition_set`   : new set of partitions to use after the update
-pub fn update<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R, KeyPair>(
+pub fn update<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, KeyPair>(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
     mpk: &mut PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,

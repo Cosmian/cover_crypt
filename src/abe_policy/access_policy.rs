@@ -1,12 +1,14 @@
-use crate::{
-    abe_policy::{policy::Policy, Attribute},
-    Error,
-};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::Debug,
     ops::{BitAnd, BitOr},
+};
+
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    abe_policy::{policy::Policy, Attribute},
+    Error,
 };
 
 /// An `AccessPolicy` is a boolean expression over attributes.
@@ -224,9 +226,8 @@ impl AccessPolicy {
         }
         if split_position + OPERATOR_SIZE > boolean_expression.len() {
             return Err(Error::InvalidBooleanExpression(format!(
-                "Cannot split boolean expression {boolean_expression} at position \
-                 {} since it is greater than the size of \
-                 {boolean_expression}",
+                "Cannot split boolean expression {boolean_expression} at position {} since it is \
+                 greater than the size of {boolean_expression}",
                 split_position + OPERATOR_SIZE
             )));
         }
@@ -391,7 +392,8 @@ impl AccessPolicy {
     /// given access policy. It is an OR expression of AND expressions.
     ///
     /// - `policy`                      : global policy
-    /// - `follow_hierarchical_axes`    : set to `true` to combine lower axis attributes
+    /// - `follow_hierarchical_axes`    : set to `true` to combine lower axis
+    ///   attributes
     pub fn to_attribute_combinations(
         &self,
         policy: &Policy,

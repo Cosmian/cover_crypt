@@ -81,7 +81,7 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.5
+    rev: v1.0.6
     hooks:
       - id: cargo-update
       - id: cargo-outdated
@@ -90,7 +90,7 @@ repos:
       - id: clippy-autofix-nursery
       - id: clippy-autofix-others
       - id: cargo-tests-all
-      - id: cargo-format
+      - id: stable-cargo-format
       - id: clippy-all-targets-all-features
       - id: cargo-dry-publish
         args: [--allow-dirty]

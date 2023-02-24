@@ -1,12 +1,9 @@
 //! Error type for the crate
 
-use cosmian_crypto_core::CryptoCoreError;
-#[cfg(feature = "hybrid")]
-use pqc_kyber::KyberError;
 use std::{array::TryFromSliceError, fmt::Debug, num::TryFromIntError};
+
+use cosmian_crypto_core::CryptoCoreError;
 use thiserror::Error;
-#[cfg(feature = "wasm_bindgen")]
-use wasm_bindgen::JsValue;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -89,13 +86,6 @@ impl From<TryFromSliceError> for Error {
     }
 }
 
-#[cfg(feature = "hybrid")]
-impl From<KyberError> for Error {
-    fn from(e: KyberError) -> Self {
-        Self::CryptoError(e.to_string())
-    }
-}
-
 impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         Self::CryptoCoreError(e)
@@ -105,19 +95,5 @@ impl From<CryptoCoreError> for Error {
 impl From<std::str::Utf8Error> for Error {
     fn from(e: std::str::Utf8Error) -> Self {
         Self::Other(format!("UTF8 error: {e}"))
-    }
-}
-
-#[cfg(feature = "python")]
-impl From<Error> for pyo3::PyErr {
-    fn from(e: Error) -> Self {
-        pyo3::exceptions::PyException::new_err(format!("{e}"))
-    }
-}
-
-#[cfg(feature = "wasm_bindgen")]
-impl From<Error> for JsValue {
-    fn from(e: Error) -> Self {
-        Self::from_str(&e.to_string())
     }
 }

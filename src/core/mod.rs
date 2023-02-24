@@ -36,7 +36,7 @@ type KyberSecretKey = [u8; KYBER_INDCPA_SECRETKEYBYTES];
 pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> {
     U: DhPublicKey,
     V: DhPublicKey,
-    pub(crate) H: HashMap<Partition, (Option<KyberPublicKey>, DhPublicKey)>,
+    pub H: HashMap<Partition, (Option<KyberPublicKey>, DhPublicKey)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +47,7 @@ pub struct MasterSecretKey<
     u: DhPrivateKey,
     v: DhPrivateKey,
     s: DhPrivateKey,
-    pub(crate) x: HashMap<Partition, (Option<KyberSecretKey>, DhPrivateKey)>,
+    pub x: HashMap<Partition, (Option<KyberSecretKey>, DhPrivateKey)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,7 +57,7 @@ pub struct UserSecretKey<
 > {
     a: DhPrivateKey,
     b: DhPrivateKey,
-    pub(crate) x: HashSet<(Option<KyberSecretKey>, DhPrivateKey)>,
+    pub x: HashSet<(Option<KyberSecretKey>, DhPrivateKey)>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

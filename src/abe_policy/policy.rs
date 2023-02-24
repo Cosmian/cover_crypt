@@ -6,9 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{abe_policy::Attribute, Error};
-
 use super::{AccessPolicy, Partition};
+use crate::{abe_policy::Attribute, Error};
 
 /// Hint the user about which kind of encryption to use.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -309,8 +308,8 @@ impl Policy {
 
     /// Generates all cross-axes combinations of attribute values.
     ///
-    /// - `current_axis`            : axis for which to combine values with other
-    ///   axes
+    /// - `current_axis`            : axis for which to combine values with
+    ///   other axes
     /// - `axes`                    : list of axes
     /// - `attr_values_per_axis`    : map axes with their associated attribute
     ///   values

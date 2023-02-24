@@ -1,11 +1,12 @@
 #![cfg(feature = "interface")]
 
-use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy, Policy, PolicyAxis},
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
+
+use crate::{
+    abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
     statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey, UserSecretKey},
     CoverCrypt, Error,
 };
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 
 pub fn policy() -> Result<Policy, Error> {
     let sec_level = PolicyAxis::new(
@@ -35,22 +36,23 @@ pub fn policy() -> Result<Policy, Error> {
     Ok(policy)
 }
 
-//#[test]
-//fn write_policy() {
-//let _policy = policy().unwrap();
-//std::fs::write("tests/policy.json", serde_json::to_vec(&_policy).unwrap()).unwrap();
-//}
+#[test]
+fn write_policy() {
+    let policy = policy().unwrap();
+    std::fs::write("./target/policy.json", serde_json::to_vec(&policy).unwrap()).unwrap();
+}
 
-/// Read policy from a file. Assert `LegacyPolicy` is convertible into a `Policy`.
+/// Read policy from a file. Assert `LegacyPolicy` is convertible into a
+/// `Policy`.
 #[test]
 fn read_policy() {
     // Can read a `Policy`
-    let policy_str = include_bytes!("../tests_data/policy.json");
+    let policy_str = include_bytes!("../../tests_data/policy.json");
     Policy::try_from(policy_str.as_slice()).unwrap();
 
     // Can read a `LegacyPolicy`
-    let legacy_policy_str = include_bytes!("../tests_data/legacy_policy.json");
-    serde_json::from_slice::<LegacyPolicy>(legacy_policy_str).unwrap();
+    let legacy_policy_str = include_bytes!("../../tests_data/legacy_policy.json");
+    serde_json::from_slice::<crate::abe_policy::LegacyPolicy>(legacy_policy_str).unwrap();
 
     // Can read `LegacyPolicy` as `Policy`
     Policy::try_from(legacy_policy_str.as_slice()).unwrap();
@@ -66,7 +68,7 @@ struct EncryptionTestVector {
 }
 
 impl EncryptionTestVector {
-    fn decrypt(&self, user_key: &str) -> Result<(), Error> {
+    pub fn decrypt(&self, user_key: &str) -> Result<(), Error> {
         let user_key = UserSecretKey::try_from_bytes(&base64::decode(user_key).unwrap())?;
 
         let ciphertext = base64::decode(&self.ciphertext).unwrap();
@@ -171,7 +173,7 @@ impl UserSecretKeyTestVector {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct NonRegressionTestVector {
+pub struct NonRegressionTestVector {
     public_key: String,
     master_secret_key: String,
     policy: String,
@@ -255,7 +257,7 @@ impl NonRegressionTestVector {
         Ok(reg_vectors)
     }
 
-    fn verify(&self) -> Result<(), Error> {
+    pub fn verify(&self) -> Result<(), Error> {
         // top_secret_fin_key
         self.low_secret_fin_test_vector
             .decrypt(&self.top_secret_fin_key.key)?;
@@ -306,6 +308,6 @@ fn test_generate_non_regression_vector() -> Result<(), Error> {
 #[test]
 fn test_non_regression() -> Result<(), Error> {
     let reg_vector: NonRegressionTestVector =
-        serde_json::from_str(include_str!("../tests_data/non_regression_vector.json"))?;
+        serde_json::from_str(include_str!("../../tests_data/non_regression_vector.json"))?;
     reg_vector.verify()
 }
