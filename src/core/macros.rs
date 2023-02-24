@@ -50,7 +50,6 @@ macro_rules! setup {
         $crate::core::primitives::setup::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
             KeyPair,
         >($rng, $partition_set)
     };
@@ -140,7 +139,6 @@ macro_rules! update {
         $crate::core::primitives::update::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
             KeyPair,
         >($rng, $msk, $mpk, $partition_set)
     };

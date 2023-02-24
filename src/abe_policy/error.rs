@@ -1,8 +1,6 @@
 //! Define this crate error type.
 
 use thiserror::Error;
-#[cfg(feature = "wasm_bindgen")]
-use wasm_bindgen::JsValue;
 
 /// Crate error type.
 #[derive(Error, Debug)]

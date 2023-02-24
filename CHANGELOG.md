@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [11.0.0] - 2023-02-27
+
+### Refactor
+
+- [**breaking**] Move all interfaces (FFI, Wasm, pyo3) to `cloudproof_rust` repository
+
+### Testing
+
+- Re-expose non-regression mechanism
+
 ---
 
 ## [10.0.0] - 2023-02-02

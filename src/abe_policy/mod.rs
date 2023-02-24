@@ -17,8 +17,5 @@ pub use attribute::{Attribute, Attributes};
 pub use partitions::Partition;
 pub use policy::{EncryptionHint, LegacyPolicy, Policy, PolicyAxis};
 
-#[cfg(feature = "interface")]
-pub mod interfaces;
-
 #[cfg(test)]
 mod tests;
