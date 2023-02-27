@@ -27,7 +27,7 @@ debug = true
 [features]
 full_bench = ["interface"]
 hybridized_bench = []
-interface = []
+interface = ["base64"]
 
 [dependencies]
 base64 = { version = "0.13", optional = true }
