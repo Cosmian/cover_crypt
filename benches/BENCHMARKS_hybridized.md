@@ -3,10 +3,10 @@
 ## Table of Contents
 
 - [Benchmark Results](#benchmark-results)
-    - [Header encryption](#header-encryption)
-    - [Header encryption + decryption](#header-encryption-+-decryption)
-    - [Key serialization](#key-serialization)
-    - [Header serialization](#header-serialization)
+  - [Header encryption](#header-encryption)
+  - [Header encryption + decryption](#header-encryption-and-decryption)
+  - [Key serialization](#key-serialization)
+  - [Header serialization](#header-serialization)
 
 ## Benchmark Results
 
@@ -16,7 +16,7 @@
 |:--|:---------------------------|:-----------------------------|:-----------------------------|:-----------------------------|:---------------------------|
 |   | `361.16 us` (✅ **1.00x**)  | `508.30 us` (*1.41x slower*) | `693.84 us` (*1.92x slower*) | `851.50 us` (*2.36x slower*) | `1.01 ms` (*2.79x slower*) |
 
-### Header encryption + decryption
+### Header encryption and decryption
 
 |   | `ciphertexts with 1 partition(s), usk with 1 partitions` | `ciphertexts with 2 partition(s), usk with 1 partitions` | `ciphertexts with 3 partition(s), usk with 1 partitions` | `ciphertexts with 4 partition(s), usk with 1 partitions` | `ciphertexts with 5 partition(s), usk with 1 partitions` | `ciphertexts with 1 partition(s), usk with 2 partitions` | `ciphertexts with 2 partition(s), usk with 2 partitions` | `ciphertexts with 3 partition(s), usk with 2 partitions` | `ciphertexts with 4 partition(s), usk with 2 partitions` | `ciphertexts with 5 partition(s), usk with 2 partitions` | `ciphertexts with 1 partition(s), usk with 3 partitions` | `ciphertexts with 2 partition(s), usk with 3 partitions` | `ciphertexts with 3 partition(s), usk with 3 partitions` | `ciphertexts with 4 partition(s), usk with 3 partitions` | `ciphertexts with 5 partition(s), usk with 3 partitions` |
 |:--|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|:---------------------------------------------------------|
@@ -26,7 +26,7 @@
 
 |   | `MSK`                     | `MPK`                        | `USK 1 partition`                 |
 |:--|:--------------------------|:-----------------------------|:----------------------------------|
-|   | `978.19 ns` (✅ **1.00x**) | `86.63 us` (*88.56x slower*) | `141.37 ns` (🚀 **6.92x faster**) |
+|   | `978.19 ns` (✅ **1.00x**) | `86.63 us` (*88.56x slower*) | `141.37 ns` (**6.92x faster**) |
 
 ### Header serialization
 
