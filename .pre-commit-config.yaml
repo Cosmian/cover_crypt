@@ -81,7 +81,7 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.6
+    rev: v1.0.7
     hooks:
       - id: cargo-update
       - id: cargo-outdated

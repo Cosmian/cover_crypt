@@ -74,10 +74,11 @@ fn policy() -> Result<Policy, Error> {
 fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // Access policy with 1 partition
     #[allow(unused_mut)]
-    let mut access_policies = vec![
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap(),
-    ];
+    let mut access_policies =
+        vec![
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+                .unwrap(),
+        ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -122,10 +123,11 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // The intersection between the user access policies and the encryption
     // policies is always "Department::FIN && Security Level::Protected" only.
     #[allow(unused_mut)]
-    let mut user_access_policies = vec![
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap(),
-    ];
+    let mut user_access_policies =
+        vec![
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+                .unwrap(),
+        ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -279,7 +281,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                 .expect("cannot generate user private key")
         })
         .collect();
-    let mut group = c.benchmark_group("Header encryption + decryption");
+    let mut group = c.benchmark_group("Header encryption and decryption");
     for (n_partitions_usk, usk) in user_decryption_keys.iter().enumerate() {
         for (n_partition_ct, access_policy) in access_policies.iter().enumerate() {
             group.bench_function(

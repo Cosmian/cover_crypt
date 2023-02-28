@@ -37,4 +37,3 @@ tiny-keccak = { version = "2.0.2", features = ["shake"] }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"], default_features = false }
-

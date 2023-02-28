@@ -6,8 +6,8 @@ fn main() {
             engine::{GeneralPurpose, GeneralPurposeConfig},
             Engine,
         };
-        use cosmian_cover_crypt::{
-            api::EncryptedHeader, interfaces::statics::UserSecretKey, CoverCryptStruct,
+        use cosmian_cover_crypt::statics::{
+            CoverCryptX25519Aes256, EncryptedHeader, UserSecretKey,
         };
         use cosmian_crypto_core::bytes_ser_de::Serializable;
 

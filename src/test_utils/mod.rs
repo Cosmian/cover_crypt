@@ -54,11 +54,11 @@ mod tests {
     #[test]
     fn read_policy() {
         // Can read a `Policy`
-        let policy_str = include_bytes!("../../tests_data/policy.json");
+        let policy_str = include_bytes!("./tests_data/policy.json");
         Policy::try_from(policy_str.as_slice()).unwrap();
 
         // Can read a `LegacyPolicy`
-        let legacy_policy_str = include_bytes!("../../tests_data/legacy_policy.json");
+        let legacy_policy_str = include_bytes!("./tests_data/legacy_policy.json");
         serde_json::from_slice::<LegacyPolicy>(legacy_policy_str).unwrap();
 
         // Can read `LegacyPolicy` as `Policy`
@@ -220,11 +220,9 @@ mod tests {
         )?;
 
         // Decryption fails without refreshing the user key
-        assert!(
-            encrypted_header
-                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-                .is_err()
-        );
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_err());
 
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
@@ -237,11 +235,9 @@ mod tests {
         )?;
 
         // The refreshed key can decrypt the header
-        assert!(
-            encrypted_header
-                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-                .is_ok()
-        );
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
 
         Ok(())
     }
