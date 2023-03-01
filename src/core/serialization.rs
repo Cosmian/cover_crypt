@@ -24,7 +24,6 @@ impl<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> S
 {
     type Error = Error;
 
-    #[inline]
     fn length(&self) -> usize {
         let mut length =
             2 * PUBLIC_KEY_LENGTH + to_leb128_len(self.H.len()) + self.H.len() * PUBLIC_KEY_LENGTH;
@@ -38,14 +37,14 @@ impl<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> S
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.U.to_bytes())?;
         n += ser.write_array(&self.V.to_bytes())?;
-        n += ser.write_u64(self.H.len() as u64)?;
+        n += ser.write_leb128_u64(self.H.len() as u64)?;
         for (partition, (pk_i, H_i)) in &self.H {
             n += ser.write_vec(partition)?;
             if let Some(pk_i) = pk_i {
-                n += ser.write_u64(1)?;
+                n += ser.write_leb128_u64(1)?;
                 n += ser.write_array(pk_i)?;
             } else {
-                n += ser.write_u64(0)?;
+                n += ser.write_leb128_u64(0)?;
             }
             n += ser.write_array(&H_i.to_bytes())?;
         }
@@ -55,11 +54,11 @@ impl<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> S
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let U = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let V = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let H_len = <usize>::try_from(de.read_u64()?)?;
+        let H_len = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut H = HashMap::with_capacity(H_len);
         for _ in 0..H_len {
             let partition = de.read_vec()?;
-            let is_hybridized = de.read_u64()?;
+            let is_hybridized = de.read_leb128_u64()?;
             let pk_i = if is_hybridized == 1 {
                 Some(de.read_array()?)
             } else {
@@ -80,7 +79,6 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
 {
     type Error = Error;
 
-    #[inline]
     fn length(&self) -> usize {
         let mut length = 3 * PRIVATE_KEY_LENGTH
             + to_leb128_len(self.x.len())
@@ -96,14 +94,14 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
         let mut n = ser.write_array(&self.u.to_bytes())?;
         n += ser.write_array(&self.v.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
-        n += ser.write_u64(self.x.len() as u64)?;
+        n += ser.write_leb128_u64(self.x.len() as u64)?;
         for (partition, (sk_i, x_i)) in &self.x {
             n += ser.write_vec(partition)?;
             if let Some(sk_i) = sk_i {
-                n += ser.write_u64(1)?;
+                n += ser.write_leb128_u64(1)?;
                 n += ser.write_array(sk_i)?;
             } else {
-                n += ser.write_u64(0)?;
+                n += ser.write_leb128_u64(0)?;
             }
             n += ser.write_array(&x_i.to_bytes())?;
         }
@@ -114,11 +112,11 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
         let u = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let v = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let s = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let x_len = <usize>::try_from(de.read_u64()?)?;
+        let x_len = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut x = HashMap::with_capacity(x_len);
         for _ in 0..x_len {
             let partition = de.read_vec()?;
-            let is_hybridized = de.read_u64()?;
+            let is_hybridized = de.read_leb128_u64()?;
             let sk_i = if is_hybridized == 1 {
                 Some(de.read_array()?)
             } else {
@@ -139,7 +137,6 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
 {
     type Error = Error;
 
-    #[inline]
     fn length(&self) -> usize {
         let mut length = 2 * PRIVATE_KEY_LENGTH
             + to_leb128_len(self.x.len())
@@ -153,13 +150,13 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
-        n += ser.write_u64(self.x.len() as u64)?;
+        n += ser.write_leb128_u64(self.x.len() as u64)?;
         for (sk_i, x_i) in &self.x {
             if let Some(sk_i) = sk_i {
-                n += ser.write_u64(1)?;
+                n += ser.write_leb128_u64(1)?;
                 n += ser.write_array(sk_i)?;
             } else {
-                n += ser.write_u64(0)?;
+                n += ser.write_leb128_u64(0)?;
             }
             n += ser.write_array(&x_i.to_bytes())?;
         }
@@ -169,10 +166,10 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let a = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
         let b = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let x_len = <usize>::try_from(de.read_u64()?)?;
+        let x_len = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut x = HashSet::with_capacity(x_len);
         for _ in 0..x_len {
-            let is_hybridized = de.read_u64()?;
+            let is_hybridized = de.read_leb128_u64()?;
             let sk_i = if is_hybridized == 1 {
                 Some(de.read_array()?)
             } else {
@@ -199,11 +196,11 @@ impl<const SYM_KEY_LENGTH: usize> Serializable for KeyEncapsulation<SYM_KEY_LENG
         let mut n = 0;
         match self {
             Self::ClassicEncapsulation(E_i) => {
-                n += ser.write_u64(0)?;
+                n += ser.write_leb128_u64(0)?;
                 n += ser.write_array(&**E_i)?;
             }
             Self::HybridEncapsulation(EPQ_i) => {
-                n += ser.write_u64(1)?;
+                n += ser.write_leb128_u64(1)?;
                 n += ser.write_array(&**EPQ_i)?;
             }
         }
@@ -211,7 +208,7 @@ impl<const SYM_KEY_LENGTH: usize> Serializable for KeyEncapsulation<SYM_KEY_LENG
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let is_hybridized = de.read_u64()?;
+        let is_hybridized = de.read_leb128_u64()?;
         if is_hybridized == 1 {
             Ok(Self::HybridEncapsulation(Box::new(de.read_array()?)))
         } else {
@@ -230,7 +227,6 @@ impl<
 {
     type Error = Error;
 
-    #[inline]
     fn length(&self) -> usize {
         let mut length = 2 * PUBLIC_KEY_LENGTH + TAG_LENGTH + to_leb128_len(self.E.len());
         for key_encasulation in &self.E {
@@ -243,7 +239,7 @@ impl<
         let mut n = ser.write_array(&self.C.to_bytes())?;
         n += ser.write_array(&self.D.to_bytes())?;
         n += ser.write_array(&self.tag)?;
-        n += ser.write_u64(self.E.len() as u64)?;
+        n += ser.write_leb128_u64(self.E.len() as u64)?;
         for key_encapsulation in &self.E {
             n += ser.write(key_encapsulation)?;
         }
@@ -254,7 +250,7 @@ impl<
         let C = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let D = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
         let tag = de.read_array()?;
-        let E_len = <usize>::try_from(de.read_u64()?)?;
+        let E_len = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut E = HashSet::with_capacity(E_len);
         for _ in 0..E_len {
             let key_encapsulation = de.read()?;
@@ -296,13 +292,11 @@ where
 {
     type Error = Error;
 
-    #[inline]
     fn length(&self) -> usize {
         self.encapsulation.length() + to_leb128_len(self.ciphertext.len()) + self.ciphertext.len()
     }
 
     /// Tries to serialize the encrypted header.
-    #[inline]
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.encapsulation.write(ser)?;
         n += ser.write_vec(self.ciphertext.as_slice())?;
@@ -310,7 +304,6 @@ where
     }
 
     /// Tries to deserialize the encrypted header.
-    #[inline]
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let encapsulation = de.read::<CoverCryptScheme::Encapsulation>()?;
         let ciphertext = de.read_vec()?;
@@ -327,13 +320,11 @@ where
 {
     type Error = Error;
 
-    #[inline]
     fn length(&self) -> usize {
         KEY_LENGTH + to_leb128_len(self.metadata.len()) + self.metadata.len()
     }
 
     /// Tries to serialize the cleartext header.
-    #[inline]
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
         n += ser.write_vec(&self.metadata)?;
@@ -341,7 +332,6 @@ where
     }
 
     /// Tries to deserialize the cleartext header.
-    #[inline]
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
         let header_metadata = de.read_vec()?;
@@ -354,14 +344,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::abe_policy::{AccessPolicy, EncryptionHint};
     use cosmian_crypto_core::{
         asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
         symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
     };
 
     use super::*;
-    use crate::statics::{tests::policy, CoverCryptX25519Aes256};
+    use crate::{
+        abe_policy::{AccessPolicy, EncryptionHint},
+        statics::CoverCryptX25519Aes256,
+        test_utils::policy,
+    };
 
     const TAG_LENGTH: usize = 32;
     const SYM_KEY_LENGTH: usize = 32;
@@ -423,7 +416,7 @@ mod tests {
         let user_policy =
             AccessPolicy::from_boolean_expression("Department::MKG && Security Level::Top Secret")?;
         let encryption_policy = AccessPolicy::from_boolean_expression(
-            "Department::MKG && Security Level::Confidential",
+            "Department::MKG && Security Level::High Secret",
         )?;
         let (msk, mpk) = cc.generate_master_keys(&policy)?;
         let usk = cc.generate_user_secret_key(&msk, &user_policy, &policy)?;

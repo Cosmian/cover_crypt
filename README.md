@@ -1,7 +1,6 @@
 # CoverCrypt
 
 ![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/ci.yml/badge.svg)
-![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/build.yml/badge.svg)
 ![latest version](https://img.shields.io/crates/v/cosmian_cover_crypt.svg)
 
 Implementation of the [CoverCrypt](bib/CoverCrypt.pdf) algorithm which allows
@@ -12,10 +11,6 @@ policies over these attributes.
 
 - [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
-  - [Building the library for a different glibc](#building-the-library-for-a-different-glibc)
-  - [Building the library for `cloudproof_java` or `cloudproof_flutter`](#building-the-library-for-cloudproof_java-or-cloudproof_flutter)
-  - [Build the library for `cloudproof_js`](#build-the-library-for-cloudproof_js)
-  - [Build the library for `cloudproof_python`](#build-the-library-for-cloudproof_python)
 - [Features](#features)
   - [Key generation](#key-generation)
   - [Serialization](#serialization)
@@ -23,7 +18,6 @@ policies over these attributes.
   - [Secret key decapsulation](#secret-key-decapsulation)
 - [Benchmarks](#benchmarks)
 - [Documentation](#documentation)
-- [Releases](#releases)
 
 <!-- tocstop -->
 
@@ -41,45 +35,10 @@ To build the core only, run:
 cargo build --release
 ```
 
-To build the FFI interface:
-
-```bash
-cargo build --release --features ffi
-```
-
-To build the WASM interface:
-
-```bash
-cargo build --release --features wasm_bindgen
-```
-
-To build the Python interface, run:
-
-```bash
-maturin build --release --features python
-```
-
-**Note**: when a new function or class is added to the PyO3 interface, its
-signature needs to be added to
-[`__init__.pyi`](./python/cosmian_cover_crypt/__init__.pyi).
-
-To run tests on the Python interface, run:
-
-```bash
-./python/scripts/test.sh
-```
-
-To build everything (including the FFI):
+To build everything:
 
 ```bash
 cargo build --release --all-features
-```
-
-The latter will build a shared library. On Linux, one can verify that the FFI
-symbols are present using:
-
-```bash
-objdump -T  target/release/libcosmian_cover_crypt.so
 ```
 
 The code contains numerous tests that you can run using:
@@ -91,35 +50,7 @@ cargo test --release --all-features
 Benchmarks can be run using (one can pass any feature flag):
 
 ```bash
-cargo bench
-```
-
-### Building the library for a different glibc
-
-Go to the [build](build/glibc-2.17/) directory for an example on how to build for GLIBC 2.17
-
-### Building the library for `cloudproof_java` or `cloudproof_flutter`
-
-From the root directory:
-
-```bash
-cargo build --release --features ffi
-```
-
-### Build the library for `cloudproof_js`
-
-From the root directory:
-
-```bash
-cargo build --release --features wasm_bindgen
-```
-
-### Build the library for `cloudproof_python`
-
-From the root directory:
-
-```bash
-maturin build --release --features python
+bash ./benches/generate.sh
 ```
 
 ## Features
@@ -246,8 +177,8 @@ user secret keys contains the appropriate rights.
 
 The benchmarks presented in this section are run on a Intel(R) Xeon(R) Platinum 8171M CPU @ 2.60GHz.
 
-[CoverCrypt classic implementation](./benches/BENCHMARKS_classic.md)
-[CoverCrypt post-quantum implementation](./benches/BENCHMARKS_hybridized.md)
+- [CoverCrypt classic implementation](./benches/BENCHMARKS_classic.md)
+- [CoverCrypt post-quantum implementation](./benches/BENCHMARKS_hybridized.md)
 
 ## Documentation
 
@@ -255,7 +186,3 @@ A formal description and proof of the CoverCrypt scheme is given in [this paper]
 It also contains an interesting discussion about the implementation.
 
 The developer documentation can be found on [doc.rs](https://docs.rs/cosmian_cover_crypt/latest/cosmian_cover_crypt/index.html)
-
-## Releases
-
-All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com).

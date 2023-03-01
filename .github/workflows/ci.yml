@@ -5,6 +5,14 @@ on: push
 
 jobs:
   cargo-lint:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-nursery.yml@main
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-nursery.yml@develop
     with:
       toolchain: stable
+  cargo-publish:
+    needs:
+      - cargo-lint
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish.yml@develop
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    with:
+      toolchain: stable
+    secrets: inherit

@@ -3,3 +3,4 @@
 *nix*
 /*.sh
 /.vscode
+Cargo.lock

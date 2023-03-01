@@ -22,9 +22,7 @@ mod error;
 pub mod abe_policy;
 pub mod core;
 pub mod statics;
-
-#[cfg(feature = "interface")]
-pub mod interfaces;
+pub mod test_utils;
 
 pub use error::Error;
 

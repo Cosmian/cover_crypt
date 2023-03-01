@@ -1,63 +1,19 @@
-#![cfg(feature = "interface")]
-
-use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy, Policy, PolicyAxis},
-    statics::{CoverCryptX25519Aes256, EncryptedHeader, MasterSecretKey, PublicKey, UserSecretKey},
-    CoverCrypt, Error,
+use base64::{
+    alphabet::STANDARD,
+    engine::{GeneralPurpose, GeneralPurposeConfig},
+    Engine,
 };
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 
-pub fn policy() -> Result<Policy, Error> {
-    let sec_level = PolicyAxis::new(
-        "Security Level",
-        vec![
-            ("Protected", EncryptionHint::Classic),
-            ("Low Secret", EncryptionHint::Classic),
-            ("Medium Secret", EncryptionHint::Classic),
-            ("High Secret", EncryptionHint::Classic),
-            ("Top Secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    );
-    let department = PolicyAxis::new(
-        "Department",
-        vec![
-            ("R&D", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-        ],
-        false,
-    );
-    let mut policy = Policy::new(100);
-    policy.add_axis(sec_level)?;
-    policy.add_axis(department)?;
-    Ok(policy)
-}
-
-//#[test]
-//fn write_policy() {
-//let _policy = policy().unwrap();
-//std::fs::write("tests/policy.json", serde_json::to_vec(&_policy).unwrap()).unwrap();
-//}
-
-/// Read policy from a file. Assert `LegacyPolicy` is convertible into a `Policy`.
-#[test]
-fn read_policy() {
-    // Can read a `Policy`
-    let policy_str = include_bytes!("../tests_data/policy.json");
-    Policy::try_from(policy_str.as_slice()).unwrap();
-
-    // Can read a `LegacyPolicy`
-    let legacy_policy_str = include_bytes!("../tests_data/legacy_policy.json");
-    serde_json::from_slice::<LegacyPolicy>(legacy_policy_str).unwrap();
-
-    // Can read `LegacyPolicy` as `Policy`
-    Policy::try_from(legacy_policy_str.as_slice()).unwrap();
-}
+use super::policy;
+use crate::{
+    abe_policy::{AccessPolicy, Attribute, Policy},
+    statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
+    CoverCrypt, EncryptedHeader, Error,
+};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct EncryptionTestVector {
+pub struct EncryptionTestVector {
     encryption_policy: String,
     plaintext: String,
     ciphertext: String,
@@ -66,20 +22,23 @@ struct EncryptionTestVector {
 }
 
 impl EncryptionTestVector {
-    fn decrypt(&self, user_key: &str) -> Result<(), Error> {
-        let user_key = UserSecretKey::try_from_bytes(&base64::decode(user_key).unwrap())?;
+    pub fn decrypt(&self, user_key: &str) -> Result<(), Error> {
+        let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
+        let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
 
-        let ciphertext = base64::decode(&self.ciphertext).unwrap();
-        let expected_plaintext = base64::decode(&self.plaintext).unwrap();
+        let user_key = UserSecretKey::try_from_bytes(&transcoder.decode(user_key).unwrap())?;
+
+        let ciphertext = transcoder.decode(&self.ciphertext).unwrap();
+        let expected_plaintext = transcoder.decode(&self.plaintext).unwrap();
 
         let header_metadata = if !self.header_metadata.is_empty() {
-            base64::decode(&self.header_metadata).unwrap()
+            transcoder.decode(&self.header_metadata).unwrap()
         } else {
             vec![]
         };
 
         let authentication_data = if !self.authentication_data.is_empty() {
-            base64::decode(&self.authentication_data).unwrap()
+            transcoder.decode(&self.authentication_data).unwrap()
         } else {
             vec![]
         };
@@ -115,6 +74,9 @@ impl EncryptionTestVector {
         header_metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<Self, Error> {
+        let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
+        let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
+
         let cover_crypt = CoverCryptX25519Aes256::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
@@ -130,17 +92,17 @@ impl EncryptionTestVector {
         let mut encrypted_bytes = encrypted_header.try_to_bytes()?;
         encrypted_bytes.append(&mut aes_ciphertext);
         let header_metadata = match header_metadata {
-            Some(ad) => base64::encode(ad),
+            Some(ad) => transcoder.encode(ad),
             None => String::new(),
         };
         let authentication_data = match authentication_data {
-            Some(ad) => base64::encode(ad),
+            Some(ad) => transcoder.encode(ad),
             None => String::new(),
         };
         Ok(Self {
             encryption_policy: encryption_policy.to_string(),
-            plaintext: base64::encode(plaintext),
-            ciphertext: base64::encode(encrypted_bytes),
+            plaintext: transcoder.encode(plaintext),
+            ciphertext: transcoder.encode(encrypted_bytes),
             header_metadata,
             authentication_data,
         })
@@ -155,8 +117,10 @@ struct UserSecretKeyTestVector {
 
 impl UserSecretKeyTestVector {
     pub fn new(msk: &MasterSecretKey, policy: &Policy, access_policy: &str) -> Result<Self, Error> {
+        let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
+        let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
         Ok(Self {
-            key: base64::encode(
+            key: transcoder.encode(
                 CoverCryptX25519Aes256::default()
                     .generate_user_secret_key(
                         msk,
@@ -171,7 +135,7 @@ impl UserSecretKeyTestVector {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct NonRegressionTestVector {
+pub struct NonRegressionTestVector {
     public_key: String,
     master_secret_key: String,
     policy: String,
@@ -185,6 +149,9 @@ struct NonRegressionTestVector {
 
 impl NonRegressionTestVector {
     pub fn new() -> Result<Self, Error> {
+        let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
+        let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
+
         //
         // Policy settings
         //
@@ -203,9 +170,9 @@ impl NonRegressionTestVector {
         let authentication_data = 2u32.to_be_bytes().to_vec();
 
         let reg_vectors = Self {
-            public_key: base64::encode(mpk.try_to_bytes()?),
-            master_secret_key: base64::encode(msk.try_to_bytes()?),
-            policy: base64::encode(serde_json::to_vec(&policy)?),
+            public_key: transcoder.encode(mpk.try_to_bytes()?),
+            master_secret_key: transcoder.encode(msk.try_to_bytes()?),
+            policy: transcoder.encode(<Vec<u8>>::try_from(&policy).unwrap()),
             //
             // Create user decryption keys
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
@@ -238,7 +205,7 @@ impl NonRegressionTestVector {
                 &mpk,
                 &policy,
                 "Department::MKG && Security Level::Low Secret",
-                "protected_mkg_plaintext",
+                "low_secret_mkg_plaintext",
                 Some(&header_metadata),
                 None,
             )?,
@@ -247,7 +214,7 @@ impl NonRegressionTestVector {
                 &mpk,
                 &policy,
                 "Department::FIN && Security Level::Low Secret",
-                "protected_fin_plaintext",
+                "low_secret_fin_plaintext",
                 None,
                 None,
             )?,
@@ -255,7 +222,7 @@ impl NonRegressionTestVector {
         Ok(reg_vectors)
     }
 
-    fn verify(&self) -> Result<(), Error> {
+    pub fn verify(&self) -> Result<(), Error> {
         // top_secret_fin_key
         self.low_secret_fin_test_vector
             .decrypt(&self.top_secret_fin_key.key)?;
@@ -276,7 +243,6 @@ impl NonRegressionTestVector {
         self.top_secret_mkg_test_vector
             .decrypt(&self.top_secret_mkg_fin_key.key)?;
 
-        // medium_secret_mkg_key
         assert!(self
             .low_secret_fin_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)
@@ -291,21 +257,26 @@ impl NonRegressionTestVector {
     }
 }
 
-#[test]
-fn test_generate_non_regression_vector() -> Result<(), Error> {
-    let _reg_vector = NonRegressionTestVector::new()?;
-    std::fs::write(
-        "target/non_regression_vector.json",
-        serde_json::to_string(&_reg_vector).unwrap(),
-    )
-    .unwrap();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    Ok(())
-}
+    #[test]
+    fn test_generate_non_regression_vector() -> Result<(), Error> {
+        let _reg_vector = NonRegressionTestVector::new()?;
+        std::fs::write(
+            "target/non_regression_vector.json",
+            serde_json::to_string(&_reg_vector).unwrap(),
+        )
+        .unwrap();
 
-#[test]
-fn test_non_regression() -> Result<(), Error> {
-    let reg_vector: NonRegressionTestVector =
-        serde_json::from_str(include_str!("../tests_data/non_regression_vector.json"))?;
-    reg_vector.verify()
+        Ok(())
+    }
+
+    #[test]
+    fn test_non_regression() {
+        let reg_vector: NonRegressionTestVector =
+            serde_json::from_str(include_str!("./tests_data/non_regression_vector.json")).unwrap();
+        reg_vector.verify().unwrap();
+    }
 }

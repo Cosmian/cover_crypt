@@ -6,9 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{abe_policy::Attribute, Error};
-
 use super::{AccessPolicy, Partition};
+use crate::{abe_policy::Attribute, Error};
 
 /// Hint the user about which kind of encryption to use.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -22,7 +21,6 @@ pub enum EncryptionHint {
 impl BitOr for EncryptionHint {
     type Output = Self;
 
-    #[inline]
     fn bitor(self, rhs: Self) -> Self::Output {
         if self == Self::Hybridized || rhs == Self::Hybridized {
             Self::Hybridized
@@ -144,11 +142,7 @@ pub struct Policy {
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let json = serde_json::to_string(&self);
-        match json {
-            Ok(string) => write!(f, "{string}"),
-            Err(err) => write!(f, "{err}"),
-        }
+        write!(f, "{self:?}")
     }
 }
 
@@ -156,6 +150,7 @@ impl Policy {
     /// Converts the given string into a Policy. Does not fail if the given
     /// string uses the legacy format.
     pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
+        // First try to deserialize the latest `Policy` format
         match serde_json::from_slice(bytes) {
             Ok(policy) => Ok(policy),
             Err(e) => {
@@ -181,8 +176,6 @@ impl Policy {
                             .collect(),
                     })
                 } else {
-                    // Return the `Policy` deserialization error message instead of the
-                    // `LegacyPolicy` one since this is the one that should be used.
                     Err(Error::DeserializationError(e))
                 }
             }
@@ -191,7 +184,6 @@ impl Policy {
 
     /// Generates a new policy object with the given number of attribute
     /// creation (revocation + addition) allowed.
-    #[inline]
     #[must_use]
     pub fn new(nb_creations: u32) -> Self {
         Self {
@@ -205,7 +197,6 @@ impl Policy {
 
     /// Returns the remaining number of allowed attribute creations (additions +
     /// rotations).
-    #[inline]
     #[must_use]
     pub fn remaining_attribute_creations(&self) -> u32 {
         self.max_attribute_creations - self.last_attribute_value
@@ -268,7 +259,6 @@ impl Policy {
     }
 
     /// Returns the list of Attributes of this Policy.
-    #[inline]
     #[must_use]
     pub fn attributes(&self) -> Vec<Attribute> {
         self.attributes.keys().cloned().collect::<Vec<Attribute>>()
@@ -276,7 +266,6 @@ impl Policy {
 
     /// Returns the list of all values given to this attribute over rotations.
     /// The current value is returned first
-    #[inline]
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
         self.attributes
             .get(attribute)
@@ -285,7 +274,6 @@ impl Policy {
     }
 
     /// Returns the hybridization hint of the given attribute.
-    #[inline]
     pub fn attribute_hybridization_hint(
         &self,
         attribute: &Attribute,
@@ -297,7 +285,6 @@ impl Policy {
     }
 
     /// Retrieves the current value of an attribute.
-    #[inline]
     pub fn attribute_current_value(&self, attribute: &Attribute) -> Result<u32, Error> {
         self.attributes
             .get(attribute)
@@ -309,8 +296,8 @@ impl Policy {
 
     /// Generates all cross-axes combinations of attribute values.
     ///
-    /// - `current_axis`            : axis for which to combine values with other
-    ///   axes
+    /// - `current_axis`            : axis for which to combine values with
+    ///   other axes
     /// - `axes`                    : list of axes
     /// - `attr_values_per_axis`    : map axes with their associated attribute
     ///   values
@@ -324,11 +311,9 @@ impl Policy {
             Some(axis) => axis,
         };
 
-        let current_axis_values = attr_values_per_axis.get(current_axis_name).ok_or_else(|| {
-            Error::Other(format!(
-                "no attribute value found for axis: {current_axis_name}",
-            ))
-        })?;
+        let current_axis_values = attr_values_per_axis
+            .get(current_axis_name)
+            .ok_or_else(|| Error::AxisNotFound(current_axis_name.to_string()))?;
 
         // Recursive call. Above checks ensure no empty list can be returned.
         let other_values =
@@ -416,7 +401,6 @@ impl Policy {
 impl TryFrom<&[u8]> for Policy {
     type Error = Error;
 
-    #[inline]
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         Self::parse_and_convert(bytes)
     }
@@ -425,7 +409,6 @@ impl TryFrom<&[u8]> for Policy {
 impl TryFrom<&Policy> for Vec<u8> {
     type Error = Error;
 
-    #[inline]
     fn try_from(policy: &Policy) -> Result<Self, Self::Error> {
         serde_json::to_vec(policy).map_err(Self::Error::DeserializationError)
     }
@@ -488,7 +471,7 @@ fn generate_current_attribute_partitions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::statics::tests::policy;
+    use crate::test_utils::policy;
 
     fn axes_attributes_from_policy(
         axes: &[String],
@@ -592,7 +575,7 @@ mod tests {
         // create access policy
         let access_policy = AccessPolicy::new("Department", "HR")
             | (AccessPolicy::new("Department", "FIN")
-                & AccessPolicy::new("Security Level", "Confidential"));
+                & AccessPolicy::new("Security Level", "Low Secret"));
 
         //
         // create partitions from access policy
@@ -601,6 +584,7 @@ mod tests {
         //
         // manually create the partitions
         let mut partitions_ = HashSet::new();
+
         // add the partitions associated with the HR department: combine with
         // all attributes of the Security Level axis
         let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
@@ -613,14 +597,14 @@ mod tests {
             partitions_.insert(Partition::from_attribute_values(partition)?);
         }
 
-        // add the other attribute combination: FIN && Confidential
+        // add the other attribute combination: FIN && Low Secret
         let fin_value = policy.attribute_current_value(&Attribute::new("Department", "FIN"))?;
         let conf_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Confidential"))?;
+            policy.attribute_current_value(&Attribute::new("Security Level", "Low Secret"))?;
         let mut partition = vec![fin_value, conf_value];
         partition.sort_unstable();
         partitions_.insert(Partition::from_attribute_values(partition)?);
-        // since this is a hierarchical axis, add the lower values: here only protected
+        // since this is a hierarchical axis, add the lower values: here only low secret
         let prot_value =
             policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
         let mut partition = vec![fin_value, prot_value];
@@ -633,8 +617,8 @@ mod tests {
         // check the number of partitions generated by some access policies
         //
         let policy_attributes_4 = AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security \
-             Level::Protected)",
+            "(Department::FIN && Security Level::Low Secret) || (Department::MKG && Security \
+             Level::Low Secret)",
         )
         .unwrap();
         let partition_4 = policy
@@ -642,8 +626,8 @@ mod tests {
             .unwrap();
 
         let policy_attributes_5 = AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Security Level::Top Secret) || (Department::MKG && Security \
-             Level::Confidential)",
+            "(Department::FIN && Security Level::Low Secret) || (Department::MKG && Security \
+             Level::Medium Secret)",
         )
         .unwrap();
         let partition_5 = policy

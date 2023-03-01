@@ -1,6 +1,8 @@
-use crate::Error;
-use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt::Debug, ops::Deref};
+
+use serde::{Deserialize, Serialize};
+
+use crate::Error;
 
 /// An attribute in a policy group is characterized by the axis policy name
 /// and its unique name within this axis.

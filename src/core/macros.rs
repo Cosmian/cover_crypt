@@ -1,10 +1,7 @@
 //! Defines useful macros.
 
 pub use cosmian_crypto_core::symmetric_crypto::Dem;
-pub use sha3::{
-    digest::{ExtendableOutput, Update, XofReader},
-    Shake256,
-};
+pub use tiny_keccak::{Hasher, Shake, Xof};
 
 /// Hashes and extends the given bytes into a tag of size `TAG_LENGTH` and a
 /// key of size `KEY_LENGTH`.
@@ -19,18 +16,14 @@ pub use sha3::{
 macro_rules! eakem_hash {
     ($TAG_LENGTH: ident, $KEY_LENGTH: ident, $($bytes: expr),+) => {
         {
-            let mut hasher = $crate::core::macros::Shake256::default();
+            let mut hasher = $crate::core::macros::Shake::v256();
             $(
-                <$crate::core::macros::Shake256 as $crate::core::macros::Update>::update(&mut hasher, $bytes);
+                <$crate::core::macros::Shake as $crate::core::macros::Hasher>::update(&mut hasher, $bytes);
             )*
-            let mut reader =
-                <$crate::core::macros::Shake256 as $crate::core::macros::ExtendableOutput>::finalize_xof(hasher);
             let mut tag = [0; $TAG_LENGTH];
             let mut key = [0; $KEY_LENGTH];
-            <<$crate::core::macros::Shake256 as $crate::core::macros::ExtendableOutput>::Reader as
-                $crate::core::macros::XofReader>::read(&mut reader, &mut tag);
-            <<$crate::core::macros::Shake256 as $crate::core::macros::ExtendableOutput>::Reader as
-                $crate::core::macros::XofReader>::read(&mut reader, &mut key);
+            <$crate::core::macros::Shake as $crate::core::macros::Xof>::squeeze(&mut hasher, &mut tag);
+            <$crate::core::macros::Shake as $crate::core::macros::Hasher>::finalize(hasher, &mut key);
             (tag, key)
         }
     };
@@ -50,7 +43,6 @@ macro_rules! setup {
         $crate::core::primitives::setup::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
             KeyPair,
         >($rng, $partition_set)
     };
@@ -140,7 +132,6 @@ macro_rules! update {
         $crate::core::primitives::update::<
             { KeyPair::PUBLIC_KEY_LENGTH },
             { KeyPair::PRIVATE_KEY_LENGTH },
-            CsRng,
             KeyPair,
         >($rng, $msk, $mpk, $partition_set)
     };
