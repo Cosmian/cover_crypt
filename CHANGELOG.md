@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [11.0.0] - 2023-02-27
+---
+
+## [11.0.0] - 2023-03-01
+
+### Bug Fixes
+
+- Decrypt test example
+
+### Documentation
+
+- Update readme
 
 ### Refactor
 
@@ -10,6 +20,10 @@ All notable changes to this project will be documented in this file.
 - remove unneeded dependencies
 - remove inline macros
 - remove serde wherever possible
+
+### Ci
+
+- Add autopublish action
 
 ### Testing
 
