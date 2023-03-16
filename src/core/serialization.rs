@@ -218,12 +218,11 @@ impl<const SYM_KEY_LENGTH: usize> Serializable for KeyEncapsulation<SYM_KEY_LENG
 }
 
 impl<
-        const TAG_LENGTH: usize,
-        const ENCAPSULATION_LENGTH: usize,
-        const PUBLIC_KEY_LENGTH: usize,
-        DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-    > Serializable
-    for Encapsulation<TAG_LENGTH, ENCAPSULATION_LENGTH, PUBLIC_KEY_LENGTH, DhPublicKey>
+    const TAG_LENGTH: usize,
+    const ENCAPSULATION_LENGTH: usize,
+    const PUBLIC_KEY_LENGTH: usize,
+    DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
+> Serializable for Encapsulation<TAG_LENGTH, ENCAPSULATION_LENGTH, PUBLIC_KEY_LENGTH, DhPublicKey>
 {
     type Error = Error;
 
@@ -261,14 +260,14 @@ impl<
 }
 
 impl<
-        const TAG_LENGTH: usize,
-        const SYM_KEY_LENGTH: usize,
-        const PK_LENGTH: usize,
-        const SK_LENGTH: usize,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    > Serializable
+    const TAG_LENGTH: usize,
+    const SYM_KEY_LENGTH: usize,
+    const PK_LENGTH: usize,
+    const SK_LENGTH: usize,
+    KeyPair,
+    DEM,
+    CoverCryptScheme,
+> Serializable
     for EncryptedHeader<
         TAG_LENGTH,
         SYM_KEY_LENGTH,

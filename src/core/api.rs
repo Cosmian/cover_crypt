@@ -215,23 +215,14 @@ pub struct EncryptedHeader<
 }
 
 impl<
-        const TAG_LENGTH: usize,
-        const SYM_KEY_LENGTH: usize,
-        const PK_LENGTH: usize,
-        const SK_LENGTH: usize,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
-    EncryptedHeader<
-        TAG_LENGTH,
-        SYM_KEY_LENGTH,
-        PK_LENGTH,
-        SK_LENGTH,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
+    const TAG_LENGTH: usize,
+    const SYM_KEY_LENGTH: usize,
+    const PK_LENGTH: usize,
+    const SK_LENGTH: usize,
+    KeyPair,
+    DEM,
+    CoverCryptScheme,
+> EncryptedHeader<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM, CoverCryptScheme>
 where
     KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
     DEM: Dem<SYM_KEY_LENGTH>,

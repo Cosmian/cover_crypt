@@ -56,16 +56,29 @@ bash ./benches/generate.sh
 ## Features
 
 In CoverCrypt, messages are encrypted using a symmetric scheme. The right
-management is performed by a novel asymmetric scheme which is used to
-encapsulate a symmetric key. This encapsulation is stored in an object called
-encrypted header, along with the symmetric ciphertext.
+management is performed by a novel asymmetric scheme used to encapsulate a
+symmetric key for a set of attributes. This encapsulation is stored in an
+object called encrypted header, along with the symmetric ciphertext.
 
 This design brings several advantages:
-
 - the central authority has a unique key to protect (the master secret key);
 - encapsulation can be performed without the need to store any sensitive
   information (public cryptography);
 - encryption is as fast as symmetric schemes can be.
+
+CoverCrypt encryption is post-quantum secure (with a post-quantum security
+level of 128 bits):
+- all encapsulations can be hybridized using INDCPA-KYBER, the INDCPA (a
+  security level) version of the NIST standard for the post-quantum KEM,
+  [Kyber](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8406610);
+  the formal proof of the security can be found in the [CoverCrypt
+  paper](#documentation).
+- the actual data is encrypted using AES-GCM with a 256-bit key.
+
+The CoverCrypt scheme also ensures that:
+- user secret keys are unique;
+- user secret keys are traceable (under some assumption, cf
+  [CoverCrypt paper](#documentation)).
 
 ### Key generation
 
@@ -73,66 +86,110 @@ Asymmetric keys must be generated beforehand. This is the role of a central
 authority, which is in charge of:
 
 - generating and updating the master keys according to the right policy;
-- generate and update user secret keys.
+- generate and update user secret keys according to its rights.
 
-The CoverCrypt APIs exposes everything that is needed:
+The CoverCrypt API exposes 4 functions:
 
-- `CoverCrypt::setup` : generate master keys
-- `CoverCrypt::join` : create a user secret key for the given rights
-- `CoverCrypt::update` : update the master keys for the given policy
-- `CoverCrypt::refresh` : refresh a user secret key from the master secret key
+- `CoverCrypt::generate_master_keys`: generate master keys
+- `CoverCrypt::update_master_keys`: update the master keys
+- `CoverCrypt::generate_user_secret_key`: create a user secret key
+- `CoverCrypt::refresh_user_secret_key`: update a user secret key
 
 The key generations may be long if the policy contains many rights or if there
-are many users. But this is usually run once at setup. Key updates and refresh
-stay fast if the change in the policy is small.
+are many users. But this is usually run once at setup. Key update and refresh
+stay fast if the changes are small.
+
+### Policies and partitions
+
+CoverCrypt is an attribute-based encryption algorithm. This means that an
+encrypted header produced for the attributes `France` and `Top Secret` can only
+be decrypted by the user holding a key corresponding to these attributes.
+
+In order to transform this high-level view into encapsulations, the following
+objects are defined:
+- **policy**: defines all possible rights; a policy is built from a set of
+  axes which are composed of sets of attributes.
+- **encryption policy**: subset of the policy used to encrypt; an encryption
+  policy is expressed as a boolean expression of attributes.
+- **user policy**: subset of the policy for which a user key enables
+  decryption; a user policy is expressed as a boolean expression of attributes.
+- **partition**: combination of one attribute from each policy axis.
+
+When generating the master keys, the global policy is converted into the set of
+all possible partitions and a keypair is generated for each one of these
+partitions. The master public key holds all the public key of all these
+keypairs and the master secret key holds the secret key of all these keypairs.
+
+When encrypting for a given encryption policy, this policy is converted into a
+set of partitions. Then, one key encapsulation is generated per partition using
+the corresponding public sub-key in the master public key.
+
+Similarly, when generating a user secret key for a given user policy, this
+policy is converted into the set of corresponding partitions and the user
+receives the secret sub-key associated to each partitions.
+
+**Example**: the following policy is composed of two axes. The `Security` axis
+composed of three attributes and the `Country` axis composed of 4 attributes.
+```txt
+Polixy: {
+	Security: {	// <- first axis
+		None,
+		Medium,
+		High
+	},
+	Country: {	// <- second axis
+		France,
+		Germany,
+		UK,
+		Spain
+	}
+}
+```
+The encryption policy `Security::Medium && ( Country::France ||
+Country::Spain)` would be converted into two partitions. The encryption policy
+`Security::High` would be expanded into `Security::High && (Country::France ||
+... || Country::Spain)` then converted into 4 partitions.
 
 ### Serialization
 
 The size of the serialized keys and encapsulation is given by the following formulas:
 
 - master secret key:
-
-```c
-3 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition)
-  + PRIVATE_KEY_LENGTH + 1 [+ INDCPA_KYBER_PRIVATE_KEY_LENGTH])
-```
+$$3 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
 
 - public key:
 
-```c
-2 * PUBLIC_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-    + sum(LEB128_sizeof(sizeof(partition)) + sizeof(partition)
-    + PUBLIC_KEY_LENGTH + 1 [+ INDCPA_KYBER_PUBLIC_KEY_LENGTH])
-```
+$$3 \cdot L_{pk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{pk} + \delta_{p,~h} \cdot L_{pk}^{pq}\right)$$
 
 - user secret key:
 
-```c
-2 * PRIVATE_KEY_LENGTH + LEB128_sizeof(partitions.len()) \
-    + partition.len() * (PRIVATE_KEY_LENGTH + 1 [+ INDCPA_KYBER_PRIVATE_KEY_LENGTH])
-```
+$$2 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
 
 - encapsulation:
 
-```c
-2 * PUBLIC_KEY_LENGTH + TAG_LENGTH + LEB128_sizeof(partitions.len())
- + partition.len() * [INDCPA_KYBER_CIPHERTEXT_LENGTH | PUBLIC_KEY_LENGTH]
-```
+$$2 \cdot L_{pk} + T + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left(1 + \delta_{p,~c} \cdot L_{pk} + \delta_{p,~h} \cdot L_c^{pq}\right)$$
 
-- encrypted header (see below):
+- encrypted header:
 
-```c
-sizeof(encapsulation) + DEM_ENCRYPTION_OVERHEAD + sizeof(plaintext)
-```
+$$\texttt{sizeof}(encapsulation) + C_{encryption~overhead} + \texttt{sizeof}(plaintext)$$
+
+where:
+
+- $n_p$ is the number of partitions
+- $\delta_{p,~c} = 1$ if $p$ is a classic partition, 0 otherwise
+- $\delta_{p,~h} = 1 - \delta_{p,~c}$ (i.e. 1 if $p$ is a hybridized partition,
+  0 otherwise)
+- $\texttt{sizeof}: n \rightarrow$ size of $n$ in bytes
+- $\texttt{LEB128sizeof}: n \rightarrow \left\lceil \frac{8 \cdot \texttt{sizeof}(n)}{7}\right\rceil$
 
 **NOTE**: For our implementation `CoverCryptX25519Aes256`:
-
-- `PUBLIC_KEY_LENGTH` is 32 bytes
-- `PRIVATE_KEY_LENGTH` is 32 bytes
-- `TAG_LENGTH` is 32 bytes
-- `DEM_ENCRYPTION_OVERHEAD` is 28 bytes (12 bytes for the MAC tag and 16 bytes for the nonce)
-- `LEB128_sizeof(n)` is equal to 1 byte if `n` is less than `2^7`
+- Curve25519 public key length: $L_{pk} = 32~\textnormal{bytes}$
+- Curve25519 secret key length: $L_{sk} = 32~\textnormal{bytes}$
+- INDCPA-Kyber public key length: $L_{pk}^{pq} = 1184$
+- INDCPA-Kyber secret key length: $L_{sk}^{pq} = 1152$
+- INDCPA-Kyber ciphertext length: $L_c^{pq} = 1088$
+- EAKEM tag length: $T = 16~\textnormal{bytes}$
+- Symmetric encryption overhead: $C_{overhead} = 28~\textnormal{bytes}$ (16 bytes for the MAC tag and 12 bytes for the nonce)
 
 ### Secret key encapsulation
 
