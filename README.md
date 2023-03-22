@@ -169,13 +169,13 @@ $$2 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions}
 
 $$2 \cdot L_{pk} + T + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left(1 + \delta_{p,~c} \cdot L_{pk} + \delta_{p,~h} \cdot L_c^{pq}\right)$$
 
-- encrypted header:
+- encrypted header (encapsulation and symmetrically encrypted metadata):
 
-$$\texttt{sizeof}(encapsulation) + C_{encryption~overhead} + \texttt{sizeof}(plaintext)$$
+$$\texttt{sizeof}(encapsulation) + \texttt{LEB128sizeof} \left(C_{overhead} + \texttt{sizeof}(metadata)\right) + C_{overhead} + \texttt{sizeof}(metadata)$$
 
 where:
 
-- $n_p$ is the number of partitions
+- $n_p$ is the number of partitions related to the encryption policy
 - $\delta_{p,~c} = 1$ if $p$ is a classic partition, 0 otherwise
 - $\delta_{p,~h} = 1 - \delta_{p,~c}$ (i.e. 1 if $p$ is a hybridized partition,
   0 otherwise)
@@ -191,7 +191,7 @@ where:
 - EAKEM tag length: $T = 16~\textnormal{bytes}$
 - Symmetric encryption overhead: $C_{overhead} = 28~\textnormal{bytes}$ (16 bytes for the MAC tag and 12 bytes for the nonce)
 
-### Secret key encapsulation
+### Symmetric key encapsulation
 
 This is the core of the CoverCrypt scheme. It allows creating a symmetric key
 and its encapsulation for a given set of rights.
@@ -205,21 +205,21 @@ Classic implementation sizes:
 
 | Nb. of partitions | Encapsulation size (in bytes) | User decryption key size (in bytes) |
 |-------------------|-------------------------------|-------------------------------------|
-| 1                 | 131                           | 98                                  |
-| 2                 | 164                           | 131                                 |
-| 3                 | 197                           | 164                                 |
-| 4                 | 230                           | 197                                 |
-| 5                 | 263                           | 230                                 |
+| 1                 | 130                           | 98                                  |
+| 2                 | 163                           | 131                                 |
+| 3                 | 196                           | 164                                 |
+| 4                 | 229                           | 197                                 |
+| 5                 | 262                           | 230                                 |
 
 Post-quantum implementation sizes:
 
 | Nb. of partitions | Encapsulation size (in bytes) | User decryption key size (in bytes) |
 |-------------------|-------------------------------|-------------------------------------|
-| 1                 | 1187                          | 1250                                |
-| 2                 | 2276                          | 2435                                |
-| 3                 | 3365                          | 3620                                |
-| 4                 | 4454                          | 4805                                |
-| 5                 | 5543                          | 5990                                |
+| 1                 | 1186                          | 1250                                |
+| 2                 | 2275                          | 2435                                |
+| 3                 | 3364                          | 3620                                |
+| 4                 | 4453                          | 4805                                |
+| 5                 | 5542                          | 5990                                |
 
 **Note**: encapsulations grow bigger with the size of the target set of rights
 and so does the encapsulation time.
