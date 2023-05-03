@@ -12,10 +12,11 @@ policies over these attributes.
 - [Getting started](#getting-started)
 - [Building and testing](#building-and-testing)
 - [Features](#features)
-  - [Key generation](#key-generation)
-  - [Serialization](#serialization)
-  - [Secret key encapsulation](#secret-key-encapsulation)
-  - [Secret key decapsulation](#secret-key-decapsulation)
+  * [Key generation](#key-generation)
+  * [Policies and partitions](#policies-and-partitions)
+  * [Serialization](#serialization)
+  * [Symmetric key encapsulation](#symmetric-key-encapsulation)
+  * [Secret key decapsulation](#secret-key-decapsulation)
 - [Benchmarks](#benchmarks)
 - [Documentation](#documentation)
 
@@ -61,6 +62,7 @@ symmetric key for a set of attributes. This encapsulation is stored in an
 object called encrypted header, along with the symmetric ciphertext.
 
 This design brings several advantages:
+
 - the central authority has a unique key to protect (the master secret key);
 - encapsulation can be performed without the need to store any sensitive
   information (public cryptography);
@@ -68,6 +70,7 @@ This design brings several advantages:
 
 CoverCrypt encryption is post-quantum secure (with a post-quantum security
 level of 128 bits):
+
 - all encapsulations can be hybridized using INDCPA-KYBER, the INDCPA (a
   security level) version of the NIST standard for the post-quantum KEM,
   [Kyber](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8406610);
@@ -76,6 +79,7 @@ level of 128 bits):
 - the actual data is encrypted using AES-GCM with a 256-bit key.
 
 The CoverCrypt scheme also ensures that:
+
 - user secret keys are unique;
 - user secret keys are traceable (under some assumption, cf
   [CoverCrypt paper](#documentation)).
@@ -107,6 +111,7 @@ be decrypted by the user holding a key corresponding to these attributes.
 
 In order to transform this high-level view into encapsulations, the following
 objects are defined:
+
 - **policy**: defines all possible rights; a policy is built from a set of
   axes which are composed of sets of attributes.
 - **encryption policy**: subset of the policy used to encrypt; an encryption
@@ -130,21 +135,23 @@ receives the secret sub-key associated to each partitions.
 
 **Example**: the following policy is composed of two axes. The `Security` axis
 composed of three attributes and the `Country` axis composed of 4 attributes.
+
 ```txt
 Polixy: {
-	Security: {	// <- first axis
-		None,
-		Medium,
-		High
-	},
-	Country: {	// <- second axis
-		France,
-		Germany,
-		UK,
-		Spain
-	}
+ Security: { // <- first axis
+  None,
+  Medium,
+  High
+ },
+ Country: { // <- second axis
+  France,
+  Germany,
+  UK,
+  Spain
+ }
 }
 ```
+
 The encryption policy `Security::Medium && ( Country::France ||
 Country::Spain)` would be converted into two partitions. The encryption policy
 `Security::High` would be expanded into `Security::High && (Country::France ||
@@ -183,6 +190,7 @@ where:
 - $\texttt{LEB128sizeof}: n \rightarrow \left\lceil \frac{8 \cdot \texttt{sizeof}(n)}{7}\right\rceil$
 
 **NOTE**: For our implementation `CoverCryptX25519Aes256`:
+
 - Curve25519 public key length: $L_{pk} = 32~\textnormal{bytes}$
 - Curve25519 secret key length: $L_{sk} = 32~\textnormal{bytes}$
 - INDCPA-Kyber public key length: $L_{pk}^{pq} = 1184$
