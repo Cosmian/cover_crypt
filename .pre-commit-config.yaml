@@ -29,7 +29,7 @@ repos:
     rev: v0.33.0
     hooks:
       - id: markdownlint-fix
-        args: [--disable=MD013, --disable=MD024, --disable=MD041]
+        args: [--disable=MD004, --disable=MD013, --disable=MD024, --disable=MD041]
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
@@ -37,7 +37,6 @@ repos:
       - id: htmlhint
       - id: dockerfile_lint
       - id: markdown-toc
-        args: [--bullets="-"] # comment this to refresh TOC
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
@@ -95,6 +94,24 @@ repos:
       - id: cargo-dry-publish
         args: [--allow-dirty]
       - id: dprint-toml-fix
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.9
+    hooks:
+      - id: stable-cargo-format
+      - id: dprint-toml-fix
+      - id: cargo-update
+      - id: cargo-udeps
+      - id: cargo-tests-all
+      - id: cargo-test-doc
+      - id: cargo-check-semver
+      - id: clippy-autofix-all
+      - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
+      - id: clippy-autofix-others
+      - id: clippy-all-targets-all-features
+      - id: cargo-dry-publish
+        args: [--allow-dirty]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [11.0.1] - 2023-05-03
+
+### Documentation
+
+- Fix formulas + describe how partitions work
+
+### Miscellaneous Tasks
+
+- Release 11.0.1 in order to upgrade crypto_core and use ECIES
+
+### Ci
+
+- Missing github caches cleanup
+
 ---
 
 ## [11.0.0] - 2023-03-01
