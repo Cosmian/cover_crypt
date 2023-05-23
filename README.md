@@ -1,4 +1,4 @@
-# CoverCrypt
+# Covercrypt
 
 ![Build status](https://github.com/Cosmian/cover_crypt/actions/workflows/ci.yml/badge.svg)
 ![latest version](https://img.shields.io/crates/v/cosmian_cover_crypt.svg)
