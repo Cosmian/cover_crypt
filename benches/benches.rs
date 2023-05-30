@@ -1,6 +1,6 @@
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis},
-    statics::{CoverCryptCurve25519Aes256, EncryptedHeader},
+    statics::{CoverCryptX25519Aes256, EncryptedHeader},
     CoverCrypt, Error,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -74,10 +74,11 @@ fn policy() -> Result<Policy, Error> {
 fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // Access policy with 1 partition
     #[allow(unused_mut)]
-    let mut access_policies = vec![
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap(),
-    ];
+    let mut access_policies =
+        vec![
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+                .unwrap(),
+        ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -122,10 +123,11 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // The intersection between the user access policies and the encryption
     // policies is always "Department::FIN && Security Level::Protected" only.
     #[allow(unused_mut)]
-    let mut user_access_policies = vec![
-        AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-            .unwrap(),
-    ];
+    let mut user_access_policies =
+        vec![
+            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
+                .unwrap(),
+        ];
 
     #[cfg(feature = "full_bench")]
     {
@@ -167,7 +169,7 @@ fn bench_serialization(c: &mut Criterion) {
 
     let policy = policy().expect("cannot generate policy");
     let (user_access_policies, access_policies) = get_access_policies();
-    let cover_crypt = CoverCryptCurve25519Aes256::default();
+    let cover_crypt = CoverCryptX25519Aes256::default();
     let (msk, mpk) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -235,7 +237,7 @@ fn bench_serialization(c: &mut Criterion) {
 fn bench_header_encryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
     let (_, access_policies) = get_access_policies();
-    let cover_crypt = CoverCryptCurve25519Aes256::default();
+    let cover_crypt = CoverCryptX25519Aes256::default();
     let (_, mpk) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
@@ -267,7 +269,7 @@ fn bench_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
     let authenticated_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
     let (user_access_policy, access_policies) = get_access_policies();
-    let cover_crypt = CoverCryptCurve25519Aes256::default();
+    let cover_crypt = CoverCryptX25519Aes256::default();
     let (msk, mpk) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");

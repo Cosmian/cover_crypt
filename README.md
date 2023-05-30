@@ -108,10 +108,6 @@ be decrypted by the user holding a key corresponding to these attributes.
 
 In order to transform this high-level view into encapsulations, the following
 objects are defined:
-<<<<<<< HEAD
-
-=======
->>>>>>> 68c3826 (fix: README)
 - **policy**: defines all possible rights; a policy is built from a set of
   axes which are composed of sets of attributes.
 - **encryption policy**: subset of the policy used to encrypt; an encryption
@@ -179,7 +175,7 @@ where:
 - $\texttt{sizeof}: n \rightarrow$ size of $n$ in bytes
 - $\texttt{LEB128sizeof}: n \rightarrow \left\lceil \frac{8 \cdot \texttt{sizeof}(n)}{7}\right\rceil$
 
-**NOTE**: For our implementation `CoverCryptCurve25519Aes256`:
+**NOTE**: For our implementation `CoverCryptX25519Aes256`:
 - Curve25519 public key length: $L_{pk} = 32~\textnormal{bytes}$ (compressed
   Ristretto representation)
 - Curve25519 secret key length: $L_{sk} = 32~\textnormal{bytes}$
