@@ -62,7 +62,6 @@ symmetric key for a set of attributes. This encapsulation is stored in an
 object called encrypted header, along with the symmetric ciphertext.
 
 This design brings several advantages:
-
 - the central authority has a unique key to protect (the master secret key);
 - encapsulation can be performed without the need to store any sensitive
   information (public cryptography);
@@ -70,7 +69,6 @@ This design brings several advantages:
 
 CoverCrypt encryption is post-quantum secure (with a post-quantum security
 level of 128 bits):
-
 - all encapsulations can be hybridized using INDCPA-KYBER, the INDCPA (a
   security level) version of the NIST standard for the post-quantum KEM,
   [Kyber](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8406610);
@@ -79,7 +77,6 @@ level of 128 bits):
 - the actual data is encrypted using AES-GCM with a 256-bit key.
 
 The CoverCrypt scheme also ensures that:
-
 - user secret keys are unique;
 - user secret keys are traceable (under some assumption, cf
   [CoverCrypt paper](#documentation)).
@@ -111,7 +108,6 @@ be decrypted by the user holding a key corresponding to these attributes.
 
 In order to transform this high-level view into encapsulations, the following
 objects are defined:
-
 - **policy**: defines all possible rights; a policy is built from a set of
   axes which are composed of sets of attributes.
 - **encryption policy**: subset of the policy used to encrypt; an encryption
@@ -135,23 +131,21 @@ receives the secret sub-key associated to each partitions.
 
 **Example**: the following policy is composed of two axes. The `Security` axis
 composed of three attributes and the `Country` axis composed of 4 attributes.
-
 ```txt
 Polixy: {
- Security: { // <- first axis
-  None,
-  Medium,
-  High
- },
- Country: { // <- second axis
-  France,
-  Germany,
-  UK,
-  Spain
- }
+	Security: {	// <- first axis
+		None,
+		Medium,
+		High
+	},
+	Country: {	// <- second axis
+		France,
+		Germany,
+		UK,
+		Spain
+	}
 }
 ```
-
 The encryption policy `Security::Medium && ( Country::France ||
 Country::Spain)` would be converted into two partitions. The encryption policy
 `Security::High` would be expanded into `Security::High && (Country::France ||
@@ -162,27 +156,19 @@ Country::Spain)` would be converted into two partitions. The encryption policy
 The size of the serialized keys and encapsulation is given by the following formulas:
 
 - master secret key:
-$$3 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
-
+$$2 \cdot L_{sk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\mathcal{P}} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
 - public key:
-
-$$3 \cdot L_{pk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{pk} + \delta_{p,~h} \cdot L_{pk}^{pq}\right)$$
-
+$$2 \cdot L_{pk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\mathcal{P}} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{pk} + \delta_{p,~h} \cdot L_{pk}^{pq}\right)$$
 - user secret key:
-
 $$2 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
-
 - encapsulation:
-
 $$2 \cdot L_{pk} + T + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left(1 + \delta_{p,~c} \cdot L_{pk} + \delta_{p,~h} \cdot L_c^{pq}\right)$$
-
 - encrypted header (encapsulation and symmetrically encrypted metadata):
-
 $$\texttt{sizeof}(encapsulation) + \texttt{LEB128sizeof} \left(C_{overhead} + \texttt{sizeof}(metadata)\right) + C_{overhead} + \texttt{sizeof}(metadata)$$
 
 where:
 
-- $n_p$ is the number of partitions related to the encryption policy
+- $|\mathcal{P}|$ is the number of partitions related to the encryption policy
 - $\delta_{p,~c} = 1$ if $p$ is a classic partition, 0 otherwise
 - $\delta_{p,~h} = 1 - \delta_{p,~c}$ (i.e. 1 if $p$ is a hybridized partition,
   0 otherwise)
@@ -190,8 +176,8 @@ where:
 - $\texttt{LEB128sizeof}: n \rightarrow \left\lceil \frac{8 \cdot \texttt{sizeof}(n)}{7}\right\rceil$
 
 **NOTE**: For our implementation `CoverCryptX25519Aes256`:
-
-- Curve25519 public key length: $L_{pk} = 32~\textnormal{bytes}$
+- Curve25519 public key length: $L_{pk} = 32~\textnormal{bytes}$ (compressed
+  Ristretto representation)
 - Curve25519 secret key length: $L_{sk} = 32~\textnormal{bytes}$
 - INDCPA-Kyber public key length: $L_{pk}^{pq} = 1184$
 - INDCPA-Kyber secret key length: $L_{sk}^{pq} = 1152$
