@@ -137,7 +137,7 @@ receives the secret sub-key associated to each partitions.
 composed of three attributes and the `Country` axis composed of 4 attributes.
 
 ```txt
-Polixy: {
+Policy: {
  Security: { // <- first axis
   None,
   Medium,
