@@ -1,4 +1,4 @@
-# Benchmarks for CoverCrypt post-quantum implementation
+# Benchmarks for Covercrypt post-quantum implementation
 
 ## Table of Contents
 

@@ -22,18 +22,20 @@ name = "benches"
 harness = false
 
 [features]
-serialization = ["base64"]
+serialization = []
+test_utils = ["base64"]
 full_bench = ["serialization"]
 hybridized_bench = []
 
 [dependencies]
 base64 = { version = "0.21.0", optional = true }
-cosmian_crypto_core = "7.1.0"
-# TODO (TBZ): why do we need `std` feature here?
+cosmian_crypto_core = { path = "../crypto_core", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
 pqc_kyber = { version = "0.4", features = ["std", "hazmat"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tiny-keccak = { version = "2.0.2", features = ["shake"] }
+zeroize = "1.6.0"
 
 [dev-dependencies]
+base64 = { version = "0.21.0" }
 criterion = { version = "0.4", features = ["html_reports"], default_features = false }

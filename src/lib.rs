@@ -1,17 +1,24 @@
-//! This crate implements the `CoverCrypt` cryptographic scheme which allows to:
+//! This crate implements the `Covercrypt` cryptographic scheme which allows to:
 //! - encrypt messages for a given set of policy attributes;
 //! - decrypt messages if the decryptor has been assigned one of these policy
 //! attributes;
-//! - "rotate" policy attributes, which allows to prevent decryption of older
-//! ciphertexts for a new user and decryption of new ciphertexts by old users.
-//! Old users can be granted decryption right for new ciphertexts after a key
-//! refresh.
+//! - "rotate" policy attributes;
+//! - "refresh" user keys.
 //!
-//! The `api` module exposes the generic definition of `CoverCrypt`.
+//! A rotations prevents decryption of pre-rotation ciphertexts by a
+//! post-rotation key and decryption of post-rotation ciphertexts by a
+//! pre-rotation key. A pre-rotation key can be refreshed to be granted
+//! decryption rights for the post-rotation ciphertexts. A post-rotation key
+//! cannot be granted decryption rights for the pre-rotation ciphertexts.
 //!
-//! The `interface::statics` module exposes instantiates `CoverCrypt` using
-//! a DEM scheme build on top of AES256-GCM and a asymmetric key pair built on
-//! top of Curve25519.
+//! Covercryptencryption offers 128 bits of both pre- and post-quantum
+//! security.
+//!
+//! The `api` module exposes the generic definition of `Covercrypt`.
+//!
+//! The `interface::statics` module exposes instantiates `Covercrypt`
+//! using a DEM scheme build on top of AES256-GCM and a asymmetric key pair
+//! built on top of Curve25519.
 //!
 //! # Example
 //!
@@ -21,9 +28,12 @@ mod error;
 
 pub mod abe_policy;
 pub mod core;
-pub mod statics;
+#[cfg(any(test, feature = "test_utils"))]
 pub mod test_utils;
 
 pub use error::Error;
 
-pub use self::core::api::{CleartextHeader, CoverCrypt, EncryptedHeader};
+pub use self::core::{
+    api::{CleartextHeader, Covercrypt, EncryptedHeader},
+    Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
+};

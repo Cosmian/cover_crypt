@@ -39,8 +39,7 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy, Partition},
-        statics::CoverCryptX25519Aes256,
-        CoverCrypt, EncryptedHeader,
+        Covercrypt, EncryptedHeader,
     };
 
     #[test]
@@ -68,10 +67,10 @@ mod tests {
     #[test]
     fn test_update_master_keys() -> Result<(), Error> {
         let mut policy = policy()?;
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        let partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
-        let partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
             assert!(partitions_mpk.contains(p));
@@ -80,8 +79,8 @@ mod tests {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.x.clone().into_keys().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.H.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
@@ -94,7 +93,7 @@ mod tests {
     #[test]
     fn test_refresh_user_key() -> Result<(), Error> {
         let mut policy = policy()?;
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
         let decryption_policy = AccessPolicy::from_boolean_expression(
             "Department::MKG && Security Level::High Secret",
@@ -109,16 +108,16 @@ mod tests {
         cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, true)?;
         // 4 partitions accessed by the user were rotated (MKG Protected, Low Secret,
         // Medium Secret and High Secret)
-        assert_eq!(usk.x.len(), original_usk.x.len() + 4);
-        for x_i in &original_usk.x {
-            assert!(usk.x.contains(x_i));
+        assert_eq!(usk.subkeys.len(), original_usk.subkeys.len() + 4);
+        for x_i in &original_usk.subkeys {
+            assert!(usk.subkeys.contains(x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)?;
         // the user should still have access to the same number of partitions
-        assert_eq!(usk.x.len(), original_usk.x.len());
-        for x_i in &original_usk.x {
-            assert!(!usk.x.contains(x_i));
+        assert_eq!(usk.subkeys.len(), original_usk.subkeys.len());
+        for x_i in &original_usk.subkeys {
+            assert!(!usk.subkeys.contains(x_i));
         }
         Ok(())
     }
@@ -130,7 +129,7 @@ mod tests {
         let access_policy = (AccessPolicy::new("Department", "R&D")
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Top Secret");
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        let cover_crypt = Covercrypt::default();
         let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
         let (sym_key, encrypted_key) = cover_crypt.encaps(
             &policy,
@@ -152,8 +151,8 @@ mod tests {
         let policy = policy()?;
 
         //
-        // Setup CoverCrypt
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        // Setup Covercrypt
+        let cover_crypt = Covercrypt::default();
         let (msk, _master_public_key) = cover_crypt.generate_master_keys(&policy)?;
 
         //
@@ -175,8 +174,8 @@ mod tests {
         let top_secret_ap = AccessPolicy::from_boolean_expression("Security Level::Top Secret")?;
 
         //
-        // Setup CoverCrypt
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        // Setup Covercrypt
+        let cover_crypt = Covercrypt::default();
         let (mut msk, mut master_public_key) = cover_crypt.generate_master_keys(&policy)?;
 
         //
@@ -220,9 +219,11 @@ mod tests {
         )?;
 
         // Decryption fails without refreshing the user key
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_err());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_err()
+        );
 
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
@@ -235,9 +236,11 @@ mod tests {
         )?;
 
         // The refreshed key can decrypt the header
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         Ok(())
     }

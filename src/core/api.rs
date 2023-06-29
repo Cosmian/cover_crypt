@@ -1,80 +1,55 @@
-//! Defines the `CoverCrypt` API.
+//! Defines the `Covercrypt` API.
 
-use std::{
-    fmt::Debug,
-    ops::{Add, Div, Mul, Sub},
-};
+use std::{fmt::Debug, sync::Mutex};
 
-#[cfg(feature = "serialization")]
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::{
-    asymmetric_crypto::DhKeyPair,
-    symmetric_crypto::{Dem, SymKey},
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
+    RandomFixedSizeCBytes, SymmetricKey,
 };
 
+use super::primitives::{decaps, encaps, keygen, refresh, setup};
 use crate::{
     abe_policy::{AccessPolicy, Policy},
+    core::{
+        primitives::update, Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
+        SYM_KEY_LENGTH,
+    },
     Error,
 };
 
-/// This trait is the main entry point for the core functionalities.
-///
-/// It supplies a simple API that lets generate keys, encrypt and decrypt
-/// messages.
-///
-/// In addition, two methods are supplied to generate random symmetric keys and
-/// their corresponding cipher texts.
-pub trait CoverCrypt<
-    const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
-    const PK_LENGTH: usize,
-    const SK_LENGTH: usize,
-    KeyPair,
-    DEM,
->: Default + Debug + PartialEq where
-    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
-    DEM: Dem<SYM_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-{
-    const SYM_KEY_LENGTH: usize = SYM_KEY_LENGTH;
-    const PUBLIC_KEY_LENGTH: usize = PK_LENGTH;
-    const PRIVATE_KEY_LENGTH: usize = SK_LENGTH;
+/// Instantiate a `Covercrypt` type with AES GCM 256 as DEM
+#[derive(Debug)]
+pub struct Covercrypt {
+    rng: Mutex<CsRng>,
+}
 
-    #[cfg(not(feature = "serialization"))]
-    type MasterSecretKey: PartialEq + Eq;
-    #[cfg(feature = "serialization")]
-    type MasterSecretKey: PartialEq + Eq + Serializable<Error = Error>;
+impl Default for Covercrypt {
+    fn default() -> Self {
+        Self {
+            rng: Mutex::new(CsRng::from_entropy()),
+        }
+    }
+}
 
-    #[cfg(not(feature = "serialization"))]
-    type UserSecretKey: PartialEq + Eq;
-    #[cfg(feature = "serialization")]
-    type UserSecretKey: PartialEq + Eq + Serializable<Error = Error>;
+impl PartialEq for Covercrypt {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
 
-    #[cfg(not(feature = "serialization"))]
-    type PublicKey: PartialEq + Eq;
-    #[cfg(feature = "serialization")]
-    type PublicKey: PartialEq + Eq + Serializable<Error = Error>;
-
-    #[cfg(not(feature = "serialization"))]
-    type Encapsulation: PartialEq + Eq;
-    #[cfg(feature = "serialization")]
-    type Encapsulation: PartialEq + Eq + Serializable<Error = Error>;
-
-    type SymmetricKey: SymKey<SYM_KEY_LENGTH>;
-
+impl Covercrypt {
     /// Generates the master authority keys for supplied Policy
     ///
     ///  - `policy` : Policy to use to generate the keys
-    fn generate_master_keys(
+    pub fn generate_master_keys(
         &self,
         policy: &Policy,
-    ) -> Result<(Self::MasterSecretKey, Self::PublicKey), Error>;
+    ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+        Ok(setup(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &policy.generate_all_partitions()?,
+        ))
+    }
 
     /// Updates the master keys according to this new policy.
     ///
@@ -86,12 +61,19 @@ pub trait CoverCrypt<
     ///  - `policy` : Policy to use to generate the keys
     ///  - `msk`    : master secret key
     ///  - `mpk`    : master public key
-    fn update_master_keys(
+    pub fn update_master_keys(
         &self,
         policy: &Policy,
-        msk: &mut Self::MasterSecretKey,
-        mpk: &mut Self::PublicKey,
-    ) -> Result<(), Error>;
+        msk: &mut MasterSecretKey,
+        mpk: &mut MasterPublicKey,
+    ) -> Result<(), Error> {
+        update(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            mpk,
+            &policy.generate_all_partitions()?,
+        )
+    }
 
     /// Generates a user secret key.
     ///
@@ -100,12 +82,18 @@ pub trait CoverCrypt<
     /// - `msk`         : master secret key
     /// - `user_policy` : user access policy
     /// - `policy`      : global policy
-    fn generate_user_secret_key(
+    pub fn generate_user_secret_key(
         &self,
-        msk: &Self::MasterSecretKey,
-        user_policy: &AccessPolicy,
+        msk: &MasterSecretKey,
+        access_policy: &AccessPolicy,
         policy: &Policy,
-    ) -> Result<Self::UserSecretKey, Error>;
+    ) -> Result<UserSecretKey, Error> {
+        Ok(keygen(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            &policy.access_policy_to_current_partitions(access_policy, true)?,
+        ))
+    }
 
     /// Refreshes the user key according to the given master key and user
     /// policy.
@@ -120,189 +108,158 @@ pub trait CoverCrypt<
     /// - `policy`              : global policy of the master secret key
     /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
     ///   rotation) should be kept
-    fn refresh_user_secret_key(
+    pub fn refresh_user_secret_key(
         &self,
-        usk: &mut Self::UserSecretKey,
-        user_policy: &AccessPolicy,
-        msk: &Self::MasterSecretKey,
+        usk: &mut UserSecretKey,
+        access_policy: &AccessPolicy,
+        msk: &MasterSecretKey,
         policy: &Policy,
         keep_old_accesses: bool,
-    ) -> Result<(), Error>;
+    ) -> Result<(), Error> {
+        refresh(
+            msk,
+            usk,
+            &policy.access_policy_to_current_partitions(access_policy, true)?,
+            keep_old_accesses,
+        );
+        Ok(())
+    }
 
     /// Generates a random symmetric key to be used with a DEM scheme and
-    /// generates its `CoverCrypt` encapsulation for the given policy
+    /// generates its `Covercrypt` encapsulation for the given policy
     /// `attributes`.
     ///
     /// - `policy`              : global policy
     /// - `pk`                  : public key
     /// - `encryption_policy`   : encryption policy used for the encapsulation
-    fn encaps(
+    pub fn encaps(
         &self,
         policy: &Policy,
-        pk: &Self::PublicKey,
-        encryption_policy: &AccessPolicy,
-    ) -> Result<(DEM::Key, Self::Encapsulation), Error>;
+        pk: &MasterPublicKey,
+        access_policy: &AccessPolicy,
+    ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
+        encaps(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            pk,
+            &policy.access_policy_to_current_partitions(access_policy, false)?,
+        )
+    }
 
-    /// Decapsulates a symmetric key from the given `CoverCrypt` encapsulation.
+    /// Decapsulates a symmetric key from the given `Covercrypt` encapsulation.
     /// This returns multiple key candidates. The use of an authenticated DEM
     /// scheme allows to select valid ones.
     ///
     /// - `sk_u`            : user secret key
     /// - `encapsulation`   : encrypted symmetric key
-    fn decaps(
+    pub fn decaps(
         &self,
-        sk_u: &Self::UserSecretKey,
-        encapsulation: &Self::Encapsulation,
-    ) -> Result<DEM::Key, Error>;
+        usk: &UserSecretKey,
+        encapsulation: &Encapsulation,
+    ) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
+        decaps(usk, encapsulation)
+    }
 
-    /// Encrypts given plaintext using the given symmetric key.
-    ///
-    /// - `symmetric_key`       : symmetric key used to encrypt data
-    /// - `plaintext`           : data to be encrypted
-    /// - `authentication_data` : optional data used for authentication
-    fn encrypt(
+    pub fn encrypt(
         &self,
-        symmetric_key: &DEM::Key,
+        key: &SymmetricKey<SYM_KEY_LENGTH>,
         plaintext: &[u8],
-        authentication_data: Option<&[u8]>,
-    ) -> Result<Vec<u8>, Error>;
+        ad: Option<&[u8]>,
+    ) -> Result<Vec<u8>, Error> {
+        let aes256gcm = Aes256Gcm::new(key);
+        let nonce = Nonce::new(&mut *self.rng.lock().expect("could not lock mutex"));
+        let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
+        let mut res =
+            Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + Aes256Gcm::MAC_LENGTH + plaintext.len());
+        res.extend_from_slice(&nonce.0);
+        res.append(&mut ciphertext);
+        Ok(res)
+    }
 
-    /// Decrypts the given ciphertext using the given symmetric key.
-    ///
-    /// - `symmetric_key`       : symmetric key used to encrypt data
-    /// - `plaintext`           : data to be encrypted
-    /// - `authentication_data` : optional data used for authentication
-    fn decrypt(
+    pub fn decrypt(
         &self,
-        key: &DEM::Key,
+        key: &SymmetricKey<SYM_KEY_LENGTH>,
         ciphertext: &[u8],
-        authentication_data: Option<&[u8]>,
-    ) -> Result<Vec<u8>, Error>;
+        ad: Option<&[u8]>,
+    ) -> Result<Vec<u8>, Error> {
+        let aes256gcm = Aes256Gcm::new(key);
+        let nonce = Nonce::try_from_slice(&ciphertext[..Aes256Gcm::NONCE_LENGTH])?;
+        aes256gcm
+            .decrypt(&nonce, &ciphertext[Aes256Gcm::NONCE_LENGTH..], ad)
+            .map_err(Error::CryptoCoreError)
+    }
 }
 
-/// Encrypted header holding a `CoverCrypt` encapsulation of a symmetric key and
-/// additional data encrypted using the `CoverCrypt` DEM with the encapsulated
+/// Encrypted header holding a `Covercrypt` encapsulation of a symmetric key and
+/// additional data encrypted using the `Covercrypt` DEM with the encapsulated
 /// key.
 ///
 /// *Note*: the DEM ciphertext is also used to select the correct symmetric key
 /// from the decapsulation.
 ///
-/// - `encapsulation`   : `CoverCrypt` encapsulation of a symmetric key
-/// - `ciphertext`      : `CoverCrypt` DEM encryption of additional data
+/// - `encapsulation`:          `Covercrypt` encapsulation of a symmetric key
+/// - `encrypted_metadata`  :   Aes256Gcm encryption of the metadata
 #[derive(Debug, PartialEq, Eq)]
-pub struct EncryptedHeader<
-    const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
-    const PK_LENGTH: usize,
-    const SK_LENGTH: usize,
-    KeyPair,
-    DEM,
-    CoverCryptScheme,
-> where
-    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
-    DEM: Dem<SYM_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-    CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
-{
-    pub encapsulation: CoverCryptScheme::Encapsulation,
-    pub ciphertext: Vec<u8>,
+pub struct EncryptedHeader {
+    pub encapsulation: Encapsulation,
+    pub encrypted_metadata: Option<Vec<u8>>,
 }
 
-impl<
-        const TAG_LENGTH: usize,
-        const SYM_KEY_LENGTH: usize,
-        const PK_LENGTH: usize,
-        const SK_LENGTH: usize,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
-    EncryptedHeader<
-        TAG_LENGTH,
-        SYM_KEY_LENGTH,
-        PK_LENGTH,
-        SK_LENGTH,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
-where
-    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
-    DEM: Dem<SYM_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-    CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
-{
+impl EncryptedHeader {
     /// Generates an encrypted header for a random key and the given metadata.
     /// Returns the encrypted header along with the symmetric key
     /// encapsulated in this header.
     ///
-    /// - `cover_crypt`         : `CoverCrypt` object
+    /// - `cover_crypt`         : `Covercrypt` object
     /// - `policy`              : global policy
-    /// - `public_key`          : `CoverCrypt` public key
+    /// - `public_key`          : `Covercrypt` public key
     /// - `encryption_policy`   : access policy used for the encapsulation
     /// - `header_metadata`     : additional data symmetrically encrypted in the
     ///   header
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
-        cover_crypt: &CoverCryptScheme,
+        cover_crypt: &Covercrypt,
         policy: &Policy,
-        public_key: &CoverCryptScheme::PublicKey,
+        public_key: &MasterPublicKey,
         encryption_policy: &AccessPolicy,
-        header_metadata: Option<&[u8]>,
+        metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
-    ) -> Result<(DEM::Key, Self), Error> {
-        // generate a symmetric key and its encapsulation
+    ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Self), Error> {
         let (symmetric_key, encapsulation) =
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
-        // encrypt the metadata using the DEM with the authentication_data and the
-        // encapsulated key
-        let ciphertext = match header_metadata {
-            Some(d) => cover_crypt.encrypt(&symmetric_key, d, authentication_data)?,
-            None => vec![],
-        };
+        let encrypted_metadata = metadata
+            .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))
+            .transpose()?;
 
         Ok((
             symmetric_key,
             Self {
                 encapsulation,
-                ciphertext,
+                encrypted_metadata,
             },
         ))
     }
 
     /// Decrypts the header with the given user secret key.
     ///
-    /// - `cover_crypt`         : `CoverCrypt` object
-    /// - `usk`                 : `CoverCrypt` user secret key
+    /// - `cover_crypt`         : `Covercrypt` object
+    /// - `usk`                 : `Covercrypt` user secret key
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn decrypt(
         &self,
-        cover_crypt: &CoverCryptScheme,
-        usk: &CoverCryptScheme::UserSecretKey,
+        cover_crypt: &Covercrypt,
+        usk: &UserSecretKey,
         authentication_data: Option<&[u8]>,
-    ) -> Result<CleartextHeader<SYM_KEY_LENGTH, DEM>, Error> {
+    ) -> Result<CleartextHeader, Error> {
         let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
-        let header_metadata = if self.ciphertext.is_empty() {
-            vec![]
-        } else {
-            cover_crypt.decrypt(&symmetric_key, &self.ciphertext, authentication_data)?
-        };
+        let metadata = self
+            .encrypted_metadata
+            .as_ref()
+            .map(|ciphertext| cover_crypt.decrypt(&symmetric_key, ciphertext, authentication_data))
+            .transpose()?;
         Ok(CleartextHeader {
             symmetric_key,
-            metadata: header_metadata,
+            metadata,
         })
     }
 }
@@ -312,10 +269,7 @@ where
 /// - `symmetric_key`   : DEM key
 /// - `metadata`        : additional data symmetrically encrypted in a header
 #[derive(Debug, PartialEq, Eq)]
-pub struct CleartextHeader<const KEY_LENGTH: usize, DEM>
-where
-    DEM: Dem<KEY_LENGTH>,
-{
-    pub symmetric_key: DEM::Key,
-    pub metadata: Vec<u8>,
+pub struct CleartextHeader {
+    pub symmetric_key: SymmetricKey<SYM_KEY_LENGTH>,
+    pub metadata: Option<Vec<u8>>,
 }

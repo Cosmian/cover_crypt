@@ -1,268 +1,194 @@
-//! Implements the cryptographic primitives of `CoverCrypt`, based on
-//! `bib/CoverCrypt.pdf`.
+//! Implements the cryptographic primitives of `Covercrypt`, based on
+//! `bib/Covercrypt.pdf`.
 
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    ops::{Add, Div, Mul, Sub},
-};
+use std::collections::{HashMap, HashSet};
 
 use cosmian_crypto_core::{
-    asymmetric_crypto::DhKeyPair,
-    kdf,
-    reexport::rand_core::{CryptoRng, CryptoRngCore, RngCore},
-    symmetric_crypto::SymKey,
-    KeyTrait,
+    kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey,
+    RandomFixedSizeCBytes, SymmetricKey,
 };
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
 };
+use zeroize::Zeroizing;
 
+use super::{KyberPublicKey, KyberSecretKey, SYM_KEY_LENGTH, TAG_LENGTH};
 use crate::{
     abe_policy::{EncryptionHint, Partition},
-    core::{Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey},
+    core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     Error,
 };
 
 /// Additional information to generate symmetric key using the KDF.
 pub(crate) const KEY_GEN_INFO: &[u8] = b"key generation info";
 
-/// Xor the two given byte arrays.
-fn xor<const LENGTH: usize>(a: &[u8; LENGTH], b: &[u8; LENGTH]) -> [u8; LENGTH] {
-    let mut res = [0; LENGTH];
-    for (i, byte) in res.iter_mut().enumerate() {
-        *byte = a[i] ^ b[i];
+/// Xor the two given byte arrays in place.
+fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
+    for (a_i, b_i) in a.iter_mut().zip(b.iter()) {
+        *a_i ^= b_i;
     }
-    res
 }
 
-/// Generates the master secret key and master public key of the `CoverCrypt`
+/// Generates the master secret key and master public key of the `Covercrypt`
 /// scheme.
-///
-/// # Reference
-///
-/// Implements Algorithm 1 in Appendix B.
 ///
 /// # Parameters
 ///
 /// - `rng`             : random number generator
 /// - `partitions`      : set of partition to be used
-/// - `is_hybridized`   : `true` if the setup should produced hybridized keys
-pub fn setup<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, KeyPair>(
+pub fn setup(
     rng: &mut impl CryptoRngCore,
     partitions: &HashMap<Partition, EncryptionHint>,
-) -> (
-    MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
-    PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
-)
-where
-    KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-{
-    let u = KeyPair::PrivateKey::new(rng);
-    let v = KeyPair::PrivateKey::new(rng);
-    let s = KeyPair::PrivateKey::new(rng);
-    let U = KeyPair::PublicKey::from(u.clone());
-    let V = KeyPair::PublicKey::from(v.clone());
-    let S = KeyPair::PublicKey::from(s.clone());
+) -> (MasterSecretKey, MasterPublicKey) {
+    let s1 = R25519PrivateKey::new(rng);
+    let s2 = R25519PrivateKey::new(rng);
+    let a = R25519PrivateKey::new(rng);
+    let b = R25519PrivateKey::new(rng);
+    let s = &(&a * &s1) + &(&b * &s2);
+    let h = R25519PublicKey::from(&s);
+    let g1 = R25519PublicKey::from(&s1);
+    let g2 = R25519PublicKey::from(&s2);
 
-    let mut x = HashMap::with_capacity(partitions.len());
-    let mut H = HashMap::with_capacity(partitions.len());
+    let mut sub_sk = HashMap::with_capacity(partitions.len());
+    let mut sub_pk = HashMap::with_capacity(partitions.len());
 
     for (partition, &is_hybridized) in partitions {
-        let x_i = KeyPair::PrivateKey::new(rng);
-        let H_i = &S * &x_i;
+        let sk_i = R25519PrivateKey::new(rng);
+        let pk_i = &h * &sk_i;
 
         let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
             let (mut sk, mut pk) = (
-                [0; KYBER_INDCPA_SECRETKEYBYTES],
-                [0; KYBER_INDCPA_PUBLICKEYBYTES],
+                KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
+                KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
             );
-            indcpa_keypair(&mut pk, &mut sk, None, rng);
+            indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
             (Some(sk), Some(pk))
         } else {
             (None, None)
         };
 
-        x.insert(partition.clone(), (sk_pq, x_i));
-        H.insert(partition.clone(), (pk_pq, H_i));
+        sub_sk.insert(partition.clone(), (sk_pq, sk_i));
+        sub_pk.insert(partition.clone(), (pk_pq, pk_i));
     }
 
-    (MasterSecretKey { u, v, s, x }, PublicKey { U, V, H })
+    (
+        MasterSecretKey {
+            s,
+            s1,
+            s2,
+            subkeys: sub_sk,
+        },
+        MasterPublicKey {
+            h,
+            g1,
+            g2,
+            subkeys: sub_pk,
+        },
+    )
 }
 
 /// Generates a user secret key for the given decryption set.
-///
-/// # Reference
-///
-/// Implements Algorithm 2 in Appendix B.
 ///
 /// # Parameters
 ///
 /// - `rng`             : random number generator
 /// - `msk`             : master secret key
 /// - `decryption_set`  : decryption set
-pub fn keygen<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, R, KeyPair>(
-    rng: &mut R,
-    msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
+pub fn keygen(
+    rng: &mut impl CryptoRngCore,
+    msk: &MasterSecretKey,
     decryption_set: &HashSet<Partition>,
-) -> UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>
-where
-    R: CryptoRng + RngCore,
-    KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    KeyPair::PrivateKey: Hash,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-{
-    let a = KeyPair::PrivateKey::new(rng);
-    let b = &(&msk.s - &(&a * &msk.u)) / &msk.v;
-    let x = decryption_set
+) -> UserSecretKey {
+    let a = R25519PrivateKey::new(rng);
+    let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
+    let subkeys = decryption_set
         .iter()
-        .filter_map(|partition| msk.x.get(partition))
+        .filter_map(|partition| msk.subkeys.get(partition))
         .cloned()
         .collect();
-    UserSecretKey { a, b, x }
+    UserSecretKey { a, b, subkeys }
 }
 
-/// Generates a `CoverCrypt` encapsulation of a random symmetric key. Returns
-/// both the symmetric key and its encapsulation.
-///
-/// # Reference
-///
-/// Implements Algorithm 3 in Appendix B.
+/// Generates a `Covercrypt` encapsulation of a random symmetric key.
+/// Returns both the symmetric key and its encapsulation.
 ///
 /// # Parameters
 ///
 /// - `rng`             : secure random number generator
 /// - `mpk`             : master public key
 /// - `encryption_set`  : sets for which to generate a ciphertext
-pub fn encaps<
-    const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
-    const PUBLIC_KEY_LENGTH: usize,
-    const PRIVATE_KEY_LENGTH: usize,
-    SymmetricKey,
-    KeyPair,
->(
+pub fn encaps(
     rng: &mut impl CryptoRngCore,
-    mpk: &PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
+    mpk: &MasterPublicKey,
     encryption_set: &HashSet<Partition>,
-) -> (
-    SymmetricKey,
-    Encapsulation<TAG_LENGTH, SYM_KEY_LENGTH, PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
-)
-where
-    SymmetricKey: SymKey<SYM_KEY_LENGTH>,
-    KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-{
-    let mut K = [0; SYM_KEY_LENGTH];
-    rng.fill_bytes(&mut K);
+) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
+    let mut seed = Zeroizing::new([0; SYM_KEY_LENGTH]);
+    rng.fill_bytes(&mut *seed);
 
-    let r = KeyPair::PrivateKey::new(rng);
-    let C = &mpk.U * &r;
-    let D = &mpk.V * &r;
-    let mut E = HashSet::with_capacity(encryption_set.len());
+    let r = R25519PrivateKey::new(rng);
+    let c1 = &mpk.g1 * &r;
+    let c2 = &mpk.g2 * &r;
+    let mut encs = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
-        if let Some((pk_i, H_i)) = mpk.H.get(partition) {
-            let E_i = xor(&K, &kdf!(SYM_KEY_LENGTH, &(H_i * &r).to_bytes()));
+        if let Some((pk_i, h_i)) = mpk.subkeys.get(partition) {
+            let mut e_i = [0; SYM_KEY_LENGTH];
+            kdf256!(&mut e_i, &(h_i * &r).to_bytes());
+            xor_in_place(&mut e_i, &seed);
             if let Some(pk_i) = pk_i {
-                let mut EPQ_i = [0; KYBER_INDCPA_BYTES];
+                let mut epq_i = [0; KYBER_INDCPA_BYTES];
                 // TODO TBZ: which coin to use ?
-                indcpa_enc(&mut EPQ_i, &E_i, pk_i, &[0; KYBER_SYMBYTES]);
-                E.insert(KeyEncapsulation::HybridEncapsulation(Box::new(EPQ_i)));
+                indcpa_enc(&mut epq_i, &e_i, pk_i, &[0; KYBER_SYMBYTES]);
+                encs.insert(KeyEncapsulation::HybridEncapsulation(Box::new(epq_i)));
             } else {
-                E.insert(KeyEncapsulation::ClassicEncapsulation(Box::new(E_i)));
+                encs.insert(KeyEncapsulation::ClassicEncapsulation(Box::new(e_i)));
             }
         } // else unknown target partition
     }
-    let (tag, K) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K, KEY_GEN_INFO);
-    (SymmetricKey::from_bytes(K), Encapsulation { C, D, tag, E })
+    let (tag, key) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &*seed, KEY_GEN_INFO)
+        .map_err(Error::CryptoCoreError)?;
+    Ok((key, Encapsulation { c1, c2, tag, encs }))
 }
 
-/// Tries to decapsulate the given `CoverCrypt` encapsulation. Returns the
-/// encapsulated symmetric key.
+/// Tries to decapsulate the given `Covercrypt` encapsulation.
+/// Returns the encapsulated symmetric key.
 ///
 /// # Error
 ///
 /// An error is returned if the user decryption set does not match the
 /// encryption set used to generate the given encapsulation.
 ///
-/// # Reference
-///
-/// Implements Algorithm 4 in Appendix B.
-///
 /// # Parameters
 ///
 /// - `usk`             : user secret key
 /// - `encapsulation`   : symmetric key encapsulation
-pub fn decaps<
-    const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
-    const PUBLIC_KEY_LENGTH: usize,
-    const PRIVATE_KEY_LENGTH: usize,
-    SymmetricKey,
-    KeyPair,
->(
-    usk: &UserSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
-    encapsulation: &Encapsulation<
-        TAG_LENGTH,
-        SYM_KEY_LENGTH,
-        PUBLIC_KEY_LENGTH,
-        KeyPair::PublicKey,
-    >,
-) -> Result<SymmetricKey, Error>
-where
-    SymmetricKey: SymKey<SYM_KEY_LENGTH>,
-    KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    KeyPair::PrivateKey: Hash,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-{
-    let precomp = &(&encapsulation.C * &usk.a) + &(&encapsulation.D * &usk.b);
-    for encapsulation_i in &encapsulation.E {
-        for (sk_j, x_j) in &usk.x {
-            let E_j = match encapsulation_i {
-                KeyEncapsulation::HybridEncapsulation(EPQ_i) => {
+pub fn decaps(
+    usk: &UserSecretKey,
+    encapsulation: &Encapsulation,
+) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
+    let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
+    for encapsulation_i in &encapsulation.encs {
+        for (sk_j, x_j) in &usk.subkeys {
+            let e_j = match encapsulation_i {
+                KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
-                        let mut E_j = [0; SYM_KEY_LENGTH];
-                        // TODO TBZ: which coin to use ?
-                        indcpa_dec(&mut E_j, &**EPQ_i, sk_j);
-                        E_j
+                        let mut e_j = [0; SYM_KEY_LENGTH];
+                        indcpa_dec(&mut e_j, &**epq_i, sk_j);
+                        e_j
                     } else {
                         // Classic sub-key cannot decrypt hybridized encapsulation.
                         continue;
                     }
                 }
-                KeyEncapsulation::ClassicEncapsulation(E_i) => **E_i,
+                KeyEncapsulation::ClassicEncapsulation(e_i) => **e_i,
             };
-            let K = xor(&E_j, &kdf!(SYM_KEY_LENGTH, &(&precomp * x_j).to_bytes()));
-            let (tag, K) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &K, KEY_GEN_INFO);
+            let mut seed = Zeroizing::new([0; SYM_KEY_LENGTH]);
+            kdf256!(&mut *seed, &(&precomp * x_j).to_bytes());
+            xor_in_place(&mut seed, &e_j);
+            let (tag, key) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &*seed, KEY_GEN_INFO)
+                .map_err(Error::CryptoCoreError)?;
             if tag == encapsulation.tag {
-                return Ok(SymmetricKey::from_bytes(K));
+                return Ok(key);
             }
         }
     }
@@ -296,33 +222,22 @@ where
 /// - `msk`             : master secret key
 /// - `mpk`             : master public key
 /// - `partition_set`   : new set of partitions to use after the update
-pub fn update<const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGTH: usize, KeyPair>(
+pub fn update(
     rng: &mut impl CryptoRngCore,
-    msk: &mut MasterSecretKey<PRIVATE_KEY_LENGTH, KeyPair::PrivateKey>,
-    mpk: &mut PublicKey<PUBLIC_KEY_LENGTH, KeyPair::PublicKey>,
+    msk: &mut MasterSecretKey,
+    mpk: &mut MasterPublicKey,
     partitions_set: &HashMap<Partition, EncryptionHint>,
-) -> Result<(), Error>
-where
-    KeyPair: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-{
-    let S = KeyPair::PublicKey::from(msk.s.clone());
-    let mut new_x = HashMap::with_capacity(partitions_set.len());
-    let mut new_H = HashMap::with_capacity(partitions_set.len());
+) -> Result<(), Error> {
+    let mut new_sub_sk = HashMap::with_capacity(partitions_set.len());
+    let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
 
     for (partition, &is_hybridized) in partitions_set {
-        if let Some((sk_i, x_i)) = msk.x.get(partition) {
+        if let Some((sk_i, x_i)) = msk.subkeys.get(partition) {
             // regenerate the public sub-key.
-            let H_i = &S * x_i;
+            let h_i = &mpk.h * x_i;
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
-                let (pk_i, _) = mpk.H.get(partition).ok_or_else(|| {
+                let (pk_i, _) = mpk.subkeys.get(partition).ok_or_else(|| {
                     Error::KeyError(
                         "Kyber public key cannot be computed from the secret key.".to_string(),
                     )
@@ -330,7 +245,7 @@ where
 
                 if sk_i.is_some() {
                     if pk_i.is_some() {
-                        (*sk_i, *pk_i)
+                        (sk_i.clone(), pk_i.clone())
                     } else {
                         return Err(Error::KeyError(
                             "Kyber public key cannot be computed from the secret key.".to_string(),
@@ -338,38 +253,38 @@ where
                     }
                 } else {
                     let (mut sk_i, mut pk_i) = (
-                        [0; KYBER_INDCPA_SECRETKEYBYTES],
-                        [0; KYBER_INDCPA_PUBLICKEYBYTES],
+                        KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
+                        KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
                     );
-                    indcpa_keypair(&mut pk_i, &mut sk_i, None, rng);
+                    indcpa_keypair(&mut pk_i.0, &mut sk_i.0, None, rng);
                     (Some(sk_i), Some(pk_i))
                 }
             } else {
                 (None, None)
             };
-            new_x.insert(partition.clone(), (sk_i, x_i.clone()));
-            new_H.insert(partition.clone(), (pk_i, H_i));
+            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
+            new_sub_pk.insert(partition.clone(), (pk_i, h_i));
         } else {
             // Create new entry.
-            let x_i = KeyPair::PrivateKey::new(rng);
-            let H_i = &S * &x_i;
+            let x_i = R25519PrivateKey::new(rng);
+            let h_i = &mpk.h * &x_i;
             let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
                 let (mut sk_pq, mut pk_pq) = (
-                    [0; KYBER_INDCPA_SECRETKEYBYTES],
-                    [0; KYBER_INDCPA_PUBLICKEYBYTES],
+                    KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
+                    KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
                 );
-                indcpa_keypair(&mut pk_pq, &mut sk_pq, None, rng);
+                indcpa_keypair(&mut pk_pq.0, &mut sk_pq.0, None, rng);
                 (Some(sk_pq), Some(pk_pq))
             } else {
                 (None, None)
             };
-            new_x.insert(partition.clone(), (sk_pq, x_i));
-            new_H.insert(partition.clone(), (pk_pq, H_i));
+            new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
+            new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
         }
     }
 
-    msk.x = new_x;
-    mpk.H = new_H;
+    msk.subkeys = new_sub_sk;
+    mpk.subkeys = new_sub_pk;
 
     Ok(())
 }
@@ -388,43 +303,28 @@ where
 /// - `decryption_set`  : set of partitions the user is granted the decryption
 ///   right for
 /// - `keep_old_rights` : whether or not to keep old decryption rights
-pub fn refresh<const PRIVATE_KEY_LENGTH: usize, PrivateKey>(
-    msk: &MasterSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
-    usk: &mut UserSecretKey<PRIVATE_KEY_LENGTH, PrivateKey>,
+pub fn refresh(
+    msk: &MasterSecretKey,
+    usk: &mut UserSecretKey,
     decryption_set: &HashSet<Partition>,
     keep_old_rights: bool,
-) where
-    PrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash,
-{
+) {
     if !keep_old_rights {
-        usk.x = Default::default();
+        usk.subkeys.drain();
     }
 
     for partition in decryption_set {
-        if let Some(x_i) = msk.x.get(partition) {
-            usk.x.insert(x_i.clone());
+        if let Some(x_i) = msk.subkeys.get(partition) {
+            usk.subkeys.insert(x_i.clone());
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{
-        asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
-        symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
-    };
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 
     use super::*;
-    use crate::{decaps, encaps, keygen, refresh, setup, update};
-
-    //
-    // Define types and constants used in the tests
-    //
-    const TAG_LENGTH: usize = 32;
-    const SYM_KEY_LENGTH: usize = 32;
-    type KeyPair = X25519KeyPair;
-    #[allow(clippy::upper_case_acronyms)]
-    type DEM = Aes256GcmCrypto;
 
     #[test]
     fn test_kyber() {
@@ -454,39 +354,39 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // The admin partition matches a hybridized sub-key.
-        let admin_secret_subkeys = msk.x.get(&admin_partition);
+        let admin_secret_subkeys = msk.subkeys.get(&admin_partition);
         assert!(admin_secret_subkeys.is_some());
         assert!(admin_secret_subkeys.unwrap().0.is_some());
 
         // The developer partition matches a classic sub-key.
-        let dev_secret_subkeys = msk.x.get(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
         // Generate user secret keys.
-        let mut dev_usk = keygen!(&mut rng, &msk, &users_set[0]);
-        let admin_usk = keygen!(&mut rng, &msk, &users_set[1]);
+        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0]);
+        let admin_usk = keygen(&mut rng, &msk, &users_set[1]);
 
         // Encapsulate key for the admin target set.
-        let (sym_key, encapsulation) = encaps!(&mut rng, &mpk, &admin_target_set);
+        let (sym_key, encapsulation) = encaps(&mut rng, &mpk, &admin_target_set).unwrap();
 
         // The encapsulation holds a unique, hybridized key encapsulation.
-        assert_eq!(encapsulation.E.len(), 1);
-        for key_encapsulation in &encapsulation.E {
+        assert_eq!(encapsulation.encs.len(), 1);
+        for key_encapsulation in &encapsulation.encs {
             if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
                 panic!("Wrong hybridization type");
             }
         }
 
         // Developer is unable to decapsulate.
-        let res0 = decaps!(&dev_usk, &encapsulation);
+        let res0 = decaps(&dev_usk, &encapsulation);
         assert!(res0.is_err(), "User 0 shouldn't be able to decapsulate!");
 
         // Admin is able to decapsulate.
-        let res1 = decaps!(&admin_usk, &encapsulation)?;
+        let res1 = decaps(&admin_usk, &encapsulation)?;
         assert_eq!(sym_key, res1, "Wrong decapsulation for user 1!");
 
         // Change partitions
@@ -497,59 +397,59 @@ mod tests {
         ]);
         let client_target_set = HashSet::from([client_partition.clone()]);
 
-        update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh!(
+        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        refresh(
             &msk,
             &mut dev_usk,
             &HashSet::from([dev_partition.clone()]),
-            false
+            false,
         );
 
         // The dev partition matches a hybridized sub-key.
-        let dev_secret_subkeys = msk.x.get(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_some());
 
         // The client partition matches a classic sub-key.
-        let client_secret_subkeys = msk.x.get(&client_partition);
+        let client_secret_subkeys = msk.subkeys.get(&client_partition);
         assert!(client_secret_subkeys.is_some());
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
         // The developer now has a hybridized key.
-        assert_eq!(dev_usk.x.len(), 1);
-        for key_encapsulation in &encapsulation.E {
+        assert_eq!(dev_usk.subkeys.len(), 1);
+        for key_encapsulation in &encapsulation.encs {
             if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
                 panic!("Wrong hybridization type");
             }
         }
 
-        let (sym_key, new_encapsulation) = encaps!(&mut rng, &mpk, &client_target_set);
+        let (sym_key, new_encapsulation) = encaps(&mut rng, &mpk, &client_target_set)?;
 
         // Client encapsulation holds a unique, classic key encapsulation.
-        assert_eq!(new_encapsulation.E.len(), 1);
-        for key_encapsulation in &new_encapsulation.E {
+        assert_eq!(new_encapsulation.encs.len(), 1);
+        for key_encapsulation in &new_encapsulation.encs {
             if let KeyEncapsulation::HybridEncapsulation(_) = key_encapsulation {
                 panic!("Wrong hybridization type");
             }
         }
 
         // The developer is unable to decapsulate.
-        let res0 = decaps!(&dev_usk, &encapsulation);
+        let res0 = decaps(&dev_usk, &encapsulation);
         assert!(
             res0.is_err(),
             "User 0 should not be able to decapsulate the old encapsulation."
         );
 
         // The admin is unable to decapsulate.
-        let res1 = decaps!(&admin_usk, &new_encapsulation);
+        let res1 = decaps(&admin_usk, &new_encapsulation);
         assert!(
             res1.is_err(),
             "User 1 should not be able to decapsulate the new encapsulation."
         );
 
         // Client is able to decapsulate.
-        let client_usk = keygen!(&mut rng, &msk, &HashSet::from([client_partition]));
-        let res0 = decaps!(&client_usk, &new_encapsulation);
+        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]));
+        let res0 = decaps(&client_usk, &new_encapsulation);
         match res0 {
             Err(err) => panic!("Client should be able to decapsulate: {err:?}"),
             Ok(res) => assert_eq!(sym_key, res, "Wrong decapsulation."),
@@ -570,7 +470,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition(b"3".to_vec());
@@ -578,13 +478,13 @@ mod tests {
             (partition_2.clone(), EncryptionHint::Hybridized),
             (partition_3.clone(), EncryptionHint::Classic),
         ]);
-        update!(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        assert!(!msk.x.contains_key(&partition_1));
-        assert!(msk.x.contains_key(&partition_2));
-        assert!(msk.x.contains_key(&partition_3));
-        assert!(!mpk.H.contains_key(&partition_1));
-        assert!(mpk.H.contains_key(&partition_2));
-        assert!(mpk.H.contains_key(&partition_3));
+        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        assert!(!msk.subkeys.contains_key(&partition_1));
+        assert!(msk.subkeys.contains_key(&partition_2));
+        assert!(msk.subkeys.contains_key(&partition_3));
+        assert!(!mpk.subkeys.contains_key(&partition_1));
+        assert!(mpk.subkeys.contains_key(&partition_2));
+        assert!(mpk.subkeys.contains_key(&partition_3));
         Ok(())
     }
 
@@ -602,12 +502,12 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup!(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
         // create a user key with access to partition 1 and 2
-        let mut usk = keygen!(
+        let mut usk = keygen(
             &mut rng,
             &msk,
-            &HashSet::from([partition_1.clone(), partition_2.clone()])
+            &HashSet::from([partition_1.clone(), partition_2.clone()]),
         );
 
         // now remove partition 1 and add partition 4
@@ -617,20 +517,26 @@ mod tests {
             (partition_3.clone(), EncryptionHint::Classic),
             (partition_4.clone(), EncryptionHint::Classic),
         ]);
-        // update the master keys
+        //Covercrypt the master keys
         let old_msk = msk.clone();
-        update!(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
+        update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
         // refresh the user key with partitions 2 and 4
-        refresh!(
+        refresh(
             &msk,
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
-            false
+            false,
         );
-        assert!(!usk.x.contains(old_msk.x.get(&partition_1).unwrap()));
-        assert!(usk.x.contains(msk.x.get(&partition_2).unwrap()));
-        assert!(!usk.x.contains(old_msk.x.get(&partition_3).unwrap()));
-        assert!(usk.x.contains(msk.x.get(&partition_4).unwrap()));
+        assert!(
+            !usk.subkeys
+                .contains(old_msk.subkeys.get(&partition_1).unwrap())
+        );
+        assert!(usk.subkeys.contains(msk.subkeys.get(&partition_2).unwrap()));
+        assert!(
+            !usk.subkeys
+                .contains(old_msk.subkeys.get(&partition_3).unwrap())
+        );
+        assert!(usk.subkeys.contains(msk.subkeys.get(&partition_4).unwrap()));
         Ok(())
     }
 }

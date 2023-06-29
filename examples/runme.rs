@@ -2,8 +2,7 @@
 
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
-    statics::{CoverCryptX25519Aes256, EncryptedHeader},
-    CoverCrypt,
+    Covercrypt, EncryptedHeader,
 };
 
 fn main() {
@@ -41,8 +40,8 @@ fn main() {
     policy.add_axis(sec_level).unwrap();
     policy.add_axis(department).unwrap();
 
-    // Setup CoverCrypt and generate master keys
-    let cover_crypt = CoverCryptX25519Aes256::default();
+    // Setup Covercrypt and generate master keys
+    let cover_crypt = Covercrypt::default();
     let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,
@@ -77,9 +76,11 @@ fn main() {
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
-    assert!(new_encrypted_header
-        .decrypt(&cover_crypt, &usk, None)
-        .is_err());
+    assert!(
+        new_encrypted_header
+            .decrypt(&cover_crypt, &usk, None)
+            .is_err()
+    );
 
     // refresh user secret key, do not grant old encryption access
     cover_crypt
@@ -87,9 +88,11 @@ fn main() {
         .unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
-    assert!(new_encrypted_header
-        .decrypt(&cover_crypt, &usk, None)
-        .is_ok());
+    assert!(
+        new_encrypted_header
+            .decrypt(&cover_crypt, &usk, None)
+            .is_ok()
+    );
 
     // But it cannot decrypt old ciphertexts
     assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_err());
