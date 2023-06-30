@@ -76,11 +76,9 @@ fn main() {
         EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
-    assert!(
-        new_encrypted_header
-            .decrypt(&cover_crypt, &usk, None)
-            .is_err()
-    );
+    assert!(new_encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .is_err());
 
     // refresh user secret key, do not grant old encryption access
     cover_crypt
@@ -88,11 +86,9 @@ fn main() {
         .unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
-    assert!(
-        new_encrypted_header
-            .decrypt(&cover_crypt, &usk, None)
-            .is_ok()
-    );
+    assert!(new_encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .is_ok());
 
     // But it cannot decrypt old ciphertexts
     assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_err());

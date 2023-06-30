@@ -527,15 +527,13 @@ mod tests {
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
             false,
         );
-        assert!(
-            !usk.subkeys
-                .contains(old_msk.subkeys.get(&partition_1).unwrap())
-        );
+        assert!(!usk
+            .subkeys
+            .contains(old_msk.subkeys.get(&partition_1).unwrap()));
         assert!(usk.subkeys.contains(msk.subkeys.get(&partition_2).unwrap()));
-        assert!(
-            !usk.subkeys
-                .contains(old_msk.subkeys.get(&partition_3).unwrap())
-        );
+        assert!(!usk
+            .subkeys
+            .contains(old_msk.subkeys.get(&partition_3).unwrap()));
         assert!(usk.subkeys.contains(msk.subkeys.get(&partition_4).unwrap()));
         Ok(())
     }
