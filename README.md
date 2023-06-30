@@ -164,7 +164,7 @@ The size of the serialized keys and encapsulation is given by the following form
 - master secret key:
 $$3 \cdot L_{sk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\mathcal{P}} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
 - public key:
-$$3 \cdot L_{pk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\mathcal{P}} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{pk} + \delta_{p,~h} \cdot L_{pk}^{pq}\right)$$
+$$2 \cdot L_{pk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\mathcal{P}} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{pk} + \delta_{p,~h} \cdot L_{pk}^{pq}\right)$$
 - user secret key:
 $$2 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
 - encapsulation:
