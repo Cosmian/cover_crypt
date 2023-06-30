@@ -238,7 +238,7 @@ impl EncryptedHeader {
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
         let mut nonce = Nonce([0; Aes256Gcm::NONCE_LENGTH]);
-        kdf256!(&mut nonce.0, &encapsulation.tag);
+        kdf256!(&mut nonce.0, &encapsulation.tag, b"metadata");
         let encrypted_metadata = metadata
             .map(|bytes| cover_crypt.encrypt(&symmetric_key, &nonce, bytes, authentication_data))
             .transpose()?;
@@ -271,7 +271,7 @@ impl EncryptedHeader {
             .as_ref()
             .map(|ciphertext| {
                 let mut nonce = Nonce([0; Aes256Gcm::NONCE_LENGTH]);
-                kdf256!(&mut nonce.0, &self.encapsulation.tag);
+                kdf256!(&mut nonce.0, &self.encapsulation.tag, b"metadata");
                 cover_crypt.decrypt(&symmetric_key, &nonce, ciphertext, authentication_data)
             })
             .transpose()?;

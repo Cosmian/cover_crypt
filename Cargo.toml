@@ -29,7 +29,7 @@ hybridized_bench = []
 
 [dependencies]
 base64 = { version = "0.21.0", optional = true }
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "feature/harden_zeroize", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "develop", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
 pqc_kyber = { version = "0.4", features = ["std", "hazmat"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
