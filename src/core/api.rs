@@ -1,10 +1,10 @@
 //! Defines the `Covercrypt` API.
 
-use std::{fmt::Debug, sync::Mutex};
+use std::{fmt::Debug, ops::DerefMut, sync::Mutex};
 
 use cosmian_crypto_core::{
-    kdf256, reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
-    SymmetricKey,
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
+    RandomFixedSizeCBytes, SymmetricKey,
 };
 
 use crate::{
@@ -168,14 +168,17 @@ impl Covercrypt {
     pub fn encrypt(
         &self,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
-        nonce: &Nonce<{ Aes256Gcm::NONCE_LENGTH }>,
         plaintext: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         let aes256gcm = Aes256Gcm::new(symmetric_key);
-        aes256gcm
-            .encrypt(nonce, plaintext, ad)
-            .map_err(Error::CryptoCoreError)
+        let nonce = Nonce::new(self.rng.lock().expect("could not lock mutex").deref_mut());
+        let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
+        let mut res =
+            Vec::with_capacity(plaintext.len() + Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);
+        res.extend(nonce.0);
+        res.append(&mut ciphertext);
+        Ok(res)
     }
 
     /// Decrypts the given ciphertext using the given symmetric key.
@@ -188,13 +191,16 @@ impl Covercrypt {
     pub fn decrypt(
         &self,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
-        nonce: &Nonce<{ Aes256Gcm::NONCE_LENGTH }>,
         ciphertext: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         let aes256gcm = Aes256Gcm::new(symmetric_key);
         aes256gcm
-            .decrypt(nonce, ciphertext, ad)
+            .decrypt(
+                &Nonce::try_from_slice(&ciphertext[..Aes256Gcm::NONCE_LENGTH])?,
+                &ciphertext[Aes256Gcm::NONCE_LENGTH..],
+                ad,
+            )
             .map_err(Error::CryptoCoreError)
     }
 }
@@ -237,10 +243,8 @@ impl EncryptedHeader {
         let (symmetric_key, encapsulation) =
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
-        let mut nonce = Nonce([0; Aes256Gcm::NONCE_LENGTH]);
-        kdf256!(&mut nonce.0, &encapsulation.tag, b"metadata");
         let encrypted_metadata = metadata
-            .map(|bytes| cover_crypt.encrypt(&symmetric_key, &nonce, bytes, authentication_data))
+            .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))
             .transpose()?;
 
         Ok((
@@ -269,11 +273,7 @@ impl EncryptedHeader {
         let metadata = self
             .encrypted_metadata
             .as_ref()
-            .map(|ciphertext| {
-                let mut nonce = Nonce([0; Aes256Gcm::NONCE_LENGTH]);
-                kdf256!(&mut nonce.0, &self.encapsulation.tag, b"metadata");
-                cover_crypt.decrypt(&symmetric_key, &nonce, ciphertext, authentication_data)
-            })
+            .map(|ciphertext| cover_crypt.decrypt(&symmetric_key, ciphertext, authentication_data))
             .transpose()?;
         Ok(CleartextHeader {
             symmetric_key,

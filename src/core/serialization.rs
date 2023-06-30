@@ -22,7 +22,7 @@ impl Serializable for MasterPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        let mut length = 3 * R25519PublicKey::LENGTH
+        let mut length = 2 * R25519PublicKey::LENGTH
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PublicKey::LENGTH;
         for (partition, (pk_i, _)) in &self.subkeys {
@@ -36,8 +36,7 @@ impl Serializable for MasterPublicKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.h.to_bytes())?;
-        n += ser.write_array(&self.g1.to_bytes())?;
+        let mut n = ser.write_array(&self.g1.to_bytes())?;
         n += ser.write_array(&self.g2.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, (pk_i, h_i)) in &self.subkeys {
@@ -54,7 +53,6 @@ impl Serializable for MasterPublicKey {
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let h = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let g1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
@@ -73,7 +71,7 @@ impl Serializable for MasterPublicKey {
                 (pk_i, R25519PublicKey::try_from_bytes(h_i)?),
             );
         }
-        Ok(Self { h, g1, g2, subkeys })
+        Ok(Self { g1, g2, subkeys })
     }
 }
 
@@ -95,9 +93,9 @@ impl Serializable for MasterSecretKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.s.to_bytes())?;
-        n += ser.write_array(&self.s1.to_bytes())?;
+        let mut n = ser.write_array(&self.s1.to_bytes())?;
         n += ser.write_array(&self.s2.to_bytes())?;
+        n += ser.write_array(&self.s.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, (sk_i, x_i)) in &self.subkeys {
             n += ser.write_vec(partition)?;
@@ -113,11 +111,11 @@ impl Serializable for MasterSecretKey {
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let s1 =
             R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let s2 =
             R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {

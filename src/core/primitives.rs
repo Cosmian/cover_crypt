@@ -41,11 +41,9 @@ pub fn setup(
     rng: &mut impl CryptoRngCore,
     partitions: &HashMap<Partition, EncryptionHint>,
 ) -> (MasterSecretKey, MasterPublicKey) {
+    let s = R25519PrivateKey::new(rng);
     let s1 = R25519PrivateKey::new(rng);
     let s2 = R25519PrivateKey::new(rng);
-    let a = R25519PrivateKey::new(rng);
-    let b = R25519PrivateKey::new(rng);
-    let s = &(&a * &s1) + &(&b * &s2);
     let h = R25519PublicKey::from(&s);
     let g1 = R25519PublicKey::from(&s1);
     let g2 = R25519PublicKey::from(&s2);
@@ -80,7 +78,6 @@ pub fn setup(
             subkeys: sub_sk,
         },
         MasterPublicKey {
-            h,
             g1,
             g2,
             subkeys: sub_pk,
@@ -230,11 +227,12 @@ pub fn update(
 ) -> Result<(), Error> {
     let mut new_sub_sk = HashMap::with_capacity(partitions_set.len());
     let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
+    let h = R25519PublicKey::from(&msk.s);
 
     for (partition, &is_hybridized) in partitions_set {
         if let Some((sk_i, x_i)) = msk.subkeys.get(partition) {
             // regenerate the public sub-key.
-            let h_i = &mpk.h * x_i;
+            let h_i = &h * x_i;
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
                 let (pk_i, _) = mpk.subkeys.get(partition).ok_or_else(|| {
@@ -267,7 +265,7 @@ pub fn update(
         } else {
             // Create new entry.
             let x_i = R25519PrivateKey::new(rng);
-            let h_i = &mpk.h * &x_i;
+            let h_i = &h * &x_i;
             let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
                 let (mut sk_pq, mut pk_pq) = (
                     KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),

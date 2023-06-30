@@ -3,10 +3,7 @@ use base64::{
     engine::{GeneralPurpose, GeneralPurposeConfig},
     Engine,
 };
-use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable},
-    Aes256Gcm, Nonce,
-};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 
 use super::policy;
 use crate::{
@@ -61,7 +58,6 @@ impl EncryptionTestVector {
         assert_eq!(plaintext_header.metadata, header_metadata);
         let plaintext = cover_crypt.decrypt(
             &plaintext_header.symmetric_key,
-            &Nonce([0; Aes256Gcm::NONCE_LENGTH]),
             &ciphertext,
             authentication_data,
         )?;
@@ -91,12 +87,8 @@ impl EncryptionTestVector {
             authentication_data,
         )?;
 
-        let mut aes_ciphertext = cover_crypt.encrypt(
-            &symmetric_key,
-            &Nonce([0; Aes256Gcm::NONCE_LENGTH]),
-            plaintext.as_bytes(),
-            authentication_data,
-        )?;
+        let mut aes_ciphertext =
+            cover_crypt.encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
         let mut encrypted_bytes = encrypted_header.serialize()?;
         encrypted_bytes.append(&mut aes_ciphertext);
         let header_metadata = match header_metadata {
@@ -230,10 +222,11 @@ impl NonRegressionTestVector {
         Ok(reg_vectors)
     }
 
-    pub fn verify(&self) -> Result<(), Error> {
+    pub fn verify(&self) {
         // top_secret_fin_key
         self.low_secret_fin_test_vector
-            .decrypt(&self.top_secret_fin_key.key)?;
+            .decrypt(&self.top_secret_fin_key.key)
+            .unwrap();
         assert!(self
             .low_secret_mkg_test_vector
             .decrypt(&self.top_secret_fin_key.key)
@@ -245,23 +238,26 @@ impl NonRegressionTestVector {
 
         // top_secret_mkg_fin_key
         self.low_secret_fin_test_vector
-            .decrypt(&self.top_secret_mkg_fin_key.key)?;
+            .decrypt(&self.top_secret_mkg_fin_key.key)
+            .unwrap();
         self.low_secret_mkg_test_vector
-            .decrypt(&self.top_secret_mkg_fin_key.key)?;
+            .decrypt(&self.top_secret_mkg_fin_key.key)
+            .unwrap();
         self.top_secret_mkg_test_vector
-            .decrypt(&self.top_secret_mkg_fin_key.key)?;
+            .decrypt(&self.top_secret_mkg_fin_key.key)
+            .unwrap();
 
         assert!(self
             .low_secret_fin_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
         self.low_secret_mkg_test_vector
-            .decrypt(&self.medium_secret_mkg_key.key)?;
+            .decrypt(&self.medium_secret_mkg_key.key)
+            .unwrap();
         assert!(self
             .top_secret_mkg_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
-        Ok(())
     }
 }
 
@@ -285,6 +281,6 @@ mod tests {
     fn test_non_regression() {
         let reg_vector: NonRegressionTestVector =
             serde_json::from_str(include_str!("./tests_data/non_regression_vector.json")).unwrap();
-        reg_vector.verify().unwrap();
+        reg_vector.verify();
     }
 }

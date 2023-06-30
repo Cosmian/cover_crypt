@@ -26,7 +26,7 @@ pub mod serialization;
 pub const SYM_KEY_LENGTH: usize = 32;
 
 /// Length of the `Covercrypt` tag
-const TAG_LENGTH: usize = 32;
+const TAG_LENGTH: usize = 16;
 type Tag = [u8; TAG_LENGTH];
 
 /// Kyber public key length
@@ -55,7 +55,6 @@ impl Deref for KyberSecretKey {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
-    h: R25519PublicKey,
     g1: R25519PublicKey,
     g2: R25519PublicKey,
     pub subkeys: HashMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
