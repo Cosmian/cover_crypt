@@ -2,8 +2,7 @@
 
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
-    statics::{CoverCryptX25519Aes256, EncryptedHeader},
-    CoverCrypt,
+    Covercrypt, EncryptedHeader,
 };
 
 fn main() {
@@ -41,8 +40,8 @@ fn main() {
     policy.add_axis(sec_level).unwrap();
     policy.add_axis(department).unwrap();
 
-    // Setup CoverCrypt and generate master keys
-    let cover_crypt = CoverCryptX25519Aes256::default();
+    // Setup Covercrypt and generate master keys
+    let cover_crypt = Covercrypt::default();
     let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,

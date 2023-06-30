@@ -1,4 +1,4 @@
-# Benchmarks for CoverCrypt: classic implementation (pre-quantum)
+# Benchmarks for Covercrypt: classic implementation (pre-quantum)
 
 ## Table of Contents
 

@@ -1,44 +1,45 @@
-//! Implements the serialization methods for the `CoverCrypt` objects.
+//! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    ops::{Add, Div, Mul, Sub},
-};
+use std::collections::{HashMap, HashSet};
 
 use cosmian_crypto_core::{
-    asymmetric_crypto::DhKeyPair,
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
-    symmetric_crypto::{Dem, SymKey},
-    KeyTrait,
+    FixedSizeCBytes, R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
 };
+use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
+use super::{KyberPublicKey, KyberSecretKey, TAG_LENGTH};
 use crate::{
     abe_policy::Partition,
-    core::{Encapsulation, KeyEncapsulation, MasterSecretKey, PublicKey, UserSecretKey},
-    CleartextHeader, CoverCrypt, EncryptedHeader, Error,
+    core::{
+        Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
+        SYM_KEY_LENGTH,
+    },
+    CleartextHeader, EncryptedHeader, Error,
 };
 
-impl<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> Serializable
-    for PublicKey<PUBLIC_KEY_LENGTH, DhPublicKey>
-{
+impl Serializable for MasterPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        let mut length =
-            2 * PUBLIC_KEY_LENGTH + to_leb128_len(self.H.len()) + self.H.len() * PUBLIC_KEY_LENGTH;
-        for (partition, (pk_i, _)) in &self.H {
+        let mut length = 2 * R25519PublicKey::LENGTH
+            + to_leb128_len(self.subkeys.len())
+            + self.subkeys.len() * R25519PublicKey::LENGTH;
+        for (partition, (pk_i, _)) in &self.subkeys {
             length += (to_leb128_len(partition.len()) + partition.len())
-                + (1 + pk_i.map(|v| v.len()).unwrap_or_default());
+                + (1 + pk_i
+                    .as_ref()
+                    .map(|_| KYBER_INDCPA_PUBLICKEYBYTES)
+                    .unwrap_or_default());
         }
         length
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.U.to_bytes())?;
-        n += ser.write_array(&self.V.to_bytes())?;
-        n += ser.write_leb128_u64(self.H.len() as u64)?;
-        for (partition, (pk_i, H_i)) in &self.H {
+        let mut n = ser.write_array(&self.g1.to_bytes())?;
+        n += ser.write_array(&self.g2.to_bytes())?;
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
+        for (partition, (pk_i, h_i)) in &self.subkeys {
             n += ser.write_vec(partition)?;
             if let Some(pk_i) = pk_i {
                 n += ser.write_leb128_u64(1)?;
@@ -46,56 +47,57 @@ impl<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> S
             } else {
                 n += ser.write_leb128_u64(0)?;
             }
-            n += ser.write_array(&H_i.to_bytes())?;
+            n += ser.write_array(&h_i.to_bytes())?;
         }
         Ok(n)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let U = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let V = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let H_len = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut H = HashMap::with_capacity(H_len);
-        for _ in 0..H_len {
+        let g1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
+        let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
+        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = HashMap::with_capacity(n_partitions);
+        for _ in 0..n_partitions {
             let partition = de.read_vec()?;
             let is_hybridized = de.read_leb128_u64()?;
             let pk_i = if is_hybridized == 1 {
-                Some(de.read_array()?)
+                Some(KyberPublicKey(de.read_array()?))
             } else {
                 None
             };
-            let H_i = de.read_array::<PUBLIC_KEY_LENGTH>()?;
-            H.insert(
+            let h_i = de.read_array::<{ R25519PublicKey::LENGTH }>()?;
+            subkeys.insert(
                 Partition::from(partition),
-                (pk_i, DhPublicKey::try_from_bytes(&H_i)?),
+                (pk_i, R25519PublicKey::try_from_bytes(h_i)?),
             );
         }
-        Ok(Self { U, V, H })
+        Ok(Self { g1, g2, subkeys })
     }
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>> Serializable
-    for MasterSecretKey<PRIVATE_KEY_LENGTH, DhPrivateKey>
-{
+impl Serializable for MasterSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        let mut length = 3 * PRIVATE_KEY_LENGTH
-            + to_leb128_len(self.x.len())
-            + self.x.len() * PRIVATE_KEY_LENGTH;
-        for (partition, (sk_i, _)) in &self.x {
+        let mut length = 3 * R25519PrivateKey::LENGTH
+            + to_leb128_len(self.subkeys.len())
+            + self.subkeys.len() * R25519PrivateKey::LENGTH;
+        for (partition, (sk_i, _)) in &self.subkeys {
             length += (to_leb128_len(partition.len()) + partition.len())
-                + (1 + sk_i.map(|v| v.len()).unwrap_or_default());
+                + (1 + sk_i
+                    .as_ref()
+                    .map(|_| KYBER_INDCPA_SECRETKEYBYTES)
+                    .unwrap_or_default());
         }
         length
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.u.to_bytes())?;
-        n += ser.write_array(&self.v.to_bytes())?;
+        let mut n = ser.write_array(&self.s1.to_bytes())?;
+        n += ser.write_array(&self.s2.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
-        n += ser.write_leb128_u64(self.x.len() as u64)?;
-        for (partition, (sk_i, x_i)) in &self.x {
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
+        for (partition, (sk_i, x_i)) in &self.subkeys {
             n += ser.write_vec(partition)?;
             if let Some(sk_i) = sk_i {
                 n += ser.write_leb128_u64(1)?;
@@ -109,40 +111,43 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let u = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let v = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let s = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let x_len = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut x = HashMap::with_capacity(x_len);
-        for _ in 0..x_len {
+        let s1 =
+            R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let s2 =
+            R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = HashMap::with_capacity(n_partitions);
+        for _ in 0..n_partitions {
             let partition = de.read_vec()?;
             let is_hybridized = de.read_leb128_u64()?;
             let sk_i = if is_hybridized == 1 {
-                Some(de.read_array()?)
+                Some(KyberSecretKey(de.read_array()?))
             } else {
                 None
             };
-            let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
-            x.insert(
+            let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
+            subkeys.insert(
                 Partition::from(partition),
-                (sk_i, DhPrivateKey::try_from_bytes(&x_i)?),
+                (sk_i, R25519PrivateKey::try_from_bytes(x_i)?),
             );
         }
-        Ok(Self { u, v, s, x })
+        Ok(Self { s, s1, s2, subkeys })
     }
 }
 
-impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash>
-    Serializable for UserSecretKey<PRIVATE_KEY_LENGTH, DhPrivateKey>
-{
+impl Serializable for UserSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        let mut length = 2 * PRIVATE_KEY_LENGTH
-            + to_leb128_len(self.x.len())
-            + self.x.len() * PRIVATE_KEY_LENGTH;
-        for (sk_i, _) in &self.x {
-            length += 1 + sk_i.map(|v| v.len()).unwrap_or_default();
+        let mut length = 2 * R25519PrivateKey::LENGTH
+            + to_leb128_len(self.subkeys.len())
+            + self.subkeys.len() * R25519PrivateKey::LENGTH;
+        for (sk_i, _) in &self.subkeys {
+            length += 1 + sk_i
+                .as_ref()
+                .map(|_| KYBER_INDCPA_SECRETKEYBYTES)
+                .unwrap_or_default();
         }
         length
     }
@@ -150,8 +155,8 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
-        n += ser.write_leb128_u64(self.x.len() as u64)?;
-        for (sk_i, x_i) in &self.x {
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
+        for (sk_i, x_i) in &self.subkeys {
             if let Some(sk_i) = sk_i {
                 n += ser.write_leb128_u64(1)?;
                 n += ser.write_array(sk_i)?;
@@ -164,44 +169,44 @@ impl<const PRIVATE_KEY_LENGTH: usize, DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let a = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let b = DhPrivateKey::try_from_bytes(&de.read_array::<PRIVATE_KEY_LENGTH>()?)?;
-        let x_len = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut x = HashSet::with_capacity(x_len);
-        for _ in 0..x_len {
+        let a = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let b = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = HashSet::with_capacity(n_partitions);
+        for _ in 0..n_partitions {
             let is_hybridized = de.read_leb128_u64()?;
             let sk_i = if is_hybridized == 1 {
-                Some(de.read_array()?)
+                Some(KyberSecretKey(de.read_array()?))
             } else {
                 None
             };
-            let x_i = de.read_array::<PRIVATE_KEY_LENGTH>()?;
-            x.insert((sk_i, DhPrivateKey::try_from_bytes(&x_i)?));
+            let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
+            subkeys.insert((sk_i, R25519PrivateKey::try_from_bytes(x_i)?));
         }
-        Ok(Self { a, b, x })
+        Ok(Self { a, b, subkeys })
     }
 }
 
-impl<const SYM_KEY_LENGTH: usize> Serializable for KeyEncapsulation<SYM_KEY_LENGTH> {
+impl Serializable for KeyEncapsulation {
     type Error = Error;
 
     fn length(&self) -> usize {
         match self {
-            Self::ClassicEncapsulation(E_i) => 1 + E_i.len(),
-            Self::HybridEncapsulation(EPQ_i) => 1 + EPQ_i.len(),
+            Self::ClassicEncapsulation(e_i) => 1 + e_i.len(),
+            Self::HybridEncapsulation(epq_i) => 1 + epq_i.len(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = 0;
         match self {
-            Self::ClassicEncapsulation(E_i) => {
+            Self::ClassicEncapsulation(e_i) => {
                 n += ser.write_leb128_u64(0)?;
-                n += ser.write_array(&**E_i)?;
+                n += ser.write_array(&**e_i)?;
             }
-            Self::HybridEncapsulation(EPQ_i) => {
+            Self::HybridEncapsulation(epq_i) => {
                 n += ser.write_leb128_u64(1)?;
-                n += ser.write_array(&**EPQ_i)?;
+                n += ser.write_array(&**epq_i)?;
             }
         }
         Ok(n)
@@ -217,150 +222,139 @@ impl<const SYM_KEY_LENGTH: usize> Serializable for KeyEncapsulation<SYM_KEY_LENG
     }
 }
 
-impl<
-        const TAG_LENGTH: usize,
-        const ENCAPSULATION_LENGTH: usize,
-        const PUBLIC_KEY_LENGTH: usize,
-        DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-    > Serializable
-    for Encapsulation<TAG_LENGTH, ENCAPSULATION_LENGTH, PUBLIC_KEY_LENGTH, DhPublicKey>
-{
+impl Serializable for Encapsulation {
     type Error = Error;
 
     fn length(&self) -> usize {
-        let mut length = 2 * PUBLIC_KEY_LENGTH + TAG_LENGTH + to_leb128_len(self.E.len());
-        for key_encasulation in &self.E {
+        let mut length = 2 * R25519PublicKey::LENGTH + TAG_LENGTH + to_leb128_len(self.encs.len());
+        for key_encasulation in &self.encs {
             length += key_encasulation.length();
         }
         length
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.C.to_bytes())?;
-        n += ser.write_array(&self.D.to_bytes())?;
+        let mut n = ser.write_array(&self.c1.to_bytes())?;
+        n += ser.write_array(&self.c2.to_bytes())?;
         n += ser.write_array(&self.tag)?;
-        n += ser.write_leb128_u64(self.E.len() as u64)?;
-        for key_encapsulation in &self.E {
+        n += ser.write_leb128_u64(self.encs.len() as u64)?;
+        for key_encapsulation in &self.encs {
             n += ser.write(key_encapsulation)?;
         }
         Ok(n)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let C = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
-        let D = DhPublicKey::try_from_bytes(&de.read_array::<PUBLIC_KEY_LENGTH>()?)?;
+        let c1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
+        let c2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let tag = de.read_array()?;
-        let E_len = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut E = HashSet::with_capacity(E_len);
-        for _ in 0..E_len {
+        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut encs = HashSet::with_capacity(n_partitions);
+        for _ in 0..n_partitions {
             let key_encapsulation = de.read()?;
-            E.insert(key_encapsulation);
+            encs.insert(key_encapsulation);
         }
-        Ok(Self { C, D, tag, E })
+        Ok(Self { c1, c2, tag, encs })
     }
 }
 
-impl<
-        const TAG_LENGTH: usize,
-        const SYM_KEY_LENGTH: usize,
-        const PK_LENGTH: usize,
-        const SK_LENGTH: usize,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    > Serializable
-    for EncryptedHeader<
-        TAG_LENGTH,
-        SYM_KEY_LENGTH,
-        PK_LENGTH,
-        SK_LENGTH,
-        KeyPair,
-        DEM,
-        CoverCryptScheme,
-    >
-where
-    KeyPair: DhKeyPair<PK_LENGTH, SK_LENGTH>,
-    DEM: Dem<SYM_KEY_LENGTH>,
-    KeyPair::PublicKey: From<KeyPair::PrivateKey>,
-    for<'a, 'b> &'a KeyPair::PublicKey: Add<&'b KeyPair::PublicKey, Output = KeyPair::PublicKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PublicKey>,
-    for<'a, 'b> &'a KeyPair::PrivateKey: Add<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Sub<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Mul<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>
-        + Div<&'b KeyPair::PrivateKey, Output = KeyPair::PrivateKey>,
-    CoverCryptScheme: CoverCrypt<TAG_LENGTH, SYM_KEY_LENGTH, PK_LENGTH, SK_LENGTH, KeyPair, DEM>,
-{
+impl Serializable for EncryptedHeader {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.encapsulation.length() + to_leb128_len(self.ciphertext.len()) + self.ciphertext.len()
+        self.encapsulation.length()
+            + to_leb128_len(
+                self.encrypted_metadata
+                    .as_ref()
+                    .map(|data| data.len())
+                    .unwrap_or_default(),
+            )
+            + self
+                .encrypted_metadata
+                .as_ref()
+                .map(|data| data.len())
+                .unwrap_or_default()
     }
 
     /// Tries to serialize the encrypted header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.encapsulation.write(ser)?;
-        n += ser.write_vec(self.ciphertext.as_slice())?;
+        match &self.encrypted_metadata {
+            Some(bytes) => n += ser.write_vec(bytes)?,
+            None => n += ser.write_vec(&[])?,
+        }
         Ok(n)
     }
 
     /// Tries to deserialize the encrypted header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let encapsulation = de.read::<CoverCryptScheme::Encapsulation>()?;
+        let encapsulation = de.read::<Encapsulation>()?;
         let ciphertext = de.read_vec()?;
+        let encrypted_metadata = if ciphertext.is_empty() {
+            None
+        } else {
+            Some(ciphertext)
+        };
         Ok(Self {
             encapsulation,
-            ciphertext,
+            encrypted_metadata,
         })
     }
 }
 
-impl<const KEY_LENGTH: usize, DEM> Serializable for CleartextHeader<KEY_LENGTH, DEM>
-where
-    DEM: Dem<KEY_LENGTH>,
-{
+impl Serializable for CleartextHeader {
     type Error = Error;
 
     fn length(&self) -> usize {
-        KEY_LENGTH + to_leb128_len(self.metadata.len()) + self.metadata.len()
+        SYM_KEY_LENGTH
+            + to_leb128_len(
+                self.metadata
+                    .as_ref()
+                    .map(|data| data.len())
+                    .unwrap_or_default(),
+            )
+            + self
+                .metadata
+                .as_ref()
+                .map(|data| data.len())
+                .unwrap_or_default()
     }
 
     /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
-        n += ser.write_vec(&self.metadata)?;
+        match &self.metadata {
+            Some(bytes) => n += ser.write_vec(bytes)?,
+            None => n += ser.write_vec(&[])?,
+        }
         Ok(n)
     }
 
     /// Tries to deserialize the cleartext header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let symmetric_key = DEM::Key::from_bytes(de.read_array::<KEY_LENGTH>()?);
-        let header_metadata = de.read_vec()?;
+        let symmetric_key = SymmetricKey::try_from_bytes(de.read_array::<SYM_KEY_LENGTH>()?)?;
+        let metadata = de.read_vec()?;
+        let metadata = if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        };
         Ok(Self {
             symmetric_key,
-            metadata: header_metadata,
+            metadata,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{
-        asymmetric_crypto::curve25519::X25519KeyPair, reexport::rand_core::SeedableRng,
-        symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto, CsRng,
-    };
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, EncryptionHint},
-        statics::CoverCryptX25519Aes256,
-        test_utils::policy,
+        abe_policy::EncryptionHint,
+        core::primitives::{encaps, keygen, setup},
     };
-
-    const TAG_LENGTH: usize = 32;
-    const SYM_KEY_LENGTH: usize = 32;
-    type KeyPair = X25519KeyPair;
-    #[allow(clippy::upper_case_acronyms)]
-    type DEM = Aes256GcmCrypto;
 
     #[test]
     fn test_serialization() -> Result<(), Error> {
@@ -375,80 +369,88 @@ mod tests {
         let target_set = HashSet::from([admin_partition, dev_partition]);
         let mut rng = CsRng::from_entropy();
 
-        let (msk, mpk) = setup!(&mut rng, &partitions_set);
+        let (msk, mpk) = setup(&mut rng, &partitions_set);
 
-        // Check CoverCrypt `MasterSecretKey` serialization.
-        let bytes = msk.try_to_bytes()?;
+        // Check Covercrypt `MasterSecretKey` serialization.
+        let bytes = msk.serialize()?;
         assert_eq!(bytes.len(), msk.length(), "Wrong master secret key length");
-        let msk_ = MasterSecretKey::try_from_bytes(&bytes)?;
+        let msk_ = MasterSecretKey::deserialize(&bytes)?;
         assert_eq!(msk, msk_, "Wrong `MasterSecretKey` derserialization.");
 
-        // Check CoverCrypt `PublicKey` serialization.
-        let bytes = mpk.try_to_bytes()?;
+        // Check Covercrypt `PublicKey` serialization.
+        let bytes = mpk.serialize()?;
         assert_eq!(bytes.len(), mpk.length(), "Wrong master public key length");
-        let mpk_ = PublicKey::try_from_bytes(&bytes)?;
+        let mpk_ = MasterPublicKey::deserialize(&bytes)?;
         assert_eq!(mpk, mpk_, "Wrong `PublicKey` derserialization.");
 
-        // Check CoverCrypt `UserSecretKey` serialization.
-        let usk = keygen!(&mut rng, &msk, &user_set);
-        let bytes = usk.try_to_bytes()?;
+        // Check Covercrypt `UserSecretKey` serialization.
+        let usk = keygen(&mut rng, &msk, &user_set);
+        let bytes = usk.serialize()?;
         assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
-        let usk_ = UserSecretKey::try_from_bytes(&bytes)?;
-        assert_eq!(usk, usk_, "Wrong `UserSecretKey` derserialization.");
+        let usk_ = UserSecretKey::deserialize(&bytes)?;
+        assert_eq!(usk.a, usk_.a, "Wrong `UserSecretKey` deserialization.");
+        assert_eq!(usk.b, usk_.b, "Wrong `UserSecretKey` deserialization.");
+        assert_eq!(usk, usk_, "Wrong `UserSecretKey` deserialization.");
 
-        // Check CoverCrypt `Encapsulation` serialization.
-        let (_, encapsulation) = encaps!(&mut rng, &mpk, &target_set);
-        let bytes = encapsulation.try_to_bytes()?;
+        // Check Covercrypt `Encapsulation` serialization.
+        let (_, encapsulation) = encaps(&mut rng, &mpk, &target_set)?;
+        let bytes = encapsulation.serialize()?;
         assert_eq!(
             bytes.len(),
             encapsulation.length(),
             "Wrong encapsulation size"
         );
-        let encapsulation_ = Encapsulation::try_from_bytes(&bytes)?;
+        let encapsulation_ = Encapsulation::deserialize(&bytes)?;
         assert_eq!(
             encapsulation, encapsulation_,
             "Wrong `Encapsulation` derserialization."
         );
 
-        // Setup CoverCrypt.
-        let cc = CoverCryptX25519Aes256::default();
-        let policy = policy()?;
-        let user_policy =
-            AccessPolicy::from_boolean_expression("Department::MKG && Security Level::Top Secret")?;
-        let encryption_policy = AccessPolicy::from_boolean_expression(
-            "Department::MKG && Security Level::High Secret",
-        )?;
-        let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        let usk = cc.generate_user_secret_key(&msk, &user_policy, &policy)?;
+        // Setup Covercrypt.
+        #[cfg(feature = "test_utils")]
+        {
+            use crate::{abe_policy::AccessPolicy, test_utils::policy, Covercrypt};
 
-        // Check `EncryptedHeader` serialization.
-        let (_secret_key, encrypted_header) =
-            EncryptedHeader::generate(&cc, &policy, &mpk, &encryption_policy, None, None)?;
-        let bytes = encrypted_header.try_to_bytes()?;
-        assert_eq!(
-            bytes.len(),
-            encrypted_header.length(),
-            "Wrong encapsulation size."
-        );
-        let encrypted_header_ = EncryptedHeader::try_from_bytes(&bytes)?;
-        assert_eq!(
-            encrypted_header, encrypted_header_,
-            "Wrong `EncryptedHeader` derserialization."
-        );
+            let cc = Covercrypt::default();
+            let policy = policy()?;
+            let user_policy = AccessPolicy::from_boolean_expression(
+                "Department::MKG && Security Level::Top Secret",
+            )?;
+            let encryption_policy = AccessPolicy::from_boolean_expression(
+                "Department::MKG && Security Level::High Secret",
+            )?;
+            let (msk, mpk) = cc.generate_master_keys(&policy)?;
+            let usk = cc.generate_user_secret_key(&msk, &user_policy, &policy)?;
 
-        // Check `CleartextHeader` serialization.
-        let cleartext_header = encrypted_header.decrypt(&cc, &usk, None)?;
-        let bytes = cleartext_header.try_to_bytes()?;
-        assert_eq!(
-            bytes.len(),
-            cleartext_header.length(),
-            "Wrong cleartext header size."
-        );
-        let cleartext_header_ = CleartextHeader::try_from_bytes(&bytes)?;
-        assert_eq!(
-            cleartext_header, cleartext_header_,
-            "Wrong `CleartextHeader` derserialization."
-        );
+            // Check `EncryptedHeader` serialization.
+            let (_secret_key, encrypted_header) =
+                EncryptedHeader::generate(&cc, &policy, &mpk, &encryption_policy, None, None)?;
+            let bytes = encrypted_header.serialize()?;
+            assert_eq!(
+                bytes.len(),
+                encrypted_header.length(),
+                "Wrong encapsulation size."
+            );
+            let encrypted_header_ = EncryptedHeader::deserialize(&bytes)?;
+            assert_eq!(
+                encrypted_header, encrypted_header_,
+                "Wrong `EncryptedHeader` derserialization."
+            );
+
+            // Check `CleartextHeader` serialization.
+            let cleartext_header = encrypted_header.decrypt(&cc, &usk, None)?;
+            let bytes = cleartext_header.serialize()?;
+            assert_eq!(
+                bytes.len(),
+                cleartext_header.length(),
+                "Wrong cleartext header size."
+            );
+            let cleartext_header_ = CleartextHeader::deserialize(&bytes)?;
+            assert_eq!(
+                cleartext_header, cleartext_header_,
+                "Wrong `CleartextHeader` derserialization."
+            );
+        }
 
         Ok(())
     }

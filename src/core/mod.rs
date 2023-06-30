@@ -1,15 +1,14 @@
-//! Implements the core functionalities of `CoverCrypt`.
-
-// Allows using the paper notations.
-#![allow(non_snake_case)]
+//! Implements the core functionalities of `Covercrypt`.
 
 use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
+    ops::Deref,
 };
 
-use cosmian_crypto_core::KeyTrait;
+use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey};
 use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
+use zeroize::ZeroizeOnDrop;
 
 use crate::abe_policy::Partition;
 
@@ -22,59 +21,70 @@ pub mod primitives;
 #[cfg(feature = "serialization")]
 pub mod serialization;
 
-/// Length of the EAKEM tag
-// TODO TBZ: use as constant generic ?
-type Tag<const LENGTH: usize> = [u8; LENGTH];
+/// The symmetric key is 32 bytes long to provide 128 bits of post-quantum
+/// security.
+pub const SYM_KEY_LENGTH: usize = 32;
+
+/// Length of the `Covercrypt` tag
+const TAG_LENGTH: usize = 16;
+type Tag = [u8; TAG_LENGTH];
 
 /// Kyber public key length
-type KyberPublicKey = [u8; KYBER_INDCPA_PUBLICKEYBYTES];
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KyberPublicKey([u8; KYBER_INDCPA_PUBLICKEYBYTES]);
+
+impl Deref for KyberPublicKey {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Kyber secret key length
-type KyberSecretKey = [u8; KYBER_INDCPA_SECRETKEYBYTES];
+#[derive(Debug, Clone, PartialEq, Eq, Hash, ZeroizeOnDrop)]
+pub struct KyberSecretKey([u8; KYBER_INDCPA_SECRETKEYBYTES]);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PublicKey<const PUBLIC_KEY_LENGTH: usize, DhPublicKey: KeyTrait<PUBLIC_KEY_LENGTH>> {
-    U: DhPublicKey,
-    V: DhPublicKey,
-    pub H: HashMap<Partition, (Option<KyberPublicKey>, DhPublicKey)>,
+impl Deref for KyberSecretKey {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MasterSecretKey<
-    const PRIVATE_KEY_LENGTH: usize,
-    DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH>,
-> {
-    u: DhPrivateKey,
-    v: DhPrivateKey,
-    s: DhPrivateKey,
-    pub x: HashMap<Partition, (Option<KyberSecretKey>, DhPrivateKey)>,
+pub struct MasterPublicKey {
+    g1: R25519PublicKey,
+    g2: R25519PublicKey,
+    pub subkeys: HashMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UserSecretKey<
-    const PRIVATE_KEY_LENGTH: usize,
-    DhPrivateKey: KeyTrait<PRIVATE_KEY_LENGTH> + Hash,
-> {
-    a: DhPrivateKey,
-    b: DhPrivateKey,
-    pub x: HashSet<(Option<KyberSecretKey>, DhPrivateKey)>,
+pub struct MasterSecretKey {
+    s: R25519PrivateKey,
+    s1: R25519PrivateKey,
+    s2: R25519PrivateKey,
+    pub subkeys: HashMap<Partition, (Option<KyberSecretKey>, R25519PrivateKey)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserSecretKey {
+    a: R25519PrivateKey,
+    b: R25519PrivateKey,
+    pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum KeyEncapsulation<const SYM_KEY_LENGTH: usize> {
+enum KeyEncapsulation {
     ClassicEncapsulation(Box<[u8; SYM_KEY_LENGTH]>),
     HybridEncapsulation(Box<[u8; KYBER_INDCPA_BYTES]>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Encapsulation<
-    const TAG_LENGTH: usize,
-    const SYM_KEY_LENGTH: usize,
-    const PUBLIC_KEY_LENGTH: usize,
-    PublicKey: KeyTrait<PUBLIC_KEY_LENGTH>,
-> {
-    C: PublicKey,
-    D: PublicKey,
-    tag: Tag<TAG_LENGTH>,
-    E: HashSet<KeyEncapsulation<SYM_KEY_LENGTH>>,
+pub struct Encapsulation {
+    c1: R25519PublicKey,
+    c2: R25519PublicKey,
+    tag: Tag,
+    encs: HashSet<KeyEncapsulation>,
 }

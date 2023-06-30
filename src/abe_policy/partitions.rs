@@ -30,7 +30,7 @@ impl Partition {
         for value in attribute_values {
             ser.write_leb128_u64(u64::from(value))?;
         }
-        Ok(Self(ser.finalize()))
+        Ok(Self(ser.finalize().to_vec()))
     }
 }
 

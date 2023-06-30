@@ -8,8 +8,8 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 use super::policy;
 use crate::{
     abe_policy::{AccessPolicy, Attribute, Policy},
-    statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey, UserSecretKey},
-    CoverCrypt, EncryptedHeader, Error,
+    core::{MasterPublicKey, MasterSecretKey, UserSecretKey},
+    Covercrypt, EncryptedHeader, Error,
 };
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -26,15 +26,15 @@ impl EncryptionTestVector {
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
 
-        let user_key = UserSecretKey::try_from_bytes(&transcoder.decode(user_key).unwrap())?;
+        let user_key = UserSecretKey::deserialize(&transcoder.decode(user_key).unwrap())?;
 
         let ciphertext = transcoder.decode(&self.ciphertext).unwrap();
         let expected_plaintext = transcoder.decode(&self.plaintext).unwrap();
 
         let header_metadata = if !self.header_metadata.is_empty() {
-            transcoder.decode(&self.header_metadata).unwrap()
+            Some(transcoder.decode(&self.header_metadata).unwrap())
         } else {
-            vec![]
+            None
         };
 
         let authentication_data = if !self.authentication_data.is_empty() {
@@ -51,7 +51,7 @@ impl EncryptionTestVector {
         let mut de = Deserializer::new(ciphertext.as_slice());
         let encrypted_header = EncryptedHeader::read(&mut de)?;
         let ciphertext = de.finalize();
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        let cover_crypt = Covercrypt::default();
 
         let plaintext_header =
             encrypted_header.decrypt(&cover_crypt, &user_key, authentication_data)?;
@@ -67,7 +67,7 @@ impl EncryptionTestVector {
     }
 
     pub fn new(
-        mpk: &PublicKey,
+        mpk: &MasterPublicKey,
         policy: &Policy,
         encryption_policy: &str,
         plaintext: &str,
@@ -77,7 +77,7 @@ impl EncryptionTestVector {
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
 
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        let cover_crypt = Covercrypt::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
             policy,
@@ -89,7 +89,7 @@ impl EncryptionTestVector {
 
         let mut aes_ciphertext =
             cover_crypt.encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
-        let mut encrypted_bytes = encrypted_header.try_to_bytes()?;
+        let mut encrypted_bytes = encrypted_header.serialize()?;
         encrypted_bytes.append(&mut aes_ciphertext);
         let header_metadata = match header_metadata {
             Some(ad) => transcoder.encode(ad),
@@ -121,13 +121,13 @@ impl UserSecretKeyTestVector {
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
         Ok(Self {
             key: transcoder.encode(
-                CoverCryptX25519Aes256::default()
+                Covercrypt::default()
                     .generate_user_secret_key(
                         msk,
                         &AccessPolicy::from_boolean_expression(access_policy)?,
                         policy,
                     )?
-                    .try_to_bytes()?,
+                    .serialize()?,
             ),
             access_policy: access_policy.to_string(),
         })
@@ -159,9 +159,9 @@ impl NonRegressionTestVector {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
-        // CoverCrypt setup
+        // Covercrypt setup
         //
-        let cover_crypt = CoverCryptX25519Aes256::default();
+        let cover_crypt = Covercrypt::default();
         let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
 
         //
@@ -170,8 +170,8 @@ impl NonRegressionTestVector {
         let authentication_data = 2u32.to_be_bytes().to_vec();
 
         let reg_vectors = Self {
-            public_key: transcoder.encode(mpk.try_to_bytes()?),
-            master_secret_key: transcoder.encode(msk.try_to_bytes()?),
+            public_key: transcoder.encode(mpk.serialize()?),
+            master_secret_key: transcoder.encode(msk.serialize()?),
             policy: transcoder.encode(<Vec<u8>>::try_from(&policy).unwrap()),
             //
             // Create user decryption keys
@@ -222,10 +222,11 @@ impl NonRegressionTestVector {
         Ok(reg_vectors)
     }
 
-    pub fn verify(&self) -> Result<(), Error> {
+    pub fn verify(&self) {
         // top_secret_fin_key
         self.low_secret_fin_test_vector
-            .decrypt(&self.top_secret_fin_key.key)?;
+            .decrypt(&self.top_secret_fin_key.key)
+            .unwrap();
         assert!(self
             .low_secret_mkg_test_vector
             .decrypt(&self.top_secret_fin_key.key)
@@ -237,23 +238,26 @@ impl NonRegressionTestVector {
 
         // top_secret_mkg_fin_key
         self.low_secret_fin_test_vector
-            .decrypt(&self.top_secret_mkg_fin_key.key)?;
+            .decrypt(&self.top_secret_mkg_fin_key.key)
+            .unwrap();
         self.low_secret_mkg_test_vector
-            .decrypt(&self.top_secret_mkg_fin_key.key)?;
+            .decrypt(&self.top_secret_mkg_fin_key.key)
+            .unwrap();
         self.top_secret_mkg_test_vector
-            .decrypt(&self.top_secret_mkg_fin_key.key)?;
+            .decrypt(&self.top_secret_mkg_fin_key.key)
+            .unwrap();
 
         assert!(self
             .low_secret_fin_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
         self.low_secret_mkg_test_vector
-            .decrypt(&self.medium_secret_mkg_key.key)?;
+            .decrypt(&self.medium_secret_mkg_key.key)
+            .unwrap();
         assert!(self
             .top_secret_mkg_test_vector
             .decrypt(&self.medium_secret_mkg_key.key)
             .is_err());
-        Ok(())
     }
 }
 
@@ -277,6 +281,6 @@ mod tests {
     fn test_non_regression() {
         let reg_vector: NonRegressionTestVector =
             serde_json::from_str(include_str!("./tests_data/non_regression_vector.json")).unwrap();
-        reg_vector.verify().unwrap();
+        reg_vector.verify();
     }
 }

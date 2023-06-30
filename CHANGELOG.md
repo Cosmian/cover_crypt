@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [12.0.0] - 2023-06-30
+
+### Changed
+
+- use CryptoCore v8.0
+- remove generics
+- update namings to follow paper updates
+- harden zeroization of private data
+
 ## [11.0.2] - 2023-05-31
 
 ### Documentation
