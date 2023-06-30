@@ -3,7 +3,10 @@ use base64::{
     engine::{GeneralPurpose, GeneralPurposeConfig},
     Engine,
 };
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable},
+    Aes256Gcm, Nonce,
+};
 
 use super::policy;
 use crate::{
@@ -58,6 +61,7 @@ impl EncryptionTestVector {
         assert_eq!(plaintext_header.metadata, header_metadata);
         let plaintext = cover_crypt.decrypt(
             &plaintext_header.symmetric_key,
+            &Nonce([0; Aes256Gcm::NONCE_LENGTH]),
             &ciphertext,
             authentication_data,
         )?;
@@ -87,8 +91,12 @@ impl EncryptionTestVector {
             authentication_data,
         )?;
 
-        let mut aes_ciphertext =
-            cover_crypt.encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
+        let mut aes_ciphertext = cover_crypt.encrypt(
+            &symmetric_key,
+            &Nonce([0; Aes256Gcm::NONCE_LENGTH]),
+            plaintext.as_bytes(),
+            authentication_data,
+        )?;
         let mut encrypted_bytes = encrypted_header.serialize()?;
         encrypted_bytes.append(&mut aes_ciphertext);
         let header_metadata = match header_metadata {

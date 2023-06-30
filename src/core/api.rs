@@ -3,16 +3,15 @@
 use std::{fmt::Debug, sync::Mutex};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
+    kdf256, reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
+    SymmetricKey,
 };
 
-use super::primitives::{decaps, encaps, keygen, refresh, setup};
 use crate::{
     abe_policy::{AccessPolicy, Policy},
     core::{
-        primitives::update, Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
-        SYM_KEY_LENGTH,
+        primitives::{decaps, encaps, keygen, refresh, setup, update},
+        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SYM_KEY_LENGTH,
     },
     Error,
 };
@@ -77,7 +76,7 @@ impl Covercrypt {
 
     /// Generates a user secret key.
     ///
-    /// A new user secret key does NOT include to old (i.e. rotated) partitions
+    /// A new user secret key does NOT include to old (i.e. rotated) partitions.
     ///
     /// - `msk`         : master secret key
     /// - `user_policy` : user access policy
@@ -159,32 +158,43 @@ impl Covercrypt {
         decaps(usk, encapsulation)
     }
 
+    /// Encrypts the given plaintext using the given symmetric key.
+    ///
+    /// The encryption scheme used is AES-256 GCM.
+    ///
+    /// - `symmetric_key`   : AES key
+    /// - `plaintext`       : data to be encrypted
+    /// - `ad`              : optional associated data
     pub fn encrypt(
         &self,
-        key: &SymmetricKey<SYM_KEY_LENGTH>,
+        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        nonce: &Nonce<{ Aes256Gcm::NONCE_LENGTH }>,
         plaintext: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
-        let aes256gcm = Aes256Gcm::new(key);
-        let nonce = Nonce::new(&mut *self.rng.lock().expect("could not lock mutex"));
-        let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
-        let mut res =
-            Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + Aes256Gcm::MAC_LENGTH + plaintext.len());
-        res.extend_from_slice(&nonce.0);
-        res.append(&mut ciphertext);
-        Ok(res)
+        let aes256gcm = Aes256Gcm::new(symmetric_key);
+        aes256gcm
+            .encrypt(nonce, plaintext, ad)
+            .map_err(Error::CryptoCoreError)
     }
 
+    /// Decrypts the given ciphertext using the given symmetric key.
+    ///
+    /// The encryption scheme used is AES-256 GCM.
+    ///
+    /// - `symmetric_key`   : AES key
+    /// - `ciphertext`      : encrypted data
+    /// - `ad`              : associated data
     pub fn decrypt(
         &self,
-        key: &SymmetricKey<SYM_KEY_LENGTH>,
+        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        nonce: &Nonce<{ Aes256Gcm::NONCE_LENGTH }>,
         ciphertext: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
-        let aes256gcm = Aes256Gcm::new(key);
-        let nonce = Nonce::try_from_slice(&ciphertext[..Aes256Gcm::NONCE_LENGTH])?;
+        let aes256gcm = Aes256Gcm::new(symmetric_key);
         aes256gcm
-            .decrypt(&nonce, &ciphertext[Aes256Gcm::NONCE_LENGTH..], ad)
+            .decrypt(nonce, ciphertext, ad)
             .map_err(Error::CryptoCoreError)
     }
 }
@@ -196,8 +206,8 @@ impl Covercrypt {
 /// *Note*: the DEM ciphertext is also used to select the correct symmetric key
 /// from the decapsulation.
 ///
-/// - `encapsulation`:          `Covercrypt` encapsulation of a symmetric key
-/// - `encrypted_metadata`  :   Aes256Gcm encryption of the metadata
+/// - `encapsulation`       :   `Covercrypt` encapsulation of a symmetric key
+/// - `encrypted_metadata`  :   AES-256 GCM encryption of the metadata
 #[derive(Debug, PartialEq, Eq)]
 pub struct EncryptedHeader {
     pub encapsulation: Encapsulation,
@@ -227,8 +237,10 @@ impl EncryptedHeader {
         let (symmetric_key, encapsulation) =
             cover_crypt.encaps(policy, public_key, encryption_policy)?;
 
+        let mut nonce = Nonce([0; Aes256Gcm::NONCE_LENGTH]);
+        kdf256!(&mut nonce.0, &encapsulation.tag);
         let encrypted_metadata = metadata
-            .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))
+            .map(|bytes| cover_crypt.encrypt(&symmetric_key, &nonce, bytes, authentication_data))
             .transpose()?;
 
         Ok((
@@ -241,6 +253,8 @@ impl EncryptedHeader {
     }
 
     /// Decrypts the header with the given user secret key.
+    ///
+    /// The nonce used is extracted from the encapsulation tag.
     ///
     /// - `cover_crypt`         : `Covercrypt` object
     /// - `usk`                 : `Covercrypt` user secret key
@@ -255,7 +269,11 @@ impl EncryptedHeader {
         let metadata = self
             .encrypted_metadata
             .as_ref()
-            .map(|ciphertext| cover_crypt.decrypt(&symmetric_key, ciphertext, authentication_data))
+            .map(|ciphertext| {
+                let mut nonce = Nonce([0; Aes256Gcm::NONCE_LENGTH]);
+                kdf256!(&mut nonce.0, &self.encapsulation.tag);
+                cover_crypt.decrypt(&symmetric_key, &nonce, ciphertext, authentication_data)
+            })
             .transpose()?;
         Ok(CleartextHeader {
             symmetric_key,
