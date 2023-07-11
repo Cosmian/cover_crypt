@@ -6,9 +6,7 @@ fn main() {
             engine::{GeneralPurpose, GeneralPurposeConfig},
             Engine,
         };
-        use cosmian_cover_crypt::statics::{
-            CoverCryptX25519Aes256, EncryptedHeader, UserSecretKey,
-        };
+        use cosmian_cover_crypt::{Covercrypt, EncryptedHeader, UserSecretKey};
         use cosmian_crypto_core::bytes_ser_de::Serializable;
 
         const USK: &str = "sUBriVEsM8HowAKOsIs9Y5p+Xa8JwJf84rlBHXzfkg+BJ6PzK79cT37Wsku5pMVKrfi/eIWhufC2pjYNMBOUAgMAH+waKc6AuwtAaYXXUAJA0K/uc5A22nXEShVXykjZ8QIBuNMsBrpSQaW0hAZ0AFvJTlwSM2BgI8m5k4wj3kQQ9NaP4cK6VvwyFlx7ZwwMZkJoCSgfiPvN4XqeWmiw/hehgjU2HkgYDQJf9QABaUoa74qM42SBnNubVVVnPvO5zrZ++NgoIHt4VPJfsMu157i6bakhOEWJy/CduXYGqedOGsNpj+gq0VsanjqeJ9gZ6sKjCknGoTxbEipIrPUO5jqJLzmJilS0ycAhR1mYlGU9yApPithxeIMaQFAAegOUTVFDFausKPbDZ1IYEWyftONyaaelMyJF4eCQIWILEihLuoscwGkVlYmRttcNVrLDW3yHN/cFQgiBSNVOi/RTLSpdsaMtattwDcaEiRUvCxe2gfaCYQV9zPIsdfAG2TIf2MPLcqUu0EBnIohX/TKyOTavt7HB76d/pCWT7sceu/YldifCYUoWABA8GbnF6DurlVwhfYUKhThnchbP3mgsEUsy+vQlWIwvrwxgpgqaabNSwJIUCXttY6kYNjJbL5pkahaAnxYLRMcvvKfGtzwlX7ewINAFrMSUBua8abWzgIa2NWlt2/ON7tKrVIaqRMYs8KFJSSsQ4bGEhZfBjWEYacAho8bFMuqamQgxaJhyj/J+tZrA24A5ckmPSPeGOIKealWkQmy8f0oAPVsOGaQFcBwLMPe4qRl49tpM6kRgpsyOkeQYOdpQ7Rue0xMKR+UhdPJkzYcGoVlAIGRmvSQzamw0kEYYV6yWr7AHiiqPZ/AuS7RcYUzPB0tSZ9BSdJKSX1jGf2aCbPPD8DxQ6VVPqWOekHshGGBOEzqBPhxtpfQB/lhl2KG/XOgUB6Kqs/zF14oLvlBL2XU2fCaj76ydrdOlo5JSSLKU2pkWASMLNGIM5TUqBsi/D4A9lLlqW5dDOik4ujNLbMAl4Yt4HxOe+pGKhFexfwJBgdCB6IBsatK/nWnIMuW9ZZFbUQG7oTOuFMKvurQ2OsyWa9VA06ldDFWIOQyzgydm2pp3XnXKaJElyYMSE1Ef4KRgEqgYA6J8yNIoI0o092y/HUxAoWWc5PesDmeqbbaLFEFdAqJ4gerNbtS1uAQWIsJzHAC2pGgxmLE7WkaD1IQ3fFgTHPOR97EdlbbM5YGa78mUpHqS0NpYQpbHluRUbyJ9uyIcvAxHewmIKIfDKnZ1z+YG/sIccCY+tFlGxBApSym1tgRBREcgkcYUAogq5nsKY5mvhXxICTCU4WtxZLxl17CC6du5pRSH+9hAMvI2C5R/6udvXkaYc0Ki35WsO5QAHlOVLBwbKLfM9xlhPkFf9qkqgKoMfqEJDcOn79QfOVFFqSfDI9Ep7Wl2YMK3r1apC2gw9xmwjBsMkEYLq2lNH4l0OqGpXDpAQCMwyTEOs5XHjWpsgxIvDId3HDu2DCBKYhUavtYHSgHNUeITVraWmhI9ygkBVMJKLfUGIVq/UwQvhzeVFePNhhN59HuWSjCyonWG6iFQeCCb9Dq0z2DNowiOnVdDWIM5g7BRTgSKBBlE/kArtfaDPyCXENUnwOZDpka63VMCNGak45IkSPT5SN7pdkPW9uIQBaAb04uYPbnALTij4xUzLwkAqXQvjNzwE8/0JzoWmWfdf9zdi1jdzpG1ZTqir0h74gc=";
@@ -18,12 +16,10 @@ fn main() {
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
 
-        let cc = CoverCryptX25519Aes256::default();
-        let usk =
-            UserSecretKey::try_from_bytes(&transcoder.decode(USK.as_bytes()).unwrap()).unwrap();
+        let cc = Covercrypt::default();
+        let usk = UserSecretKey::deserialize(&transcoder.decode(USK.as_bytes()).unwrap()).unwrap();
         let encrypted_header =
-            EncryptedHeader::try_from_bytes(&transcoder.decode(HEADER.as_bytes()).unwrap())
-                .unwrap();
+            EncryptedHeader::deserialize(&transcoder.decode(HEADER.as_bytes()).unwrap()).unwrap();
         for _ in 0..1000 {
             encrypted_header
                 .decrypt(&cc, &usk, None)
