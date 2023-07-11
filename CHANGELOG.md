@@ -2,11 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [12.0.0] - 2023-06-30
+## [12.0.0] - 2023-07-11
 
 ### Changed
 
-- use CryptoCore v8.0
+- use CryptoCore v9.0
 - remove generics
 - update namings to follow paper updates
 - harden zeroization of private data
