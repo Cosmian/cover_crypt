@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [12.0.1] - 2023-07-19
+
+### Changed
+
+- patched kyber seed security issue
+
 ## [12.0.0] - 2023-07-11
 
 ### Changed
