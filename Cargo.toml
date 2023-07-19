@@ -12,7 +12,7 @@ repository = "https://github.com/Cosmian/cover_crypt"
 description = "Key Policy attribute encryption based on subset cover"
 
 [lib]
-crate-type = ["rlib", "cdylib", "staticlib"]
+crate-type = ["lib", "rlib", "cdylib", "staticlib"]
 name = "cosmian_cover_crypt"
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
