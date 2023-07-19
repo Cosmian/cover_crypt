@@ -7,7 +7,7 @@ authors = [
 ]
 documentation = "https://docs.rs/cosmian_cover_crypt/"
 edition = "2021"
-license = "MIT/Apache-2.0"
+license-file = "LICENSE.md"
 repository = "https://github.com/Cosmian/cover_crypt"
 description = "Key Policy attribute encryption based on subset cover"
 
