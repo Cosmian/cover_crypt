@@ -134,8 +134,9 @@ pub fn encaps(
             xor_in_place(&mut e_i, &seed);
             if let Some(pk_i) = pk_i {
                 let mut epq_i = [0; KYBER_INDCPA_BYTES];
-                // TODO TBZ: which coin to use ?
-                indcpa_enc(&mut epq_i, &e_i, pk_i, &[0; KYBER_SYMBYTES]);
+                let mut coin = Zeroizing::new([0; KYBER_SYMBYTES]);
+                rng.fill_bytes(&mut *coin);
+                indcpa_enc(&mut epq_i, &e_i, pk_i, &*coin);
                 encs.insert(KeyEncapsulation::HybridEncapsulation(Box::new(epq_i)));
             } else {
                 encs.insert(KeyEncapsulation::ClassicEncapsulation(Box::new(e_i)));
