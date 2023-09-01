@@ -119,6 +119,14 @@ mod tests {
         for x_i in &original_usk.subkeys {
             assert!(!usk.subkeys.contains(x_i));
         }
+
+        // try to modify the user key and refresh
+        let part = Partition::from(vec![1, 6]);
+        usk.subkeys.insert(msk.subkeys.get(&part).unwrap().clone());
+        assert!(cover_crypt
+            .refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)
+            .is_err());
+
         Ok(())
     }
 
