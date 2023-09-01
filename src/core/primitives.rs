@@ -30,18 +30,27 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
     }
 }
 
-fn compute_subkeys_kmac(
+fn compute_user_key_kmac(
     msk_kmac_key: &[u8; SYM_KEY_LENGTH],
+    a: &R25519PrivateKey,
+    b: &R25519PrivateKey,
     subkeys: &HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
 ) -> [u8; KMAC_LENGTH] {
-    let subkeys_bytes: Vec<Vec<u8>> = subkeys
-        .iter()
-        .map(|subkey| match subkey {
-            (None, pk) => pk.to_bytes().to_vec(),
-            (Some(ksk), pk) => [ksk, pk.as_bytes()].concat(),
-        })
-        .collect();
-    kmac!(KMAC_LENGTH, msk_kmac_key, &subkeys_bytes.concat())
+    let mut key_bytes = Vec::new();
+
+    // Convert `a` and `b` to bytes and append them to the result
+    key_bytes.extend_from_slice(&a.to_bytes());
+    key_bytes.extend_from_slice(&b.to_bytes());
+
+    // Convert `subkeys` to bytes and append them to the result
+    for (sk_i, x_i) in subkeys {
+        if let Some(sk_i) = sk_i {
+            key_bytes.extend_from_slice(sk_i);
+        }
+        key_bytes.extend_from_slice(&x_i.to_bytes());
+    }
+
+    kmac!(KMAC_LENGTH, msk_kmac_key, &key_bytes)
 }
 
 /// Generates the master secret key and master public key of the `Covercrypt`
@@ -117,20 +126,13 @@ pub fn keygen(
 ) -> UserSecretKey {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    let subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)> = decryption_set
+    let subkeys = decryption_set
         .iter()
         .filter_map(|partition| msk.subkeys.get(partition))
         .cloned()
         .collect();
 
-    /*let subkeys_bytes: Vec<Vec<u8>> = subkeys
-    .iter()
-    .map(|subkey| match subkey {
-        (None, pk) => pk.to_bytes().to_vec(),
-        (Some(ksk), pk) => [ksk, pk.as_bytes()].concat(),
-    })
-    .collect();*/
-    let kmac = compute_subkeys_kmac(&msk.kmac_key, &subkeys);
+    let kmac = compute_user_key_kmac(&msk.kmac_key, &a, &b, &subkeys);
     UserSecretKey {
         a,
         b,
@@ -341,7 +343,7 @@ pub fn refresh(
     keep_old_rights: bool,
 ) -> Result<(), Error> {
     // Check the user subkeys are matching its kmac
-    let kmac = compute_subkeys_kmac(&msk.kmac_key, &usk.subkeys);
+    let kmac = compute_user_key_kmac(&msk.kmac_key, &usk.a, &usk.b, &usk.subkeys);
     if usk.kmac != kmac {
         return Err(Error::KeyError(
             "The provided user key is corrupted.".to_string(),
@@ -358,7 +360,7 @@ pub fn refresh(
         }
     }
 
-    usk.kmac = compute_subkeys_kmac(&msk.kmac_key, &usk.subkeys);
+    usk.kmac = compute_user_key_kmac(&msk.kmac_key, &usk.a, &usk.b, &usk.subkeys);
     Ok(())
 }
 

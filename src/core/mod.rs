@@ -25,7 +25,7 @@ pub mod serialization;
 /// security.
 pub const SYM_KEY_LENGTH: usize = 32;
 
-const KMAC_LENGTH: usize = 32;
+const KMAC_LENGTH: usize = 48;
 
 /// Length of the `Covercrypt` tag
 const TAG_LENGTH: usize = 16;
