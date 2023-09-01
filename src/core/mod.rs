@@ -25,6 +25,8 @@ pub mod serialization;
 /// security.
 pub const SYM_KEY_LENGTH: usize = 32;
 
+const KMAC_LENGTH: usize = 32;
+
 /// Length of the `Covercrypt` tag
 const TAG_LENGTH: usize = 16;
 type Tag = [u8; TAG_LENGTH];
@@ -65,6 +67,7 @@ pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
+    kmac_key: [u8; SYM_KEY_LENGTH],
     pub subkeys: HashMap<Partition, (Option<KyberSecretKey>, R25519PrivateKey)>,
 }
 
@@ -72,6 +75,7 @@ pub struct MasterSecretKey {
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
+    kmac: [u8; KMAC_LENGTH],
     pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
 }
 

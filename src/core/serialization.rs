@@ -8,7 +8,7 @@ use cosmian_crypto_core::{
 };
 use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
-use super::{KyberPublicKey, KyberSecretKey, TAG_LENGTH};
+use super::{KyberPublicKey, KyberSecretKey, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
     abe_policy::Partition,
     core::{
@@ -80,6 +80,7 @@ impl Serializable for MasterSecretKey {
 
     fn length(&self) -> usize {
         let mut length = 3 * R25519PrivateKey::LENGTH
+            + SYM_KEY_LENGTH
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (partition, (sk_i, _)) in &self.subkeys {
@@ -96,6 +97,7 @@ impl Serializable for MasterSecretKey {
         let mut n = ser.write_array(&self.s1.to_bytes())?;
         n += ser.write_array(&self.s2.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
+        n += ser.write_array(&self.kmac_key)?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, (sk_i, x_i)) in &self.subkeys {
             n += ser.write_vec(partition)?;
@@ -116,6 +118,8 @@ impl Serializable for MasterSecretKey {
         let s2 =
             R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let kmac_key = de.read_array::<{ SYM_KEY_LENGTH }>()?;
+
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
@@ -132,7 +136,13 @@ impl Serializable for MasterSecretKey {
                 (sk_i, R25519PrivateKey::try_from_bytes(x_i)?),
             );
         }
-        Ok(Self { s, s1, s2, subkeys })
+        Ok(Self {
+            s,
+            s1,
+            s2,
+            kmac_key,
+            subkeys,
+        })
     }
 }
 
@@ -141,6 +151,7 @@ impl Serializable for UserSecretKey {
 
     fn length(&self) -> usize {
         let mut length = 2 * R25519PrivateKey::LENGTH
+            + KMAC_LENGTH
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (sk_i, _) in &self.subkeys {
@@ -155,6 +166,7 @@ impl Serializable for UserSecretKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
+        n += ser.write_array(&self.kmac)?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (sk_i, x_i) in &self.subkeys {
             if let Some(sk_i) = sk_i {
@@ -171,6 +183,7 @@ impl Serializable for UserSecretKey {
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let a = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let b = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+        let kmac = de.read_array::<{ KMAC_LENGTH }>()?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashSet::with_capacity(n_partitions);
         for _ in 0..n_partitions {
@@ -183,7 +196,12 @@ impl Serializable for UserSecretKey {
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
             subkeys.insert((sk_i, R25519PrivateKey::try_from_bytes(x_i)?));
         }
-        Ok(Self { a, b, subkeys })
+        Ok(Self {
+            a,
+            b,
+            kmac,
+            subkeys,
+        })
     }
 }
 

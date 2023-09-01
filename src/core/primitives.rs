@@ -13,7 +13,7 @@ use pqc_kyber::{
 };
 use zeroize::Zeroizing;
 
-use super::{KyberPublicKey, KyberSecretKey, SYM_KEY_LENGTH, TAG_LENGTH};
+use super::{KyberPublicKey, KyberSecretKey, KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH};
 use crate::{
     abe_policy::{EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
@@ -28,6 +28,20 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
     for (a_i, b_i) in a.iter_mut().zip(b.iter()) {
         *a_i ^= b_i;
     }
+}
+
+fn compute_subkeys_kmac(
+    msk_kmac_key: &[u8; SYM_KEY_LENGTH],
+    subkeys: &HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
+) -> [u8; KMAC_LENGTH] {
+    let subkeys_bytes: Vec<Vec<u8>> = subkeys
+        .iter()
+        .map(|subkey| match subkey {
+            (None, pk) => pk.to_bytes().to_vec(),
+            (Some(ksk), pk) => [ksk, pk.as_bytes()].concat(),
+        })
+        .collect();
+    kmac!(KMAC_LENGTH, msk_kmac_key, &subkeys_bytes.concat())
 }
 
 /// Generates the master secret key and master public key of the `Covercrypt`
@@ -70,11 +84,15 @@ pub fn setup(
         sub_pk.insert(partition.clone(), (pk_pq, pk_i));
     }
 
+    let mut kmac_key = [0; SYM_KEY_LENGTH];
+    rng.fill_bytes(&mut kmac_key);
+
     (
         MasterSecretKey {
             s,
             s1,
             s2,
+            kmac_key,
             subkeys: sub_sk,
         },
         MasterPublicKey {
@@ -99,12 +117,26 @@ pub fn keygen(
 ) -> UserSecretKey {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    let subkeys = decryption_set
+    let subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)> = decryption_set
         .iter()
         .filter_map(|partition| msk.subkeys.get(partition))
         .cloned()
         .collect();
-    UserSecretKey { a, b, subkeys }
+
+    /*let subkeys_bytes: Vec<Vec<u8>> = subkeys
+    .iter()
+    .map(|subkey| match subkey {
+        (None, pk) => pk.to_bytes().to_vec(),
+        (Some(ksk), pk) => [ksk, pk.as_bytes()].concat(),
+    })
+    .collect();*/
+    let kmac = compute_subkeys_kmac(&msk.kmac_key, &subkeys);
+    UserSecretKey {
+        a,
+        b,
+        kmac,
+        subkeys,
+    }
 }
 
 /// Generates a `Covercrypt` encapsulation of a random symmetric key.
@@ -307,7 +339,15 @@ pub fn refresh(
     usk: &mut UserSecretKey,
     decryption_set: &HashSet<Partition>,
     keep_old_rights: bool,
-) {
+) -> Result<(), Error> {
+    // Check the user subkeys are matching its kmac
+    let kmac = compute_subkeys_kmac(&msk.kmac_key, &usk.subkeys);
+    if usk.kmac != kmac {
+        return Err(Error::KeyError(
+            "The provided user key is corrupted.".to_string(),
+        ));
+    }
+
     if !keep_old_rights {
         usk.subkeys.clear();
     }
@@ -317,6 +357,9 @@ pub fn refresh(
             usk.subkeys.insert(x_i.clone());
         }
     }
+
+    usk.kmac = compute_subkeys_kmac(&msk.kmac_key, &usk.subkeys);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -402,7 +445,7 @@ mod tests {
             &mut dev_usk,
             &HashSet::from([dev_partition.clone()]),
             false,
-        );
+        )?;
 
         // The dev partition matches a hybridized sub-key.
         let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
@@ -525,7 +568,7 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
             false,
-        );
+        )?;
         assert!(!usk
             .subkeys
             .contains(old_msk.subkeys.get(&partition_1).unwrap()));
