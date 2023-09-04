@@ -130,9 +130,7 @@ pub struct Policy {
     pub version: PolicyVersion,
     /// Last value taken by the attribute.
     pub(crate) last_attribute_value: u32,
-    /// Maximum attribute value. Defines a maximum number of attribute
-    /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
+
     /// Policy axes: maps axes name to the list of associated attribute names
     /// and a boolean defining whether or not this axis is hierarchical.
     pub axes: HashMap<String, PolicyAxesParameters>,
@@ -158,7 +156,6 @@ impl Policy {
                     // Convert the legacy format to the current one.
                     Ok(Self {
                         version: PolicyVersion::V1,
-                        max_attribute_creations: policy.max_attribute_creations,
                         last_attribute_value: policy.last_attribute_value,
                         axes: policy.axes,
                         attributes: policy
@@ -185,33 +182,17 @@ impl Policy {
     /// Generates a new policy object with the given number of attribute
     /// creation (revocation + addition) allowed.
     #[must_use]
-    pub fn new(nb_creations: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             version: PolicyVersion::V1,
             last_attribute_value: 0,
-            max_attribute_creations: nb_creations,
             axes: HashMap::new(),
             attributes: HashMap::new(),
         }
     }
 
-    /// Returns the remaining number of allowed attribute creations (additions +
-    /// rotations).
-    #[must_use]
-    pub fn remaining_attribute_creations(&self) -> u32 {
-        self.max_attribute_creations - self.last_attribute_value
-    }
-
-    /// Returns the policy in the form of a Map where
-    ///  - the keys are the axis names
-    ///  - the values are a tuple of
-    ///     - list of attribute names for that axis
-    ///     - whether the axis hierarchical
     /// Adds the given policy axis to the policy.
     pub fn add_axis(&mut self, axis: PolicyAxis) -> Result<(), Error> {
-        if axis.len() > (self.max_attribute_creations - self.last_attribute_value) as usize {
-            return Err(Error::CapacityOverflow);
-        }
         if self.axes.get(&axis.name).is_some() {
             return Err(Error::ExistingPolicy(axis.name));
         }
@@ -244,12 +225,38 @@ impl Policy {
         Ok(())
     }
 
+    pub fn add_attribute(
+        &mut self,
+        attr: Attribute,
+        encryption_hint: EncryptionHint,
+    ) -> Result<(), Error> {
+        if self.attributes.get(&attr).is_some() {
+            return Err(Error::ExistingPolicy(format!("{attr:?}")));
+        }
+
+        match self.axes.get(&attr.axis) {
+            Some(policy_axis) => {
+                self.last_attribute_value += 1;
+                let attribute_parameters = PolicyAttributesParameters {
+                    values: [self.last_attribute_value].into(),
+                    encryption_hint,
+                };
+                self.attributes.insert(attr.clone(), attribute_parameters);
+
+                let mut new_policy_axis = policy_axis.clone();
+                new_policy_axis.attribute_names.push(attr.name);
+                self.axes.insert(attr.axis, new_policy_axis);
+
+                Ok(())
+            }
+            None => Err(Error::AxisNotFound(attr.axis)),
+        }
+    }
+
     /// Rotates an attribute, changing its underlying value with an unused
     /// value.
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if self.last_attribute_value == self.max_attribute_creations {
-            Err(Error::CapacityOverflow)
-        } else if let Some(attribute_parameters) = self.attributes.get_mut(attr) {
+        if let Some(attribute_parameters) = self.attributes.get_mut(attr) {
             self.last_attribute_value += 1;
             attribute_parameters.values.push(self.last_attribute_value);
             Ok(())

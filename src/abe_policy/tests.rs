@@ -24,7 +24,7 @@ pub fn policy() -> Result<Policy, Error> {
         ],
         false,
     );
-    let mut policy = Policy::new(100);
+    let mut policy = Policy::new();
     policy.add_axis(sec_level)?;
     policy.add_axis(department)?;
     Ok(policy)
@@ -51,7 +51,7 @@ fn check_policy() {
         ],
         false,
     );
-    let mut policy = Policy::new(100);
+    let mut policy = Policy::new();
     policy.add_axis(security_level.clone()).unwrap();
     policy.add_axis(department.clone()).unwrap();
     // check that policy
@@ -86,6 +86,33 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
             policy.attribute_current_value(attribute)?
         )
     }
+    Ok(())
+}
+
+#[test]
+fn test_edit_policy_attributes() -> Result<(), Error> {
+    let mut policy = policy()?;
+
+    let new_attr = Attribute {
+        axis: "Department".to_string(),
+        name: "Sales".to_string(),
+    };
+    let res = policy.add_attribute(new_attr, EncryptionHint::Classic);
+    assert!(res.is_ok());
+
+    let duplicate_attr = Attribute {
+        axis: "Department".to_string(),
+        name: "HR".to_string(),
+    };
+    let res = policy.add_attribute(duplicate_attr, EncryptionHint::Classic);
+    assert!(res.is_err());
+
+    let missing_axis = Attribute {
+        axis: "Missing".to_string(),
+        name: "Axis".to_string(),
+    };
+    let res = policy.add_attribute(missing_axis, EncryptionHint::Classic);
+    assert!(res.is_err());
     Ok(())
 }
 

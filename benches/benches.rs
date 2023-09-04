@@ -56,7 +56,7 @@ fn policy() -> Result<Policy, Error> {
             ),
         )
     };
-    let mut policy = Policy::new(100);
+    let mut policy = Policy::new();
     policy.add_axis(security_level)?;
     policy.add_axis(department)?;
     Ok(policy)

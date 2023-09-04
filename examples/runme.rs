@@ -34,7 +34,7 @@ fn main() {
     );
 
     // Generate a new `Policy` object with a 100 revocations allowed.
-    let mut policy = Policy::new(100);
+    let mut policy = Policy::new();
 
     // Add the two generated axes to the policy
     policy.add_axis(sec_level).unwrap();

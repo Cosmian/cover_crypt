@@ -28,7 +28,7 @@ pub fn policy() -> Result<Policy, Error> {
         ],
         false,
     );
-    let mut policy = Policy::new(100);
+    let mut policy = Policy::new();
     policy.add_axis(sec_level)?;
     policy.add_axis(department)?;
     Ok(policy)
