@@ -120,8 +120,7 @@ impl Covercrypt {
             usk,
             &policy.access_policy_to_current_partitions(access_policy, true)?,
             keep_old_accesses,
-        )?;
-        Ok(())
+        )
     }
 
     /// Generates a random symmetric key to be used with a DEM scheme and

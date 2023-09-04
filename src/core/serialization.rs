@@ -184,7 +184,9 @@ impl Serializable for UserSecretKey {
             }
             n += ser.write_array(&x_i.to_bytes())?;
         }
-        n += ser.write_array(&self.kmac)?;
+        if let Some(kmac) = &self.kmac {
+            n += ser.write_array(kmac)?;
+        }
         Ok(n)
     }
 
@@ -203,14 +205,12 @@ impl Serializable for UserSecretKey {
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
             subkeys.insert((sk_i, R25519PrivateKey::try_from_bytes(x_i)?));
         }
-        let kmac = de
-            .read_array::<{ KMAC_LENGTH }>()
-            .unwrap_or([0; KMAC_LENGTH]);
+        let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
         Ok(Self {
             a,
             b,
-            kmac,
             subkeys,
+            kmac,
         })
     }
 }
@@ -404,6 +404,14 @@ mod tests {
         assert_eq!(bytes.len(), msk.length(), "Wrong master secret key length");
         let msk_ = MasterSecretKey::deserialize(&bytes)?;
         assert_eq!(msk, msk_, "Wrong `MasterSecretKey` derserialization.");
+        assert!(
+            msk_.kmac_key.is_some(),
+            "Wrong `MasterSecretKey` deserialization."
+        );
+        assert_eq!(
+            msk.kmac_key, msk_.kmac_key,
+            "Wrong `MasterSecretKey` deserialization."
+        );
 
         // Check Covercrypt `PublicKey` serialization.
         let bytes = mpk.serialize()?;
@@ -418,6 +426,10 @@ mod tests {
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert_eq!(usk.a, usk_.a, "Wrong `UserSecretKey` deserialization.");
         assert_eq!(usk.b, usk_.b, "Wrong `UserSecretKey` deserialization.");
+        assert_eq!(
+            usk.kmac, usk_.kmac,
+            "Wrong `UserSecretKey` deserialization."
+        );
         assert_eq!(usk, usk_, "Wrong `UserSecretKey` deserialization.");
 
         // Check Covercrypt `Encapsulation` serialization.
