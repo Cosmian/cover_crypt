@@ -87,11 +87,11 @@ impl Covercrypt {
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
-        Ok(keygen(
+        keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             &policy.access_policy_to_current_partitions(access_policy, true)?,
-        ))
+        )
     }
 
     /// Refreshes the user key according to the given master key and user

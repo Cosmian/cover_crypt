@@ -6,7 +6,7 @@ use std::{
     ops::Deref,
 };
 
-use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey};
+use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey, SymmetricKey};
 use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use zeroize::ZeroizeOnDrop;
 
@@ -62,21 +62,21 @@ pub struct MasterPublicKey {
     pub subkeys: HashMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
-    kmac_key: [u8; SYM_KEY_LENGTH],
     pub subkeys: HashMap<Partition, (Option<KyberSecretKey>, R25519PrivateKey)>,
+    kmac_key: Option<SymmetricKey<SYM_KEY_LENGTH>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    kmac: [u8; KMAC_LENGTH],
     pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
+    kmac: [u8; KMAC_LENGTH],
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

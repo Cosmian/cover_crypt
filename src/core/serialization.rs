@@ -108,7 +108,10 @@ impl Serializable for MasterSecretKey {
             }
             n += ser.write_array(&x_i.to_bytes())?;
         }
-        n += ser.write_array(&self.kmac_key)?;
+        if let Some(kmac_key) = &self.kmac_key {
+            n += ser.write_array(kmac_key)?;
+        }
+
         Ok(n)
     }
 
@@ -136,15 +139,17 @@ impl Serializable for MasterSecretKey {
             );
         }
 
-        let kmac_key = de
-            .read_array::<{ SYM_KEY_LENGTH }>()
-            .unwrap_or([0; SYM_KEY_LENGTH]);
+        let kmac_key = match de.read_array::<{ SYM_KEY_LENGTH }>() {
+            Ok(key_bytes) => Some(SymmetricKey::try_from_bytes(key_bytes)?),
+            Err(_) => None,
+        };
+
         Ok(Self {
             s,
             s1,
             s2,
-            kmac_key,
             subkeys,
+            kmac_key,
         })
     }
 }
@@ -407,7 +412,7 @@ mod tests {
         assert_eq!(mpk, mpk_, "Wrong `PublicKey` derserialization.");
 
         // Check Covercrypt `UserSecretKey` serialization.
-        let usk = keygen(&mut rng, &msk, &user_set);
+        let usk = keygen(&mut rng, &msk, &user_set)?;
         let bytes = usk.serialize()?;
         assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
         let usk_ = UserSecretKey::deserialize(&bytes)?;
