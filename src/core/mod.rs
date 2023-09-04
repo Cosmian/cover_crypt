@@ -55,7 +55,7 @@ impl Deref for KyberSecretKey {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
@@ -71,12 +71,12 @@ pub struct MasterSecretKey {
     kmac_key: Option<SymmetricKey<SYM_KEY_LENGTH>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
     pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
-    kmac: [u8; KMAC_LENGTH],
+    kmac: Option<[u8; KMAC_LENGTH]>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

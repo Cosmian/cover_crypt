@@ -48,13 +48,11 @@ fn compute_user_key_kmac(
     b: &R25519PrivateKey,
     subkeys: &HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
 ) -> [u8; KMAC_LENGTH] {
+    // Concat user key fields to hash them
     let mut key_bytes = Vec::new();
-
-    // Convert `a` and `b` to bytes and append them to the result
     key_bytes.extend_from_slice(&a.to_bytes());
     key_bytes.extend_from_slice(&b.to_bytes());
 
-    // Convert `subkeys` to bytes and append them to the result
     for (sk_i, x_i) in subkeys {
         if let Some(sk_i) = sk_i {
             key_bytes.extend_from_slice(sk_i);
@@ -125,6 +123,8 @@ pub fn setup(
 
 /// Generates a user secret key for the given decryption set.
 ///
+/// If the master secret key has a KMAC key, we use it to sign the user secret key.
+///
 /// # Parameters
 ///
 /// - `rng`             : random number generator
@@ -143,13 +143,10 @@ pub fn keygen(
         .cloned()
         .collect();
 
-    let kmac_key = match &msk.kmac_key {
-        Some(kmac_key) => Ok(kmac_key),
-        None => Err(Error::KeyError(
-            "No KMAC key found in Master Private Key. Please upgrade your key.".to_string(),
-        )),
-    }?;
-    let kmac = compute_user_key_kmac(kmac_key, &a, &b, &subkeys);
+    let kmac = msk
+        .kmac_key
+        .as_ref()
+        .map(|kmac_key| compute_user_key_kmac(kmac_key, &a, &b, &subkeys));
 
     Ok(UserSecretKey {
         a,
@@ -360,15 +357,11 @@ pub fn refresh(
     decryption_set: &HashSet<Partition>,
     keep_old_rights: bool,
 ) -> Result<(), Error> {
-    let kmac_key = match &msk.kmac_key {
-        Some(kmac_key) => Ok(kmac_key),
-        None => Err(Error::KeyError(
-            "No KMAC key found in Master Private Key. Please upgrade your key.".to_string(),
-        )),
-    }?;
-
-    // Check the user subkeys are matching its kmac
-    let kmac = compute_user_key_kmac(kmac_key, &usk.a, &usk.b, &usk.subkeys);
+    // Check the user key KMAC
+    let kmac = msk
+        .kmac_key
+        .as_ref()
+        .map(|kmac_key| compute_user_key_kmac(kmac_key, &usk.a, &usk.b, &usk.subkeys));
     if usk.kmac != kmac {
         return Err(Error::KeyError(
             "The provided user key is corrupted.".to_string(),
@@ -385,13 +378,24 @@ pub fn refresh(
         }
     }
 
-    usk.kmac = compute_user_key_kmac(kmac_key, &usk.a, &usk.b, &usk.subkeys);
+    // Update user key KMAC
+    if let Some(kmac_key) = &msk.kmac_key {
+        usk.kmac = Some(compute_user_key_kmac(
+            kmac_key,
+            &usk.a,
+            &usk.b,
+            &usk.subkeys,
+        ));
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cosmian_crypto_core::{
+        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
+    };
 
     use super::*;
 
@@ -587,7 +591,8 @@ mod tests {
             (partition_4.clone(), EncryptionHint::Classic),
         ]);
         //Covercrypt the master keys
-        //let old_msk = msk.clone();
+
+        let old_msk = MasterSecretKey::deserialize(msk.serialize()?.as_slice())?;
         update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
         // refresh the user key with partitions 2 and 4
         refresh(
@@ -596,13 +601,13 @@ mod tests {
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
             false,
         )?;
-        /*assert!(!usk
-        .subkeys
-        .contains(old_msk.subkeys.get(&partition_1).unwrap()));*/
+        assert!(!usk
+            .subkeys
+            .contains(old_msk.subkeys.get(&partition_1).unwrap()));
         assert!(usk.subkeys.contains(msk.subkeys.get(&partition_2).unwrap()));
-        /*assert!(!usk
-        .subkeys
-        .contains(old_msk.subkeys.get(&partition_3).unwrap()));*/
+        assert!(!usk
+            .subkeys
+            .contains(old_msk.subkeys.get(&partition_3).unwrap()));
         assert!(usk.subkeys.contains(msk.subkeys.get(&partition_4).unwrap()));
         Ok(())
     }

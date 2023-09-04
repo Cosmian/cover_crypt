@@ -36,10 +36,12 @@ pub fn policy() -> Result<Policy, Error> {
 
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::bytes_ser_de::Serializable;
+
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy, Partition},
-        Covercrypt, EncryptedHeader,
+        Covercrypt, EncryptedHeader, UserSecretKey,
     };
 
     #[test]
@@ -99,7 +101,7 @@ mod tests {
             "Department::MKG && Security Level::High Secret",
         )?;
         let mut usk = cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
-        let original_usk = usk.clone();
+        let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
         // rotate he FIN department
         policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
