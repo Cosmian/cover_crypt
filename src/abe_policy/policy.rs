@@ -225,6 +225,29 @@ impl Policy {
         Ok(())
     }
 
+    /// Adds the given policy axis to the policy.
+    pub fn remove_axis(&mut self, axis_name: String) -> Result<(), Error> {
+        match self.axes.get(&axis_name) {
+            Some(policy_axis) => {
+                if self.axes.len() == 1 {
+                    return Err(Error::UnsupportedOperator(
+                        "Cannot remove the last axis from this policy".to_string(),
+                    ));
+                }
+                for attr_name in &policy_axis.attribute_names {
+                    let attr = Attribute::new(&axis_name, attr_name);
+                    if self.attributes.get(&attr).is_none() {
+                        return Err(Error::AttributeNotFound(format!("{attr:?}")));
+                    }
+                    self.attributes.remove(&attr);
+                }
+                self.axes.remove(&axis_name);
+                Ok(())
+            }
+            None => Err(Error::AxisNotFound(axis_name)),
+        }
+    }
+
     pub fn add_attribute(
         &mut self,
         attr: Attribute,
@@ -269,11 +292,12 @@ impl Policy {
                     .ok_or(Error::AttributeNotFound(attr.name))?;
                 updated_policy_axis.attribute_names.remove(index);
 
-                if (updated_policy_axis.attribute_names.is_empty()) {
+                if updated_policy_axis.attribute_names.is_empty() {
+                    // TODO: check if its last axis
                     self.axes.remove(&attr.axis);
+                } else {
+                    self.axes.insert(attr.axis, updated_policy_axis);
                 }
-
-                self.axes.insert(attr.axis, updated_policy_axis);
 
                 Ok(())
             }

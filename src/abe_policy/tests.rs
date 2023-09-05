@@ -143,10 +143,29 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         axis: "Department".to_string(),
         name: "FIN".to_string(),
     })?;
-
-    println!("DEBUG: {:?}", policy);
-
     assert_eq!(policy.axes.len(), 1);
+
+    // Remove axis test
+    let new_axis = PolicyAxis::new(
+        "AxisTest",
+        vec![
+            ("Attr1", EncryptionHint::Classic),
+            ("Attr2", EncryptionHint::Classic),
+        ],
+        false,
+    );
+    policy.add_axis(new_axis)?;
+    assert_eq!(policy.axes.len(), 2);
+
+    policy.remove_axis("AxisTest".to_string())?;
+    assert_eq!(policy.axes.len(), 1);
+
+    let res = policy.remove_axis("MissingAxis".to_string());
+    assert!(res.is_err());
+
+    // Removing last axis should result in an error
+    let res = policy.remove_axis("Security Level".to_string());
+    assert!(res.is_err());
 
     Ok(())
 }
