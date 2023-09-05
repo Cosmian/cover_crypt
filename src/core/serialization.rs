@@ -80,7 +80,7 @@ impl Serializable for MasterSecretKey {
 
     fn length(&self) -> usize {
         let mut length = 3 * R25519PrivateKey::LENGTH
-            + SYM_KEY_LENGTH
+            + self.kmac_key.as_ref().map_or_else(|| 0, |key| key.len())
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (partition, (sk_i, _)) in &self.subkeys {
@@ -159,7 +159,7 @@ impl Serializable for UserSecretKey {
 
     fn length(&self) -> usize {
         let mut length = 2 * R25519PrivateKey::LENGTH
-            + KMAC_LENGTH
+            + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (sk_i, _) in &self.subkeys {
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(mpk, mpk_, "Wrong `PublicKey` derserialization.");
 
         // Check Covercrypt `UserSecretKey` serialization.
-        let usk = keygen(&mut rng, &msk, &user_set)?;
+        let usk = keygen(&mut rng, &msk, &user_set);
         let bytes = usk.serialize()?;
         assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
         let usk_ = UserSecretKey::deserialize(&bytes)?;

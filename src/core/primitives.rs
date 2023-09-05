@@ -13,7 +13,9 @@ use pqc_kyber::{
 };
 use zeroize::Zeroizing;
 
-use super::{KyberPublicKey, KyberSecretKey, KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH};
+use super::{
+    KmacSignature, KyberPublicKey, KyberSecretKey, KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH,
+};
 use crate::{
     abe_policy::{EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
@@ -30,37 +32,35 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
     }
 }
 
-/// Provides authenticity check for a given user key.
-///
-/// # Arguments
-///
-/// - `msk_kmac_key`    : the symmetric key used for KMAC hashing.
-/// - `a`               : User key `a`.
-/// - `b`               : User key `b`.
-/// - `subkeys`         : User set of subkeys.
-///
-/// # Returns
-///
-/// A `[u8; KMAC_LENGTH]` array representing the KMAC hash value.
-fn compute_user_key_kmac(
-    msk_kmac_key: &SymmetricKey<SYM_KEY_LENGTH>,
-    a: &R25519PrivateKey,
-    b: &R25519PrivateKey,
-    subkeys: &HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
-) -> [u8; KMAC_LENGTH] {
+/// Computes the signature of the given user key.
+fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature> {
     // Concat user key fields to hash them
-    let mut key_bytes = Vec::new();
-    key_bytes.extend_from_slice(&a.to_bytes());
-    key_bytes.extend_from_slice(&b.to_bytes());
+    let usk_length = 2 * R25519PrivateKey::LENGTH + usk.subkeys.len() * R25519PrivateKey::LENGTH;
+    let mut user_key_bytes = Vec::with_capacity(usk_length);
+    user_key_bytes.extend_from_slice(&usk.a.to_bytes());
+    user_key_bytes.extend_from_slice(&usk.b.to_bytes());
 
-    for (sk_i, x_i) in subkeys {
+    for (sk_i, x_i) in &usk.subkeys {
         if let Some(sk_i) = sk_i {
-            key_bytes.extend_from_slice(sk_i);
+            user_key_bytes.extend_from_slice(sk_i);
         }
-        key_bytes.extend_from_slice(&x_i.to_bytes());
+        user_key_bytes.extend_from_slice(&x_i.to_bytes());
     }
 
-    kmac!(KMAC_LENGTH, msk_kmac_key, &key_bytes)
+    msk.kmac_key
+        .as_ref()
+        .map(|kmac_key| kmac!(KMAC_LENGTH, kmac_key, &user_key_bytes))
+}
+
+/// Checks that the provided KMAC matches the user secret key rights
+fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
+    let kmac = compute_user_key_kmac(msk, usk);
+    if usk.kmac != kmac {
+        return Err(Error::KeyError(
+            "The provided user key is corrupted.".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// Generates the master secret key and master public key of the `Covercrypt`
@@ -134,7 +134,7 @@ pub fn keygen(
     rng: &mut impl CryptoRngCore,
     msk: &MasterSecretKey,
     decryption_set: &HashSet<Partition>,
-) -> Result<UserSecretKey, Error> {
+) -> UserSecretKey {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
     let subkeys = decryption_set
@@ -143,17 +143,14 @@ pub fn keygen(
         .cloned()
         .collect();
 
-    let kmac = msk
-        .kmac_key
-        .as_ref()
-        .map(|kmac_key| compute_user_key_kmac(kmac_key, &a, &b, &subkeys));
-
-    Ok(UserSecretKey {
+    let mut usk = UserSecretKey {
         a,
         b,
         subkeys,
-        kmac,
-    })
+        kmac: None,
+    };
+    usk.kmac = compute_user_key_kmac(msk, &usk);
+    usk
 }
 
 /// Generates a `Covercrypt` encapsulation of a random symmetric key.
@@ -358,15 +355,7 @@ pub fn refresh(
     keep_old_rights: bool,
 ) -> Result<(), Error> {
     // Check the user key KMAC
-    let kmac = msk
-        .kmac_key
-        .as_ref()
-        .map(|kmac_key| compute_user_key_kmac(kmac_key, &usk.a, &usk.b, &usk.subkeys));
-    if usk.kmac != kmac {
-        return Err(Error::KeyError(
-            "The provided user key is corrupted.".to_string(),
-        ));
-    }
+    verify_user_key_kmac(msk, usk)?;
 
     if !keep_old_rights {
         usk.subkeys.clear();
@@ -379,14 +368,7 @@ pub fn refresh(
     }
 
     // Update user key KMAC
-    if let Some(kmac_key) = &msk.kmac_key {
-        usk.kmac = Some(compute_user_key_kmac(
-            kmac_key,
-            &usk.a,
-            &usk.b,
-            &usk.subkeys,
-        ));
-    }
+    usk.kmac = compute_user_key_kmac(msk, usk);
 
     Ok(())
 }
@@ -440,8 +422,8 @@ mod tests {
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
         // Generate user secret keys.
-        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0])?;
-        let admin_usk = keygen(&mut rng, &msk, &users_set[1])?;
+        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0]);
+        let admin_usk = keygen(&mut rng, &msk, &users_set[1]);
 
         // Encapsulate key for the admin target set.
         let (sym_key, encapsulation) = encaps(&mut rng, &mpk, &admin_target_set).unwrap();
@@ -521,7 +503,7 @@ mod tests {
         );
 
         // Client is able to decapsulate.
-        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]))?;
+        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]));
         let res0 = decaps(&client_usk, &new_encapsulation);
         match res0 {
             Err(err) => panic!("Client should be able to decapsulate: {err:?}"),
@@ -581,7 +563,7 @@ mod tests {
             &mut rng,
             &msk,
             &HashSet::from([partition_1.clone(), partition_2.clone()]),
-        )?;
+        );
 
         // now remove partition 1 and add partition 4
         let partition_4 = Partition(b"4".to_vec());

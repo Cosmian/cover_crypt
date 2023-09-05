@@ -26,6 +26,7 @@ pub mod serialization;
 pub const SYM_KEY_LENGTH: usize = 32;
 
 const KMAC_LENGTH: usize = 48;
+type KmacSignature = [u8; KMAC_LENGTH];
 
 /// Length of the `Covercrypt` tag
 const TAG_LENGTH: usize = 16;
@@ -76,7 +77,7 @@ pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
     pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
-    kmac: Option<[u8; KMAC_LENGTH]>,
+    kmac: Option<KmacSignature>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
