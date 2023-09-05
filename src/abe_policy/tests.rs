@@ -111,8 +111,24 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         axis: "Missing".to_string(),
         name: "Axis".to_string(),
     };
-    let res = policy.add_attribute(missing_axis, EncryptionHint::Classic);
+    let res = policy.add_attribute(missing_axis.clone(), EncryptionHint::Classic);
     assert!(res.is_err());
+
+    let delete_attr = Attribute {
+        axis: "Department".to_string(),
+        name: "R&D".to_string(),
+    };
+    let res = policy.delete_attribute(delete_attr.clone());
+    assert!(res.is_ok());
+
+    // Duplicate remove
+    let res = policy.delete_attribute(delete_attr);
+    assert!(res.is_err());
+
+    // Missing axis remove
+    let res = policy.delete_attribute(missing_axis);
+    assert!(res.is_err());
+
     Ok(())
 }
 

@@ -243,9 +243,37 @@ impl Policy {
                 };
                 self.attributes.insert(attr.clone(), attribute_parameters);
 
-                let mut new_policy_axis = policy_axis.clone();
-                new_policy_axis.attribute_names.push(attr.name);
-                self.axes.insert(attr.axis, new_policy_axis);
+                let mut updated_policy_axis = policy_axis.clone();
+                updated_policy_axis.attribute_names.push(attr.name);
+                self.axes.insert(attr.axis, updated_policy_axis);
+
+                Ok(())
+            }
+            None => Err(Error::AxisNotFound(attr.axis)),
+        }
+    }
+
+    pub fn delete_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+        match self.axes.get(&attr.axis) {
+            Some(policy_axis) => {
+                if self.attributes.get(&attr).is_none() {
+                    return Err(Error::AttributeNotFound(format!("{attr:?}")));
+                }
+                self.attributes.remove(&attr);
+
+                let mut updated_policy_axis = policy_axis.clone();
+                let index = updated_policy_axis
+                    .attribute_names
+                    .iter()
+                    .position(|s| s == &attr.name)
+                    .ok_or(Error::AttributeNotFound(attr.name))?;
+                updated_policy_axis.attribute_names.remove(index);
+
+                if (updated_policy_axis.attribute_names.is_empty()) {
+                    self.axes.remove(&attr.axis);
+                }
+
+                self.axes.insert(attr.axis, updated_policy_axis);
 
                 Ok(())
             }
@@ -363,7 +391,7 @@ impl Policy {
                     .map(|v| (v, is_hybridized));
                 values.extend(av);
             }
-            attr_values_per_axis.insert(axis_name.clone(), values);
+            attr_values_per_axis.insert(axis_name.clone(), values); // TODO: store this object in Policy
         }
 
         // Combine axes values into partitions.
