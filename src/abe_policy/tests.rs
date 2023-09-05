@@ -97,7 +97,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         axis: "Department".to_string(),
         name: "Sales".to_string(),
     };
-    let res = policy.add_attribute(new_attr, EncryptionHint::Classic);
+    let res = policy.add_attribute(new_attr.clone(), EncryptionHint::Classic);
     assert!(res.is_ok());
 
     let duplicate_attr = Attribute {
@@ -128,6 +128,25 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     // Missing axis remove
     let res = policy.delete_attribute(missing_axis);
     assert!(res.is_err());
+
+    // Remove all attributes from an axis
+    policy.delete_attribute(new_attr)?;
+    policy.delete_attribute(Attribute {
+        axis: "Department".to_string(),
+        name: "HR".to_string(),
+    })?;
+    policy.delete_attribute(Attribute {
+        axis: "Department".to_string(),
+        name: "MKG".to_string(),
+    })?;
+    policy.delete_attribute(Attribute {
+        axis: "Department".to_string(),
+        name: "FIN".to_string(),
+    })?;
+
+    println!("DEBUG: {:?}", policy);
+
+    assert_eq!(policy.axes.len(), 1);
 
     Ok(())
 }
