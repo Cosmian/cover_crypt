@@ -276,7 +276,7 @@ impl Policy {
         }
     }
 
-    pub fn delete_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+    pub fn remove_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
         match self.axes.get(&attr.axis) {
             Some(policy_axis) => {
                 if self.attributes.get(&attr).is_none() {
@@ -294,7 +294,7 @@ impl Policy {
                 if updated_policy_axis.attribute_names.is_empty() {
                     if self.axes.len() == 1 {
                         return Err(Error::UnsupportedOperator(
-                            "Cannot remove the last axis from this policy".to_string(),
+                            "Cannot remove the last attribute from this policy".to_string(),
                         ));
                     }
                     self.axes.remove(&attr.axis);
@@ -419,7 +419,7 @@ impl Policy {
                     .map(|v| (v, is_hybridized));
                 values.extend(av);
             }
-            attr_values_per_axis.insert(axis_name.clone(), values); // TODO: store this object in Policy
+            attr_values_per_axis.insert(axis_name.clone(), values); // Idea: store this object in Policy
         }
 
         // Combine axes values into partitions.

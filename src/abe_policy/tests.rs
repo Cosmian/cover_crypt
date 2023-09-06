@@ -122,26 +122,26 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         axis: "Department".to_string(),
         name: "R&D".to_string(),
     };
-    assert!(policy.delete_attribute(delete_attr.clone()).is_ok());
+    assert!(policy.remove_attribute(delete_attr.clone()).is_ok());
     assert_eq!(policy.attributes.len(), 7);
 
     // Duplicate remove
-    assert!(policy.delete_attribute(delete_attr).is_err());
+    assert!(policy.remove_attribute(delete_attr).is_err());
 
     // Missing axis remove
-    assert!(policy.delete_attribute(missing_axis).is_err());
+    assert!(policy.remove_attribute(missing_axis).is_err());
 
     // Remove all attributes from an axis
-    policy.delete_attribute(new_attr)?;
-    policy.delete_attribute(Attribute {
+    policy.remove_attribute(new_attr)?;
+    policy.remove_attribute(Attribute {
         axis: "Department".to_string(),
         name: "HR".to_string(),
     })?;
-    policy.delete_attribute(Attribute {
+    policy.remove_attribute(Attribute {
         axis: "Department".to_string(),
         name: "MKG".to_string(),
     })?;
-    policy.delete_attribute(Attribute {
+    policy.remove_attribute(Attribute {
         axis: "Department".to_string(),
         name: "FIN".to_string(),
     })?;
@@ -166,6 +166,22 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Removing last axis should result in an error
     assert!(policy.remove_axis("Security Level".to_string()).is_err());
+
+    // Removing last attribute will result in an error
+    policy.remove_attribute(Attribute {
+        axis: "Security Level".to_string(),
+        name: "Protected".to_string(),
+    })?;
+    policy.remove_attribute(Attribute {
+        axis: "Security Level".to_string(),
+        name: "Confidential".to_string(),
+    })?;
+    assert!(policy
+        .remove_attribute(Attribute {
+            axis: "Security Level".to_string(),
+            name: "Top Secret".to_string(),
+        })
+        .is_err());
 
     Ok(())
 }
