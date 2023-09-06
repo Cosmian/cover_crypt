@@ -97,37 +97,39 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         axis: "Department".to_string(),
         name: "Sales".to_string(),
     };
-    let res = policy.add_attribute(new_attr.clone(), EncryptionHint::Classic);
-    assert!(res.is_ok());
+    assert!(policy
+        .add_attribute(new_attr.clone(), EncryptionHint::Classic)
+        .is_ok());
+    assert_eq!(policy.attributes.len(), 8);
 
     let duplicate_attr = Attribute {
         axis: "Department".to_string(),
         name: "HR".to_string(),
     };
-    let res = policy.add_attribute(duplicate_attr, EncryptionHint::Classic);
-    assert!(res.is_err());
+    assert!(policy
+        .add_attribute(duplicate_attr, EncryptionHint::Classic)
+        .is_err());
 
     let missing_axis = Attribute {
         axis: "Missing".to_string(),
         name: "Axis".to_string(),
     };
-    let res = policy.add_attribute(missing_axis.clone(), EncryptionHint::Classic);
-    assert!(res.is_err());
+    assert!(policy
+        .add_attribute(missing_axis.clone(), EncryptionHint::Classic)
+        .is_err());
 
     let delete_attr = Attribute {
         axis: "Department".to_string(),
         name: "R&D".to_string(),
     };
-    let res = policy.delete_attribute(delete_attr.clone());
-    assert!(res.is_ok());
+    assert!(policy.delete_attribute(delete_attr.clone()).is_ok());
+    assert_eq!(policy.attributes.len(), 7);
 
     // Duplicate remove
-    let res = policy.delete_attribute(delete_attr);
-    assert!(res.is_err());
+    assert!(policy.delete_attribute(delete_attr).is_err());
 
     // Missing axis remove
-    let res = policy.delete_attribute(missing_axis);
-    assert!(res.is_err());
+    assert!(policy.delete_attribute(missing_axis).is_err());
 
     // Remove all attributes from an axis
     policy.delete_attribute(new_attr)?;
@@ -160,12 +162,10 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     policy.remove_axis("AxisTest".to_string())?;
     assert_eq!(policy.axes.len(), 1);
 
-    let res = policy.remove_axis("MissingAxis".to_string());
-    assert!(res.is_err());
+    assert!(policy.remove_axis("MissingAxis".to_string()).is_err());
 
     // Removing last axis should result in an error
-    let res = policy.remove_axis("Security Level".to_string());
-    assert!(res.is_err());
+    assert!(policy.remove_axis("Security Level".to_string()).is_err());
 
     Ok(())
 }

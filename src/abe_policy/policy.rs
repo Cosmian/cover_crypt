@@ -282,23 +282,27 @@ impl Policy {
                 if self.attributes.get(&attr).is_none() {
                     return Err(Error::AttributeNotFound(format!("{attr:?}")));
                 }
-                self.attributes.remove(&attr);
 
                 let mut updated_policy_axis = policy_axis.clone();
                 let index = updated_policy_axis
                     .attribute_names
                     .iter()
                     .position(|s| s == &attr.name)
-                    .ok_or(Error::AttributeNotFound(attr.name))?;
+                    .ok_or(Error::AttributeNotFound(attr.name.clone()))?;
                 updated_policy_axis.attribute_names.remove(index);
 
                 if updated_policy_axis.attribute_names.is_empty() {
-                    // TODO: check if its last axis
+                    if self.axes.len() == 1 {
+                        return Err(Error::UnsupportedOperator(
+                            "Cannot remove the last axis from this policy".to_string(),
+                        ));
+                    }
                     self.axes.remove(&attr.axis);
                 } else {
-                    self.axes.insert(attr.axis, updated_policy_axis);
+                    self.axes.insert(attr.axis.clone(), updated_policy_axis);
                 }
 
+                self.attributes.remove(&attr);
                 Ok(())
             }
             None => Err(Error::AxisNotFound(attr.axis)),
