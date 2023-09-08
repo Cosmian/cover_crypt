@@ -259,6 +259,11 @@ impl Policy {
 
         match self.axes.get(&attr.axis) {
             Some(policy_axis) => {
+                if policy_axis.is_hierarchical {
+                    return Err(Error::UnsupportedOperator(
+                        "Hierarchical axis are immutable".to_string(),
+                    ));
+                }
                 self.last_attribute_value += 1;
                 let attribute_parameters = PolicyAttributesParameters {
                     values: [self.last_attribute_value].into(),
@@ -281,6 +286,11 @@ impl Policy {
             Some(policy_axis) => {
                 if self.attributes.get(&attr).is_none() {
                     return Err(Error::AttributeNotFound(format!("{attr:?}")));
+                }
+                if policy_axis.is_hierarchical {
+                    return Err(Error::UnsupportedOperator(
+                        "Hierarchical axis are immutable".to_string(),
+                    ));
                 }
 
                 let mut updated_policy_axis = policy_axis.clone();

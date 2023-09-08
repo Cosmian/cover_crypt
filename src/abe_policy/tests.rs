@@ -54,6 +54,9 @@ fn check_policy() {
     let mut policy = Policy::new();
     policy.add_axis(security_level.clone()).unwrap();
     policy.add_axis(department.clone()).unwrap();
+
+    println!("{:?}", policy);
+    assert!(false);
     // check that policy
     let attributes = policy.attributes();
     assert_eq!(security_level.len() + department.len(), attributes.len());
