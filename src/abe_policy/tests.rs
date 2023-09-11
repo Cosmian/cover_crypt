@@ -55,8 +55,6 @@ fn check_policy() {
     policy.add_axis(security_level.clone()).unwrap();
     policy.add_axis(department.clone()).unwrap();
 
-    println!("{:?}", policy);
-    assert!(false);
     // check that policy
     let attributes = policy.attributes();
     assert_eq!(security_level.len() + department.len(), attributes.len());
@@ -103,7 +101,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     assert!(policy
         .add_attribute(new_attr.clone(), EncryptionHint::Classic)
         .is_ok());
-    assert_eq!(policy.attributes.len(), 8);
+    assert_eq!(policy.attributes().len(), 8);
 
     let duplicate_attr = Attribute {
         axis: "Department".to_string(),
@@ -126,7 +124,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         name: "R&D".to_string(),
     };
     assert!(policy.remove_attribute(delete_attr.clone()).is_ok());
-    assert_eq!(policy.attributes.len(), 7);
+    assert_eq!(policy.attributes().len(), 7);
 
     // Duplicate remove
     assert!(policy.remove_attribute(delete_attr).is_err());
@@ -170,15 +168,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     // Removing last axis should result in an error
     assert!(policy.remove_axis("Security Level".to_string()).is_err());
 
-    // Removing last attribute will result in an error
-    policy.remove_attribute(Attribute {
-        axis: "Security Level".to_string(),
-        name: "Protected".to_string(),
-    })?;
-    policy.remove_attribute(Attribute {
-        axis: "Security Level".to_string(),
-        name: "Confidential".to_string(),
-    })?;
+    // Modifying hierarchical axis will result in an error
     assert!(policy
         .remove_attribute(Attribute {
             axis: "Security Level".to_string(),

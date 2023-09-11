@@ -360,13 +360,15 @@ impl AccessPolicy {
                     .get(&attr.axis)
                     .ok_or_else(|| Error::AxisNotFound(attr.axis.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
-                if axis_parameters.is_hierarchical && follow_hierarchical_axes {
-                    // add attribute values for all attributes below the given one
-                    for name in &axis_parameters.attribute_names {
-                        if *name == attr.name {
-                            break;
+                if follow_hierarchical_axes {
+                    if let Some(order) = axis_parameters.order.as_deref() {
+                        // add attribute values for all attributes below the given one
+                        for name in order {
+                            if *name == attr.name {
+                                break;
+                            }
+                            res.push(vec![Attribute::new(&attr.axis, name)]);
                         }
-                        res.push(vec![Attribute::new(&attr.axis, name)]);
                     }
                 }
                 Ok(res)
