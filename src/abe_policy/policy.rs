@@ -121,6 +121,7 @@ pub struct LegacyPolicy {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PolicyVersion {
     V1,
+    V2,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -146,7 +147,7 @@ impl PolicyAttribute {
     fn flatten_values_encryption_hint(&self) -> Vec<(u32, EncryptionHint)> {
         self.ids
             .iter()
-            .map(|&value| (value, self.encryption_hint.clone()))
+            .map(|&value| (value, self.encryption_hint))
             .collect()
     }
 }
@@ -243,6 +244,59 @@ impl Dimension {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct PolicyV1 {
+    /// Version number
+    pub version: PolicyVersion,
+    /// Last value taken by the attribute.
+    pub(crate) last_attribute_value: u32,
+    /// Maximum attribute value. Defines a maximum number of attribute
+    /// creations (revocations + addition).
+    pub max_attribute_creations: u32,
+    /// Policy axes: maps axes name to the list of associated attribute names
+    /// and a boolean defining whether or not this axis is hierarchical.
+    pub axes: HashMap<String, PolicyAxesParameters>,
+    /// Maps an attribute to its values and its hybridization hint.
+    pub attributes: HashMap<Attribute, PolicyAttributesParameters>,
+}
+
+impl PolicyV1 {
+    /// Converts the given string into a Policy. Does not fail if the given
+    /// string uses the legacy format.
+    pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
+        // First try to deserialize the latest `Policy` format
+        match serde_json::from_slice(bytes) {
+            Ok(policy) => Ok(policy),
+            Err(e) => {
+                if let Ok(policy) = serde_json::from_slice::<LegacyPolicy>(bytes) {
+                    // Convert the legacy format to the current one.
+                    Ok(Self {
+                        version: PolicyVersion::V1,
+                        max_attribute_creations: policy.max_attribute_creations,
+                        last_attribute_value: policy.last_attribute_value,
+                        axes: policy.axes,
+                        attributes: policy
+                            .attributes
+                            .into_iter()
+                            .map(|(name, values)| {
+                                (
+                                    name,
+                                    PolicyAttributesParameters {
+                                        values,
+                                        encryption_hint: EncryptionHint::Classic,
+                                    },
+                                )
+                            })
+                            .collect(),
+                    })
+                } else {
+                    Err(Error::DeserializationError(e))
+                }
+            }
+        }
+    }
+}
+
 /// A policy is a set of policy axes. A fixed number of attribute creations
 /// (revocations + additions) is allowed.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -271,7 +325,48 @@ impl Policy {
         // First try to deserialize the latest `Policy` format
         match serde_json::from_slice(bytes) {
             Ok(policy) => Ok(policy),
-            Err(e) => Err(Error::DeserializationError(e)),
+            Err(e) => {
+                if let Ok(policy) = PolicyV1::parse_and_convert(bytes) {
+                    let mut axes = HashMap::new();
+                    for (axis_name, axis_params) in policy.axes {
+                        axes.insert(
+                            axis_name.clone(),
+                            Dimension {
+                                order: if axis_params.is_hierarchical {
+                                    Some(axis_params.attribute_names)
+                                } else {
+                                    None
+                                },
+                                attributes: policy
+                                    .attributes
+                                    .clone()
+                                    .iter()
+                                    .filter(|(attr, _)| attr.axis == axis_name)
+                                    .map(|(attr, attr_params)| {
+                                        (
+                                            attr.name.clone(),
+                                            PolicyAttribute {
+                                                curr_id: attr_params.values
+                                                    [attr_params.values.len() - 1],
+                                                ids: attr_params.values.clone(),
+                                                encryption_hint: attr_params.encryption_hint,
+                                                read_only: false,
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                            },
+                        );
+                    }
+                    Ok(Self {
+                        version: PolicyVersion::V2,
+                        last_attribute_id: policy.last_attribute_value,
+                        axes,
+                    })
+                } else {
+                    Err(Error::DeserializationError(e))
+                }
+            }
         }
     }
 
@@ -280,10 +375,9 @@ impl Policy {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            version: PolicyVersion::V1,
+            version: PolicyVersion::V2,
             last_attribute_id: 0,
             axes: HashMap::new(),
-            //attributes: HashMap::new(),
         }
     }
 
