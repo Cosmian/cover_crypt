@@ -390,8 +390,8 @@ mod tests {
         let admin_partition = Partition(b"admin".to_vec());
         let dev_partition = Partition(b"dev".to_vec());
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), EncryptionHint::Hybridized),
-            (dev_partition.clone(), EncryptionHint::Classic),
+            (admin_partition.clone(), (EncryptionHint::Hybridized, false)),
+            (dev_partition.clone(), (EncryptionHint::Classic, false)),
         ]);
         let user_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         let target_set = HashSet::from([admin_partition, dev_partition]);

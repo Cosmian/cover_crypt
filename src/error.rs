@@ -12,6 +12,7 @@ pub enum Error {
     UnsupportedOperator(String),
     CapacityOverflow,
     ExistingPolicy(String),
+    OperationNotPermitted(String),
     InvalidBooleanExpression(String),
     InvalidAttribute(String),
     AxisNotFound(String),
@@ -45,6 +46,7 @@ impl Display for Error {
                  decrypt this input."
             ),
             Self::ConversionFailed(err) => write!(f, "Conversion failed: {err}"),
+            Self::OperationNotPermitted(err) => write!(f, "Operation not permitted: {err}"),
         }
     }
 }

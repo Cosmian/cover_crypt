@@ -272,6 +272,85 @@ mod tests {
     }
 
     #[test]
+    fn test_deactivate_attribute() -> Result<(), Error> {
+        let mut policy = policy()?;
+        let cover_crypt = Covercrypt::default();
+        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
+
+        let partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
+        assert_eq!(partitions_msk.len(), partitions_mpk.len());
+        for p in &partitions_msk {
+            assert!(partitions_mpk.contains(p));
+        }
+
+        //
+        // New user secret key
+        let decryption_policy = AccessPolicy::from_boolean_expression(
+            "Security Level::Top Secret && (Department::FIN || Department::HR)",
+        )?;
+        let mut top_secret_fin_usk =
+            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+
+        //
+        // Encrypt
+        let top_secret_ap =
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
+
+        // remove the FIN department
+        policy.deactivate_attribute(Attribute::new("Department", "FIN"))?;
+
+        // update the master keys
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
+        // 5 is the size of the security level axis
+        assert_eq!(new_partitions_msk.len() - 5, new_partitions_mpk.len());
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len());
+
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
+
+        // Can not encrypt using deactivated attribute
+        let top_secret_ap =
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let res =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None);
+        println!("{:?}", res);
+
+        // refresh the user key and preserve access to old partitions
+        let new_decryption_policy =
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
+        cover_crypt.refresh_user_secret_key(
+            &mut top_secret_fin_usk,
+            &new_decryption_policy,
+            &msk,
+            &policy,
+            true,
+        )?;
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
+
+        // refresh the user key and remove access to old partitions
+        cover_crypt.refresh_user_secret_key(
+            &mut top_secret_fin_usk,
+            &new_decryption_policy,
+            &msk,
+            &policy,
+            false,
+        )?;
+        let res = encrypted_header.decrypt(&cover_crypt, &top_secret_fin_usk, None);
+        println!("{:?}", res);
+        assert!(res.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
         let mut policy = policy()?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;

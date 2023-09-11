@@ -1,9 +1,36 @@
-use std::{convert::TryFrom, fmt::Debug, ops::Deref};
+use std::{convert::TryFrom, fmt::Debug, ops::BitOr, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
+/// Hint the user about which kind of encryption to use.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EncryptionHint {
+    /// Hybridized encryption should be used.
+    Hybridized,
+    /// Classic encryption should be used.
+    Classic,
+}
+
+impl BitOr for EncryptionHint {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        if self == Self::Hybridized || rhs == Self::Hybridized {
+            Self::Hybridized
+        } else {
+            Self::Classic
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Attribute representation used to create a Policy
+pub struct AxisAttributeProperties {
+    pub name: String,
+    pub encryption_hint: EncryptionHint,
+}
 /// An attribute in a policy group is characterized by the axis policy name
 /// and its unique name within this axis.
 #[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]

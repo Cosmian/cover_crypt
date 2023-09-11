@@ -73,7 +73,7 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
 /// - `partitions`      : set of partition to be used
 pub fn setup(
     rng: &mut impl CryptoRngCore,
-    partitions: &HashMap<Partition, EncryptionHint>,
+    partitions: &HashMap<Partition, (EncryptionHint, bool)>,
 ) -> (MasterSecretKey, MasterPublicKey) {
     let s = R25519PrivateKey::new(rng);
     let s1 = R25519PrivateKey::new(rng);
@@ -85,7 +85,7 @@ pub fn setup(
     let mut sub_sk = HashMap::with_capacity(partitions.len());
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
-    for (partition, &is_hybridized) in partitions {
+    for (partition, &(is_hybridized, _)) in partitions {
         let sk_i = R25519PrivateKey::new(rng);
         let pk_i = &h * &sk_i;
 
@@ -271,13 +271,13 @@ pub fn update(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    partitions_set: &HashMap<Partition, EncryptionHint>,
+    partitions_set: &HashMap<Partition, (EncryptionHint, bool)>,
 ) -> Result<(), Error> {
     let mut new_sub_sk = HashMap::with_capacity(partitions_set.len());
     let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
     let h = R25519PublicKey::from(&msk.s);
 
-    for (partition, &is_hybridized) in partitions_set {
+    for (partition, &(is_hybridized, is_readonly)) in partitions_set {
         if let Some((sk_i, x_i)) = msk.subkeys.get(partition) {
             // regenerate the public sub-key.
             let h_i = &h * x_i;
@@ -326,6 +326,10 @@ pub fn update(
             };
             new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
             new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
+        }
+        if is_readonly {
+            // Remove deactivated partition from public key
+            new_sub_pk.remove(partition);
         }
     }
 
@@ -397,8 +401,8 @@ mod tests {
         let dev_partition = Partition(b"dev".to_vec());
         // partition list
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), EncryptionHint::Hybridized),
-            (dev_partition.clone(), EncryptionHint::Classic),
+            (admin_partition.clone(), (EncryptionHint::Hybridized, false)),
+            (dev_partition.clone(), (EncryptionHint::Classic, false)),
         ]);
         // user list
         let users_set = vec![
@@ -448,8 +452,8 @@ mod tests {
         // Change partitions
         let client_partition = Partition(b"client".to_vec());
         let new_partitions_set = HashMap::from([
-            (dev_partition.clone(), EncryptionHint::Hybridized),
-            (client_partition.clone(), EncryptionHint::Classic),
+            (dev_partition.clone(), (EncryptionHint::Hybridized, false)),
+            (client_partition.clone(), (EncryptionHint::Classic, false)),
         ]);
         let client_target_set = HashSet::from([client_partition.clone()]);
 
@@ -520,8 +524,8 @@ mod tests {
         let partition_2 = Partition(b"2".to_vec());
         // partition list
         let partitions_set = HashMap::from([
-            (partition_1.clone(), EncryptionHint::Classic),
-            (partition_2.clone(), EncryptionHint::Hybridized),
+            (partition_1.clone(), (EncryptionHint::Classic, false)),
+            (partition_2.clone(), (EncryptionHint::Hybridized, false)),
         ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
@@ -531,8 +535,8 @@ mod tests {
         // now remove partition 1 and add partition 3
         let partition_3 = Partition(b"3".to_vec());
         let new_partitions_set = HashMap::from([
-            (partition_2.clone(), EncryptionHint::Hybridized),
-            (partition_3.clone(), EncryptionHint::Classic),
+            (partition_2.clone(), (EncryptionHint::Hybridized, false)),
+            (partition_3.clone(), (EncryptionHint::Classic, false)),
         ]);
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
         assert!(!msk.subkeys.contains_key(&partition_1));
@@ -551,9 +555,9 @@ mod tests {
         let partition_3 = Partition(b"3".to_vec());
         // partition list
         let partitions_set = HashMap::from([
-            (partition_1.clone(), EncryptionHint::Hybridized),
-            (partition_2.clone(), EncryptionHint::Hybridized),
-            (partition_3.clone(), EncryptionHint::Hybridized),
+            (partition_1.clone(), (EncryptionHint::Hybridized, false)),
+            (partition_2.clone(), (EncryptionHint::Hybridized, false)),
+            (partition_3.clone(), (EncryptionHint::Hybridized, false)),
         ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
@@ -569,9 +573,9 @@ mod tests {
         // now remove partition 1 and add partition 4
         let partition_4 = Partition(b"4".to_vec());
         let new_partition_set = HashMap::from([
-            (partition_2.clone(), EncryptionHint::Hybridized),
-            (partition_3.clone(), EncryptionHint::Classic),
-            (partition_4.clone(), EncryptionHint::Classic),
+            (partition_2.clone(), (EncryptionHint::Hybridized, false)),
+            (partition_3.clone(), (EncryptionHint::Classic, false)),
+            (partition_4.clone(), (EncryptionHint::Classic, false)),
         ]);
         //Covercrypt the master keys
 
