@@ -249,6 +249,15 @@ impl Policy {
         }
     }
 
+    /// Remove old rotations id of an attribute
+    pub fn clear_old_rotations(&mut self, attr: &Attribute) -> Result<(), Error> {
+        if let Some(axis) = self.axes.get_mut(&attr.axis) {
+            axis.clear_old_rotations(&attr.name)
+        } else {
+            Err(Error::AxisNotFound(attr.axis.to_string()))
+        }
+    }
+
     /// Returns the list of Attributes of this Policy.
     #[must_use]
     pub fn attributes(&self) -> Vec<Attribute> {

@@ -232,4 +232,11 @@ impl Dimension {
             }
         }
     }
+
+    pub fn clear_old_rotations(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
+        self.attributes
+            .get_mut(attr_name)
+            .map(|attr| attr.ids = vec![attr.get_current_id()])
+            .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+    }
 }

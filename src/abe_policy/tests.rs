@@ -87,6 +87,14 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
             policy.attribute_current_value(attribute)?
         )
     }
+
+    policy.clear_old_rotations(&attributes[0])?;
+    assert_eq!(1, policy.attribute_values(&attributes[0])?.len());
+
+    assert!(policy
+        .clear_old_rotations(&Attribute::new("Department", "Missing"))
+        .is_err());
+
     Ok(())
 }
 
@@ -97,60 +105,36 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Rename R&D to Research
     assert!(policy
-        .rename_attribute(
-            Attribute {
-                axis: "Department".to_string(),
-                name: "R&D".to_string(),
-            },
-            "Research",
-        )
+        .rename_attribute(Attribute::new("Department", "R&D"), "Research",)
         .is_ok());
 
     // Try renaming Research to already used name MKG
     assert!(policy
-        .rename_attribute(
-            Attribute {
-                axis: "Department".to_string(),
-                name: "R&D".to_string(),
-            },
-            "MKG",
-        )
+        .rename_attribute(Attribute::new("Department", "R&D"), "MKG",)
         .is_err());
     assert_eq!(policy.attributes().len(), 7);
 
     // Add new attribute Sales
-    let new_attr = Attribute {
-        axis: "Department".to_string(),
-        name: "Sales".to_string(),
-    };
+    let new_attr = Attribute::new("Department", "Sales");
     assert!(policy
         .add_attribute(new_attr.clone(), EncryptionHint::Classic)
         .is_ok());
     assert_eq!(policy.attributes().len(), 8);
 
     // Try adding already existing attribute HR
-    let duplicate_attr = Attribute {
-        axis: "Department".to_string(),
-        name: "HR".to_string(),
-    };
+    let duplicate_attr = Attribute::new("Department", "HR");
     assert!(policy
         .add_attribute(duplicate_attr, EncryptionHint::Classic)
         .is_err());
 
     // Try adding attribute to non existing Axis
-    let missing_axis = Attribute {
-        axis: "Missing".to_string(),
-        name: "Axis".to_string(),
-    };
+    let missing_axis = Attribute::new("Missing", "Axis");
     assert!(policy
         .add_attribute(missing_axis.clone(), EncryptionHint::Classic)
         .is_err());
 
     // Remove research attribute
-    let delete_attr = Attribute {
-        axis: "Department".to_string(),
-        name: "Research".to_string(),
-    };
+    let delete_attr = Attribute::new("Department", "Research");
     assert!(policy.remove_attribute(delete_attr.clone()).is_ok());
     assert_eq!(policy.attributes().len(), 7);
 
@@ -162,18 +146,9 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Remove all attributes from an axis
     policy.remove_attribute(new_attr)?;
-    policy.remove_attribute(Attribute {
-        axis: "Department".to_string(),
-        name: "HR".to_string(),
-    })?;
-    policy.remove_attribute(Attribute {
-        axis: "Department".to_string(),
-        name: "MKG".to_string(),
-    })?;
-    policy.remove_attribute(Attribute {
-        axis: "Department".to_string(),
-        name: "FIN".to_string(),
-    })?;
+    policy.remove_attribute(Attribute::new("Department", "HR"))?;
+    policy.remove_attribute(Attribute::new("Department", "MKG"))?;
+    policy.remove_attribute(Attribute::new("Department", "FIN"))?;
     assert_eq!(policy.axes.len(), 1);
 
     // Add new axis
@@ -197,10 +172,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Try modifying hierarchical axis
     assert!(policy
-        .remove_attribute(Attribute {
-            axis: "Security Level".to_string(),
-            name: "Top Secret".to_string(),
-        })
+        .remove_attribute(Attribute::new("Security Level", "Top Secret"))
         .is_err());
 
     // Removing a hierarchical axis is permitted

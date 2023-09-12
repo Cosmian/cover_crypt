@@ -89,6 +89,20 @@ mod tests {
         }
         // 5 is the size of the security level axis
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
+
+        // Clear old rotations will reduce master keys size
+        policy.clear_old_rotations(&Attribute::new("Department", "FIN"))?;
+        // update the master keys
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
+        assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
+        for p in &new_partitions_msk {
+            assert!(new_partitions_mpk.contains(p));
+        }
+        // 5 is the size of the security level axis
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len());
+
         Ok(())
     }
 
