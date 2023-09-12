@@ -164,7 +164,7 @@ impl Dimension {
         match self.attributes.get_mut(attr_name) {
             Some(attr) => {
                 *seed_id += 1;
-                attr.ids.push(seed_id.clone());
+                attr.ids.push(*seed_id);
                 Ok(())
             }
             None => Err(Error::AttributeNotFound(attr_name.to_string())),
@@ -211,5 +211,25 @@ impl Dimension {
             .get_mut(attr_name)
             .map(|attr| attr.read_only = true)
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+    }
+
+    pub fn rename_attribute(
+        &mut self,
+        attr_name: &AttributeName,
+        new_name: &str,
+    ) -> Result<(), Error> {
+        if self.attributes.contains_key(new_name) {
+            Err(Error::OperationNotPermitted(
+                "New attribute name is already used in the same axis".to_string(),
+            ))
+        } else {
+            match self.attributes.remove(attr_name) {
+                Some(attr_params) => {
+                    self.attributes.insert(new_name.to_string(), attr_params);
+                    Ok(())
+                }
+                None => Err(Error::AttributeNotFound(attr_name.to_string())),
+            }
+        }
     }
 }

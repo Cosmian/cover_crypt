@@ -186,18 +186,11 @@ impl Policy {
     /// Adds the given policy axis to the policy.
     pub fn remove_axis(&mut self, axis_name: String) -> Result<(), Error> {
         match self.axes.get(&axis_name) {
-            Some(_) => {
-                if self.axes.len() == 1 {
-                    Err(Error::ExistingPolicy(
-                        "Cannot remove last axis from a policy".to_string(),
-                    ))
-                } else {
-                    self.axes
-                        .remove(&axis_name)
-                        .map(|_| ())
-                        .ok_or(Error::ExistingPolicy("Could not remove axis".to_string()))
-                }
-            }
+            Some(_) => self
+                .axes
+                .remove(&axis_name)
+                .map(|_| ())
+                .ok_or(Error::ExistingPolicy("Could not remove axis".to_string())),
             None => Err(Error::AxisNotFound(axis_name)),
         }
     }
@@ -239,6 +232,13 @@ impl Policy {
         }
     }
 
+    pub fn rename_attribute(&mut self, attr: Attribute, new_name: &str) -> Result<(), Error> {
+        match self.axes.get_mut(&attr.axis) {
+            Some(policy_axis) => policy_axis.rename_attribute(&attr.name, new_name),
+            None => Err(Error::AxisNotFound(attr.axis)),
+        }
+    }
+
     /// Rotates an attribute, changing its underlying value with an unused
     /// value.
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
@@ -257,7 +257,7 @@ impl Policy {
             res.extend(
                 axis.attributes
                     .keys()
-                    .map(|attr_name| Attribute::new(&axis_name, &attr_name)),
+                    .map(|attr_name| Attribute::new(axis_name, attr_name)),
             )
         }
         res

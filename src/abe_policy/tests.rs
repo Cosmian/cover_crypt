@@ -93,7 +93,32 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
 #[test]
 fn test_edit_policy_attributes() -> Result<(), Error> {
     let mut policy = policy()?;
+    assert_eq!(policy.attributes().len(), 7);
 
+    // Rename R&D to Research
+    assert!(policy
+        .rename_attribute(
+            Attribute {
+                axis: "Department".to_string(),
+                name: "R&D".to_string(),
+            },
+            "Research",
+        )
+        .is_ok());
+
+    // Try renaming Research to already used name MKG
+    assert!(policy
+        .rename_attribute(
+            Attribute {
+                axis: "Department".to_string(),
+                name: "R&D".to_string(),
+            },
+            "MKG",
+        )
+        .is_err());
+    assert_eq!(policy.attributes().len(), 7);
+
+    // Add new attribute Sales
     let new_attr = Attribute {
         axis: "Department".to_string(),
         name: "Sales".to_string(),
@@ -103,6 +128,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         .is_ok());
     assert_eq!(policy.attributes().len(), 8);
 
+    // Try adding already existing attribute HR
     let duplicate_attr = Attribute {
         axis: "Department".to_string(),
         name: "HR".to_string(),
@@ -111,6 +137,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         .add_attribute(duplicate_attr, EncryptionHint::Classic)
         .is_err());
 
+    // Try adding attribute to non existing Axis
     let missing_axis = Attribute {
         axis: "Missing".to_string(),
         name: "Axis".to_string(),
@@ -119,9 +146,10 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         .add_attribute(missing_axis.clone(), EncryptionHint::Classic)
         .is_err());
 
+    // Remove research attribute
     let delete_attr = Attribute {
         axis: "Department".to_string(),
-        name: "R&D".to_string(),
+        name: "Research".to_string(),
     };
     assert!(policy.remove_attribute(delete_attr.clone()).is_ok());
     assert_eq!(policy.attributes().len(), 7);
@@ -148,7 +176,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     })?;
     assert_eq!(policy.axes.len(), 1);
 
-    // Remove axis test
+    // Add new axis
     let new_axis = PolicyAxis::new(
         "AxisTest",
         vec![
@@ -160,21 +188,23 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     policy.add_axis(new_axis)?;
     assert_eq!(policy.axes.len(), 2);
 
+    // Remove the new axis
     policy.remove_axis("AxisTest".to_string())?;
     assert_eq!(policy.axes.len(), 1);
 
+    // Try removing non existing axis
     assert!(policy.remove_axis("MissingAxis".to_string()).is_err());
 
-    // Removing last axis should result in an error
-    assert!(policy.remove_axis("Security Level".to_string()).is_err());
-
-    // Modifying hierarchical axis will result in an error
+    // Try modifying hierarchical axis
     assert!(policy
         .remove_attribute(Attribute {
             axis: "Security Level".to_string(),
             name: "Top Secret".to_string(),
         })
         .is_err());
+
+    // Removing a hierarchical axis is permitted
+    assert!(policy.remove_axis("Security Level".to_string()).is_ok());
 
     Ok(())
 }

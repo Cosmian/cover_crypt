@@ -167,7 +167,6 @@ pub fn encaps(
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Partition>,
 ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
-    println!("Encryption set: {:?}", encryption_set);
     let mut seed = Zeroizing::new([0; SYM_KEY_LENGTH]);
     rng.fill_bytes(&mut *seed);
 
@@ -336,7 +335,6 @@ pub fn update(
         }
         if is_readonly {
             // Remove deactivated partition from public key
-            println!("Removing sub PK {:?}", partition);
             new_sub_pk.remove(partition);
         }
     }
