@@ -167,6 +167,7 @@ pub fn encaps(
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Partition>,
 ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
+    println!("Encryption set: {:?}", encryption_set);
     let mut seed = Zeroizing::new([0; SYM_KEY_LENGTH]);
     rng.fill_bytes(&mut *seed);
 
@@ -188,7 +189,13 @@ pub fn encaps(
             } else {
                 encs.insert(KeyEncapsulation::ClassicEncapsulation(Box::new(e_i)));
             }
-        } // else unknown target partition
+        }
+        // else unknown target partition
+        else {
+            return Err(Error::OperationNotPermitted(
+                "This attribute has been deactivated".to_string(),
+            ));
+        }
     }
     let (tag, key) = eakem_hash!(TAG_LENGTH, SYM_KEY_LENGTH, &*seed, KEY_GEN_INFO)
         .map_err(Error::CryptoCoreError)?;
@@ -329,6 +336,7 @@ pub fn update(
         }
         if is_readonly {
             // Remove deactivated partition from public key
+            println!("Removing sub PK {:?}", partition);
             new_sub_pk.remove(partition);
         }
     }

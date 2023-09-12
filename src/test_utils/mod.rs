@@ -317,13 +317,15 @@ mod tests {
         // Can not encrypt using deactivated attribute
         let top_secret_ap =
             AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
-        let res =
-            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None);
-        println!("{:?}", res);
+
+        assert!(
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)
+                .is_err()
+        );
 
         // refresh the user key and preserve access to old partitions
         let new_decryption_policy =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
             &new_decryption_policy,
@@ -343,9 +345,9 @@ mod tests {
             &policy,
             false,
         )?;
-        let res = encrypted_header.decrypt(&cover_crypt, &top_secret_fin_usk, None);
-        println!("{:?}", res);
-        assert!(res.is_ok());
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
 
         Ok(())
     }
