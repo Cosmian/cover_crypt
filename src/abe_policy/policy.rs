@@ -11,7 +11,6 @@ use super::{
     axis::{PolicyAttribute, PolicyAttributesParameters, PolicyAxesParameters},
     AccessPolicy, Attribute, Dimension, EncryptionHint, Partition, PolicyAxis,
 };
-
 use crate::Error;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -183,7 +182,7 @@ impl Policy {
         Ok(())
     }
 
-    /// Adds the given policy axis to the policy.
+    /// Removes the given policy axis to the policy.
     pub fn remove_axis(&mut self, axis_name: String) -> Result<(), Error> {
         match self.axes.get(&axis_name) {
             Some(_) => self
@@ -195,6 +194,8 @@ impl Policy {
         }
     }
 
+    /// Adds the given attribute to the policy.
+    /// Will fail if the specified axis does not exist in the policy.
     pub fn add_attribute(
         &mut self,
         attr: Attribute,
@@ -212,6 +213,9 @@ impl Policy {
         }
     }
 
+    /// Removes the given attribute from the policy.
+    /// Encryption for this attribute and decryption of old ciphertexts will no
+    /// longer be possible.
     pub fn remove_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
         match self.axes.get_mut(&attr.axis) {
             Some(policy_axis) => {
@@ -225,6 +229,9 @@ impl Policy {
         }
     }
 
+    /// Marks an attribute as read only.
+    /// The corresponding encryption key will be removed from the public key.
+    /// But the decryption key will be kept to allow reading old ciphertext.
     pub fn deactivate_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
         match self.axes.get_mut(&attr.axis) {
             Some(policy_axis) => policy_axis.deactivate_attribute(&attr.name),
@@ -232,6 +239,7 @@ impl Policy {
         }
     }
 
+    /// Changes the name of an attribute.
     pub fn rename_attribute(&mut self, attr: Attribute, new_name: &str) -> Result<(), Error> {
         match self.axes.get_mut(&attr.axis) {
             Some(policy_axis) => policy_axis.rename_attribute(&attr.name, new_name),
@@ -249,7 +257,7 @@ impl Policy {
         }
     }
 
-    /// Remove old rotations id of an attribute
+    /// Removes old rotations id of an attribute.
     pub fn clear_old_rotations(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(axis) = self.axes.get_mut(&attr.axis) {
             axis.clear_old_rotations(&attr.name)
@@ -272,6 +280,7 @@ impl Policy {
         res
     }
 
+    /// Internal function to query a given attribute parameters from the policy.
     fn get_attribute(&self, attr: &Attribute) -> Result<&PolicyAttribute, Error> {
         if let Some(axis) = self.axes.get(&attr.axis) {
             axis.attributes
@@ -283,7 +292,7 @@ impl Policy {
     }
 
     /// Returns the list of all values given to this attribute over rotations.
-    /// The current value is returned first
+    /// The current value is returned first.
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
         Ok(self
             .get_attribute(attribute)?

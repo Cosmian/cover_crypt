@@ -1,4 +1,8 @@
-use std::{convert::TryFrom, fmt::Debug, ops::BitOr, ops::Deref};
+use std::{
+    convert::TryFrom,
+    fmt::Debug,
+    ops::{BitOr, Deref},
+};
 
 use serde::{Deserialize, Serialize};
 

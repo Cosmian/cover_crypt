@@ -2,9 +2,8 @@ use std::{collections::HashMap, fmt::Debug, vec};
 
 use serde::{Deserialize, Serialize};
 
-use crate::Error;
-
 use super::attribute::{AxisAttributeProperties, EncryptionHint};
+use crate::Error;
 
 ///
 /// Defines a policy axis by its name and its underlying attribute properties.
@@ -63,21 +62,21 @@ impl PolicyAxis {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-#[deprecated]
+//#[deprecated]
 pub struct PolicyAxesParameters {
     pub attribute_names: Vec<String>,
     pub is_hierarchical: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-#[deprecated]
+//#[deprecated]
 pub struct PolicyAttributesParameters {
     pub values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-/// An attribute is used to tag a dimensional element.
+/// Represents attribute's data inside a Policy.
 pub struct PolicyAttribute {
     pub ids: Vec<u32>,
     pub encryption_hint: EncryptionHint,
@@ -85,6 +84,8 @@ pub struct PolicyAttribute {
 }
 
 impl PolicyAttribute {
+    /// Creates a `PolicyAttribute` with the provided `encryption_hint`
+    /// and increments the `seed_id` to generate unique IDs.
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
@@ -94,6 +95,7 @@ impl PolicyAttribute {
         }
     }
 
+    /// Gets the current ID.
     pub fn get_current_id(&self) -> u32 {
         self.ids
             .last()
@@ -101,13 +103,9 @@ impl PolicyAttribute {
             .expect("Attribute should always have at least one id")
     }
 
-    pub fn flatten_values_encryption_hint(&self) -> Vec<(u32, EncryptionHint)> {
-        self.ids
-            .iter()
-            .map(|&value| (value, self.encryption_hint))
-            .collect()
-    }
-
+    /// Flattens the properties of the `PolicyAttribute` into a vector of tuples
+    /// where each tuple contains an ID, the associated encryption hint, and the
+    /// `read_only` flag.
     pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, bool)> {
         self.ids
             .iter()
@@ -119,14 +117,22 @@ impl PolicyAttribute {
 type AttributeName = String;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-/// A dimension is a space that holds attributes. It can be ordered (an axis) or unordered (a set).
+/// A dimension is a space that holds attributes. It can be ordered (an axis) or
+/// unordered (a set).
 pub struct Dimension {
-    pub order: Option<Vec<AttributeName>>, // store HashSet PolicyAttribute and Vec AttrName
+    pub order: Option<Vec<AttributeName>>,
     pub attributes: HashMap<AttributeName, PolicyAttribute>,
 }
 
-// Implement some getter and setters to manipulate this `enum`.
 impl Dimension {
+    /// Creates a new `Dimension` based on the given `PolicyAxis`, initializing
+    /// attributes and order if applicable.
+    ///
+    /// # Arguments
+    ///
+    /// * `axis` - The `PolicyAxis` to base the dimension on.
+    /// * `seed_id` - A mutable reference to a seed ID used for generating
+    ///   unique IDs for attributes.
     pub fn new(axis: &PolicyAxis, seed_id: &mut u32) -> Self {
         let attributes_mapping = axis
             .attributes_properties
@@ -140,7 +146,7 @@ impl Dimension {
             .collect();
 
         match axis.hierarchical {
-            true => Dimension {
+            true => Self {
                 order: Some(
                     axis.attributes_properties
                         .iter()
@@ -149,13 +155,23 @@ impl Dimension {
                 ),
                 attributes: attributes_mapping,
             },
-            false => Dimension {
+            false => Self {
                 order: None,
                 attributes: attributes_mapping,
             },
         }
     }
 
+    /// Rotates the attribute with the given name by incrementing its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr_name` - The name of the attribute to rotate.
+    /// * `seed_id` - A seed used for generating the new rotation ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the attribute with the specified name is not found.
     pub fn rotate_attribute(
         &mut self,
         attr_name: &AttributeName,
@@ -171,6 +187,16 @@ impl Dimension {
         }
     }
 
+    /// Adds a new attribute to the dimension with the provided properties.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr` - The properties of the attribute to add.
+    /// * `seed_id` - A seed used for generating unique ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,
         attr: &AxisAttributeProperties,
@@ -193,6 +219,16 @@ impl Dimension {
         }
     }
 
+    /// Removes an attribute from the dimension.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr_name` - The name of the attribute to remove.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation is not permitted or if the attribute
+    /// is not found.
     pub fn remove_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         if self.order.is_some() {
             Err(Error::OperationNotPermitted(
@@ -206,6 +242,15 @@ impl Dimension {
         }
     }
 
+    /// Deactivates an attribute by marking it as read-only.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr_name` - The name of the attribute to deactivate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the attribute is not found.
     pub fn deactivate_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
@@ -213,6 +258,17 @@ impl Dimension {
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
 
+    /// Renames an attribute with a new name.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr_name` - The current name of the attribute to rename.
+    /// * `new_name` - The new name for the attribute.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the new attribute name is already used in the same
+    /// axis or if the attribute is not found.
     pub fn rename_attribute(
         &mut self,
         attr_name: &AttributeName,
@@ -233,6 +289,15 @@ impl Dimension {
         }
     }
 
+    /// Clears the old rotations of an attribute, keeping only the current ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `attr_name` - The name of the attribute to clear old rotations for.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the attribute is not found.
     pub fn clear_old_rotations(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)

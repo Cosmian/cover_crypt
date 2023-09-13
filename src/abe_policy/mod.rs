@@ -15,9 +15,9 @@ mod policy;
 
 pub use access_policy::AccessPolicy;
 pub use attribute::{Attribute, Attributes, EncryptionHint};
+pub use axis::{Dimension, PolicyAxis};
 pub use partitions::Partition;
 pub use policy::{LegacyPolicy, Policy, PolicyV1};
-pub use {axis::Dimension, axis::PolicyAxis};
 
 #[cfg(test)]
 mod tests;

@@ -124,7 +124,8 @@ pub fn setup(
 
 /// Generates a user secret key for the given decryption set.
 ///
-/// If the master secret key has a KMAC key, we use it to sign the user secret key.
+/// If the master secret key has a KMAC key, we use it to sign the user secret
+/// key.
 ///
 /// # Parameters
 ///
@@ -369,7 +370,7 @@ pub fn refresh(
     verify_user_key_kmac(msk, usk)?;
 
     if !keep_old_rights {
-        usk.subkeys.drain();
+        usk.subkeys.clear();
     }
 
     for partition in decryption_set {
