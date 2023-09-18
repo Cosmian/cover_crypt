@@ -149,7 +149,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     policy.remove_attribute(Attribute::new("Department", "HR"))?;
     policy.remove_attribute(Attribute::new("Department", "MKG"))?;
     policy.remove_attribute(Attribute::new("Department", "FIN"))?;
-    assert_eq!(policy.axes.len(), 1);
+    assert_eq!(policy.dimensions.len(), 1);
 
     // Add new axis
     let new_axis = PolicyAxis::new(
@@ -161,11 +161,11 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         false,
     );
     policy.add_axis(new_axis)?;
-    assert_eq!(policy.axes.len(), 2);
+    assert_eq!(policy.dimensions.len(), 2);
 
     // Remove the new axis
     policy.remove_axis("AxisTest".to_string())?;
-    assert_eq!(policy.axes.len(), 1);
+    assert_eq!(policy.dimensions.len(), 1);
 
     // Try removing non existing axis
     assert!(policy.remove_axis("MissingAxis".to_string()).is_err());

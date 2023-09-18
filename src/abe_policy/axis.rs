@@ -199,21 +199,22 @@ impl Dimension {
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,
-        attr: &AxisAttributeProperties,
+        attr_name: &AttributeName,
+        encryption_hint: EncryptionHint,
         seed_id: &mut u32,
     ) -> Result<(), Error> {
         if self.order.is_some() {
             Err(Error::OperationNotPermitted(
                 "Hierarchical axis are immutable".to_string(),
             ))
-        } else if self.attributes.contains_key(&attr.name) {
+        } else if self.attributes.contains_key(attr_name) {
             Err(Error::OperationNotPermitted(
                 "Attribute already in axis".to_string(),
             ))
         } else {
             self.attributes.insert(
-                attr.name.clone(),
-                PolicyAttribute::new(attr.encryption_hint, seed_id),
+                attr_name.clone(),
+                PolicyAttribute::new(encryption_hint, seed_id),
             );
             Ok(())
         }

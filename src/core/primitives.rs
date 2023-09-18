@@ -370,7 +370,7 @@ pub fn refresh(
     verify_user_key_kmac(msk, usk)?;
 
     if !keep_old_rights {
-        usk.subkeys.clear();
+        usk.subkeys.drain();
     }
 
     for partition in decryption_set {

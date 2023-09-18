@@ -356,17 +356,14 @@ impl AccessPolicy {
         match self {
             Self::Attr(attr) => {
                 let axis_parameters = policy
-                    .axes
+                    .dimensions
                     .get(&attr.axis)
                     .ok_or_else(|| Error::AxisNotFound(attr.axis.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
                 if follow_hierarchical_axes {
                     if let Some(order) = axis_parameters.order.as_deref() {
                         // add attribute values for all attributes below the given one
-                        for name in order {
-                            if *name == attr.name {
-                                break;
-                            }
+                        for name in order.iter().take_while(|&name| name != &attr.name) {
                             res.push(vec![Attribute::new(&attr.axis, name)]);
                         }
                     }
