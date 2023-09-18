@@ -199,17 +199,17 @@ fn bench_serialization(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Key serialization");
     group.bench_function("MSK", |b| {
-        b.iter(|| msk.serialize().expect("cannot serialize msk"))
+        b.iter(|| msk.serialize().expect("cannot serialize msk"));
     });
     group.bench_function("MPK", |b| {
-        b.iter(|| mpk.serialize().expect("cannot serialize mpk"))
+        b.iter(|| mpk.serialize().expect("cannot serialize mpk"));
     });
 
     let usk = cover_crypt
         .generate_user_secret_key(&msk, &user_access_policies[0], &policy)
         .unwrap();
     group.bench_function("USK 1 partition", |b| {
-        b.iter(|| usk.serialize().expect("cannot serialize usk"))
+        b.iter(|| usk.serialize().expect("cannot serialize usk"));
     });
 
     // removes borrow checker warning about several mutable reference on `c`
@@ -228,7 +228,7 @@ fn bench_serialization(c: &mut Criterion) {
                         n_partition + 1
                     )
                 })
-            })
+            });
         });
     }
 }
@@ -258,7 +258,7 @@ fn bench_header_encryption(c: &mut Criterion) {
                     .unwrap_or_else(|_| {
                         panic!("cannot encrypt header for {} partition(s)", n_partition + 1)
                     })
-                })
+                });
             },
         );
     }
@@ -317,7 +317,7 @@ fn bench_header_decryption(c: &mut Criterion) {
                                     n_partitions_usk
                                 )
                             });
-                    })
+                    });
                 },
             );
         }

@@ -11,7 +11,7 @@
 //! decryption rights for the post-rotation ciphertexts. A post-rotation key
 //! cannot be granted decryption rights for the pre-rotation ciphertexts.
 //!
-//! Covercryptencryption offers 128 bits of both pre- and post-quantum
+//! Covercrypt encryption offers 128 bits of both pre- and post-quantum
 //! security.
 //!
 //! The `api` module exposes the generic definition of `Covercrypt`.
