@@ -266,13 +266,13 @@ impl Serializable for EncryptedHeader {
             + to_leb128_len(
                 self.encrypted_metadata
                     .as_ref()
-                    .map(|data| data.len())
+                    .map(std::vec::Vec::len)
                     .unwrap_or_default(),
             )
             + self
                 .encrypted_metadata
                 .as_ref()
-                .map(|data| data.len())
+                .map(std::vec::Vec::len)
                 .unwrap_or_default()
     }
 
@@ -310,13 +310,13 @@ impl Serializable for CleartextHeader {
             + to_leb128_len(
                 self.metadata
                     .as_ref()
-                    .map(|data| data.len())
+                    .map(std::vec::Vec::len)
                     .unwrap_or_default(),
             )
             + self
                 .metadata
                 .as_ref()
-                .map(|data| data.len())
+                .map(std::vec::Vec::len)
                 .unwrap_or_default()
     }
 

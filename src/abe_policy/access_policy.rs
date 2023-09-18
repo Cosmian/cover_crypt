@@ -383,7 +383,7 @@ impl AccessPolicy {
                         let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
                         combined.extend_from_slice(&value_left);
                         combined.extend_from_slice(value_right);
-                        res.push(combined)
+                        res.push(combined);
                     }
                 }
                 Ok(res)

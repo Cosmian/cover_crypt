@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [12.0.3] - 2023-09-18
+
+### Features
+
+- Support `crypto_core` v9.2.0
+
 ## [12.0.2] - 2023-09-01
 
 ### Features

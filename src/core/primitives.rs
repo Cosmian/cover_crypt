@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey,
-    RandomFixedSizeCBytes, SymmetricKey,
+    SymmetricKey,
 };
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
@@ -309,7 +309,7 @@ pub fn refresh(
     keep_old_rights: bool,
 ) {
     if !keep_old_rights {
-        usk.subkeys.drain();
+        usk.subkeys.clear();
     }
 
     for partition in decryption_set {
