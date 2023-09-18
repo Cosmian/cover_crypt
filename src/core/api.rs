@@ -1,6 +1,6 @@
 //! Defines the `Covercrypt` API.
 
-use std::{fmt::Debug, ops::DerefMut, sync::Mutex};
+use std::{fmt::Debug, sync::Mutex};
 
 use cosmian_crypto_core::{
     reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
@@ -172,7 +172,7 @@ impl Covercrypt {
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
         let aes256gcm = Aes256Gcm::new(symmetric_key);
-        let nonce = Nonce::new(self.rng.lock().expect("could not lock mutex").deref_mut());
+        let nonce = Nonce::new(&mut *self.rng.lock().expect("could not lock mutex"));
         let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
         let mut res =
             Vec::with_capacity(plaintext.len() + Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);

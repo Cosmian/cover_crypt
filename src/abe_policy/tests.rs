@@ -58,16 +58,16 @@ fn check_policy() {
     let attributes = policy.attributes();
     assert_eq!(security_level.len() + department.len(), attributes.len());
     for properties in &security_level.attributes_properties {
-        assert!(attributes.contains(&Attribute::new("Security Level", &properties.name)))
+        assert!(attributes.contains(&Attribute::new("Security Level", &properties.name)));
     }
     for properties in &department.attributes_properties {
-        assert!(attributes.contains(&Attribute::new("Department", &properties.name)))
+        assert!(attributes.contains(&Attribute::new("Department", &properties.name)));
     }
     for attribute in &attributes {
         assert_eq!(
             policy.attribute_values(attribute).unwrap()[0],
             policy.attribute_current_value(attribute).unwrap()
-        )
+        );
     }
 }
 
@@ -84,7 +84,7 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
         assert_eq!(
             policy.attribute_values(attribute)?[0],
             policy.attribute_current_value(attribute)?
-        )
+        );
     }
     Ok(())
 }

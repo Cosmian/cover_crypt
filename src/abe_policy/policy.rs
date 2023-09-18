@@ -424,7 +424,7 @@ fn generate_current_attribute_partitions(
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
     let mut current_attr_value_per_axis = HashMap::<String, Vec<(u32, EncryptionHint)>>::new();
-    for attribute in attributes.iter() {
+    for attribute in attributes {
         let entry = current_attr_value_per_axis
             .entry(attribute.axis.clone())
             .or_default();
