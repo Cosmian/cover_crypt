@@ -14,7 +14,8 @@ use pqc_kyber::{
 use zeroize::Zeroizing;
 
 use super::{
-    KmacSignature, KyberPublicKey, KyberSecretKey, KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH,
+    KmacSignature, KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, SYM_KEY_LENGTH,
+    TAG_LENGTH,
 };
 use crate::{
     abe_policy::{EncryptionHint, Partition},
@@ -103,7 +104,7 @@ pub fn setup(
         sub_pk.insert(partition.clone(), (pk_pq, pk_i));
     }
 
-    let kmac_key = Some(SymmetricKey::<SYM_KEY_LENGTH>::new(rng));
+    let kmac_key = Some(SymmetricKey::<KMAC_KEY_LENGTH>::new(rng));
 
     (
         MasterSecretKey {

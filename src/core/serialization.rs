@@ -8,7 +8,7 @@ use cosmian_crypto_core::{
 };
 use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
-use super::{KyberPublicKey, KyberSecretKey, KMAC_LENGTH, TAG_LENGTH};
+use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
     abe_policy::Partition,
     core::{
@@ -139,7 +139,7 @@ impl Serializable for MasterSecretKey {
             );
         }
 
-        let kmac_key = match de.read_array::<{ SYM_KEY_LENGTH }>() {
+        let kmac_key = match de.read_array::<{ KMAC_KEY_LENGTH }>() {
             Ok(key_bytes) => Some(SymmetricKey::try_from_bytes(key_bytes)?),
             Err(_) => None,
         };
