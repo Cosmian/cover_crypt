@@ -367,6 +367,54 @@ mod tests {
     }
 
     #[test]
+    fn test_rename_attribute() -> Result<(), Error> {
+        let mut policy = policy()?;
+        let cover_crypt = Covercrypt::default();
+        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
+
+        //
+        // New user secret key
+        let decryption_policy =
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let mut top_secret_fin_usk =
+            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+
+        //
+        // Encrypt
+        let top_secret_ap =
+            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
+
+        // remove the FIN department
+        policy.rename_attribute(Attribute::new("Department", "FIN"), "Finance")?;
+
+        // update the master keys
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
+
+        // refresh the user key and preserve access to old partitions
+        let new_decryption_policy = AccessPolicy::from_boolean_expression(
+            "Security Level::Top Secret && Department::Finance",
+        )?;
+        cover_crypt.refresh_user_secret_key(
+            &mut top_secret_fin_usk,
+            &new_decryption_policy,
+            &msk,
+            &policy,
+            false,
+        )?;
+        assert!(encrypted_header
+            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+            .is_ok());
+
+        Ok(())
+    }
+
+    #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
         let mut policy = policy()?;
         policy.rotate(&Attribute::new("Department", "FIN"))?;
