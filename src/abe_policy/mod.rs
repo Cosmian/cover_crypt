@@ -9,15 +9,24 @@
 
 mod access_policy;
 mod attribute;
-mod axis;
+mod dimension;
+mod legacy_policy;
 mod partitions;
 mod policy;
 
 pub use access_policy::AccessPolicy;
 pub use attribute::{Attribute, Attributes, EncryptionHint};
-pub use axis::{Dimension, PolicyAxis};
+pub use dimension::{Dimension, PolicyAxis};
+pub use legacy_policy::{LegacyPolicy, PolicyV1};
 pub use partitions::Partition;
-pub use policy::{LegacyPolicy, Policy, PolicyV1};
+pub use policy::Policy;
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PolicyVersion {
+    V1,
+    V2,
+}

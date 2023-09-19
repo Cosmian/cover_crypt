@@ -54,9 +54,13 @@ mod tests {
     /// `Policy`.
     #[test]
     fn read_policy() {
-        // Can read a `Policy`
-        let policy_str = include_bytes!("./tests_data/policy.json");
-        Policy::try_from(policy_str.as_slice()).unwrap();
+        // Can read a `Policy` V2
+        let policy_v2_str = include_bytes!("./tests_data/policy_v2.json");
+        Policy::try_from(policy_v2_str.as_slice()).unwrap();
+
+        // Can read a `Policy` V1
+        let policy_v1_str = include_bytes!("./tests_data/policy_v1.json");
+        Policy::try_from(policy_v1_str.as_slice()).unwrap();
 
         // Can read a `LegacyPolicy`
         let legacy_policy_str = include_bytes!("./tests_data/legacy_policy.json");

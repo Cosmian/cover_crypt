@@ -5,85 +5,13 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::{
-    axis::{PolicyAttribute, PolicyAttributesParameters, PolicyAxesParameters},
-    AccessPolicy, Attribute, Dimension, EncryptionHint, Partition, PolicyAxis,
+    dimension::PolicyAttribute, AccessPolicy, Attribute, Dimension, EncryptionHint, LegacyPolicy,
+    Partition, PolicyAxis, PolicyV1, PolicyVersion,
 };
 use crate::Error;
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct LegacyPolicy {
-    /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
-    /// Maximum attribute value. Defines a maximum number of attribute
-    /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
-    /// Policy axes: maps axes name to the list of associated attribute names
-    /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, PolicyAxesParameters>,
-    /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, Vec<u32>>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PolicyVersion {
-    V1,
-    V2,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct PolicyV1 {
-    /// Version number
-    pub version: PolicyVersion,
-    /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
-    /// Maximum attribute value. Defines a maximum number of attribute
-    /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
-    /// Policy axes: maps axes name to the list of associated attribute names
-    /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, PolicyAxesParameters>,
-    /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, PolicyAttributesParameters>,
-}
-
-impl PolicyV1 {
-    /// Converts the given string into a Policy. Does not fail if the given
-    /// string uses the legacy format.
-    pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
-        // First try to deserialize the latest `Policy` format
-        match serde_json::from_slice(bytes) {
-            Ok(policy) => Ok(policy),
-            Err(e) => {
-                if let Ok(policy) = serde_json::from_slice::<LegacyPolicy>(bytes) {
-                    // Convert the legacy format to the current one.
-                    Ok(Self {
-                        version: PolicyVersion::V1,
-                        max_attribute_creations: policy.max_attribute_creations,
-                        last_attribute_value: policy.last_attribute_value,
-                        axes: policy.axes,
-                        attributes: policy
-                            .attributes
-                            .into_iter()
-                            .map(|(name, values)| {
-                                (
-                                    name,
-                                    PolicyAttributesParameters {
-                                        values,
-                                        encryption_hint: EncryptionHint::Classic,
-                                    },
-                                )
-                            })
-                            .collect(),
-                    })
-                } else {
-                    Err(Error::DeserializationError(e))
-                }
-            }
-        }
-    }
-}
 
 /// A policy is a set of policy axes. A fixed number of attribute creations
 /// (revocations + additions) is allowed.
@@ -109,49 +37,24 @@ impl Policy {
     /// Converts the given string into a Policy. Does not fail if the given
     /// string uses the legacy format.
     pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
-        // First try to deserialize the latest `Policy` format
-        match serde_json::from_slice(bytes) {
-            Ok(policy) => Ok(policy),
-            Err(e) => {
-                if let Ok(policy) = PolicyV1::parse_and_convert(bytes) {
-                    let mut dimensions = HashMap::with_capacity(policy.axes.len());
-                    for (axis_name, axis_params) in policy.axes {
-                        dimensions.insert(
-                            axis_name.clone(),
-                            Dimension {
-                                order: if axis_params.is_hierarchical {
-                                    Some(axis_params.attribute_names)
-                                } else {
-                                    None
-                                },
-                                attributes: policy
-                                    .attributes
-                                    .clone()
-                                    .iter()
-                                    .filter(|(attr, _)| attr.axis == axis_name)
-                                    .map(|(attr, attr_params)| {
-                                        (
-                                            attr.name.clone(),
-                                            PolicyAttribute {
-                                                ids: attr_params.values.clone(),
-                                                encryption_hint: attr_params.encryption_hint,
-                                                read_only: false,
-                                            },
-                                        )
-                                    })
-                                    .collect(),
-                            },
-                        );
-                    }
-                    Ok(Self {
-                        version: PolicyVersion::V2,
-                        last_attribute_id: policy.last_attribute_value,
-                        dimensions,
-                    })
-                } else {
-                    Err(Error::DeserializationError(e))
+        let json_policy: Value =
+            serde_json::from_slice(bytes).map_err(Error::DeserializationError)?;
+
+        if let Some(policy_version) = json_policy.get("version") {
+            match serde_json::from_value::<PolicyVersion>(policy_version.clone()) {
+                Ok(PolicyVersion::V1) => Ok(serde_json::from_slice::<PolicyV1>(bytes)
+                    .map_err(Error::DeserializationError)?
+                    .into()),
+                Ok(PolicyVersion::V2) => {
+                    serde_json::from_slice::<Policy>(bytes).map_err(Error::DeserializationError)
                 }
+                Err(e) => Err(Error::DeserializationError(e)),
             }
+        } else {
+            // Legacy Policy
+            Ok(serde_json::from_slice::<LegacyPolicy>(bytes)
+                .map_err(Error::DeserializationError)?
+                .into())
         }
     }
 

@@ -63,13 +63,6 @@ impl PolicyAxis {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 //#[deprecated]
-pub struct PolicyAxesParameters {
-    pub attribute_names: Vec<String>,
-    pub is_hierarchical: bool,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-//#[deprecated]
 pub struct PolicyAttributesParameters {
     pub values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
