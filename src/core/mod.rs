@@ -25,7 +25,13 @@ pub mod serialization;
 /// security.
 pub const SYM_KEY_LENGTH: usize = 32;
 
-const KMAC_LENGTH: usize = 48;
+/// The KMAC key is currently 16 bytes long, it could be 32 bytes
+/// to provide post-quantum security.
+pub const KMAC_KEY_LENGTH: usize = 16;
+
+/// The KMAC signature is currently 32 bytes long, it could be 48 bytes
+/// to provide post-quantum security.
+const KMAC_LENGTH: usize = 32;
 type KmacSignature = [u8; KMAC_LENGTH];
 
 /// Length of the `Covercrypt` tag
@@ -69,7 +75,7 @@ pub struct MasterSecretKey {
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
     pub subkeys: HashMap<Partition, (Option<KyberSecretKey>, R25519PrivateKey)>,
-    kmac_key: Option<SymmetricKey<SYM_KEY_LENGTH>>,
+    kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
