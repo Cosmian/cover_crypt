@@ -49,7 +49,10 @@ impl From<LegacyPolicy> for Policy {
                             (
                                 attr.name.clone(),
                                 PolicyAttribute {
-                                    ids: values.clone(),
+                                    id: values.first().copied().expect(
+                                        "Policy should have at least one value per attribute",
+                                    ),
+                                    rotation_value: values.clone(),
                                     encryption_hint: EncryptionHint::Classic,
                                     read_only: false,
                                 },
@@ -104,7 +107,10 @@ impl From<PolicyV1> for Policy {
                             (
                                 attr.name.clone(),
                                 PolicyAttribute {
-                                    ids: attr_params.values.clone(),
+                                    id: attr_params.values.first().copied().expect(
+                                        "Policy should have at least one value per attribute",
+                                    ),
+                                    rotation_value: attr_params.values.clone(),
                                     encryption_hint: attr_params.encryption_hint,
                                     read_only: false,
                                 },

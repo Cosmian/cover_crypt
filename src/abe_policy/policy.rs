@@ -45,9 +45,8 @@ impl Policy {
                 Ok(PolicyVersion::V1) => Ok(serde_json::from_slice::<PolicyV1>(bytes)
                     .map_err(Error::DeserializationError)?
                     .into()),
-                Ok(PolicyVersion::V2) => {
-                    serde_json::from_slice::<Policy>(bytes).map_err(Error::DeserializationError)
-                }
+                Ok(PolicyVersion::V2) => serde_json::from_value::<Policy>(json_policy)
+                    .map_err(Error::DeserializationError),
                 Err(e) => Err(Error::DeserializationError(e)),
             }
         } else {
@@ -190,7 +189,7 @@ impl Policy {
     /// The current value is returned first.
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
         self.get_attribute(attribute)
-            .map(|attr| attr.ids.iter().rev().copied().collect())
+            .map(|attr| attr.rotation_value.iter().rev().copied().collect())
     }
 
     /// Returns the hybridization hint of the given attribute.

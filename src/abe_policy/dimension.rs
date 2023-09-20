@@ -68,10 +68,13 @@ pub struct PolicyAttributesParameters {
     pub encryption_hint: EncryptionHint,
 }
 
+pub type AttributeId = u32;
+
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents attribute's data inside a Policy.
 pub struct PolicyAttribute {
-    pub ids: Vec<u32>,
+    pub id: AttributeId,
+    pub rotation_value: Vec<u32>,
     pub encryption_hint: EncryptionHint,
     pub read_only: bool,
 }
@@ -82,25 +85,26 @@ impl PolicyAttribute {
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
+            id: *seed_id,
+            rotation_value: vec![*seed_id],
             encryption_hint,
-            ids: vec![*seed_id],
             read_only: false,
         }
     }
 
     /// Gets the current ID.
     pub fn get_current_id(&self) -> u32 {
-        self.ids
+        self.rotation_value
             .last()
             .copied()
-            .expect("Attribute should always have at least one id")
+            .expect("Attribute should always have at least one value")
     }
 
     /// Flattens the properties of the `PolicyAttribute` into a vector of tuples
     /// where each tuple contains an ID, the associated encryption hint, and the
     /// `read_only` flag.
     pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, bool)> {
-        self.ids
+        self.rotation_value
             .iter()
             .map(|&value| (value, self.encryption_hint, self.read_only))
             .collect()
@@ -173,7 +177,7 @@ impl Dimension {
         match self.attributes.get_mut(attr_name) {
             Some(attr) => {
                 *seed_id += 1;
-                attr.ids.push(*seed_id);
+                attr.rotation_value.push(*seed_id);
                 Ok(())
             }
             None => Err(Error::AttributeNotFound(attr_name.to_string())),
@@ -295,7 +299,7 @@ impl Dimension {
     pub fn clear_old_rotations(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
-            .map(|attr| attr.ids = vec![attr.get_current_id()])
+            .map(|attr| attr.rotation_value = vec![attr.get_current_id()])
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
 }
