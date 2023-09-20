@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     dimension::{PolicyAttribute, PolicyAttributesParameters},
-    Attribute, Dimension, EncryptionHint, Policy, PolicyVersion,
+    Attribute, AttributeStatus, Dimension, EncryptionHint, Policy, PolicyVersion,
 };
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -54,7 +54,7 @@ impl From<LegacyPolicy> for Policy {
                                     ),
                                     rotation_value: values.clone(),
                                     encryption_hint: EncryptionHint::Classic,
-                                    read_only: false,
+                                    write_status: AttributeStatus::ReadWrite,
                                 },
                             )
                         })
@@ -112,7 +112,7 @@ impl From<PolicyV1> for Policy {
                                     ),
                                     rotation_value: attr_params.values.clone(),
                                     encryption_hint: attr_params.encryption_hint,
-                                    read_only: false,
+                                    write_status: AttributeStatus::ReadWrite,
                                 },
                             )
                         })

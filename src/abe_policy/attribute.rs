@@ -29,6 +29,25 @@ impl BitOr for EncryptionHint {
     }
 }
 
+/// Whether to provide an encryption key in the master public key for this attribute.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AttributeStatus {
+    ReadWrite,
+    ReadOnly,
+}
+
+impl BitOr for AttributeStatus {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        if self == Self::ReadOnly || rhs == Self::ReadOnly {
+            Self::ReadOnly
+        } else {
+            Self::ReadWrite
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Attribute representation used to create a Policy
 pub struct AxisAttributeProperties {

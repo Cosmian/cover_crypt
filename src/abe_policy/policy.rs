@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{
-    dimension::PolicyAttribute, AccessPolicy, Attribute, Dimension, EncryptionHint, LegacyPolicy,
-    Partition, PolicyAxis, PolicyV1, PolicyVersion,
+    dimension::PolicyAttribute, AccessPolicy, Attribute, AttributeStatus, Dimension,
+    EncryptionHint, LegacyPolicy, Partition, PolicyAxis, PolicyV1, PolicyVersion,
 };
 use crate::Error;
 
@@ -128,7 +128,7 @@ impl Policy {
     /// But the decryption key will be kept to allow reading old ciphertext.
     pub fn disable_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.axis) {
-            Some(policy_axis) => policy_axis.deactivate_attribute(&attr.name),
+            Some(policy_axis) => policy_axis.disable_attribute(&attr.name),
             None => Err(Error::AxisNotFound(attr.axis)),
         }
     }
@@ -217,10 +217,16 @@ impl Policy {
     fn combine_attribute_values(
         current_axis: usize,
         axes: &[String],
-        attr_values_per_axis: &HashMap<String, Vec<(u32, EncryptionHint, bool)>>,
-    ) -> Result<Vec<(Vec<u32>, EncryptionHint, bool)>, Error> {
+        attr_values_per_axis: &HashMap<String, Vec<(u32, EncryptionHint, AttributeStatus)>>,
+    ) -> Result<Vec<(Vec<u32>, EncryptionHint, AttributeStatus)>, Error> {
         let current_axis_name = match axes.get(current_axis) {
-            None => return Ok(vec![(vec![], EncryptionHint::Classic, false)]),
+            None => {
+                return Ok(vec![(
+                    vec![],
+                    EncryptionHint::Classic,
+                    AttributeStatus::ReadWrite,
+                )])
+            }
             Some(axis) => axis,
         };
 
@@ -240,14 +246,8 @@ impl Policy {
                 combined.extend_from_slice(other_values);
                 combinations.push((
                     combined,
-                    if (*is_hybridized == EncryptionHint::Hybridized)
-                        || (*is_other_hybridized == EncryptionHint::Hybridized)
-                    {
-                        EncryptionHint::Hybridized
-                    } else {
-                        EncryptionHint::Classic
-                    },
-                    *is_readonly || *is_other_readonly,
+                    *is_hybridized | *is_other_hybridized,
+                    *is_readonly | *is_other_readonly,
                 ));
             }
         }
@@ -258,7 +258,7 @@ impl Policy {
     /// returned with a hint about whether hybridized encryption should be used.
     pub fn generate_all_partitions(
         &self,
-    ) -> Result<HashMap<Partition, (EncryptionHint, bool)>, Error> {
+    ) -> Result<HashMap<Partition, (EncryptionHint, AttributeStatus)>, Error> {
         let mut attr_values_per_axis = HashMap::with_capacity(self.dimensions.len());
         for (axis_name, axis) in &self.dimensions {
             attr_values_per_axis.insert(
@@ -334,8 +334,10 @@ fn generate_current_attribute_partitions(
     attributes: &[Attribute],
     policy: &Policy,
 ) -> Result<HashSet<Partition>, Error> {
-    let mut current_attr_value_per_axis =
-        HashMap::<String, Vec<(u32, EncryptionHint, bool)>>::with_capacity(policy.dimensions.len()); // maximum bound
+    let mut current_attr_value_per_axis = HashMap::<
+        String,
+        Vec<(u32, EncryptionHint, AttributeStatus)>,
+    >::with_capacity(policy.dimensions.len()); // maximum bound
     for attribute in attributes.iter() {
         let entry = current_attr_value_per_axis
             .entry(attribute.axis.clone())
@@ -344,7 +346,7 @@ fn generate_current_attribute_partitions(
         entry.push((
             attr_properties.get_current_id(),
             attr_properties.encryption_hint,
-            attr_properties.read_only,
+            attr_properties.write_status,
         ));
     }
 
@@ -356,7 +358,13 @@ fn generate_current_attribute_partitions(
             let values = axis_properties
                 .attributes
                 .values()
-                .map(|attr| (attr.get_current_id(), attr.encryption_hint, attr.read_only))
+                .map(|attr| {
+                    (
+                        attr.get_current_id(),
+                        attr.encryption_hint,
+                        attr.write_status,
+                    )
+                })
                 .collect();
             current_attr_value_per_axis.insert(axis.clone(), values);
         }

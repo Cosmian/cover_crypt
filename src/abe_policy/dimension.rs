@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt::Debug, vec};
 
 use serde::{Deserialize, Serialize};
 
-use super::attribute::{AxisAttributeProperties, EncryptionHint};
+use super::{
+    attribute::{AxisAttributeProperties, EncryptionHint},
+    AttributeStatus,
+};
 use crate::Error;
 
 ///
@@ -62,7 +65,6 @@ impl PolicyAxis {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-//#[deprecated]
 pub struct PolicyAttributesParameters {
     pub values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
@@ -76,7 +78,7 @@ pub struct PolicyAttribute {
     pub id: AttributeId,
     pub rotation_value: Vec<u32>,
     pub encryption_hint: EncryptionHint,
-    pub read_only: bool,
+    pub write_status: AttributeStatus,
 }
 
 impl PolicyAttribute {
@@ -88,7 +90,7 @@ impl PolicyAttribute {
             id: *seed_id,
             rotation_value: vec![*seed_id],
             encryption_hint,
-            read_only: false,
+            write_status: AttributeStatus::ReadWrite,
         }
     }
 
@@ -103,10 +105,10 @@ impl PolicyAttribute {
     /// Flattens the properties of the `PolicyAttribute` into a vector of tuples
     /// where each tuple contains an ID, the associated encryption hint, and the
     /// `read_only` flag.
-    pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, bool)> {
+    pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
         self.rotation_value
             .iter()
-            .map(|&value| (value, self.encryption_hint, self.read_only))
+            .map(|&value| (value, self.encryption_hint, self.write_status))
             .collect()
     }
 }
@@ -249,10 +251,10 @@ impl Dimension {
     /// # Errors
     ///
     /// Returns an error if the attribute is not found.
-    pub fn deactivate_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
+    pub fn disable_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
-            .map(|attr| attr.read_only = true)
+            .map(|attr| attr.write_status = AttributeStatus::ReadOnly)
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
 

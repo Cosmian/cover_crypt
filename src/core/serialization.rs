@@ -144,12 +144,15 @@ impl Serializable for MasterSecretKey {
             Err(_) => None,
         };
 
+        let history = None;
+
         Ok(Self {
             s,
             s1,
             s2,
             subkeys,
             kmac_key,
+            history,
         })
     }
 }
@@ -380,7 +383,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::EncryptionHint,
+        abe_policy::{AttributeStatus, EncryptionHint},
         core::primitives::{encaps, keygen, setup},
     };
 
@@ -390,8 +393,14 @@ mod tests {
         let admin_partition = Partition(b"admin".to_vec());
         let dev_partition = Partition(b"dev".to_vec());
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), (EncryptionHint::Hybridized, false)),
-            (dev_partition.clone(), (EncryptionHint::Classic, false)),
+            (
+                admin_partition.clone(),
+                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+            ),
+            (
+                dev_partition.clone(),
+                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+            ),
         ]);
         let user_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         let target_set = HashSet::from([admin_partition, dev_partition]);
