@@ -3,35 +3,35 @@ use std::{collections::HashMap, fmt::Debug, vec};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    attribute::{AxisAttributeProperties, EncryptionHint},
+    attribute::{AttributeBuilder, EncryptionHint},
     AttributeStatus,
 };
 use crate::Error;
 
 ///
-/// Defines a policy axis by its name and its underlying attribute properties.
+/// Creates a dimension by its name and its underlying attribute properties.
 /// An attribute property defines its name and a hint about whether hybridized
 /// encryption should be used for it (hint set to `true` if this is the case).
 ///
 /// If `hierarchical` is set to `true`, we assume a lexicographical order based
 /// on the attribute name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PolicyAxis {
-    /// Axis name
+pub struct DimensionBuilder {
+    /// Dimension name
     pub name: String,
     /// Names of the axis attributes and hybridized encryption hints
-    pub attributes_properties: Vec<AxisAttributeProperties>,
+    pub attributes_properties: Vec<AttributeBuilder>,
     /// `true` if the axis is hierarchical
     pub hierarchical: bool,
 }
 
-impl PolicyAxis {
-    /// Generates a new policy axis with the given name and attribute names.
-    /// A hierarchical axis enforces order between its attributes.
+impl DimensionBuilder {
+    /// Generates a new policy dimension with the given name and attribute names.
+    /// A hierarchical dimension enforces order between its attributes.
     ///
-    /// - `name`                    : axis name
-    /// - `attribute_properties`    : axis attribute properties
-    /// - `hierarchical`            : set to `true` if the axis is hierarchical
+    /// - `name`                    : dimension name
+    /// - `attribute_properties`    : dimension attribute properties
+    /// - `hierarchical`            : set to `true` if the dimension is hierarchical
     #[must_use]
     pub fn new(
         name: &str,
@@ -42,7 +42,7 @@ impl PolicyAxis {
             name: name.to_string(),
             attributes_properties: attributes_properties
                 .into_iter()
-                .map(|(axis_name, encryption_hint)| AxisAttributeProperties {
+                .map(|(axis_name, encryption_hint)| AttributeBuilder {
                     name: axis_name.to_string(),
                     encryption_hint,
                 })
@@ -64,25 +64,19 @@ impl PolicyAxis {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct PolicyAttributesParameters {
-    pub values: Vec<u32>,
-    pub encryption_hint: EncryptionHint,
-}
-
 pub type AttributeId = u32;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-/// Represents attribute's data inside a Policy.
-pub struct PolicyAttribute {
+/// Represents an Attribute inside a Dimension.
+pub struct AttributeParameters {
     pub id: AttributeId,
     pub rotation_values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
     pub write_status: AttributeStatus,
 }
 
-impl PolicyAttribute {
-    /// Creates a `PolicyAttribute` with the provided `encryption_hint`
+impl AttributeParameters {
+    /// Creates a `AttributeParameters` with the provided `encryption_hint`
     /// and increments the `seed_id` to generate unique IDs.
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
@@ -94,7 +88,7 @@ impl PolicyAttribute {
         }
     }
 
-    /// Gets the current ID.
+    /// Gets the current rotation of the Attribute.
     pub fn get_current_rotation(&self) -> u32 {
         self.rotation_values
             .last()
@@ -102,9 +96,9 @@ impl PolicyAttribute {
             .expect("Attribute should always have at least one value")
     }
 
-    /// Flattens the properties of the `PolicyAttribute` into a vector of tuples
-    /// where each tuple contains an ID, the associated encryption hint, and the
-    /// `read_only` flag.
+    /// Flattens the properties of the `AttributeParameters` into a vector of tuples
+    /// where each tuple contains a rotation value, the associated encryption hint,
+    /// and the `read_only` flag.
     pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
         self.rotation_values
             .iter()
@@ -120,34 +114,34 @@ type AttributeName = String;
 /// unordered (a set).
 pub struct Dimension {
     pub order: Option<Vec<AttributeName>>,
-    pub attributes: HashMap<AttributeName, PolicyAttribute>,
+    pub attributes: HashMap<AttributeName, AttributeParameters>,
 }
 
 impl Dimension {
-    /// Creates a new `Dimension` based on the given `PolicyAxis`, initializing
+    /// Creates a new `Dimension` based on the given `DimensionBuilder`, initializing
     /// attributes and order if applicable.
     ///
     /// # Arguments
     ///
-    /// * `axis` - The `PolicyAxis` to base the dimension on.
+    /// * `dim` - The `DimensionBuilder` to base the dimension on.
     /// * `seed_id` - A mutable reference to a seed ID used for generating
     ///   unique IDs for attributes.
-    pub fn new(axis: &PolicyAxis, seed_id: &mut u32) -> Self {
-        let attributes_mapping = axis
+    pub fn new(dim: &DimensionBuilder, seed_id: &mut u32) -> Self {
+        let attributes_mapping = dim
             .attributes_properties
             .iter()
             .map(|attr| {
                 (
                     attr.name.clone(),
-                    PolicyAttribute::new(attr.encryption_hint, seed_id),
+                    AttributeParameters::new(attr.encryption_hint, seed_id),
                 )
             })
             .collect();
 
-        match axis.hierarchical {
+        match dim.hierarchical {
             true => Self {
                 order: Some(
-                    axis.attributes_properties
+                    dim.attributes_properties
                         .iter()
                         .map(|attr| attr.name.clone())
                         .collect(),
@@ -161,12 +155,12 @@ impl Dimension {
         }
     }
 
-    /// Rotates the attribute with the given name by incrementing its ID.
+    /// Rotates the attribute with the given name by incrementing its rotation value.
     ///
     /// # Arguments
     ///
     /// * `attr_name` - The name of the attribute to rotate.
-    /// * `seed_id` - A seed used for generating the new rotation ID.
+    /// * `seed_id` - A seed used for generating the new rotation value.
     ///
     /// # Errors
     ///
@@ -213,7 +207,7 @@ impl Dimension {
         } else {
             self.attributes.insert(
                 attr_name.clone(),
-                PolicyAttribute::new(encryption_hint, seed_id),
+                AttributeParameters::new(encryption_hint, seed_id),
             );
             Ok(())
         }

@@ -357,14 +357,14 @@ impl AccessPolicy {
             Self::Attr(attr) => {
                 let axis_parameters = policy
                     .dimensions
-                    .get(&attr.axis)
-                    .ok_or_else(|| Error::AxisNotFound(attr.axis.to_string()))?;
+                    .get(&attr.dimension)
+                    .ok_or_else(|| Error::DimensionNotFound(attr.dimension.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
                 if let Some(order) = axis_parameters.order.as_deref() {
                     if include_lower_attributes_from_axis {
                         // add attribute values for all attributes below the given one
                         for name in order.iter().take_while(|&name| name != &attr.name) {
-                            res.push(vec![Attribute::new(&attr.axis, name)]);
+                            res.push(vec![Attribute::new(&attr.dimension, name)]);
                         }
                     }
                 }

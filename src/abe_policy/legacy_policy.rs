@@ -3,8 +3,8 @@ use std::{collections::HashMap, fmt::Debug};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    dimension::{PolicyAttribute, PolicyAttributesParameters},
-    Attribute, AttributeStatus, Dimension, EncryptionHint, Policy, PolicyVersion,
+    Attribute, AttributeParameters, AttributeStatus, Dimension, EncryptionHint, Policy,
+    PolicyVersion,
 };
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -44,11 +44,11 @@ impl From<LegacyPolicy> for Policy {
                         .attributes
                         .clone()
                         .iter()
-                        .filter(|(attr, _)| attr.axis == axis_name)
+                        .filter(|(attr, _)| attr.dimension == axis_name)
                         .map(|(attr, values)| {
                             (
                                 attr.name.clone(),
-                                PolicyAttribute {
+                                AttributeParameters {
                                     id: values.first().copied().expect(
                                         "Policy should have at least one value per attribute",
                                     ),
@@ -71,6 +71,12 @@ impl From<LegacyPolicy> for Policy {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct PolicyV1AttributeParameters {
+    pub values: Vec<u32>,
+    pub encryption_hint: EncryptionHint,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct PolicyV1 {
     /// Version number
     pub version: PolicyVersion,
@@ -83,7 +89,7 @@ pub struct PolicyV1 {
     /// and a boolean defining whether or not this axis is hierarchical.
     pub axes: HashMap<String, PolicyAxesParameters>,
     /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, PolicyAttributesParameters>,
+    pub attributes: HashMap<Attribute, PolicyV1AttributeParameters>,
 }
 
 impl From<PolicyV1> for Policy {
@@ -102,11 +108,11 @@ impl From<PolicyV1> for Policy {
                         .attributes
                         .clone()
                         .iter()
-                        .filter(|(attr, _)| attr.axis == axis_name)
+                        .filter(|(attr, _)| attr.dimension == axis_name)
                         .map(|(attr, attr_params)| {
                             (
                                 attr.name.clone(),
-                                PolicyAttribute {
+                                AttributeParameters {
                                     id: attr_params.values.first().copied().expect(
                                         "Policy should have at least one value per attribute",
                                     ),

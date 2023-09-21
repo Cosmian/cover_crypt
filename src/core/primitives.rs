@@ -193,7 +193,7 @@ pub fn encaps(
         }
         // else unknown target partition
         else {
-            return Err(Error::OperationNotPermitted(
+            return Err(Error::KeyError(
                 "Missing public key for this attribute, it appears that you are trying to encrypt for a disabled attribute.".to_string(),
             ));
         }

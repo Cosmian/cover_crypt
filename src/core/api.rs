@@ -113,7 +113,7 @@ impl Covercrypt {
         access_policy: &AccessPolicy,
         msk: &MasterSecretKey,
         policy: &Policy,
-        keep_old_rotations: bool, // TODO: fix this parameter
+        keep_old_rotations: bool,
     ) -> Result<(), Error> {
         refresh(
             msk,

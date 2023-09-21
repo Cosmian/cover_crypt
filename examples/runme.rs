@@ -1,7 +1,7 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
 use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
     Covercrypt, EncryptedHeader,
 };
 
@@ -10,7 +10,7 @@ fn main() {
     // This axis is hierarchical, i.e. users matching
     // `Security Level::Confidential` can also decrypt
     // messages encrypted for `Security Level::Protected`.
-    let sec_level = PolicyAxis::new(
+    let sec_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
@@ -22,7 +22,7 @@ fn main() {
 
     // Another attribute axis will be department names.
     // This axis is *not* hierarchical.
-    let department = PolicyAxis::new(
+    let department = DimensionBuilder::new(
         "Department",
         vec![
             ("R&D", EncryptionHint::Classic),
@@ -37,8 +37,8 @@ fn main() {
     let mut policy = Policy::new();
 
     // Add the two generated axes to the policy
-    policy.add_axis(sec_level).unwrap();
-    policy.add_axis(department).unwrap();
+    policy.add_dimension(sec_level).unwrap();
+    policy.add_dimension(department).unwrap();
 
     // Setup Covercrypt and generate master keys
     let cover_crypt = Covercrypt::default();

@@ -49,8 +49,8 @@ impl BitOr for AttributeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Attribute representation used to create a Policy
-pub struct AxisAttributeProperties {
+/// Attribute representation used to create a Dimension and add it to a Policy.
+pub struct AttributeBuilder {
     pub name: String,
     pub encryption_hint: EncryptionHint,
 }
@@ -59,7 +59,7 @@ pub struct AxisAttributeProperties {
 #[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
 pub struct Attribute {
-    pub axis: String,
+    pub dimension: String,
     pub name: String,
 }
 
@@ -69,9 +69,9 @@ impl Attribute {
     /// - `axis`    : policy axis the attributes belongs to
     /// - `name`    : unique attribute name within this axis
     #[must_use]
-    pub fn new(axis: &str, name: &str) -> Self {
+    pub fn new(dimension: &str, name: &str) -> Self {
         Self {
-            axis: axis.to_owned(),
+            dimension: dimension.to_owned(),
             name: name.to_owned(),
         }
     }
@@ -79,14 +79,14 @@ impl Attribute {
 
 impl Debug for Attribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}::{}", &self.axis, &self.name))
+        f.write_fmt(format_args!("{}::{}", &self.dimension, &self.name))
     }
 }
 
 impl From<(&str, &str)> for Attribute {
     fn from(input: (&str, &str)) -> Self {
         Self {
-            axis: input.0.to_owned(),
+            dimension: input.0.to_owned(),
             name: input.1.to_owned(),
         }
     }
@@ -95,7 +95,7 @@ impl From<(&str, &str)> for Attribute {
 impl From<(String, String)> for Attribute {
     fn from(input: (String, String)) -> Self {
         Self {
-            axis: input.0,
+            dimension: input.0,
             name: input.1,
         }
     }
@@ -105,7 +105,7 @@ impl TryFrom<&str> for Attribute {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (axis, name) = s.trim().split_once("::").ok_or_else(|| {
+        let (dimension, name) = s.trim().split_once("::").ok_or_else(|| {
             Error::InvalidAttribute(format!("at least one separator '::' expected in {s}"))
         })?;
 
@@ -115,19 +115,19 @@ impl TryFrom<&str> for Attribute {
             )));
         }
 
-        if axis.is_empty() || name.is_empty() {
+        if dimension.is_empty() || name.is_empty() {
             return Err(Error::InvalidAttribute(format!(
-                "empty axis or empty name in {s}"
+                "empty dimension or empty name in {s}"
             )));
         }
 
-        Ok(Self::new(axis, name))
+        Ok(Self::new(dimension, name))
     }
 }
 
 impl std::fmt::Display for Attribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::{}", self.axis, self.name)
+        write!(f, "{}::{}", self.dimension, self.name)
     }
 }
 

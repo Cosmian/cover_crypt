@@ -1,5 +1,5 @@
 use crate::{
-    abe_policy::{EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{DimensionBuilder, EncryptionHint, Policy},
     Error,
 };
 
@@ -7,7 +7,7 @@ use crate::{
 pub mod non_regression;
 
 pub fn policy() -> Result<Policy, Error> {
-    let sec_level = PolicyAxis::new(
+    let sec_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
@@ -18,7 +18,7 @@ pub fn policy() -> Result<Policy, Error> {
         ],
         true,
     );
-    let department = PolicyAxis::new(
+    let department = DimensionBuilder::new(
         "Department",
         vec![
             ("R&D", EncryptionHint::Classic),
@@ -29,8 +29,8 @@ pub fn policy() -> Result<Policy, Error> {
         false,
     );
     let mut policy = Policy::new();
-    policy.add_axis(sec_level)?;
-    policy.add_axis(department)?;
+    policy.add_dimension(sec_level)?;
+    policy.add_dimension(department)?;
     Ok(policy)
 }
 

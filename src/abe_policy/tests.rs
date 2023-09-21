@@ -1,11 +1,11 @@
 use crate::{
-    abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
     error::Error,
 };
 
 /// Creates the policy object used in tests.
 pub fn policy() -> Result<Policy, Error> {
-    let sec_level = PolicyAxis::new(
+    let sec_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
@@ -14,7 +14,7 @@ pub fn policy() -> Result<Policy, Error> {
         ],
         true,
     );
-    let department = PolicyAxis::new(
+    let department = DimensionBuilder::new(
         "Department",
         vec![
             ("R&D", EncryptionHint::Classic),
@@ -25,14 +25,14 @@ pub fn policy() -> Result<Policy, Error> {
         false,
     );
     let mut policy = Policy::new();
-    policy.add_axis(sec_level)?;
-    policy.add_axis(department)?;
+    policy.add_dimension(sec_level)?;
+    policy.add_dimension(department)?;
     Ok(policy)
 }
 
 #[test]
 fn check_policy() {
-    let security_level = PolicyAxis::new(
+    let security_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
@@ -41,7 +41,7 @@ fn check_policy() {
         ],
         true,
     );
-    let department = PolicyAxis::new(
+    let department = DimensionBuilder::new(
         "Department",
         vec![
             ("R&D", EncryptionHint::Classic),
@@ -52,8 +52,8 @@ fn check_policy() {
         false,
     );
     let mut policy = Policy::new();
-    policy.add_axis(security_level.clone()).unwrap();
-    policy.add_axis(department.clone()).unwrap();
+    policy.add_dimension(security_level.clone()).unwrap();
+    policy.add_dimension(department.clone()).unwrap();
 
     // check that policy
     let attributes = policy.attributes();
@@ -152,7 +152,7 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     assert_eq!(policy.dimensions.len(), 1);
 
     // Add new axis
-    let new_axis = PolicyAxis::new(
+    let new_axis = DimensionBuilder::new(
         "AxisTest",
         vec![
             ("Attr1", EncryptionHint::Classic),
@@ -160,15 +160,15 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         ],
         false,
     );
-    policy.add_axis(new_axis)?;
+    policy.add_dimension(new_axis)?;
     assert_eq!(policy.dimensions.len(), 2);
 
     // Remove the new axis
-    policy.remove_axis("AxisTest".to_string())?;
+    policy.remove_dimension("AxisTest".to_string())?;
     assert_eq!(policy.dimensions.len(), 1);
 
     // Try removing non existing axis
-    assert!(policy.remove_axis("MissingAxis".to_string()).is_err());
+    assert!(policy.remove_dimension("MissingAxis".to_string()).is_err());
 
     // Try modifying hierarchical axis
     assert!(policy
@@ -176,7 +176,9 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         .is_err());
 
     // Removing a hierarchical axis is permitted
-    assert!(policy.remove_axis("Security Level".to_string()).is_ok());
+    assert!(policy
+        .remove_dimension("Security Level".to_string())
+        .is_ok());
 
     Ok(())
 }

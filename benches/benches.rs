@@ -1,5 +1,5 @@
 use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
     Covercrypt, EncryptedHeader, Error,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -9,7 +9,7 @@ fn policy() -> Result<Policy, Error> {
     #[cfg(not(feature = "hybridized_bench"))]
     let (security_level, department) = {
         (
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Security Level",
                 vec![
                     ("Protected", EncryptionHint::Classic),
@@ -18,7 +18,7 @@ fn policy() -> Result<Policy, Error> {
                 ],
                 true,
             ),
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Department",
                 vec![
                     ("R&D", EncryptionHint::Classic),
@@ -34,7 +34,7 @@ fn policy() -> Result<Policy, Error> {
     #[cfg(feature = "hybridized_bench")]
     let (security_level, department) = {
         (
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Security Level",
                 vec![
                     ("Protected", EncryptionHint::Hybridized),
@@ -43,7 +43,7 @@ fn policy() -> Result<Policy, Error> {
                 ],
                 true,
             ),
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Department",
                 vec![
                     ("R&D", EncryptionHint::Hybridized),
@@ -57,8 +57,8 @@ fn policy() -> Result<Policy, Error> {
         )
     };
     let mut policy = Policy::new();
-    policy.add_axis(security_level)?;
-    policy.add_axis(department)?;
+    policy.add_dimension(security_level)?;
+    policy.add_dimension(department)?;
     Ok(policy)
 }
 
