@@ -64,12 +64,9 @@ impl DimensionBuilder {
     }
 }
 
-pub type AttributeId = u32;
-
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an Attribute inside a Dimension.
 pub struct AttributeParameters {
-    pub id: AttributeId,
     pub rotation_values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
     pub write_status: AttributeStatus,
@@ -81,7 +78,6 @@ impl AttributeParameters {
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
-            id: *seed_id,
             rotation_values: vec![*seed_id],
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,

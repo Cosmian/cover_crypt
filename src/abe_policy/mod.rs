@@ -16,7 +16,7 @@ mod policy;
 
 pub use access_policy::AccessPolicy;
 pub use attribute::{Attribute, AttributeStatus, Attributes, EncryptionHint};
-pub use dimension::{AttributeId, AttributeParameters, Dimension, DimensionBuilder};
+pub use dimension::{AttributeParameters, Dimension, DimensionBuilder};
 pub use legacy_policy::{LegacyPolicy, PolicyV1};
 pub use partitions::Partition;
 pub use policy::Policy;
