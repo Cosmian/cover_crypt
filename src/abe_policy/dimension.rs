@@ -76,7 +76,7 @@ pub type AttributeId = u32;
 /// Represents attribute's data inside a Policy.
 pub struct PolicyAttribute {
     pub id: AttributeId,
-    pub rotation_value: Vec<u32>,
+    pub rotation_values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
     pub write_status: AttributeStatus,
 }
@@ -88,15 +88,15 @@ impl PolicyAttribute {
         *seed_id += 1;
         Self {
             id: *seed_id,
-            rotation_value: vec![*seed_id],
+            rotation_values: vec![*seed_id],
             encryption_hint,
-            write_status: AttributeStatus::ReadWrite,
+            write_status: AttributeStatus::EncryptDecrypt,
         }
     }
 
     /// Gets the current ID.
-    pub fn get_current_id(&self) -> u32 {
-        self.rotation_value
+    pub fn get_current_rotation(&self) -> u32 {
+        self.rotation_values
             .last()
             .copied()
             .expect("Attribute should always have at least one value")
@@ -106,7 +106,7 @@ impl PolicyAttribute {
     /// where each tuple contains an ID, the associated encryption hint, and the
     /// `read_only` flag.
     pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
-        self.rotation_value
+        self.rotation_values
             .iter()
             .map(|&value| (value, self.encryption_hint, self.write_status))
             .collect()
@@ -179,7 +179,7 @@ impl Dimension {
         match self.attributes.get_mut(attr_name) {
             Some(attr) => {
                 *seed_id += 1;
-                attr.rotation_value.push(*seed_id);
+                attr.rotation_values.push(*seed_id);
                 Ok(())
             }
             None => Err(Error::AttributeNotFound(attr_name.to_string())),
@@ -254,7 +254,7 @@ impl Dimension {
     pub fn disable_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
-            .map(|attr| attr.write_status = AttributeStatus::ReadOnly)
+            .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
 
@@ -301,7 +301,10 @@ impl Dimension {
     pub fn clear_old_rotations(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
-            .map(|attr| attr.rotation_value = vec![attr.get_current_id()])
+            .map(|attr| {
+                let current_val = attr.get_current_rotation();
+                attr.rotation_values.retain(|val| val == &current_val);
+            })
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
 }

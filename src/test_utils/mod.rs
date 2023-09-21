@@ -263,24 +263,14 @@ mod tests {
         // refresh the user key and preserve access to old partitions
         let new_decryption_policy =
             AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
+
+        // refreshing the user key will remove access to removed partitions even if we keep old rotations
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
             &new_decryption_policy,
             &msk,
             &policy,
             true,
-        )?;
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
-
-        // refresh the user key and remove access to old partitions
-        cover_crypt.refresh_user_secret_key(
-            &mut top_secret_fin_usk,
-            &new_decryption_policy,
-            &msk,
-            &policy,
-            false,
         )?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)

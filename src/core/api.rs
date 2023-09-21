@@ -90,7 +90,7 @@ impl Covercrypt {
         Ok(keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.access_policy_to_current_partitions(access_policy, true)?,
+            &policy.access_policy_to_partitions(access_policy, true, false)?,
         ))
     }
 
@@ -113,13 +113,12 @@ impl Covercrypt {
         access_policy: &AccessPolicy,
         msk: &MasterSecretKey,
         policy: &Policy,
-        keep_old_accesses: bool, // TODO: fix this parameter
+        keep_old_rotations: bool, // TODO: fix this parameter
     ) -> Result<(), Error> {
         refresh(
             msk,
             usk,
-            &policy.access_policy_to_current_partitions(access_policy, true)?,
-            keep_old_accesses,
+            &policy.access_policy_to_partitions(access_policy, true, keep_old_rotations)?,
         )
     }
 
@@ -139,7 +138,7 @@ impl Covercrypt {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &policy.access_policy_to_current_partitions(access_policy, false)?,
+            &policy.access_policy_to_partitions(access_policy, false, false)?,
         )
     }
 

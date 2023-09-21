@@ -317,7 +317,7 @@ pub fn update(
                 (None, None)
             };
             new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
-            if write_status == AttributeStatus::ReadWrite {
+            if write_status == AttributeStatus::EncryptDecrypt {
                 // Only add non read only partition to the public key
                 new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
@@ -364,14 +364,10 @@ pub fn refresh(
     msk: &MasterSecretKey,
     usk: &mut UserSecretKey,
     decryption_set: &HashSet<Partition>,
-    keep_old_rights: bool,
 ) -> Result<(), Error> {
     // Check the user key KMAC
     verify_user_key_kmac(msk, usk)?;
-
-    if !keep_old_rights {
-        usk.subkeys.drain();
-    }
+    usk.subkeys.drain();
 
     for partition in decryption_set {
         if let Some(x_i) = msk.subkeys.get(partition) {
@@ -410,11 +406,11 @@ mod tests {
         let partitions_set = HashMap::from([
             (
                 admin_partition.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 dev_partition.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // user list
@@ -467,22 +463,17 @@ mod tests {
         let new_partitions_set = HashMap::from([
             (
                 dev_partition.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 client_partition.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         let client_target_set = HashSet::from([client_partition.clone()]);
 
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh(
-            &msk,
-            &mut dev_usk,
-            &HashSet::from([dev_partition.clone()]),
-            false,
-        )?;
+        refresh(&msk, &mut dev_usk, &HashSet::from([dev_partition.clone()]))?;
 
         // The dev partition matches a hybridized sub-key.
         let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
@@ -545,11 +536,11 @@ mod tests {
         let partitions_set = HashMap::from([
             (
                 partition_1.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
             (
                 partition_2.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // secure random number generator
@@ -562,11 +553,11 @@ mod tests {
         let new_partitions_set = HashMap::from([
             (
                 partition_2.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 partition_3.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
@@ -588,15 +579,15 @@ mod tests {
         let partitions_set = HashMap::from([
             (
                 partition_1.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 partition_2.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 partition_3.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // secure random number generator
@@ -615,15 +606,15 @@ mod tests {
         let new_partition_set = HashMap::from([
             (
                 partition_2.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 partition_3.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
             (
                 partition_4.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         //Covercrypt the master keys
@@ -635,7 +626,6 @@ mod tests {
             &msk,
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
-            false,
         )?;
         assert!(!usk
             .subkeys

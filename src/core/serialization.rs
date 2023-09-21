@@ -395,11 +395,11 @@ mod tests {
         let partitions_set = HashMap::from([
             (
                 admin_partition.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::ReadWrite),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
                 dev_partition.clone(),
-                (EncryptionHint::Classic, AttributeStatus::ReadWrite),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         let user_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);

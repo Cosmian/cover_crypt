@@ -345,13 +345,13 @@ impl AccessPolicy {
     /// Returns the list of attribute combinations that can be built from the
     /// given access policy. It is an OR expression of AND expressions.
     ///
-    /// - `policy`                      : global policy
-    /// - `follow_hierarchical_axes`    : set to `true` to combine lower axis
-    ///   attributes
+    /// - `policy`                                : global policy
+    /// - `include_lower_attributes_from_axis`    : set to `true` to combine lower attributes
+    /// from axis with hierarchical order
     pub fn to_attribute_combinations(
         &self,
         policy: &Policy,
-        follow_hierarchical_axes: bool,
+        include_lower_attributes_from_axis: bool,
     ) -> Result<Vec<Vec<Attribute>>, Error> {
         match self {
             Self::Attr(attr) => {
@@ -360,8 +360,8 @@ impl AccessPolicy {
                     .get(&attr.axis)
                     .ok_or_else(|| Error::AxisNotFound(attr.axis.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
-                if follow_hierarchical_axes {
-                    if let Some(order) = axis_parameters.order.as_deref() {
+                if let Some(order) = axis_parameters.order.as_deref() {
+                    if include_lower_attributes_from_axis {
                         // add attribute values for all attributes below the given one
                         for name in order.iter().take_while(|&name| name != &attr.name) {
                             res.push(vec![Attribute::new(&attr.axis, name)]);
@@ -371,10 +371,10 @@ impl AccessPolicy {
                 Ok(res)
             }
             Self::And(ap_left, ap_right) => {
-                let combinations_left =
-                    ap_left.to_attribute_combinations(policy, follow_hierarchical_axes)?;
-                let combinations_right =
-                    ap_right.to_attribute_combinations(policy, follow_hierarchical_axes)?;
+                let combinations_left = ap_left
+                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
+                let combinations_right = ap_right
+                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
                 let mut res =
                     Vec::with_capacity(combinations_left.len() * combinations_right.len());
                 for value_left in combinations_left {
@@ -388,10 +388,10 @@ impl AccessPolicy {
                 Ok(res)
             }
             Self::Or(ap_left, ap_right) => {
-                let combinations_left =
-                    ap_left.to_attribute_combinations(policy, follow_hierarchical_axes)?;
-                let combinations_right =
-                    ap_right.to_attribute_combinations(policy, follow_hierarchical_axes)?;
+                let combinations_left = ap_left
+                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
+                let combinations_right = ap_right
+                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
                 let mut res =
                     Vec::with_capacity(combinations_left.len() + combinations_right.len());
                 res.extend(combinations_left);

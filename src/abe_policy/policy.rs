@@ -189,7 +189,7 @@ impl Policy {
     /// The current value is returned first.
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
         self.get_attribute(attribute)
-            .map(|attr| attr.rotation_value.iter().rev().copied().collect())
+            .map(|attr| attr.rotation_values.iter().rev().copied().collect())
     }
 
     /// Returns the hybridization hint of the given attribute.
@@ -204,7 +204,7 @@ impl Policy {
     /// Retrieves the current value of an attribute.
     pub fn attribute_current_value(&self, attribute: &Attribute) -> Result<u32, Error> {
         self.get_attribute(attribute)
-            .map(PolicyAttribute::get_current_id)
+            .map(PolicyAttribute::get_current_rotation)
     }
 
     /// Generates all cross-axes combinations of attribute values.
@@ -224,7 +224,7 @@ impl Policy {
                 return Ok(vec![(
                     vec![],
                     EncryptionHint::Classic,
-                    AttributeStatus::ReadWrite,
+                    AttributeStatus::EncryptDecrypt,
                 )])
             }
             Some(axis) => axis,
@@ -289,16 +289,21 @@ impl Policy {
     /// - `access_policy`               : access policy to convert
     /// - `follow_hierarchical_axes`    : set to `true` to combine lower axis
     ///   attributes
-    pub fn access_policy_to_current_partitions(
+    pub fn access_policy_to_partitions(
         &self,
         access_policy: &AccessPolicy,
         follow_hierarchical_axes: bool,
+        include_old_rotations: bool,
     ) -> Result<HashSet<Partition>, Error> {
         let attr_combinations =
             access_policy.to_attribute_combinations(self, follow_hierarchical_axes)?;
         let mut res = HashSet::with_capacity(attr_combinations.len());
         for attr_combination in &attr_combinations {
-            for partition in generate_current_attribute_partitions(attr_combination, self)? {
+            for partition in generate_current_attribute_partitions(
+                attr_combination,
+                self,
+                include_old_rotations,
+            )? {
                 let is_unique = res.insert(partition);
                 if !is_unique {
                     return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
@@ -333,6 +338,7 @@ impl TryFrom<&Policy> for Vec<u8> {
 fn generate_current_attribute_partitions(
     attributes: &[Attribute],
     policy: &Policy,
+    include_old_partitions: bool,
 ) -> Result<HashSet<Partition>, Error> {
     let mut current_attr_value_per_axis = HashMap::<
         String,
@@ -343,11 +349,21 @@ fn generate_current_attribute_partitions(
             .entry(attribute.axis.clone())
             .or_default();
         let attr_properties = policy.get_attribute(attribute)?;
-        entry.push((
-            attr_properties.get_current_id(),
-            attr_properties.encryption_hint,
-            attr_properties.write_status,
-        ));
+        if include_old_partitions {
+            for attr_value in &attr_properties.rotation_values {
+                entry.push((
+                    *attr_value,
+                    attr_properties.encryption_hint,
+                    attr_properties.write_status,
+                ));
+            }
+        } else {
+            entry.push((
+                attr_properties.get_current_rotation(),
+                attr_properties.encryption_hint,
+                attr_properties.write_status,
+            ));
+        }
     }
 
     // When an axis is not mentioned in the attribute list, all the attribute
@@ -360,7 +376,7 @@ fn generate_current_attribute_partitions(
                 .values()
                 .map(|attr| {
                     (
-                        attr.get_current_id(),
+                        attr.get_current_rotation(),
                         attr.encryption_hint,
                         attr.write_status,
                     )
@@ -415,8 +431,11 @@ mod tests {
 
         // this should create the combination of the first attribute
         // with all those of the second axis
-        let partitions_0 =
-            generate_current_attribute_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
+        let partitions_0 = generate_current_attribute_partitions(
+            &[axes_attributes[0][0].0.clone()],
+            &policy,
+            false,
+        )?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
@@ -432,6 +451,7 @@ mod tests {
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -446,6 +466,7 @@ mod tests {
                 axes_attributes[1][1].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
@@ -465,6 +486,7 @@ mod tests {
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -495,7 +517,7 @@ mod tests {
 
         //
         // create partitions from access policy
-        let partitions = policy.access_policy_to_current_partitions(&access_policy, true)?;
+        let partitions = policy.access_policy_to_partitions(&access_policy, true, false)?;
 
         //
         // manually create the partitions
@@ -538,7 +560,7 @@ mod tests {
         )
         .unwrap();
         let partition_4 = policy
-            .access_policy_to_current_partitions(&policy_attributes_4, true)
+            .access_policy_to_partitions(&policy_attributes_4, true, false)
             .unwrap();
 
         let policy_attributes_5 = AccessPolicy::from_boolean_expression(
@@ -547,7 +569,7 @@ mod tests {
         )
         .unwrap();
         let partition_5 = policy
-            .access_policy_to_current_partitions(&policy_attributes_5, true)
+            .access_policy_to_partitions(&policy_attributes_5, true, false)
             .unwrap();
         assert_eq!(partition_4.len(), 4);
         assert_eq!(partition_5.len(), 5);

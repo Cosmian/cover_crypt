@@ -32,18 +32,18 @@ impl BitOr for EncryptionHint {
 /// Whether to provide an encryption key in the master public key for this attribute.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AttributeStatus {
-    ReadWrite,
-    ReadOnly,
+    EncryptDecrypt,
+    DecryptOnly,
 }
 
 impl BitOr for AttributeStatus {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        if self == Self::ReadOnly || rhs == Self::ReadOnly {
-            Self::ReadOnly
+        if self == Self::DecryptOnly || rhs == Self::DecryptOnly {
+            Self::DecryptOnly
         } else {
-            Self::ReadWrite
+            Self::EncryptDecrypt
         }
     }
 }
