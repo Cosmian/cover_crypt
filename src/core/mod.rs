@@ -25,12 +25,10 @@ pub mod serialization;
 /// security.
 pub const SYM_KEY_LENGTH: usize = 32;
 
-/// The KMAC key is currently 16 bytes long, it could be 32 bytes
-/// to provide post-quantum security.
+/// The length of the KMAC key.
 pub const KMAC_KEY_LENGTH: usize = 16;
 
-/// The KMAC signature is currently 32 bytes long, it could be 48 bytes
-/// to provide post-quantum security.
+/// The length of the KMAC output.
 const KMAC_LENGTH: usize = 32;
 type KmacSignature = [u8; KMAC_LENGTH];
 
