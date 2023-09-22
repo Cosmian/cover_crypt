@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    abe_policy::{policy::Policy, Attribute},
+    abe_policy::{Attribute, Policy},
     Error,
 };
 
@@ -38,7 +38,7 @@ impl AccessPolicy {
     ///
     /// Shortcut for
     /// ```ignore
-    /// AccessPolicy::Attr(Attribute::new(axis, attribute))
+    /// AccessPolicy::Attr(Attribute::new(dimension, attribute))
     /// ```
     ///
     /// Access Policies can easily be created using it
@@ -48,8 +48,8 @@ impl AccessPolicy {
     ///         & (AccessPolicy::new("Department", "MKG") | AccessPolicy::new("Department", "FIN"));
     /// ```
     #[must_use]
-    pub fn new(axis: &str, attribute: &str) -> Self {
-        Self::Attr(Attribute::new(axis, attribute))
+    pub fn new(dimension: &str, attribute: &str) -> Self {
+        Self::Attr(Attribute::new(dimension, attribute))
     }
 
     /// Converts policy to integer value (for comparison).
@@ -100,7 +100,7 @@ impl AccessPolicy {
     }
 
     /// Sanitizes spaces in boolean expression around parenthesis and operators
-    /// but keep spaces inside axis & attribute names.
+    /// but keep spaces inside dimension & attribute names.
     ///
     /// Useless spaces are removed:
     /// - before and after operator. Example: `A && B` --> `A&&B`
@@ -291,7 +291,7 @@ impl AccessPolicy {
                     || attribute_vec[1].is_empty()
                 {
                     return Err(Error::InvalidBooleanExpression(format!(
-                        "'{boolean_expression}' does not respect the format <axis::name>. \
+                        "'{boolean_expression}' does not respect the format <dimension::name>. \
                          Example: {boolean_expression_example}"
                     )));
                 }
@@ -345,23 +345,23 @@ impl AccessPolicy {
     /// Returns the list of attribute combinations that can be built from the
     /// given access policy. It is an OR expression of AND expressions.
     ///
-    /// - `policy`                                : global policy
-    /// - `include_lower_attributes_from_axis`    : set to `true` to combine lower attributes
-    /// from axis with hierarchical order
+    /// - `policy`                              : global policy
+    /// - `include_lower_attributes_from_dim`   : set to `true` to combine lower attributes
+    /// from dimension with hierarchical order
     pub fn to_attribute_combinations(
         &self,
         policy: &Policy,
-        include_lower_attributes_from_axis: bool,
+        include_lower_attributes_from_dim: bool,
     ) -> Result<Vec<Vec<Attribute>>, Error> {
         match self {
             Self::Attr(attr) => {
-                let axis_parameters = policy
+                let dim_parameters = policy
                     .dimensions
                     .get(&attr.dimension)
                     .ok_or_else(|| Error::DimensionNotFound(attr.dimension.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
-                if let Some(order) = axis_parameters.order.as_deref() {
-                    if include_lower_attributes_from_axis {
+                if let Some(order) = dim_parameters.order.as_deref() {
+                    if include_lower_attributes_from_dim {
                         // add attribute values for all attributes below the given one
                         for name in order.iter().take_while(|&name| name != &attr.name) {
                             res.push(vec![Attribute::new(&attr.dimension, name)]);
@@ -371,10 +371,10 @@ impl AccessPolicy {
                 Ok(res)
             }
             Self::And(ap_left, ap_right) => {
-                let combinations_left = ap_left
-                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
+                let combinations_left =
+                    ap_left.to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
                 let combinations_right = ap_right
-                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
+                    .to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
                 let mut res =
                     Vec::with_capacity(combinations_left.len() * combinations_right.len());
                 for value_left in combinations_left {
@@ -388,10 +388,10 @@ impl AccessPolicy {
                 Ok(res)
             }
             Self::Or(ap_left, ap_right) => {
-                let combinations_left = ap_left
-                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
+                let combinations_left =
+                    ap_left.to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
                 let combinations_right = ap_right
-                    .to_attribute_combinations(policy, include_lower_attributes_from_axis)?;
+                    .to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
                 let mut res =
                     Vec::with_capacity(combinations_left.len() + combinations_right.len());
                 res.extend(combinations_left);

@@ -91,7 +91,7 @@ mod tests {
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
         }
-        // 5 is the size of the security level axis
+        // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
 
         // Clear old rotations will reduce master keys size
@@ -104,7 +104,7 @@ mod tests {
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
         }
-        // 5 is the size of the security level axis
+        // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
 
         Ok(())
@@ -183,7 +183,7 @@ mod tests {
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
         }
-        // 5 is the size of the security level axis
+        // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
 
         //
@@ -253,7 +253,7 @@ mod tests {
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
         }
-        // 5 is the size of the security level axis
+        // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() - 5);
 
         assert!(encrypted_header
@@ -314,7 +314,7 @@ mod tests {
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
-        // 5 is the size of the security level axis
+        // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len() - 5, new_partitions_mpk.len());
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
 

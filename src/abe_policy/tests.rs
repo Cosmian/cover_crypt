@@ -127,10 +127,10 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         .add_attribute(duplicate_attr, EncryptionHint::Classic)
         .is_err());
 
-    // Try adding attribute to non existing Axis
-    let missing_axis = Attribute::new("Missing", "Axis");
+    // Try adding attribute to non existing dimension
+    let missing_dimension = Attribute::new("Missing", "dimension");
     assert!(policy
-        .add_attribute(missing_axis.clone(), EncryptionHint::Classic)
+        .add_attribute(missing_dimension.clone(), EncryptionHint::Classic)
         .is_err());
 
     // Remove research attribute
@@ -141,41 +141,41 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     // Duplicate remove
     assert!(policy.remove_attribute(delete_attr).is_err());
 
-    // Missing axis remove
-    assert!(policy.remove_attribute(missing_axis).is_err());
+    // Missing dimension remove
+    assert!(policy.remove_attribute(missing_dimension).is_err());
 
-    // Remove all attributes from an axis
+    // Remove all attributes from an dimension
     policy.remove_attribute(new_attr)?;
     policy.remove_attribute(Attribute::new("Department", "HR"))?;
     policy.remove_attribute(Attribute::new("Department", "MKG"))?;
     policy.remove_attribute(Attribute::new("Department", "FIN"))?;
     assert_eq!(policy.dimensions.len(), 1);
 
-    // Add new axis
-    let new_axis = DimensionBuilder::new(
-        "AxisTest",
+    // Add new dimension
+    let new_dimension = DimensionBuilder::new(
+        "DimensionTest",
         vec![
             ("Attr1", EncryptionHint::Classic),
             ("Attr2", EncryptionHint::Classic),
         ],
         false,
     );
-    policy.add_dimension(new_axis)?;
+    policy.add_dimension(new_dimension)?;
     assert_eq!(policy.dimensions.len(), 2);
 
-    // Remove the new axis
-    policy.remove_dimension("AxisTest".to_string())?;
+    // Remove the new dimension
+    policy.remove_dimension("DimensionTest".to_string())?;
     assert_eq!(policy.dimensions.len(), 1);
 
-    // Try removing non existing axis
-    assert!(policy.remove_dimension("MissingAxis".to_string()).is_err());
+    // Try removing non existing dimension
+    assert!(policy.remove_dimension("MissingDim".to_string()).is_err());
 
-    // Try modifying hierarchical axis
+    // Try modifying hierarchical dimension
     assert!(policy
         .remove_attribute(Attribute::new("Security Level", "Top Secret"))
         .is_err());
 
-    // Removing a hierarchical axis is permitted
+    // Removing a hierarchical dimension is permitted
     assert!(policy
         .remove_dimension("Security Level".to_string())
         .is_ok());

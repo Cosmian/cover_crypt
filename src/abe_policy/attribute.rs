@@ -49,13 +49,13 @@ impl BitOr for AttributeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Attribute representation used to create a Dimension and add it to a Policy.
+/// Attribute representation used to create a `Dimension` and add it to a `Policy`.
 pub struct AttributeBuilder {
     pub name: String,
     pub encryption_hint: EncryptionHint,
 }
-/// An attribute in a policy group is characterized by the axis policy name
-/// and its unique name within this axis.
+/// An attribute in a policy group is characterized by the dimension policy name
+/// and its unique name within this dimension.
 #[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
 pub struct Attribute {
@@ -66,8 +66,8 @@ pub struct Attribute {
 impl Attribute {
     /// Create a Policy Attribute.
     ///
-    /// - `axis`    : policy axis the attributes belongs to
-    /// - `name`    : unique attribute name within this axis
+    /// - `dimension`    : policy dimension the attributes belongs to
+    /// - `name`         : unique attribute name within this dimension
     #[must_use]
     pub fn new(dimension: &str, name: &str) -> Self {
         Self {

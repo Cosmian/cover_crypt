@@ -365,7 +365,6 @@ pub fn refresh(
     usk: &mut UserSecretKey,
     decryption_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
-    // Check the user key KMAC
     verify_user_key_kmac(msk, usk)?;
     usk.subkeys.drain();
 

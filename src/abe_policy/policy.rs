@@ -1,31 +1,16 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Debug, Display},
+    fmt::Display,
     vec,
 };
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{
     AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Dimension, DimensionBuilder,
-    EncryptionHint, LegacyPolicy, Partition, PolicyV1, PolicyVersion,
+    EncryptionHint, LegacyPolicy, Partition, Policy, PolicyV1, PolicyVersion,
 };
 use crate::Error;
-
-/// A policy is a set of policy axes. A fixed number of attribute creations
-/// (revocations + additions) is allowed.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct Policy {
-    /// Version number
-    pub version: PolicyVersion,
-    /// Last value taken by the attribute.
-    pub(crate) last_attribute_id: u32,
-
-    /// Policy axes: maps axes name to the list of associated attribute names
-    /// and a boolean defining whether or not this dim is hierarchical.
-    pub dimensions: HashMap<String, Dimension>,
-}
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

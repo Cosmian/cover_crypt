@@ -3,74 +3,35 @@ use std::{collections::HashMap, fmt::Debug};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Attribute, AttributeParameters, AttributeStatus, Dimension, EncryptionHint, Policy,
-    PolicyVersion,
+    Attribute, AttributeParameters, AttributeStatus, Dimension, EncryptionHint, PolicyVersion,
 };
 
+/// Current policy version
+///
+/// A policy is a set of policy axes. A fixed number of attribute creations
+/// (revocations + additions) is allowed.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-//#[deprecated]
-pub struct PolicyAxesParameters {
-    pub attribute_names: Vec<String>,
-    pub is_hierarchical: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct LegacyPolicy {
+pub struct PolicyV2 {
+    /// Version number
+    pub version: PolicyVersion,
     /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
-    /// Maximum attribute value. Defines a maximum number of attribute
-    /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
-    /// Policy axes: maps axes name to the list of associated attribute names
-    /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, PolicyAxesParameters>,
-    /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, Vec<u32>>,
-}
+    pub(crate) last_attribute_id: u32,
 
-impl From<LegacyPolicy> for Policy {
-    fn from(val: LegacyPolicy) -> Self {
-        let mut dimensions = HashMap::with_capacity(val.axes.len());
-        for (axis_name, axis_params) in val.axes {
-            dimensions.insert(
-                axis_name.clone(),
-                Dimension {
-                    order: if axis_params.is_hierarchical {
-                        Some(axis_params.attribute_names)
-                    } else {
-                        None
-                    },
-                    attributes: val
-                        .attributes
-                        .clone()
-                        .iter()
-                        .filter(|(attr, _)| attr.dimension == axis_name)
-                        .map(|(attr, values)| {
-                            (
-                                attr.name.clone(),
-                                AttributeParameters {
-                                    rotation_values: values.clone(),
-                                    encryption_hint: EncryptionHint::Classic,
-                                    write_status: AttributeStatus::EncryptDecrypt,
-                                },
-                            )
-                        })
-                        .collect(),
-                },
-            );
-        }
-        Policy {
-            version: PolicyVersion::V2,
-            last_attribute_id: val.last_attribute_value,
-            dimensions,
-        }
-    }
+    /// Policy axes: maps axes name to the list of associated attribute names
+    /// and a boolean defining whether or not this dim is hierarchical.
+    pub dimensions: HashMap<String, Dimension>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct PolicyV1AttributeParameters {
     pub values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub struct OldPolicyAxisParameters {
+    pub attribute_names: Vec<String>,
+    pub is_hierarchical: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -84,12 +45,12 @@ pub struct PolicyV1 {
     pub max_attribute_creations: u32,
     /// Policy axes: maps axes name to the list of associated attribute names
     /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, PolicyAxesParameters>,
+    pub axes: HashMap<String, OldPolicyAxisParameters>,
     /// Maps an attribute to its values and its hybridization hint.
     pub attributes: HashMap<Attribute, PolicyV1AttributeParameters>,
 }
 
-impl From<PolicyV1> for Policy {
+impl From<PolicyV1> for PolicyV2 {
     fn from(val: PolicyV1) -> Self {
         let mut dimensions = HashMap::with_capacity(val.axes.len());
         for (axis_name, axis_params) in val.axes {
@@ -120,7 +81,60 @@ impl From<PolicyV1> for Policy {
                 },
             );
         }
-        Policy {
+        PolicyV2 {
+            version: PolicyVersion::V2,
+            last_attribute_id: val.last_attribute_value,
+            dimensions,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct LegacyPolicy {
+    /// Last value taken by the attribute.
+    pub(crate) last_attribute_value: u32,
+    /// Maximum attribute value. Defines a maximum number of attribute
+    /// creations (revocations + addition).
+    pub max_attribute_creations: u32,
+    /// Policy axes: maps axes name to the list of associated attribute names
+    /// and a boolean defining whether or not this axis is hierarchical.
+    pub axes: HashMap<String, OldPolicyAxisParameters>,
+    /// Maps an attribute to its values and its hybridization hint.
+    pub attributes: HashMap<Attribute, Vec<u32>>,
+}
+
+impl From<LegacyPolicy> for PolicyV2 {
+    fn from(val: LegacyPolicy) -> Self {
+        let mut dimensions = HashMap::with_capacity(val.axes.len());
+        for (axis_name, axis_params) in val.axes {
+            dimensions.insert(
+                axis_name.clone(),
+                Dimension {
+                    order: if axis_params.is_hierarchical {
+                        Some(axis_params.attribute_names)
+                    } else {
+                        None
+                    },
+                    attributes: val
+                        .attributes
+                        .clone()
+                        .iter()
+                        .filter(|(attr, _)| attr.dimension == axis_name)
+                        .map(|(attr, values)| {
+                            (
+                                attr.name.clone(),
+                                AttributeParameters {
+                                    rotation_values: values.clone(),
+                                    encryption_hint: EncryptionHint::Classic,
+                                    write_status: AttributeStatus::EncryptDecrypt,
+                                },
+                            )
+                        })
+                        .collect(),
+                },
+            );
+        }
+        PolicyV2 {
             version: PolicyVersion::V2,
             last_attribute_id: val.last_attribute_value,
             dimensions,

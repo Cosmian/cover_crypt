@@ -19,9 +19,9 @@ use crate::Error;
 pub struct DimensionBuilder {
     /// Dimension name
     pub name: String,
-    /// Names of the axis attributes and hybridized encryption hints
+    /// Names of the dimension attributes and hybridized encryption hints
     pub attributes_properties: Vec<AttributeBuilder>,
-    /// `true` if the axis is hierarchical
+    /// `true` if the dimension is hierarchical
     pub hierarchical: bool,
 }
 
@@ -42,8 +42,8 @@ impl DimensionBuilder {
             name: name.to_string(),
             attributes_properties: attributes_properties
                 .into_iter()
-                .map(|(axis_name, encryption_hint)| AttributeBuilder {
-                    name: axis_name.to_string(),
+                .map(|(dim_name, encryption_hint)| AttributeBuilder {
+                    name: dim_name.to_string(),
                     encryption_hint,
                 })
                 .collect(),
@@ -51,7 +51,7 @@ impl DimensionBuilder {
         }
     }
 
-    /// Returns the number of attributes belonging to this axis.
+    /// Returns the number of attributes belonging to this dimension.
     #[must_use]
     pub fn len(&self) -> usize {
         self.attributes_properties.len()
@@ -65,7 +65,7 @@ impl DimensionBuilder {
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-/// Represents an Attribute inside a Dimension.
+/// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
     pub rotation_values: Vec<u32>,
     pub encryption_hint: EncryptionHint,
@@ -106,7 +106,7 @@ impl AttributeParameters {
 type AttributeName = String;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-/// A dimension is a space that holds attributes. It can be ordered (an axis) or
+/// A dimension is a space that holds attributes. It can be ordered (an dimension) or
 /// unordered (a set).
 pub struct Dimension {
     pub order: Option<Vec<AttributeName>>,
@@ -194,11 +194,11 @@ impl Dimension {
     ) -> Result<(), Error> {
         if self.order.is_some() {
             Err(Error::OperationNotPermitted(
-                "Hierarchical axis are immutable".to_string(),
+                "Hierarchical dimension are immutable".to_string(),
             ))
         } else if self.attributes.contains_key(attr_name) {
             Err(Error::OperationNotPermitted(
-                "Attribute already in axis".to_string(),
+                "Attribute already in dimension".to_string(),
             ))
         } else {
             self.attributes.insert(
@@ -222,7 +222,7 @@ impl Dimension {
     pub fn remove_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         if self.order.is_some() {
             Err(Error::OperationNotPermitted(
-                "Hierarchical axis are immutable".to_string(),
+                "Hierarchical dimension are immutable".to_string(),
             ))
         } else {
             self.attributes
@@ -258,7 +258,7 @@ impl Dimension {
     /// # Errors
     ///
     /// Returns an error if the new attribute name is already used in the same
-    /// axis or if the attribute is not found.
+    /// dimension or if the attribute is not found.
     pub fn rename_attribute(
         &mut self,
         attr_name: &AttributeName,
@@ -266,7 +266,7 @@ impl Dimension {
     ) -> Result<(), Error> {
         if self.attributes.contains_key(new_name) {
             Err(Error::OperationNotPermitted(
-                "New attribute name is already used in the same axis".to_string(),
+                "New attribute name is already used in the same dimension".to_string(),
             ))
         } else {
             match self.attributes.remove(attr_name) {
