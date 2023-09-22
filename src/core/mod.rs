@@ -6,7 +6,7 @@ use std::{
     ops::Deref,
 };
 
-use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey};
+use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey, SymmetricKey};
 use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use zeroize::ZeroizeOnDrop;
 
@@ -24,6 +24,13 @@ pub mod serialization;
 /// The symmetric key is 32 bytes long to provide 128 bits of post-quantum
 /// security.
 pub const SYM_KEY_LENGTH: usize = 32;
+
+/// The length of the KMAC key.
+pub const KMAC_KEY_LENGTH: usize = 16;
+
+/// The length of the KMAC output.
+const KMAC_LENGTH: usize = 32;
+type KmacSignature = [u8; KMAC_LENGTH];
 
 /// Length of the `Covercrypt` tag
 const TAG_LENGTH: usize = 16;
@@ -53,26 +60,31 @@ impl Deref for KyberSecretKey {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+type Subkey = (Option<KyberSecretKey>, R25519PrivateKey);
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
     pub subkeys: HashMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
-    pub subkeys: HashMap<Partition, (Option<KyberSecretKey>, R25519PrivateKey)>,
+    pub subkeys: HashMap<Partition, Subkey>,
+    kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
+    history: Option<HashMap<Partition, Subkey>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
+    pub subkeys: HashSet<Subkey>,
+    kmac: Option<KmacSignature>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

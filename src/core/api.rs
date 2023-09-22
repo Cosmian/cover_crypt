@@ -90,7 +90,7 @@ impl Covercrypt {
         Ok(keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.access_policy_to_current_partitions(access_policy, true)?,
+            &policy.access_policy_to_partitions(access_policy, true, false)?,
         ))
     }
 
@@ -113,15 +113,13 @@ impl Covercrypt {
         access_policy: &AccessPolicy,
         msk: &MasterSecretKey,
         policy: &Policy,
-        keep_old_accesses: bool,
+        keep_old_rotations: bool,
     ) -> Result<(), Error> {
         refresh(
             msk,
             usk,
-            &policy.access_policy_to_current_partitions(access_policy, true)?,
-            keep_old_accesses,
-        );
-        Ok(())
+            &policy.access_policy_to_partitions(access_policy, true, keep_old_rotations)?,
+        )
     }
 
     /// Generates a random symmetric key to be used with a DEM scheme and
@@ -140,7 +138,7 @@ impl Covercrypt {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &policy.access_policy_to_current_partitions(access_policy, false)?,
+            &policy.access_policy_to_partitions(access_policy, false, false)?,
         )
     }
 

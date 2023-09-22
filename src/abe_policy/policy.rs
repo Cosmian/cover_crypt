@@ -1,144 +1,16 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Debug, Display},
-    ops::BitOr,
+    fmt::Display,
+    vec,
 };
 
-use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use super::{AccessPolicy, Partition};
-use crate::{abe_policy::Attribute, Error};
-
-/// Hint the user about which kind of encryption to use.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum EncryptionHint {
-    /// Hybridized encryption should be used.
-    Hybridized,
-    /// Classic encryption should be used.
-    Classic,
-}
-
-impl BitOr for EncryptionHint {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        if self == Self::Hybridized || rhs == Self::Hybridized {
-            Self::Hybridized
-        } else {
-            Self::Classic
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AxisAttributeProperties {
-    pub name: String,
-    pub encryption_hint: EncryptionHint,
-}
-
-/// Defines a policy axis by its name and its underlying attribute properties.
-/// An attribute property defines its name and a hint about whether hybridized
-/// encryption should be used for it (hint set to `true` if this is the case).
-///
-/// If `hierarchical` is set to `true`, we assume a lexicographical order based
-/// on the attribute name.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PolicyAxis {
-    /// Axis name
-    pub name: String,
-    /// Names of the axis attributes and hybridized encryption hints
-    pub attributes_properties: Vec<AxisAttributeProperties>,
-    /// `true` if the axis is hierarchical
-    pub hierarchical: bool,
-}
-
-impl PolicyAxis {
-    /// Generates a new policy axis with the given name and attribute names.
-    /// A hierarchical axis enforces order between its attributes.
-    ///
-    /// - `name`                    : axis name
-    /// - `attribute_properties`    : axis attribute properties
-    /// - `hierarchical`            : set to `true` if the axis is hierarchical
-    #[must_use]
-    pub fn new(
-        name: &str,
-        attributes_properties: Vec<(&str, EncryptionHint)>,
-        hierarchical: bool,
-    ) -> Self {
-        Self {
-            name: name.to_string(),
-            attributes_properties: attributes_properties
-                .into_iter()
-                .map(|(axis_name, encryption_hint)| AxisAttributeProperties {
-                    name: axis_name.to_string(),
-                    encryption_hint,
-                })
-                .collect(),
-            hierarchical,
-        }
-    }
-
-    /// Returns the number of attributes belonging to this axis.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.attributes_properties.len()
-    }
-
-    /// Return `true` if the attribute list is empty
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.attributes_properties.is_empty()
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct PolicyAxesParameters {
-    pub attribute_names: Vec<String>,
-    pub is_hierarchical: bool,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct PolicyAttributesParameters {
-    pub values: Vec<u32>,
-    pub encryption_hint: EncryptionHint,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct LegacyPolicy {
-    /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
-    /// Maximum attribute value. Defines a maximum number of attribute
-    /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
-    /// Policy axes: maps axes name to the list of associated attribute names
-    /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, PolicyAxesParameters>,
-    /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, Vec<u32>>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PolicyVersion {
-    V1,
-}
-
-/// A policy is a set of policy axes. A fixed number of attribute creations
-/// (revocations + additions) is allowed.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct Policy {
-    /// Version number
-    pub version: PolicyVersion,
-    /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
-    /// Maximum attribute value. Defines a maximum number of attribute
-    /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
-    /// Policy axes: maps axes name to the list of associated attribute names
-    /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, PolicyAxesParameters>,
-    /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, PolicyAttributesParameters>,
-}
+use super::{
+    AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Dimension, DimensionBuilder,
+    EncryptionHint, LegacyPolicy, Partition, Policy, PolicyV1, PolicyVersion,
+};
+use crate::Error;
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -150,127 +22,159 @@ impl Policy {
     /// Converts the given string into a Policy. Does not fail if the given
     /// string uses the legacy format.
     pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
-        // First try to deserialize the latest `Policy` format
-        match serde_json::from_slice(bytes) {
-            Ok(policy) => Ok(policy),
-            Err(e) => {
-                if let Ok(policy) = serde_json::from_slice::<LegacyPolicy>(bytes) {
-                    // Convert the legacy format to the current one.
-                    Ok(Self {
-                        version: PolicyVersion::V1,
-                        max_attribute_creations: policy.max_attribute_creations,
-                        last_attribute_value: policy.last_attribute_value,
-                        axes: policy.axes,
-                        attributes: policy
-                            .attributes
-                            .into_iter()
-                            .map(|(name, values)| {
-                                (
-                                    name,
-                                    PolicyAttributesParameters {
-                                        values,
-                                        encryption_hint: EncryptionHint::Classic,
-                                    },
-                                )
-                            })
-                            .collect(),
-                    })
-                } else {
-                    Err(Error::DeserializationError(e))
-                }
+        let json_policy: Value =
+            serde_json::from_slice(bytes).map_err(Error::DeserializationError)?;
+
+        if let Some(policy_version) = json_policy.get("version") {
+            match serde_json::from_value::<PolicyVersion>(policy_version.clone()) {
+                Ok(PolicyVersion::V1) => Ok(serde_json::from_slice::<PolicyV1>(bytes)
+                    .map_err(Error::DeserializationError)?
+                    .into()),
+                Ok(PolicyVersion::V2) => serde_json::from_value::<Policy>(json_policy)
+                    .map_err(Error::DeserializationError),
+                Err(e) => Err(Error::DeserializationError(e)),
             }
+        } else {
+            // Legacy Policy
+            Ok(serde_json::from_slice::<LegacyPolicy>(bytes)
+                .map_err(Error::DeserializationError)?
+                .into())
         }
     }
 
     /// Generates a new policy object with the given number of attribute
     /// creation (revocation + addition) allowed.
     #[must_use]
-    pub fn new(nb_creations: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            version: PolicyVersion::V1,
-            last_attribute_value: 0,
-            max_attribute_creations: nb_creations,
-            axes: HashMap::new(),
-            attributes: HashMap::new(),
+            version: PolicyVersion::V2,
+            last_attribute_id: 0,
+            dimensions: HashMap::new(),
         }
     }
 
-    /// Returns the remaining number of allowed attribute creations (additions +
-    /// rotations).
-    #[must_use]
-    pub fn remaining_attribute_creations(&self) -> u32 {
-        self.max_attribute_creations - self.last_attribute_value
-    }
-
-    /// Returns the policy in the form of a Map where
-    ///  - the keys are the axis names
-    ///  - the values are a tuple of
-    ///     - list of attribute names for that axis
-    ///     - whether the axis hierarchical
-    /// Adds the given policy axis to the policy.
-    pub fn add_axis(&mut self, axis: PolicyAxis) -> Result<(), Error> {
-        if axis.len() > (self.max_attribute_creations - self.last_attribute_value) as usize {
-            return Err(Error::CapacityOverflow);
-        }
-        if self.axes.get(&axis.name).is_some() {
-            return Err(Error::ExistingPolicy(axis.name));
-        }
-        let mut axis_attributes = Vec::with_capacity(axis.attributes_properties.len());
-
-        for properties in axis.attributes_properties {
-            self.last_attribute_value += 1;
-            axis_attributes.push(properties.name.clone());
-            let attribute = (axis.name.clone(), properties.name.clone()).into();
-            if self.attributes.get(&attribute).is_some() {
-                return Err(Error::ExistingPolicy(format!("{attribute:?}")));
-            }
-            self.attributes.insert(
-                attribute,
-                PolicyAttributesParameters {
-                    values: [self.last_attribute_value].into(),
-                    encryption_hint: properties.encryption_hint,
-                },
-            );
+    /// Adds the given dimension to the policy.
+    pub fn add_dimension(&mut self, dim: DimensionBuilder) -> Result<(), Error> {
+        if self.dimensions.get(&dim.name).is_some() {
+            return Err(Error::ExistingPolicy(dim.name));
         }
 
-        self.axes.insert(
-            axis.name,
-            PolicyAxesParameters {
-                attribute_names: axis_attributes,
-                is_hierarchical: axis.hierarchical,
-            },
+        self.dimensions.insert(
+            dim.name.clone(),
+            Dimension::new(&dim, &mut self.last_attribute_id),
         );
 
         Ok(())
     }
 
+    /// Removes the given dim from the policy.
+    /// Fails if there is no such dim in the policy.
+    pub fn remove_dimension(&mut self, dim_name: String) -> Result<(), Error> {
+        self.dimensions
+            .remove(&dim_name)
+            .map(|_| ())
+            .ok_or(Error::DimensionNotFound(dim_name))
+    }
+
+    /// Adds the given attribute to the policy.
+    /// Fails if the dim of the attribute does not exist in the policy.
+    ///
+    /// * `attr` - The name and dimension of the new attribute.
+    /// * `encryption_hint` - Whether to use post quantum keys for this attribute
+    pub fn add_attribute(
+        &mut self,
+        attr: Attribute,
+        encryption_hint: EncryptionHint,
+    ) -> Result<(), Error> {
+        match self.dimensions.get_mut(&attr.dimension) {
+            Some(policy_dim) => {
+                policy_dim.add_attribute(&attr.name, encryption_hint, &mut self.last_attribute_id)
+            }
+            None => Err(Error::DimensionNotFound(attr.dimension)),
+        }
+    }
+
+    /// Removes the given attribute from the policy.
+    /// Encrypting and decrypting for this attribute will no longer be possible once the keys are updated.
+    pub fn remove_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+        if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
+            if dim.attributes.len() == 1 {
+                self.remove_dimension(attr.dimension)
+            } else {
+                dim.remove_attribute(&attr.name)
+            }
+        } else {
+            Err(Error::DimensionNotFound(attr.dimension))
+        }
+    }
+
+    /// Marks an attribute as read only.
+    /// The corresponding attribute key will be removed from the public key.
+    /// But the decryption key will be kept to allow reading old ciphertext.
+    pub fn disable_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+        match self.dimensions.get_mut(&attr.dimension) {
+            Some(policy_dim) => policy_dim.disable_attribute(&attr.name),
+            None => Err(Error::DimensionNotFound(attr.dimension)),
+        }
+    }
+
+    /// Changes the name of an attribute.
+    pub fn rename_attribute(&mut self, attr: Attribute, new_name: &str) -> Result<(), Error> {
+        match self.dimensions.get_mut(&attr.dimension) {
+            Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
+            None => Err(Error::DimensionNotFound(attr.dimension)),
+        }
+    }
+
     /// Rotates an attribute, changing its underlying value with an unused
     /// value.
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if self.last_attribute_value == self.max_attribute_creations {
-            Err(Error::CapacityOverflow)
-        } else if let Some(attribute_parameters) = self.attributes.get_mut(attr) {
-            self.last_attribute_value += 1;
-            attribute_parameters.values.push(self.last_attribute_value);
-            Ok(())
+        if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
+            dim.rotate_attribute(&attr.name, &mut self.last_attribute_id)
         } else {
-            Err(Error::AttributeNotFound(attr.to_string()))
+            Err(Error::DimensionNotFound(attr.dimension.to_string()))
+        }
+    }
+
+    /// Removes old rotations id of an attribute.
+    pub fn clear_old_rotations(&mut self, attr: &Attribute) -> Result<(), Error> {
+        if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
+            dim.clear_old_rotations(&attr.name)
+        } else {
+            Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
     }
 
     /// Returns the list of Attributes of this Policy.
     #[must_use]
     pub fn attributes(&self) -> Vec<Attribute> {
-        self.attributes.keys().cloned().collect::<Vec<Attribute>>()
+        self.dimensions
+            .iter()
+            .flat_map(|(dim_name, dim)| {
+                dim.attributes
+                    .keys()
+                    .map(|attr_name| Attribute::new(dim_name, attr_name))
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Returns the given attribute from the policy.
+    /// Fails if there is no such attribute.
+    fn get_attribute(&self, attr: &Attribute) -> Result<&AttributeParameters, Error> {
+        if let Some(dim) = self.dimensions.get(&attr.dimension) {
+            dim.attributes
+                .get(&attr.name)
+                .ok_or(Error::AttributeNotFound(attr.name.to_string()))
+        } else {
+            Err(Error::DimensionNotFound(attr.dimension.to_string()))
+        }
     }
 
     /// Returns the list of all values given to this attribute over rotations.
-    /// The current value is returned first
+    /// The current value is returned first.
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
-        self.attributes
-            .get(attribute)
-            .map(|attribute_parameters| attribute_parameters.values.iter().rev().copied().collect())
-            .ok_or_else(|| Error::AttributeNotFound(attribute.to_string()))
+        self.get_attribute(attribute)
+            .map(|attr| attr.rotation_values.iter().rev().copied().collect())
     }
 
     /// Returns the hybridization hint of the given attribute.
@@ -278,62 +182,57 @@ impl Policy {
         &self,
         attribute: &Attribute,
     ) -> Result<EncryptionHint, Error> {
-        self.attributes
-            .get(attribute)
-            .map(|attribute_parameters| attribute_parameters.encryption_hint)
-            .ok_or_else(|| Error::AttributeNotFound(attribute.to_string()))
+        self.get_attribute(attribute)
+            .map(|attr| attr.encryption_hint)
     }
 
     /// Retrieves the current value of an attribute.
     pub fn attribute_current_value(&self, attribute: &Attribute) -> Result<u32, Error> {
-        self.attributes
-            .get(attribute)
-            .map(|attribute_parameters| {
-                attribute_parameters.values[attribute_parameters.values.len() - 1]
-            })
-            .ok_or_else(|| Error::AttributeNotFound(attribute.to_string()))
+        self.get_attribute(attribute)
+            .map(AttributeParameters::get_current_rotation)
     }
 
     /// Generates all cross-axes combinations of attribute values.
     ///
-    /// - `current_axis`            : axis for which to combine values with
+    /// - `current_dim`            : dim for which to combine values with
     ///   other axes
     /// - `axes`                    : list of axes
-    /// - `attr_values_per_axis`    : map axes with their associated attribute
+    /// - `attr_values_per_dim`    : map axes with their associated attribute
     ///   values
     fn combine_attribute_values(
-        current_axis: usize,
+        current_dim: usize,
         axes: &[String],
-        attr_values_per_axis: &HashMap<String, Vec<(u32, EncryptionHint)>>,
-    ) -> Result<Vec<(Vec<u32>, EncryptionHint)>, Error> {
-        let current_axis_name = match axes.get(current_axis) {
-            None => return Ok(vec![(vec![], EncryptionHint::Classic)]),
-            Some(axis) => axis,
+        attr_values_per_dim: &HashMap<String, Vec<(u32, EncryptionHint, AttributeStatus)>>,
+    ) -> Result<Vec<(Vec<u32>, EncryptionHint, AttributeStatus)>, Error> {
+        let current_dim_name = match axes.get(current_dim) {
+            None => {
+                return Ok(vec![(
+                    vec![],
+                    EncryptionHint::Classic,
+                    AttributeStatus::EncryptDecrypt,
+                )])
+            }
+            Some(dim) => dim,
         };
 
-        let current_axis_values = attr_values_per_axis
-            .get(current_axis_name)
-            .ok_or_else(|| Error::AxisNotFound(current_axis_name.to_string()))?;
+        let current_dim_values = attr_values_per_dim
+            .get(current_dim_name)
+            .ok_or_else(|| Error::DimensionNotFound(current_dim_name.to_string()))?;
 
         // Recursive call. Above checks ensure no empty list can be returned.
         let other_values =
-            Self::combine_attribute_values(current_axis + 1, axes, attr_values_per_axis)?;
+            Self::combine_attribute_values(current_dim + 1, axes, attr_values_per_dim)?;
 
-        let mut combinations = Vec::with_capacity(current_axis_values.len() * other_values.len());
-        for (current_values, is_hybridized) in current_axis_values {
-            for (other_values, is_other_hybridized) in &other_values {
+        let mut combinations = Vec::with_capacity(current_dim_values.len() * other_values.len());
+        for (current_values, is_hybridized, is_readonly) in current_dim_values {
+            for (other_values, is_other_hybridized, is_other_readonly) in &other_values {
                 let mut combined = Vec::with_capacity(1 + other_values.len());
                 combined.push(*current_values);
                 combined.extend_from_slice(other_values);
                 combinations.push((
                     combined,
-                    if (*is_hybridized == EncryptionHint::Hybridized)
-                        || (*is_other_hybridized == EncryptionHint::Hybridized)
-                    {
-                        EncryptionHint::Hybridized
-                    } else {
-                        EncryptionHint::Classic
-                    },
+                    *is_hybridized | *is_other_hybridized,
+                    *is_readonly | *is_other_readonly,
                 ));
             }
         }
@@ -341,32 +240,30 @@ impl Policy {
     }
 
     /// Generates all possible partitions from this `Policy`. Each partition is
-    /// returned with a hint about whether hybridized encryption should be used.
-    pub fn generate_all_partitions(&self) -> Result<HashMap<Partition, EncryptionHint>, Error> {
-        let mut attr_values_per_axis = HashMap::with_capacity(self.axes.len());
-        for (axis_name, axis_properties) in &self.axes {
-            let mut values = Vec::with_capacity(axis_properties.attribute_names.len());
-            for attr_name in &axis_properties.attribute_names {
-                let attribute = Attribute::new(axis_name, attr_name);
-                // Hybridization hint is interleaved to allow easy combinations.
-                let is_hybridized = self.attribute_hybridization_hint(&attribute)?;
-                let av = self
-                    .attribute_values(&attribute)?
-                    .into_iter()
-                    .map(|v| (v, is_hybridized));
-                values.extend(av);
-            }
-            attr_values_per_axis.insert(axis_name.clone(), values);
+    /// returned with a hint about whether hybridized encryption should be used
+    /// and activation status.
+    pub fn generate_all_partitions(
+        &self,
+    ) -> Result<HashMap<Partition, (EncryptionHint, AttributeStatus)>, Error> {
+        let mut attr_values_per_dim = HashMap::with_capacity(self.dimensions.len());
+        for (dim_name, dim) in &self.dimensions {
+            attr_values_per_dim.insert(
+                dim_name.clone(),
+                dim.attributes
+                    .values()
+                    .flat_map(|attr| attr.flatten_properties())
+                    .collect(),
+            );
         }
 
         // Combine axes values into partitions.
-        let axes = attr_values_per_axis.keys().cloned().collect::<Vec<_>>();
-        let combinations = Self::combine_attribute_values(0, &axes, &attr_values_per_axis)?;
+        let axes = attr_values_per_dim.keys().cloned().collect::<Vec<_>>();
+        let combinations = Self::combine_attribute_values(0, &axes, &attr_values_per_dim)?;
         let mut res = HashMap::with_capacity(combinations.len());
-        for (combination, is_hybridized) in combinations {
+        for (combination, is_hybridized, is_readonly) in combinations {
             res.insert(
                 Partition::from_attribute_values(combination)?,
-                is_hybridized,
+                (is_hybridized, is_readonly),
             );
         }
         Ok(res)
@@ -376,18 +273,23 @@ impl Policy {
     /// partitions.
     ///
     /// - `access_policy`               : access policy to convert
-    /// - `follow_hierarchical_axes`    : set to `true` to combine lower axis
+    /// - `follow_hierarchical_axes`    : set to `true` to combine lower dim
     ///   attributes
-    pub fn access_policy_to_current_partitions(
+    pub fn access_policy_to_partitions(
         &self,
         access_policy: &AccessPolicy,
         follow_hierarchical_axes: bool,
+        include_old_rotations: bool,
     ) -> Result<HashSet<Partition>, Error> {
         let attr_combinations =
             access_policy.to_attribute_combinations(self, follow_hierarchical_axes)?;
         let mut res = HashSet::with_capacity(attr_combinations.len());
         for attr_combination in &attr_combinations {
-            for partition in generate_current_attribute_partitions(attr_combination, self)? {
+            for partition in generate_current_attribute_partitions(
+                attr_combination,
+                self,
+                include_old_rotations,
+            )? {
                 let is_unique = res.insert(partition);
                 if !is_unique {
                     return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
@@ -422,47 +324,63 @@ impl TryFrom<&Policy> for Vec<u8> {
 fn generate_current_attribute_partitions(
     attributes: &[Attribute],
     policy: &Policy,
+    include_old_partitions: bool,
 ) -> Result<HashSet<Partition>, Error> {
-    let mut current_attr_value_per_axis = HashMap::<String, Vec<(u32, EncryptionHint)>>::new();
-    for attribute in attributes {
-        let entry = current_attr_value_per_axis
-            .entry(attribute.axis.clone())
+    let mut current_attr_value_per_dim = HashMap::<
+        String,
+        Vec<(u32, EncryptionHint, AttributeStatus)>,
+    >::with_capacity(policy.dimensions.len()); // maximum bound
+    for attribute in attributes.iter() {
+        let entry = current_attr_value_per_dim
+            .entry(attribute.dimension.clone())
             .or_default();
-        entry.push((
-            policy.attribute_current_value(attribute)?,
-            policy.attribute_hybridization_hint(attribute)?,
-        ));
+        let attr_properties = policy.get_attribute(attribute)?;
+        if include_old_partitions {
+            for attr_value in &attr_properties.rotation_values {
+                entry.push((
+                    *attr_value,
+                    attr_properties.encryption_hint,
+                    attr_properties.write_status,
+                ));
+            }
+        } else {
+            entry.push((
+                attr_properties.get_current_rotation(),
+                attr_properties.encryption_hint,
+                attr_properties.write_status,
+            ));
+        }
     }
 
-    // When an axis is not mentioned in the attribute list, all the attribute
-    // from this axis are used.
-    for (axis, axis_properties) in &policy.axes {
-        if !current_attr_value_per_axis.contains_key(axis) {
-            // gather all the latest value for that axis
-            let values = axis_properties
-                .attribute_names
-                .iter()
-                .map(|name| {
-                    let attribute = Attribute::new(axis, name);
-                    Ok((
-                        policy.attribute_current_value(&attribute)?,
-                        policy.attribute_hybridization_hint(&attribute)?,
-                    ))
+    // When a dimension is not mentioned in the attribute list, all the attribute
+    // from this dimension are used.
+    for (dim, dim_properties) in &policy.dimensions {
+        if !current_attr_value_per_dim.contains_key(dim) {
+            // gather all the latest value for that dim
+            let values = dim_properties
+                .attributes
+                .values()
+                .map(|attr| {
+                    (
+                        attr.get_current_rotation(),
+                        attr.encryption_hint,
+                        attr.write_status,
+                    )
                 })
-                .collect::<Result<_, Error>>()?;
-            current_attr_value_per_axis.insert(axis.clone(), values);
+                .collect();
+            current_attr_value_per_dim.insert(dim.clone(), values);
         }
     }
 
     // Combine axes values into partitions.
-    let axes = current_attr_value_per_axis
+    let axes = current_attr_value_per_dim
         .keys()
         .cloned()
         .collect::<Vec<_>>();
     let combinations =
-        Policy::combine_attribute_values(0, axes.as_slice(), &current_attr_value_per_axis)?;
+        Policy::combine_attribute_values(0, axes.as_slice(), &current_attr_value_per_dim)?;
     let mut res = HashSet::with_capacity(combinations.len());
-    for (combination, _) in combinations {
+    for (combination, _, _) in combinations {
         res.insert(Partition::from_attribute_values(combination)?);
     }
     Ok(res)
@@ -478,14 +396,14 @@ mod tests {
         policy: &Policy,
     ) -> Result<Vec<Vec<(Attribute, u32)>>, Error> {
         let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
-        for axis in axes {
-            let mut axis_attributes: Vec<(Attribute, u32)> = vec![];
-            for name in &policy.axes[axis].attribute_names {
-                let attribute = Attribute::new(axis, name);
+        for dim in axes {
+            let mut dim_attributes: Vec<(Attribute, u32)> = vec![];
+            for name in policy.dimensions[dim].attributes.keys() {
+                let attribute = Attribute::new(dim, name);
                 let value = policy.attribute_current_value(&attribute)?;
-                axis_attributes.push((attribute, value));
+                dim_attributes.push((attribute, value));
             }
-            axes_attributes.push(axis_attributes);
+            axes_attributes.push(dim_attributes);
         }
         Ok(axes_attributes)
     }
@@ -493,14 +411,17 @@ mod tests {
     #[test]
     fn test_combine_attribute_values() -> Result<(), Error> {
         let mut policy = policy()?;
-        let axes: Vec<String> = policy.axes.keys().cloned().collect();
+        let axes: Vec<String> = policy.dimensions.keys().cloned().collect();
 
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 
         // this should create the combination of the first attribute
-        // with all those of the second axis
-        let partitions_0 =
-            generate_current_attribute_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
+        // with all those of the second dim
+        let partitions_0 = generate_current_attribute_partitions(
+            &[axes_attributes[0][0].0.clone()],
+            &policy,
+            false,
+        )?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
@@ -509,20 +430,21 @@ mod tests {
         }
 
         // this should create the single combination of the first attribute
-        // of the first axis with that of the second axis
+        // of the first dim with that of the second dim
         let partitions_1 = generate_current_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
         assert!(partitions_1.contains(&Partition::from_attribute_values(vec![att_0_0, att_1_0])?));
 
         // this should create the 2 combinations of the first attribute
-        // of the first axis with that the wo of the second axis
+        // of the first dim with that the wo of the second dim
         let partitions_2 = generate_current_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
@@ -530,6 +452,7 @@ mod tests {
                 axes_attributes[1][1].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
@@ -542,13 +465,14 @@ mod tests {
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 
         // this should create the single combination of the first attribute
-        // of the first axis with that of the second axis
+        // of the first dim with that of the second dim
         let partitions_3 = generate_current_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
+            false,
         )?;
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -579,17 +503,17 @@ mod tests {
 
         //
         // create partitions from access policy
-        let partitions = policy.access_policy_to_current_partitions(&access_policy, true)?;
+        let partitions = policy.access_policy_to_partitions(&access_policy, true, false)?;
 
         //
         // manually create the partitions
         let mut partitions_ = HashSet::new();
 
         // add the partitions associated with the HR department: combine with
-        // all attributes of the Security Level axis
+        // all attributes of the Security Level dim
         let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
-        let axis_properties = policy.axes.get("Security Level").unwrap();
-        for attr_name in &axis_properties.attribute_names {
+        let dim_properties = policy.dimensions.get("Security Level").unwrap();
+        for attr_name in dim_properties.attributes.keys() {
             let attr_value =
                 policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
             let mut partition = vec![hr_value, attr_value];
@@ -604,7 +528,7 @@ mod tests {
         let mut partition = vec![fin_value, conf_value];
         partition.sort_unstable();
         partitions_.insert(Partition::from_attribute_values(partition)?);
-        // since this is a hierarchical axis, add the lower values: here only low secret
+        // since this is a hierarchical dim, add the lower values: here only low secret
         let prot_value =
             policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
         let mut partition = vec![fin_value, prot_value];
@@ -622,7 +546,7 @@ mod tests {
         )
         .unwrap();
         let partition_4 = policy
-            .access_policy_to_current_partitions(&policy_attributes_4, true)
+            .access_policy_to_partitions(&policy_attributes_4, true, false)
             .unwrap();
 
         let policy_attributes_5 = AccessPolicy::from_boolean_expression(
@@ -631,7 +555,7 @@ mod tests {
         )
         .unwrap();
         let partition_5 = policy
-            .access_policy_to_current_partitions(&policy_attributes_5, true)
+            .access_policy_to_partitions(&policy_attributes_5, true, false)
             .unwrap();
         assert_eq!(partition_4.len(), 4);
         assert_eq!(partition_5.len(), 5);

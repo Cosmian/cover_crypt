@@ -8,7 +8,7 @@ use cosmian_crypto_core::{
 };
 use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
-use super::{KyberPublicKey, KyberSecretKey, TAG_LENGTH};
+use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
     abe_policy::Partition,
     core::{
@@ -80,6 +80,7 @@ impl Serializable for MasterSecretKey {
 
     fn length(&self) -> usize {
         let mut length = 3 * R25519PrivateKey::LENGTH
+            + self.kmac_key.as_ref().map_or_else(|| 0, |key| key.len())
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (partition, (sk_i, _)) in &self.subkeys {
@@ -107,6 +108,10 @@ impl Serializable for MasterSecretKey {
             }
             n += ser.write_array(&x_i.to_bytes())?;
         }
+        if let Some(kmac_key) = &self.kmac_key {
+            n += ser.write_array(kmac_key)?;
+        }
+
         Ok(n)
     }
 
@@ -116,6 +121,7 @@ impl Serializable for MasterSecretKey {
         let s2 =
             R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
+
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
@@ -132,7 +138,22 @@ impl Serializable for MasterSecretKey {
                 (sk_i, R25519PrivateKey::try_from_bytes(x_i)?),
             );
         }
-        Ok(Self { s, s1, s2, subkeys })
+
+        let kmac_key = match de.read_array::<{ KMAC_KEY_LENGTH }>() {
+            Ok(key_bytes) => Some(SymmetricKey::try_from_bytes(key_bytes)?),
+            Err(_) => None,
+        };
+
+        let history = None;
+
+        Ok(Self {
+            s,
+            s1,
+            s2,
+            subkeys,
+            kmac_key,
+            history,
+        })
     }
 }
 
@@ -141,6 +162,7 @@ impl Serializable for UserSecretKey {
 
     fn length(&self) -> usize {
         let mut length = 2 * R25519PrivateKey::LENGTH
+            + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (sk_i, _) in &self.subkeys {
@@ -165,6 +187,9 @@ impl Serializable for UserSecretKey {
             }
             n += ser.write_array(&x_i.to_bytes())?;
         }
+        if let Some(kmac) = &self.kmac {
+            n += ser.write_array(kmac)?;
+        }
         Ok(n)
     }
 
@@ -183,7 +208,13 @@ impl Serializable for UserSecretKey {
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
             subkeys.insert((sk_i, R25519PrivateKey::try_from_bytes(x_i)?));
         }
-        Ok(Self { a, b, subkeys })
+        let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
+        Ok(Self {
+            a,
+            b,
+            subkeys,
+            kmac,
+        })
     }
 }
 
@@ -352,7 +383,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::EncryptionHint,
+        abe_policy::{AttributeStatus, EncryptionHint},
         core::primitives::{encaps, keygen, setup},
     };
 
@@ -362,8 +393,14 @@ mod tests {
         let admin_partition = Partition(b"admin".to_vec());
         let dev_partition = Partition(b"dev".to_vec());
         let partitions_set = HashMap::from([
-            (admin_partition.clone(), EncryptionHint::Hybridized),
-            (dev_partition.clone(), EncryptionHint::Classic),
+            (
+                admin_partition.clone(),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+            ),
+            (
+                dev_partition.clone(),
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+            ),
         ]);
         let user_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
         let target_set = HashSet::from([admin_partition, dev_partition]);
@@ -376,6 +413,14 @@ mod tests {
         assert_eq!(bytes.len(), msk.length(), "Wrong master secret key length");
         let msk_ = MasterSecretKey::deserialize(&bytes)?;
         assert_eq!(msk, msk_, "Wrong `MasterSecretKey` derserialization.");
+        assert!(
+            msk_.kmac_key.is_some(),
+            "Wrong `MasterSecretKey` deserialization."
+        );
+        assert_eq!(
+            msk.kmac_key, msk_.kmac_key,
+            "Wrong `MasterSecretKey` deserialization."
+        );
 
         // Check Covercrypt `PublicKey` serialization.
         let bytes = mpk.serialize()?;
@@ -390,6 +435,10 @@ mod tests {
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert_eq!(usk.a, usk_.a, "Wrong `UserSecretKey` deserialization.");
         assert_eq!(usk.b, usk_.b, "Wrong `UserSecretKey` deserialization.");
+        assert_eq!(
+            usk.kmac, usk_.kmac,
+            "Wrong `UserSecretKey` deserialization."
+        );
         assert_eq!(usk, usk_, "Wrong `UserSecretKey` deserialization.");
 
         // Check Covercrypt `Encapsulation` serialization.

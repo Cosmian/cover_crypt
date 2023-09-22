@@ -1,7 +1,7 @@
 //! Defines useful macros.
 
 pub use cosmian_crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
-pub use tiny_keccak::{Hasher, Shake, Xof};
+pub use tiny_keccak::{Hasher, IntoXof, Kmac, KmacXof, Shake, Xof};
 
 /// Hashes and extends the given bytes into a tag of size `TAG_LENGTH` and a
 /// key of size `KEY_LENGTH`.
@@ -25,6 +25,27 @@ macro_rules! eakem_hash {
             <$crate::core::macros::Shake as $crate::core::macros::Xof>::squeeze(&mut hasher, &mut tag);
             <$crate::core::macros::Shake as $crate::core::macros::Hasher>::finalize(hasher, &mut key);
             Ok((tag, key))
+        }
+    };
+}
+
+/// KMAC hash algorithm used to derive keys.
+///
+/// - `length`  : length of the generated output
+/// - `key`     : KMAC key
+/// - `bytes`   : bytes to hash
+#[macro_export]
+macro_rules! kmac {
+    ($length: ident, $key: expr, $($bytes: expr),+) => {
+        {
+            let mut kmac = $crate::core::macros::Kmac::v256($key, b"");
+            $(
+                <$crate::core::macros::Kmac as $crate::core::macros::Hasher>::update(&mut kmac, $bytes);
+            )*
+            let mut xof = <$crate::core::macros::Kmac as $crate::core::macros::IntoXof>::into_xof(kmac);
+            let mut res = [0; $length];
+            <$crate::core::macros::KmacXof as $crate::core::macros::Xof>::squeeze(&mut xof, &mut res);
+            res
         }
     };
 }
