@@ -60,6 +60,8 @@ impl Deref for KyberSecretKey {
     }
 }
 
+type Subkey = (Option<KyberSecretKey>, R25519PrivateKey);
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     g1: R25519PublicKey,
@@ -72,15 +74,16 @@ pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
-    pub subkeys: HashMap<Partition, (Option<KyberSecretKey>, R25519PrivateKey)>,
+    pub subkeys: HashMap<Partition, Subkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
+    history: Option<HashMap<Partition, Subkey>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub subkeys: HashSet<(Option<KyberSecretKey>, R25519PrivateKey)>,
+    pub subkeys: HashSet<Subkey>,
     kmac: Option<KmacSignature>,
 }
 
