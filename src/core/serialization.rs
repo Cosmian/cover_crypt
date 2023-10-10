@@ -209,6 +209,7 @@ impl Serializable for UserSecretKey {
             subkeys.insert((sk_i, R25519PrivateKey::try_from_bytes(x_i)?));
         }
         let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
+
         Ok(Self {
             a,
             b,
