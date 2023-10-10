@@ -81,7 +81,7 @@ impl From<PolicyV1> for PolicyV2 {
                 },
             );
         }
-        PolicyV2 {
+        Self {
             version: PolicyVersion::V2,
             last_attribute_id: val.last_attribute_value,
             dimensions,
@@ -134,7 +134,7 @@ impl From<LegacyPolicy> for PolicyV2 {
                 },
             );
         }
-        PolicyV2 {
+        Self {
             version: PolicyVersion::V2,
             last_attribute_id: val.last_attribute_value,
             dimensions,

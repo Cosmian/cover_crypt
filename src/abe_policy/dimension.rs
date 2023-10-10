@@ -26,12 +26,14 @@ pub struct DimensionBuilder {
 }
 
 impl DimensionBuilder {
-    /// Generates a new policy dimension with the given name and attribute names.
-    /// A hierarchical dimension enforces order between its attributes.
+    /// Generates a new policy dimension with the given name and attribute
+    /// names. A hierarchical dimension enforces order between its
+    /// attributes.
     ///
     /// - `name`                    : dimension name
     /// - `attribute_properties`    : dimension attribute properties
-    /// - `hierarchical`            : set to `true` if the dimension is hierarchical
+    /// - `hierarchical`            : set to `true` if the dimension is
+    ///   hierarchical
     #[must_use]
     pub fn new(
         name: &str,
@@ -92,9 +94,9 @@ impl AttributeParameters {
             .expect("Attribute should always have at least one value")
     }
 
-    /// Flattens the properties of the `AttributeParameters` into a vector of tuples
-    /// where each tuple contains a rotation value, the associated encryption hint,
-    /// and the `read_only` flag.
+    /// Flattens the properties of the `AttributeParameters` into a vector of
+    /// tuples where each tuple contains a rotation value, the associated
+    /// encryption hint, and the `read_only` flag.
     pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
         self.rotation_values
             .iter()
@@ -106,16 +108,16 @@ impl AttributeParameters {
 type AttributeName = String;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-/// A dimension is a space that holds attributes. It can be ordered (an dimension) or
-/// unordered (a set).
+/// A dimension is a space that holds attributes. It can be ordered (an
+/// dimension) or unordered (a set).
 pub struct Dimension {
     pub order: Option<Vec<AttributeName>>,
     pub attributes: HashMap<AttributeName, AttributeParameters>,
 }
 
 impl Dimension {
-    /// Creates a new `Dimension` based on the given `DimensionBuilder`, initializing
-    /// attributes and order if applicable.
+    /// Creates a new `Dimension` based on the given `DimensionBuilder`,
+    /// initializing attributes and order if applicable.
     ///
     /// # Arguments
     ///
@@ -151,7 +153,8 @@ impl Dimension {
         }
     }
 
-    /// Rotates the attribute with the given name by incrementing its rotation value.
+    /// Rotates the attribute with the given name by incrementing its rotation
+    /// value.
     ///
     /// # Arguments
     ///
@@ -265,17 +268,23 @@ impl Dimension {
         new_name: &str,
     ) -> Result<(), Error> {
         if self.attributes.contains_key(new_name) {
-            Err(Error::OperationNotPermitted(
+            return Err(Error::OperationNotPermitted(
                 "New attribute name is already used in the same dimension".to_string(),
-            ))
-        } else {
-            match self.attributes.remove(attr_name) {
-                Some(attr_params) => {
-                    self.attributes.insert(new_name.to_string(), attr_params);
-                    Ok(())
+            ));
+        }
+        match self.attributes.remove(attr_name) {
+            Some(attr_params) => {
+                self.attributes.insert(new_name.to_string(), attr_params);
+                if let Some(order) = self.order.as_mut() {
+                    order.iter_mut().for_each(|name| {
+                        if name == attr_name {
+                            *name = new_name.to_string()
+                        }
+                    })
                 }
-                None => Err(Error::AttributeNotFound(attr_name.to_string())),
+                Ok(())
             }
+            None => Err(Error::AttributeNotFound(attr_name.to_string())),
         }
     }
 

@@ -30,8 +30,9 @@ impl Policy {
                 Ok(PolicyVersion::V1) => Ok(serde_json::from_slice::<PolicyV1>(bytes)
                     .map_err(Error::DeserializationError)?
                     .into()),
-                Ok(PolicyVersion::V2) => serde_json::from_value::<Policy>(json_policy)
-                    .map_err(Error::DeserializationError),
+                Ok(PolicyVersion::V2) => {
+                    serde_json::from_value::<Self>(json_policy).map_err(Error::DeserializationError)
+                }
                 Err(e) => Err(Error::DeserializationError(e)),
             }
         } else {
@@ -80,7 +81,8 @@ impl Policy {
     /// Fails if the dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
-    /// * `encryption_hint` - Whether to use post quantum keys for this attribute
+    /// * `encryption_hint` - Whether to use post quantum keys for this
+    ///   attribute
     pub fn add_attribute(
         &mut self,
         attr: Attribute,
@@ -95,7 +97,8 @@ impl Policy {
     }
 
     /// Removes the given attribute from the policy.
-    /// Encrypting and decrypting for this attribute will no longer be possible once the keys are updated.
+    /// Encrypting and decrypting for this attribute will no longer be possible
+    /// once the keys are updated.
     pub fn remove_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
             if dim.attributes.len() == 1 {
@@ -194,8 +197,8 @@ impl Policy {
 
     /// Generates all cross-axes combinations of attribute values.
     ///
-    /// - `current_dim`            : dim for which to combine values with
-    ///   other axes
+    /// - `current_dim`            : dim for which to combine values with other
+    ///   axes
     /// - `axes`                    : list of axes
     /// - `attr_values_per_dim`    : map axes with their associated attribute
     ///   values
@@ -210,7 +213,7 @@ impl Policy {
                     vec![],
                     EncryptionHint::Classic,
                     AttributeStatus::EncryptDecrypt,
-                )])
+                )]);
             }
             Some(dim) => dim,
         };

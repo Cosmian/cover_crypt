@@ -103,17 +103,32 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     let mut policy = policy()?;
     assert_eq!(policy.attributes().len(), 7);
 
+    // Try renaming Research to already used name MKG
+    assert!(policy
+        .rename_attribute(Attribute::new("Department", "R&D"), "MKG",)
+        .is_err());
+
     // Rename R&D to Research
     assert!(policy
         .rename_attribute(Attribute::new("Department", "R&D"), "Research",)
         .is_ok());
 
-    // Try renaming Research to already used name MKG
+    // Rename ordered dimension
     assert!(policy
-        .rename_attribute(Attribute::new("Department", "R&D"), "MKG",)
-        .is_err());
-    assert_eq!(policy.attributes().len(), 7);
+        .rename_attribute(Attribute::new("Security Level", "Protected"), "Open",)
+        .is_ok());
+    let order = policy
+        .dimensions
+        .get("Security Level")
+        .unwrap()
+        .order
+        .clone()
+        .unwrap();
+    assert!(order.len() == 3);
+    assert!(order.contains(&"Open".to_string()));
+    assert!(!order.contains(&"Protected".to_string()));
 
+    assert_eq!(policy.attributes().len(), 7);
     // Add new attribute Sales
     let new_attr = Attribute::new("Department", "Sales");
     assert!(policy
