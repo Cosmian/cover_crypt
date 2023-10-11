@@ -29,7 +29,18 @@ impl BitOr for EncryptionHint {
     }
 }
 
-/// Whether to provide an encryption key in the master public key for this attribute.
+impl EncryptionHint {
+    pub fn new(is_hybridized: bool) -> Self {
+        if is_hybridized {
+            Self::Hybridized
+        } else {
+            Self::Classic
+        }
+    }
+}
+
+/// Whether to provide an encryption key in the master public key for this
+/// attribute.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AttributeStatus {
     EncryptDecrypt,
@@ -49,7 +60,8 @@ impl BitOr for AttributeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Attribute representation used to create a `Dimension` and add it to a `Policy`.
+/// Attribute representation used to create a `Dimension` and add it to a
+/// `Policy`.
 pub struct AttributeBuilder {
     pub name: String,
     pub encryption_hint: EncryptionHint,
