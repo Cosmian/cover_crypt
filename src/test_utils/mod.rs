@@ -142,7 +142,7 @@ mod tests {
 
         // try to modify the user key and refresh
         let part = Partition::from(vec![1, 6]);
-        usk.subkeys.insert(msk.subkeys.get(&part).unwrap().clone());
+        usk.subkeys.push(msk.subkeys.get(&part).unwrap().clone());
         assert!(cover_crypt
             .refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)
             .is_err());
@@ -264,7 +264,8 @@ mod tests {
         let new_decryption_policy =
             AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
 
-        // refreshing the user key will remove access to removed partitions even if we keep old rotations
+        // refreshing the user key will remove access to removed partitions even if we
+        // keep old rotations
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
             &new_decryption_policy,

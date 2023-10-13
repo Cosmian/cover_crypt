@@ -7,7 +7,6 @@ use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey,
     RandomFixedSizeCBytes, SymmetricKey,
 };
-use itertools::Itertools;
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
@@ -42,9 +41,8 @@ fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<K
     user_key_bytes.extend_from_slice(&usk.a.to_bytes());
     user_key_bytes.extend_from_slice(&usk.b.to_bytes());
 
-    // Sort keys to make KMAC deterministic
-    let ordered_keys = usk.subkeys.iter().sorted_by_key(|(_, x_i)| x_i.as_bytes());
-    for (sk_i, x_i) in ordered_keys {
+    // KMAC is deterministic because subkeys is a Vec preserving keys order
+    for (sk_i, x_i) in &usk.subkeys {
         if let Some(sk_i) = sk_i {
             user_key_bytes.extend_from_slice(sk_i);
         }
@@ -116,7 +114,6 @@ pub fn setup(
             s2,
             subkeys: sub_sk,
             kmac_key,
-            history: None,
         },
         MasterPublicKey {
             g1,
@@ -375,7 +372,7 @@ pub fn refresh(
 
     for partition in decryption_set {
         if let Some(x_i) = msk.subkeys.get(partition) {
-            usk.subkeys.insert(x_i.clone());
+            usk.subkeys.push(x_i.clone());
         }
     }
 
@@ -669,7 +666,7 @@ mod tests {
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
-        usk.subkeys.insert((None, R25519PrivateKey::new(&mut rng)));
+        usk.subkeys.push((None, R25519PrivateKey::new(&mut rng)));
         // KMAC verify will fail after modifying the user key
         assert!(verify_user_key_kmac(&msk, &usk).is_err());
 

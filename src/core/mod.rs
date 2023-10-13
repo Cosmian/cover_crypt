@@ -76,14 +76,13 @@ pub struct MasterSecretKey {
     s2: R25519PrivateKey,
     pub subkeys: HashMap<Partition, Subkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
-    history: Option<HashMap<Partition, Subkey>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub subkeys: HashSet<Subkey>,
+    pub subkeys: Vec<Subkey>,
     kmac: Option<KmacSignature>,
 }
 
