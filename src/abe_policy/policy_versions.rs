@@ -15,7 +15,7 @@ pub struct PolicyV2 {
     /// Version number
     pub version: PolicyVersion,
     /// Last value taken by the attribute.
-    pub(crate) last_attribute_id: u32,
+    pub(crate) last_attribute_value: u32,
 
     /// Policy axes: maps axes name to the list of associated attribute names
     /// and a boolean defining whether or not this dim is hierarchical.
@@ -83,7 +83,7 @@ impl From<PolicyV1> for PolicyV2 {
         }
         Self {
             version: PolicyVersion::V2,
-            last_attribute_id: val.last_attribute_value,
+            last_attribute_value: val.last_attribute_value,
             dimensions,
         }
     }
@@ -136,7 +136,7 @@ impl From<LegacyPolicy> for PolicyV2 {
         }
         Self {
             version: PolicyVersion::V2,
-            last_attribute_id: val.last_attribute_value,
+            last_attribute_value: val.last_attribute_value,
             dimensions,
         }
     }

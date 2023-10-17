@@ -49,7 +49,7 @@ impl Policy {
     pub fn new() -> Self {
         Self {
             version: PolicyVersion::V2,
-            last_attribute_id: 0,
+            last_attribute_value: 0,
             dimensions: HashMap::new(),
         }
     }
@@ -62,7 +62,7 @@ impl Policy {
 
         self.dimensions.insert(
             dim.name.clone(),
-            Dimension::new(&dim, &mut self.last_attribute_id),
+            Dimension::new(&dim, &mut self.last_attribute_value),
         );
 
         Ok(())
@@ -89,9 +89,11 @@ impl Policy {
         encryption_hint: EncryptionHint,
     ) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => {
-                policy_dim.add_attribute(&attr.name, encryption_hint, &mut self.last_attribute_id)
-            }
+            Some(policy_dim) => policy_dim.add_attribute(
+                &attr.name,
+                encryption_hint,
+                &mut self.last_attribute_value,
+            ),
             None => Err(Error::DimensionNotFound(attr.dimension)),
         }
     }
@@ -133,7 +135,7 @@ impl Policy {
     /// value.
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            dim.rotate_attribute(&attr.name, &mut self.last_attribute_id)
+            dim.rotate_attribute(&attr.name, &mut self.last_attribute_value)
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
@@ -167,7 +169,10 @@ impl Policy {
         if let Some(dim) = self.dimensions.get(&attr.dimension) {
             dim.attributes
                 .get(&attr.name)
-                .ok_or(Error::AttributeNotFound(attr.name.to_string()))
+                .ok_or(Error::AttributeNotFound(format!(
+                    "{}::{}",
+                    attr.dimension, attr.name
+                )))
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
