@@ -293,20 +293,14 @@ pub fn update(
             let h_i = &h * x_i;
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
-                let (pk_i, _) = mpk.subkeys.get(partition).ok_or_else(|| {
-                    Error::KeyError(
-                        "Kyber public key cannot be computed from the secret key.".to_string(),
-                    )
-                })?;
+                let pk_i = mpk
+                    .subkeys
+                    .get(partition)
+                    .map(|(pk_i, _)| pk_i)
+                    .unwrap_or(&None);
 
                 if sk_i.is_some() {
-                    if pk_i.is_some() {
-                        (sk_i.clone(), pk_i.clone())
-                    } else {
-                        return Err(Error::KeyError(
-                            "Kyber public key cannot be computed from the secret key.".to_string(),
-                        ));
-                    }
+                    (sk_i.clone(), pk_i.clone())
                 } else {
                     let (mut sk_i, mut pk_i) = (
                         KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
@@ -318,11 +312,17 @@ pub fn update(
             } else {
                 (None, None)
             };
-            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
+
             if write_status == AttributeStatus::EncryptDecrypt {
                 // Only add non read only partition to the public key
+                if sk_i.is_some() && pk_i.is_none() {
+                    return Err(Error::KeyError(
+                        "Kyber public key cannot be computed from the secret key.".to_string(),
+                    ));
+                }
                 new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
+            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
         } else {
             // Create new entry.
             let x_i = R25519PrivateKey::new(rng);
@@ -338,7 +338,10 @@ pub fn update(
                 (None, None)
             };
             new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
-            new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
+            if write_status == AttributeStatus::EncryptDecrypt {
+                // Only add non read only partition to the public key
+                new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
+            }
         }
     }
 

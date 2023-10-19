@@ -315,8 +315,9 @@ mod tests {
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
-        // 5 is the size of the security level dimension
+        // the disabled partition have been removed from mpk
         assert_eq!(new_partitions_msk.len() - 5, new_partitions_mpk.len());
+        // msk hasn't changed
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
 
         assert!(encrypted_header
@@ -357,6 +358,16 @@ mod tests {
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
+
+        //
+        // Rotating the disabled attribute should only change the msk
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
+        // 5 new partitions added to the msk
+        assert_eq!(new_partitions_msk.len() - 10, new_partitions_mpk.len());
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
 
         Ok(())
     }
