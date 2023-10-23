@@ -141,10 +141,10 @@ impl Policy {
         }
     }
 
-    /// Removes old rotations id of an attribute.
-    pub fn clear_old_rotations(&mut self, attr: &Attribute) -> Result<(), Error> {
+    /// Removes all rotation values but the current of an attribute.
+    pub fn clear_old_attribute_values(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            dim.clear_old_rotations(&attr.name)
+            dim.clear_old_attribute_values(&attr.name)
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }

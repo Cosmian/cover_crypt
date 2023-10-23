@@ -297,7 +297,7 @@ impl Dimension {
     /// # Errors
     ///
     /// Returns an error if the attribute is not found.
-    pub fn clear_old_rotations(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
+    pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
             .map(|attr| {

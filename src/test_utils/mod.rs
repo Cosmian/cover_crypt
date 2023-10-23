@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
 
         // Clear old rotations will reduce master keys size
-        policy.clear_old_rotations(&Attribute::new("Department", "FIN"))?;
+        policy.clear_old_attribute_values(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();

@@ -88,11 +88,11 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
         );
     }
 
-    policy.clear_old_rotations(&attributes[0])?;
+    policy.clear_old_attribute_values(&attributes[0])?;
     assert_eq!(1, policy.attribute_values(&attributes[0])?.len());
 
     assert!(policy
-        .clear_old_rotations(&Attribute::new("Department", "Missing"))
+        .clear_old_attribute_values(&Attribute::new("Department", "Missing"))
         .is_err());
 
     Ok(())
