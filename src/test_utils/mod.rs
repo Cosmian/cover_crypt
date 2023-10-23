@@ -243,7 +243,7 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        policy.remove_attribute(Attribute::new("Department", "FIN"))?;
+        policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
@@ -309,7 +309,7 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        policy.disable_attribute(Attribute::new("Department", "FIN"))?;
+        policy.disable_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
@@ -393,7 +393,7 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        policy.rename_attribute(Attribute::new("Department", "FIN"), "Finance")?;
+        policy.rename_attribute(&Attribute::new("Department", "FIN"), "Finance")?;
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;

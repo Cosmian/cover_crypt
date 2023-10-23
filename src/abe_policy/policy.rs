@@ -70,11 +70,11 @@ impl Policy {
 
     /// Removes the given dim from the policy.
     /// Fails if there is no such dim in the policy.
-    pub fn remove_dimension(&mut self, dim_name: String) -> Result<(), Error> {
+    pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
         self.dimensions
-            .remove(&dim_name)
+            .remove(dim_name)
             .map(|_| ())
-            .ok_or(Error::DimensionNotFound(dim_name))
+            .ok_or(Error::DimensionNotFound(dim_name.to_string()))
     }
 
     /// Adds the given attribute to the policy.
@@ -101,33 +101,33 @@ impl Policy {
     /// Removes the given attribute from the policy.
     /// Encrypting and decrypting for this attribute will no longer be possible
     /// once the keys are updated.
-    pub fn remove_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+    pub fn remove_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
             if dim.attributes.len() == 1 {
-                self.remove_dimension(attr.dimension)
+                self.remove_dimension(&attr.dimension)
             } else {
                 dim.remove_attribute(&attr.name)
             }
         } else {
-            Err(Error::DimensionNotFound(attr.dimension))
+            Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
     }
 
     /// Marks an attribute as read only.
     /// The corresponding attribute key will be removed from the public key.
     /// But the decryption key will be kept to allow reading old ciphertext.
-    pub fn disable_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+    pub fn disable_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => policy_dim.disable_attribute(&attr.name),
-            None => Err(Error::DimensionNotFound(attr.dimension)),
+            None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
 
     /// Changes the name of an attribute.
-    pub fn rename_attribute(&mut self, attr: Attribute, new_name: &str) -> Result<(), Error> {
+    pub fn rename_attribute(&mut self, attr: &Attribute, new_name: &str) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
-            None => Err(Error::DimensionNotFound(attr.dimension)),
+            None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
 
