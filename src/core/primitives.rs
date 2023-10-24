@@ -34,24 +34,27 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
 }
 
 /// Computes the signature of the given user key.
+/// The order of the sub keys will impact the resulting KMAC.
 fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature> {
-    // Concat user key fields to hash them
-    let usk_length = 2 * R25519PrivateKey::LENGTH + usk.subkeys.len() * R25519PrivateKey::LENGTH;
-    let mut user_key_bytes = Vec::with_capacity(usk_length);
-    user_key_bytes.extend_from_slice(&usk.a.to_bytes());
-    user_key_bytes.extend_from_slice(&usk.b.to_bytes());
+    if let Some(kmac_key) = &msk.kmac_key {
+        // Concat user key fields to hash them
+        let usk_length =
+            2 * R25519PrivateKey::LENGTH + usk.subkeys.len() * R25519PrivateKey::LENGTH;
+        let mut user_key_bytes = Vec::with_capacity(usk_length);
+        user_key_bytes.extend_from_slice(&usk.a.to_bytes());
+        user_key_bytes.extend_from_slice(&usk.b.to_bytes());
 
-    // KMAC is deterministic because subkeys is a Vec preserving keys order
-    for (sk_i, x_i) in &usk.subkeys {
-        if let Some(sk_i) = sk_i {
-            user_key_bytes.extend_from_slice(sk_i);
+        for (sk_i, x_i) in &usk.subkeys {
+            if let Some(sk_i) = sk_i {
+                user_key_bytes.extend_from_slice(sk_i);
+            }
+            user_key_bytes.extend_from_slice(&x_i.to_bytes());
         }
-        user_key_bytes.extend_from_slice(&x_i.to_bytes());
-    }
 
-    msk.kmac_key
-        .as_ref()
-        .map(|kmac_key| kmac!(KMAC_LENGTH, kmac_key, &user_key_bytes))
+        Some(kmac!(KMAC_LENGTH, kmac_key, &user_key_bytes))
+    } else {
+        None
+    }
 }
 
 /// Checks that the provided KMAC matches the user secret key rights
@@ -293,13 +296,12 @@ pub fn update(
             let h_i = &h * x_i;
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
-                let pk_i = mpk
-                    .subkeys
-                    .get(partition)
-                    .map(|(pk_i, _)| pk_i)
-                    .unwrap_or(&None);
-
                 if sk_i.is_some() {
+                    let pk_i = mpk
+                        .subkeys
+                        .get(partition)
+                        .map(|(pk_i, _)| pk_i)
+                        .unwrap_or(&None);
                     (sk_i.clone(), pk_i.clone())
                 } else {
                     let (mut sk_i, mut pk_i) = (

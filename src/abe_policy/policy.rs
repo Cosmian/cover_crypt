@@ -169,10 +169,7 @@ impl Policy {
         if let Some(dim) = self.dimensions.get(&attr.dimension) {
             dim.attributes
                 .get(&attr.name)
-                .ok_or(Error::AttributeNotFound(format!(
-                    "{}::{}",
-                    attr.dimension, attr.name
-                )))
+                .ok_or(Error::AttributeNotFound(attr.to_string()))
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
