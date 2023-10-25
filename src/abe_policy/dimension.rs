@@ -306,4 +306,25 @@ impl Dimension {
             })
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
+
+    /// Returns the list of Attributes of this Policy.
+    /// If the dimension is ordered, the attributes are returned in order.
+    pub fn attributes_properties(&self) -> Vec<(String, EncryptionHint)> {
+        if let Some(ordered_attrs) = &self.order {
+            ordered_attrs
+                .iter()
+                .map(|name| {
+                    (
+                        name.to_string(),
+                        self.attributes.get(name).unwrap().encryption_hint,
+                    )
+                })
+                .collect()
+        } else {
+            self.attributes
+                .iter()
+                .map(|(name, attr_params)| (name.to_string(), attr_params.encryption_hint))
+                .collect()
+        }
+    }
 }
