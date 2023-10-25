@@ -11,6 +11,7 @@ use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
 };
+use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroizing;
 
 use super::{
@@ -37,21 +38,19 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
 /// The order of the sub keys will impact the resulting KMAC.
 fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature> {
     if let Some(kmac_key) = &msk.kmac_key {
-        // Concat user key fields to hash them
-        let usk_length =
-            2 * R25519PrivateKey::LENGTH + usk.subkeys.len() * R25519PrivateKey::LENGTH;
-        let mut user_key_bytes = Vec::with_capacity(usk_length);
-        user_key_bytes.extend_from_slice(&usk.a.to_bytes());
-        user_key_bytes.extend_from_slice(&usk.b.to_bytes());
+        let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
+        kmac.update(&usk.b.to_bytes());
 
         for (sk_i, x_i) in &usk.subkeys {
             if let Some(sk_i) = sk_i {
-                user_key_bytes.extend_from_slice(sk_i);
+                kmac.update(sk_i);
             }
-            user_key_bytes.extend_from_slice(&x_i.to_bytes());
+            kmac.update(&x_i.to_bytes());
         }
 
-        Some(kmac!(KMAC_LENGTH, kmac_key, &user_key_bytes))
+        let mut res = [0; KMAC_LENGTH];
+        kmac.into_xof().squeeze(&mut res);
+        Some(res)
     } else {
         None
     }
