@@ -30,8 +30,9 @@ impl Policy {
                 Ok(PolicyVersion::V1) => Ok(serde_json::from_slice::<PolicyV1>(bytes)
                     .map_err(Error::DeserializationError)?
                     .into()),
-                Ok(PolicyVersion::V2) => serde_json::from_value::<Policy>(json_policy)
-                    .map_err(Error::DeserializationError),
+                Ok(PolicyVersion::V2) => {
+                    serde_json::from_value::<Self>(json_policy).map_err(Error::DeserializationError)
+                }
                 Err(e) => Err(Error::DeserializationError(e)),
             }
         } else {
@@ -48,7 +49,7 @@ impl Policy {
     pub fn new() -> Self {
         Self {
             version: PolicyVersion::V2,
-            last_attribute_id: 0,
+            last_attribute_value: 0,
             dimensions: HashMap::new(),
         }
     }
@@ -61,7 +62,7 @@ impl Policy {
 
         self.dimensions.insert(
             dim.name.clone(),
-            Dimension::new(&dim, &mut self.last_attribute_id),
+            Dimension::new(&dim, &mut self.last_attribute_value),
         );
 
         Ok(())
@@ -69,60 +70,64 @@ impl Policy {
 
     /// Removes the given dim from the policy.
     /// Fails if there is no such dim in the policy.
-    pub fn remove_dimension(&mut self, dim_name: String) -> Result<(), Error> {
+    pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
         self.dimensions
-            .remove(&dim_name)
+            .remove(dim_name)
             .map(|_| ())
-            .ok_or(Error::DimensionNotFound(dim_name))
+            .ok_or(Error::DimensionNotFound(dim_name.to_string()))
     }
 
     /// Adds the given attribute to the policy.
     /// Fails if the dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
-    /// * `encryption_hint` - Whether to use post quantum keys for this attribute
+    /// * `encryption_hint` - Whether to use post quantum keys for this
+    ///   attribute
     pub fn add_attribute(
         &mut self,
         attr: Attribute,
         encryption_hint: EncryptionHint,
     ) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => {
-                policy_dim.add_attribute(&attr.name, encryption_hint, &mut self.last_attribute_id)
-            }
+            Some(policy_dim) => policy_dim.add_attribute(
+                &attr.name,
+                encryption_hint,
+                &mut self.last_attribute_value,
+            ),
             None => Err(Error::DimensionNotFound(attr.dimension)),
         }
     }
 
     /// Removes the given attribute from the policy.
-    /// Encrypting and decrypting for this attribute will no longer be possible once the keys are updated.
-    pub fn remove_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+    /// Encrypting and decrypting for this attribute will no longer be possible
+    /// once the keys are updated.
+    pub fn remove_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
             if dim.attributes.len() == 1 {
-                self.remove_dimension(attr.dimension)
+                self.remove_dimension(&attr.dimension)
             } else {
                 dim.remove_attribute(&attr.name)
             }
         } else {
-            Err(Error::DimensionNotFound(attr.dimension))
+            Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
     }
 
     /// Marks an attribute as read only.
     /// The corresponding attribute key will be removed from the public key.
     /// But the decryption key will be kept to allow reading old ciphertext.
-    pub fn disable_attribute(&mut self, attr: Attribute) -> Result<(), Error> {
+    pub fn disable_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => policy_dim.disable_attribute(&attr.name),
-            None => Err(Error::DimensionNotFound(attr.dimension)),
+            None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
 
     /// Changes the name of an attribute.
-    pub fn rename_attribute(&mut self, attr: Attribute, new_name: &str) -> Result<(), Error> {
+    pub fn rename_attribute(&mut self, attr: &Attribute, new_name: &str) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
-            None => Err(Error::DimensionNotFound(attr.dimension)),
+            None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
 
@@ -130,16 +135,16 @@ impl Policy {
     /// value.
     pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            dim.rotate_attribute(&attr.name, &mut self.last_attribute_id)
+            dim.rotate_attribute(&attr.name, &mut self.last_attribute_value)
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
     }
 
-    /// Removes old rotations id of an attribute.
-    pub fn clear_old_rotations(&mut self, attr: &Attribute) -> Result<(), Error> {
+    /// Removes all rotation values but the current of an attribute.
+    pub fn clear_old_attribute_values(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            dim.clear_old_rotations(&attr.name)
+            dim.clear_old_attribute_values(&attr.name)
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
@@ -164,7 +169,7 @@ impl Policy {
         if let Some(dim) = self.dimensions.get(&attr.dimension) {
             dim.attributes
                 .get(&attr.name)
-                .ok_or(Error::AttributeNotFound(attr.name.to_string()))
+                .ok_or(Error::AttributeNotFound(attr.to_string()))
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
@@ -194,8 +199,8 @@ impl Policy {
 
     /// Generates all cross-axes combinations of attribute values.
     ///
-    /// - `current_dim`            : dim for which to combine values with
-    ///   other axes
+    /// - `current_dim`            : dim for which to combine values with other
+    ///   axes
     /// - `axes`                    : list of axes
     /// - `attr_values_per_dim`    : map axes with their associated attribute
     ///   values
@@ -210,7 +215,7 @@ impl Policy {
                     vec![],
                     EncryptionHint::Classic,
                     AttributeStatus::EncryptDecrypt,
-                )])
+                )]);
             }
             Some(dim) => dim,
         };

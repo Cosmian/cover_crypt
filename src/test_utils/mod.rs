@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
 
         // Clear old rotations will reduce master keys size
-        policy.clear_old_rotations(&Attribute::new("Department", "FIN"))?;
+        policy.clear_old_attribute_values(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
@@ -142,7 +142,7 @@ mod tests {
 
         // try to modify the user key and refresh
         let part = Partition::from(vec![1, 6]);
-        usk.subkeys.insert(msk.subkeys.get(&part).unwrap().clone());
+        usk.subkeys.push(msk.subkeys.get(&part).unwrap().clone());
         assert!(cover_crypt
             .refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)
             .is_err());
@@ -243,7 +243,7 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        policy.remove_attribute(Attribute::new("Department", "FIN"))?;
+        policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
@@ -264,7 +264,8 @@ mod tests {
         let new_decryption_policy =
             AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
 
-        // refreshing the user key will remove access to removed partitions even if we keep old rotations
+        // refreshing the user key will remove access to removed partitions even if we
+        // keep old rotations
         cover_crypt.refresh_user_secret_key(
             &mut top_secret_fin_usk,
             &new_decryption_policy,
@@ -308,14 +309,15 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        policy.disable_attribute(Attribute::new("Department", "FIN"))?;
+        policy.disable_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
-        // 5 is the size of the security level dimension
+        // the disabled partition have been removed from mpk
         assert_eq!(new_partitions_msk.len() - 5, new_partitions_mpk.len());
+        // msk hasn't changed
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
 
         assert!(encrypted_header
@@ -357,6 +359,16 @@ mod tests {
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
 
+        //
+        // Rotating the disabled attribute should only change the msk
+        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
+        // 5 new partitions added to the msk
+        assert_eq!(new_partitions_msk.len() - 10, new_partitions_mpk.len());
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
+
         Ok(())
     }
 
@@ -381,7 +393,7 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        policy.rename_attribute(Attribute::new("Department", "FIN"), "Finance")?;
+        policy.rename_attribute(&Attribute::new("Department", "FIN"), "Finance")?;
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;

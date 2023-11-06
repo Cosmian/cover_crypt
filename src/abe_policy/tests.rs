@@ -88,11 +88,11 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
         );
     }
 
-    policy.clear_old_rotations(&attributes[0])?;
+    policy.clear_old_attribute_values(&attributes[0])?;
     assert_eq!(1, policy.attribute_values(&attributes[0])?.len());
 
     assert!(policy
-        .clear_old_rotations(&Attribute::new("Department", "Missing"))
+        .clear_old_attribute_values(&Attribute::new("Department", "Missing"))
         .is_err());
 
     Ok(())
@@ -103,17 +103,32 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     let mut policy = policy()?;
     assert_eq!(policy.attributes().len(), 7);
 
-    // Rename R&D to Research
-    assert!(policy
-        .rename_attribute(Attribute::new("Department", "R&D"), "Research",)
-        .is_ok());
-
     // Try renaming Research to already used name MKG
     assert!(policy
-        .rename_attribute(Attribute::new("Department", "R&D"), "MKG",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG",)
         .is_err());
-    assert_eq!(policy.attributes().len(), 7);
 
+    // Rename R&D to Research
+    assert!(policy
+        .rename_attribute(&Attribute::new("Department", "R&D"), "Research",)
+        .is_ok());
+
+    // Rename ordered dimension
+    assert!(policy
+        .rename_attribute(&Attribute::new("Security Level", "Protected"), "Open",)
+        .is_ok());
+    let order = policy
+        .dimensions
+        .get("Security Level")
+        .unwrap()
+        .order
+        .clone()
+        .unwrap();
+    assert!(order.len() == 3);
+    assert!(order.contains(&"Open".to_string()));
+    assert!(!order.contains(&"Protected".to_string()));
+
+    assert_eq!(policy.attributes().len(), 7);
     // Add new attribute Sales
     let new_attr = Attribute::new("Department", "Sales");
     assert!(policy
@@ -135,20 +150,20 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Remove research attribute
     let delete_attr = Attribute::new("Department", "Research");
-    assert!(policy.remove_attribute(delete_attr.clone()).is_ok());
+    assert!(policy.remove_attribute(&delete_attr).is_ok());
     assert_eq!(policy.attributes().len(), 7);
 
     // Duplicate remove
-    assert!(policy.remove_attribute(delete_attr).is_err());
+    assert!(policy.remove_attribute(&delete_attr).is_err());
 
     // Missing dimension remove
-    assert!(policy.remove_attribute(missing_dimension).is_err());
+    assert!(policy.remove_attribute(&missing_dimension).is_err());
 
     // Remove all attributes from an dimension
-    policy.remove_attribute(new_attr)?;
-    policy.remove_attribute(Attribute::new("Department", "HR"))?;
-    policy.remove_attribute(Attribute::new("Department", "MKG"))?;
-    policy.remove_attribute(Attribute::new("Department", "FIN"))?;
+    policy.remove_attribute(&new_attr)?;
+    policy.remove_attribute(&Attribute::new("Department", "HR"))?;
+    policy.remove_attribute(&Attribute::new("Department", "MKG"))?;
+    policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
     assert_eq!(policy.dimensions.len(), 1);
 
     // Add new dimension
@@ -164,21 +179,19 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     assert_eq!(policy.dimensions.len(), 2);
 
     // Remove the new dimension
-    policy.remove_dimension("DimensionTest".to_string())?;
+    policy.remove_dimension("DimensionTest")?;
     assert_eq!(policy.dimensions.len(), 1);
 
     // Try removing non existing dimension
-    assert!(policy.remove_dimension("MissingDim".to_string()).is_err());
+    assert!(policy.remove_dimension("MissingDim").is_err());
 
     // Try modifying hierarchical dimension
     assert!(policy
-        .remove_attribute(Attribute::new("Security Level", "Top Secret"))
+        .remove_attribute(&Attribute::new("Security Level", "Top Secret"))
         .is_err());
 
     // Removing a hierarchical dimension is permitted
-    assert!(policy
-        .remove_dimension("Security Level".to_string())
-        .is_ok());
+    assert!(policy.remove_dimension("Security Level").is_ok());
 
     Ok(())
 }

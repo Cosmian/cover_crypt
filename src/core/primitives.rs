@@ -11,6 +11,7 @@ use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
 };
+use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroizing;
 
 use super::{
@@ -34,23 +35,25 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
 }
 
 /// Computes the signature of the given user key.
+/// The order of the sub keys will impact the resulting KMAC.
 fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature> {
-    // Concat user key fields to hash them
-    let usk_length = 2 * R25519PrivateKey::LENGTH + usk.subkeys.len() * R25519PrivateKey::LENGTH;
-    let mut user_key_bytes = Vec::with_capacity(usk_length);
-    user_key_bytes.extend_from_slice(&usk.a.to_bytes());
-    user_key_bytes.extend_from_slice(&usk.b.to_bytes());
+    if let Some(kmac_key) = &msk.kmac_key {
+        let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
+        kmac.update(&usk.b.to_bytes());
 
-    for (sk_i, x_i) in &usk.subkeys {
-        if let Some(sk_i) = sk_i {
-            user_key_bytes.extend_from_slice(sk_i);
+        for (sk_i, x_i) in &usk.subkeys {
+            if let Some(sk_i) = sk_i {
+                kmac.update(sk_i);
+            }
+            kmac.update(&x_i.to_bytes());
         }
-        user_key_bytes.extend_from_slice(&x_i.to_bytes());
-    }
 
-    msk.kmac_key
-        .as_ref()
-        .map(|kmac_key| kmac!(KMAC_LENGTH, kmac_key, &user_key_bytes))
+        let mut res = [0; KMAC_LENGTH];
+        kmac.into_xof().squeeze(&mut res);
+        Some(res)
+    } else {
+        None
+    }
 }
 
 /// Checks that the provided KMAC matches the user secret key rights
@@ -113,7 +116,6 @@ pub fn setup(
             s2,
             subkeys: sub_sk,
             kmac_key,
-            history: None,
         },
         MasterPublicKey {
             g1,
@@ -194,7 +196,9 @@ pub fn encaps(
         // else unknown target partition
         else {
             return Err(Error::KeyError(
-                "Missing public key for this attribute, it appears that you are trying to encrypt for a disabled attribute.".to_string(),
+                "Missing public key for this attribute, it appears that you are trying to encrypt \
+                 for a disabled attribute."
+                    .to_string(),
             ));
         }
     }
@@ -291,20 +295,13 @@ pub fn update(
             let h_i = &h * x_i;
             // Set the correct hybridization property.
             let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
-                let (pk_i, _) = mpk.subkeys.get(partition).ok_or_else(|| {
-                    Error::KeyError(
-                        "Kyber public key cannot be computed from the secret key.".to_string(),
-                    )
-                })?;
-
                 if sk_i.is_some() {
-                    if pk_i.is_some() {
-                        (sk_i.clone(), pk_i.clone())
-                    } else {
-                        return Err(Error::KeyError(
-                            "Kyber public key cannot be computed from the secret key.".to_string(),
-                        ));
-                    }
+                    let pk_i = mpk
+                        .subkeys
+                        .get(partition)
+                        .map(|(pk_i, _)| pk_i)
+                        .unwrap_or(&None);
+                    (sk_i.clone(), pk_i.clone())
                 } else {
                     let (mut sk_i, mut pk_i) = (
                         KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
@@ -316,11 +313,17 @@ pub fn update(
             } else {
                 (None, None)
             };
-            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
+
             if write_status == AttributeStatus::EncryptDecrypt {
                 // Only add non read only partition to the public key
+                if sk_i.is_some() && pk_i.is_none() {
+                    return Err(Error::KeyError(
+                        "Kyber public key cannot be computed from the secret key.".to_string(),
+                    ));
+                }
                 new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
+            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
         } else {
             // Create new entry.
             let x_i = R25519PrivateKey::new(rng);
@@ -336,7 +339,10 @@ pub fn update(
                 (None, None)
             };
             new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
-            new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
+            if write_status == AttributeStatus::EncryptDecrypt {
+                // Only add non read only partition to the public key
+                new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
+            }
         }
     }
 
@@ -366,11 +372,11 @@ pub fn refresh(
     decryption_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
-    usk.subkeys.drain();
+    usk.subkeys.clear();
 
     for partition in decryption_set {
         if let Some(x_i) = msk.subkeys.get(partition) {
-            usk.subkeys.insert(x_i.clone());
+            usk.subkeys.push(x_i.clone());
         }
     }
 
@@ -634,6 +640,40 @@ mod tests {
             .subkeys
             .contains(old_msk.subkeys.get(&partition_3).unwrap()));
         assert!(usk.subkeys.contains(msk.subkeys.get(&partition_4).unwrap()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_user_key_kmac() -> Result<(), Error> {
+        let partition_1 = Partition(b"1".to_vec());
+        let partition_2 = Partition(b"2".to_vec());
+        // partition list
+        let partitions_set = HashMap::from([
+            (
+                partition_1.clone(),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+            ),
+            (
+                partition_2.clone(),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+            ),
+        ]);
+        // secure random number generator
+        let mut rng = CsRng::from_entropy();
+        // setup scheme
+        let (msk, _) = setup(&mut rng, &partitions_set);
+        // create a user key with access to partition 1 and 2
+        let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]));
+
+        assert!(verify_user_key_kmac(&msk, &usk).is_ok());
+        let bytes = usk.serialize()?;
+        let usk_ = UserSecretKey::deserialize(&bytes)?;
+        assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
+
+        usk.subkeys.push((None, R25519PrivateKey::new(&mut rng)));
+        // KMAC verify will fail after modifying the user key
+        assert!(verify_user_key_kmac(&msk, &usk).is_err());
+
         Ok(())
     }
 }

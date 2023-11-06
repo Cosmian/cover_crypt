@@ -21,9 +21,9 @@ impl Partition {
             ));
         }
         // the sort operation allows to get the same `Partition` for :
-        // `Department::HR || Level::Secret`
+        // `Department::HR && Level::Secret`
         // and
-        // `Level::Secret || Department::HR`
+        // `Level::Secret && Department::HR`
         attribute_values.sort_unstable();
         // the actual size in bytes will be at least equal to the length
         let mut ser = Serializer::with_capacity(attribute_values.len());
