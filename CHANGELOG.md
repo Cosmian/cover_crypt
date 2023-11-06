@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [13.0.0] - 2023-11-06
+
+### Bug Fixes
+
+- KMAC compute deterministic & Policy edit edge case (#117)
+
+### Features
+
+- Add KMAC to attest the authenticity of user keys (#114) and make policy editable (#115):
+  * In Covercrypt, we have the following properties:
+
+    the number of attribute values grows with the number of attribute modifications performed: rotations add a new value for an existing attribute while attribute creations add a new attribute with a new value;
+    the number of partitions is equal to the number of combinations of attribute values that can be created by using one value associated to an attribute from each axis;
+    the number of keys in each master key is equal to the number of partitions that can be created using their associated policy.
+
+  * Hence, if a great number of attributes are created or a great number of rotations are performed, the size of both the policy and the master keys will grow drastically.
+
+  * To prevent this, we need to allow dropping attribute values from the policy:
+
+    removing an attribute from a policy axis could prevent the number of attributes from growing too big;
+    retaining only a given number of values per attribute could allow purging the policy from old rotated attribute values.
+
+  * Then a master key update should synchronize the master keys with the updated policy.
+
+  * **Note**: this is not a problem for user secret keys since they generally hold a small subset of the policy rights; they also can be purged from old sub-keys at each refresh by setting the keep_old_rights parameter to false which prevents rotations from rendering them unmanageable.
+
 ## [12.0.3] - 2023-09-18
 
 ### Features
