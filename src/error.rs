@@ -12,9 +12,10 @@ pub enum Error {
     UnsupportedOperator(String),
     CapacityOverflow,
     ExistingPolicy(String),
+    OperationNotPermitted(String),
     InvalidBooleanExpression(String),
     InvalidAttribute(String),
-    AxisNotFound(String),
+    DimensionNotFound(String),
     DeserializationError(serde_json::Error),
     ExistingCombination(String),
     InsufficientAccessPolicy,
@@ -34,7 +35,7 @@ impl Display for Error {
                 write!(f, "invalid boolean expression: {expr_str}")
             }
             Self::InvalidAttribute(attr) => write!(f, "invalid attribute: {attr}"),
-            Self::AxisNotFound(axis_str) => write!(f, "cannot find axis: {axis_str}"),
+            Self::DimensionNotFound(dim_str) => write!(f, "cannot find dimension: {dim_str}"),
             Self::DeserializationError(err) => write!(f, "deserialization error: {err}"),
             Self::ExistingCombination(combination) => {
                 write!(f, "Combination {combination} already exists")
@@ -45,6 +46,7 @@ impl Display for Error {
                  decrypt this input."
             ),
             Self::ConversionFailed(err) => write!(f, "Conversion failed: {err}"),
+            Self::OperationNotPermitted(err) => write!(f, "Operation not permitted: {err}"),
         }
     }
 }

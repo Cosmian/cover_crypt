@@ -1,15 +1,15 @@
 use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis},
+    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
     Covercrypt, EncryptedHeader, Error,
 };
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 // Policy settings
 fn policy() -> Result<Policy, Error> {
     #[cfg(not(feature = "hybridized_bench"))]
     let (security_level, department) = {
         (
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Security Level",
                 vec![
                     ("Protected", EncryptionHint::Classic),
@@ -18,7 +18,7 @@ fn policy() -> Result<Policy, Error> {
                 ],
                 true,
             ),
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Department",
                 vec![
                     ("R&D", EncryptionHint::Classic),
@@ -34,7 +34,7 @@ fn policy() -> Result<Policy, Error> {
     #[cfg(feature = "hybridized_bench")]
     let (security_level, department) = {
         (
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Security Level",
                 vec![
                     ("Protected", EncryptionHint::Hybridized),
@@ -43,7 +43,7 @@ fn policy() -> Result<Policy, Error> {
                 ],
                 true,
             ),
-            PolicyAxis::new(
+            DimensionBuilder::new(
                 "Department",
                 vec![
                     ("R&D", EncryptionHint::Hybridized),
@@ -56,10 +56,52 @@ fn policy() -> Result<Policy, Error> {
             ),
         )
     };
-    let mut policy = Policy::new(100);
-    policy.add_axis(security_level)?;
-    policy.add_axis(department)?;
+    let mut policy = Policy::new();
+    policy.add_dimension(security_level)?;
+    policy.add_dimension(department)?;
     Ok(policy)
+}
+
+fn bench_policy_editing(c: &mut Criterion) {
+    let cover_crypt = Covercrypt::default();
+    let new_dep_attr = Attribute::new("Department", "Tech");
+    let new_dep_name = "IT";
+    let remove_dep_attr = Attribute::new("Department", "FIN");
+    let old_sl_attr = Attribute::new("Security Level", "Protected");
+    let new_sl_name = "Open";
+    let disable_sl_attr = Attribute::new("Security Level", "Confidential");
+
+    let mut group = c.benchmark_group("Edit Policy");
+    //for (n_partition, access_policy) in access_policies.iter().enumerate() {
+    group.bench_function("edit policy", |b| {
+        b.iter_batched(
+            || {
+                let policy = policy().expect("cannot generate policy");
+
+                let (msk, mpk) = cover_crypt
+                    .generate_master_keys(&policy)
+                    .expect("cannot generate master keys");
+                (policy, msk, mpk)
+            },
+            |(mut policy, mut msk, mut mpk)| {
+                policy
+                    .add_attribute(new_dep_attr.clone(), EncryptionHint::Classic)
+                    .unwrap();
+                policy
+                    .rename_attribute(&new_dep_attr, new_dep_name)
+                    .unwrap();
+                policy.remove_attribute(&remove_dep_attr).unwrap();
+
+                policy.rename_attribute(&old_sl_attr, new_sl_name).unwrap();
+                policy.disable_attribute(&disable_sl_attr).unwrap();
+
+                cover_crypt
+                    .update_master_keys(&policy, &mut msk, &mut mpk)
+                    .unwrap();
+            },
+            BatchSize::SmallInput,
+        );
+    });
 }
 
 /// Generate access policies up to 5 partitions along with a user access policy
@@ -197,23 +239,22 @@ fn bench_serialization(c: &mut Criterion) {
         );
     }
 
-    let mut group = c.benchmark_group("Key serialization");
-    group.bench_function("MSK", |b| {
-        b.iter(|| msk.serialize().expect("cannot serialize msk"));
-    });
-    group.bench_function("MPK", |b| {
-        b.iter(|| mpk.serialize().expect("cannot serialize mpk"));
-    });
+    {
+        let mut group = c.benchmark_group("Key serialization");
+        group.bench_function("MSK", |b| {
+            b.iter(|| msk.serialize().expect("cannot serialize msk"));
+        });
+        group.bench_function("MPK", |b| {
+            b.iter(|| mpk.serialize().expect("cannot serialize mpk"));
+        });
 
-    let usk = cover_crypt
-        .generate_user_secret_key(&msk, &user_access_policies[0], &policy)
-        .unwrap();
-    group.bench_function("USK 1 partition", |b| {
-        b.iter(|| usk.serialize().expect("cannot serialize usk"));
-    });
-
-    // removes borrow checker warning about several mutable reference on `c`
-    drop(group);
+        let usk = cover_crypt
+            .generate_user_secret_key(&msk, &user_access_policies[0], &policy)
+            .unwrap();
+        group.bench_function("USK 1 partition", |b| {
+            b.iter(|| usk.serialize().expect("cannot serialize usk"));
+        });
+    }
 
     let mut group = c.benchmark_group("Header serialization");
     for (n_partition, access_policy) in access_policies.iter().enumerate() {
@@ -328,6 +369,7 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
+        bench_policy_editing,
         bench_header_encryption,
         bench_header_decryption
 );
@@ -336,7 +378,7 @@ criterion_group!(
 criterion_group!(
 name = benches_serialization;
 config = Criterion::default().sample_size(5000);
-targets = bench_serialization
+targets = bench_serialization,
 );
 
 #[cfg(feature = "full_bench")]
