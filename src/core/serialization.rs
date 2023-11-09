@@ -162,11 +162,12 @@ impl Serializable for UserSecretKey {
             + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
-        for (sk_i, _) in &self.subkeys {
-            length += 1 + sk_i
-                .as_ref()
-                .map(|_| KYBER_INDCPA_SECRETKEYBYTES)
-                .unwrap_or_default();
+        for (partition, (sk_i, _)) in &self.subkeys {
+            length += (to_leb128_len(partition.len()) + partition.len())
+                + (1 + sk_i
+                    .as_ref()
+                    .map(|_| KYBER_INDCPA_SECRETKEYBYTES)
+                    .unwrap_or_default());
         }
         length
     }
@@ -175,7 +176,8 @@ impl Serializable for UserSecretKey {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (sk_i, x_i) in &self.subkeys {
+        for (partition, (sk_i, x_i)) in &self.subkeys {
+            n += ser.write_vec(partition)?;
             if let Some(sk_i) = sk_i {
                 n += ser.write_leb128_u64(1)?;
                 n += ser.write_array(sk_i)?;
@@ -196,6 +198,7 @@ impl Serializable for UserSecretKey {
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = Vec::with_capacity(n_partitions);
         for _ in 0..n_partitions {
+            let partition = de.read_vec()?;
             let is_hybridized = de.read_leb128_u64()?;
             let sk_i = if is_hybridized == 1 {
                 Some(KyberSecretKey(de.read_array()?))
@@ -203,7 +206,10 @@ impl Serializable for UserSecretKey {
                 None
             };
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
-            subkeys.push((sk_i, R25519PrivateKey::try_from_bytes(x_i)?));
+            subkeys.push((
+                Partition::from(partition),
+                (sk_i, R25519PrivateKey::try_from_bytes(x_i)?),
+            ));
         }
         let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
 

@@ -6,7 +6,7 @@ use crate::Error;
 
 /// Partition associated to a subset. It corresponds to a combination
 /// of attributes across all axes.
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone, Hash)]
 pub struct Partition(pub(crate) Vec<u8>);
 
 impl Partition {

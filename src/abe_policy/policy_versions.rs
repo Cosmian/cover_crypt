@@ -13,13 +13,13 @@ use super::{
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct PolicyV2 {
     /// Version number
-    pub version: PolicyVersion,
+    pub(crate) version: PolicyVersion,
     /// Last value taken by the attribute.
     pub(crate) last_attribute_value: u32,
 
     /// Policy axes: maps axes name to the list of associated attribute names
     /// and a boolean defining whether or not this dim is hierarchical.
-    pub dimensions: HashMap<String, Dimension>,
+    pub(crate) dimensions: HashMap<String, Dimension>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -37,17 +37,17 @@ pub struct OldPolicyAxisParameters {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct PolicyV1 {
     /// Version number
-    pub version: PolicyVersion,
+    version: PolicyVersion,
     /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
+    last_attribute_value: u32,
     /// Maximum attribute value. Defines a maximum number of attribute
     /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
+    max_attribute_creations: u32,
     /// Policy axes: maps axes name to the list of associated attribute names
     /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, OldPolicyAxisParameters>,
+    axes: HashMap<String, OldPolicyAxisParameters>,
     /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, PolicyV1AttributeParameters>,
+    attributes: HashMap<Attribute, PolicyV1AttributeParameters>,
 }
 
 impl From<PolicyV1> for PolicyV2 {
@@ -71,9 +71,10 @@ impl From<PolicyV1> for PolicyV2 {
                             (
                                 attr.name.clone(),
                                 AttributeParameters {
-                                    rotation_values: attr_params.values.clone(),
+                                    //rotation_values: attr_params.values.clone(),
                                     encryption_hint: attr_params.encryption_hint,
                                     write_status: AttributeStatus::EncryptDecrypt,
+                                    ..todo!()
                                 },
                             )
                         })
@@ -92,15 +93,15 @@ impl From<PolicyV1> for PolicyV2 {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct LegacyPolicy {
     /// Last value taken by the attribute.
-    pub(crate) last_attribute_value: u32,
+    last_attribute_value: u32,
     /// Maximum attribute value. Defines a maximum number of attribute
     /// creations (revocations + addition).
-    pub max_attribute_creations: u32,
+    max_attribute_creations: u32,
     /// Policy axes: maps axes name to the list of associated attribute names
     /// and a boolean defining whether or not this axis is hierarchical.
-    pub axes: HashMap<String, OldPolicyAxisParameters>,
+    axes: HashMap<String, OldPolicyAxisParameters>,
     /// Maps an attribute to its values and its hybridization hint.
-    pub attributes: HashMap<Attribute, Vec<u32>>,
+    attributes: HashMap<Attribute, Vec<u32>>,
 }
 
 impl From<LegacyPolicy> for PolicyV2 {
@@ -124,9 +125,9 @@ impl From<LegacyPolicy> for PolicyV2 {
                             (
                                 attr.name.clone(),
                                 AttributeParameters {
-                                    rotation_values: values.clone(),
                                     encryption_hint: EncryptionHint::Classic,
                                     write_status: AttributeStatus::EncryptDecrypt,
+                                    ..todo!()
                                 },
                             )
                         })

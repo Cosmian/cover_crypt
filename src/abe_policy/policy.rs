@@ -179,7 +179,7 @@ impl Policy {
     /// The current value is returned first.
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
         self.get_attribute(attribute)
-            .map(|attr| attr.rotation_values.iter().rev().copied().collect())
+            .map(|attr| attr.all_rotation_values().collect())
     }
 
     /// Returns the hybridization hint of the given attribute.
@@ -341,9 +341,9 @@ fn generate_current_attribute_partitions(
             .or_default();
         let attr_properties = policy.get_attribute(attribute)?;
         if include_old_partitions {
-            for attr_value in &attr_properties.rotation_values {
+            for attr_value in attr_properties.all_rotation_values() {
                 entry.push((
-                    *attr_value,
+                    attr_value,
                     attr_properties.encryption_hint,
                     attr_properties.write_status,
                 ));

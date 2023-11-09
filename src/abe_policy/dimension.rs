@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, vec};
+use std::{collections::HashMap, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -69,18 +69,19 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub rotation_values: Vec<u32>,
-    pub encryption_hint: EncryptionHint,
-    pub write_status: AttributeStatus,
+    pub(crate) current_rotation_value: u32,
+    pub(crate) oldest_rotation_value: u32,
+    pub(crate) encryption_hint: EncryptionHint,
+    pub(crate) write_status: AttributeStatus,
 }
 
 impl AttributeParameters {
     /// Creates a `AttributeParameters` with the provided `encryption_hint`
     /// and increments the `seed_id` to generate unique IDs.
-    pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
-        *seed_id += 1;
+    pub fn new(encryption_hint: EncryptionHint) -> Self {
         Self {
-            rotation_values: vec![*seed_id],
+            current_rotation_value: 1,
+            oldest_rotation_value: 1,
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,
         }
@@ -88,24 +89,33 @@ impl AttributeParameters {
 
     /// Gets the current rotation of the Attribute.
     pub fn get_current_rotation(&self) -> u32 {
-        self.rotation_values
-            .last()
-            .copied()
-            .expect("Attribute should always have at least one value")
+        self.current_rotation_value
+    }
+
+    pub fn rotate_current_value(&mut self) {
+        self.current_rotation_value += 1;
+    }
+
+    pub fn clear_old_rotation_values(&mut self) {
+        self.oldest_rotation_value = self.current_rotation_value
+    }
+
+    pub fn all_rotation_values(&self) -> impl Iterator<Item = u32> {
+        self.oldest_rotation_value..=self.current_rotation_value
     }
 
     /// Flattens the properties of the `AttributeParameters` into a vector of
     /// tuples where each tuple contains a rotation value, the associated
     /// encryption hint, and the `read_only` flag.
     pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
-        self.rotation_values
-            .iter()
-            .map(|&value| (value, self.encryption_hint, self.write_status))
+        (self.oldest_rotation_value..=self.current_rotation_value)
+            .map(|value| (value, self.encryption_hint, self.write_status))
             .collect()
     }
 }
 
 type AttributeName = String;
+type AttributeId = u64;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 /// A dimension is a space that holds attributes. It can be ordered (an
@@ -125,13 +135,13 @@ impl Dimension {
     /// * `seed_id` - A mutable reference to a seed ID used for generating
     ///   unique IDs for attributes.
     pub fn new(dim: &DimensionBuilder, seed_id: &mut u32) -> Self {
-        let attributes_mapping = dim
+        /*let attributes_mapping = dim
             .attributes_properties
             .iter()
             .map(|attr| {
                 (
                     attr.name.clone(),
-                    AttributeParameters::new(attr.encryption_hint, seed_id),
+                    AttributeParameters::new(attr.encryption_hint),
                 )
             })
             .collect();
@@ -150,7 +160,19 @@ impl Dimension {
                 order: None,
                 attributes: attributes_mapping,
             },
+        }*/
+        //*seed_id += 1;
+        //let attr_id = *seed_id;
+        let id_mapping: HashMap<AttributeName, AttributeId> =
+            HashMap::with_capacity(dim.attributes_properties.len());
+
+        let attributes_mapping: HashMap<AttributeId, AttributeParameters> =
+            HashMap::with_capacity(dim.attributes_properties.len());
+
+        for x in dim.attributes_properties.iter() {
+            todo!()
         }
+        todo!()
     }
 
     /// Rotates the attribute with the given name by incrementing its rotation
@@ -171,8 +193,7 @@ impl Dimension {
     ) -> Result<(), Error> {
         match self.attributes.get_mut(attr_name) {
             Some(attr) => {
-                *seed_id += 1;
-                attr.rotation_values.push(*seed_id);
+                attr.rotate_current_value();
                 Ok(())
             }
             None => Err(Error::AttributeNotFound(attr_name.to_string())),
@@ -204,10 +225,8 @@ impl Dimension {
                 "Attribute already in dimension".to_string(),
             ))
         } else {
-            self.attributes.insert(
-                attr_name.clone(),
-                AttributeParameters::new(encryption_hint, seed_id),
-            );
+            self.attributes
+                .insert(attr_name.clone(), AttributeParameters::new(encryption_hint));
             Ok(())
         }
     }
@@ -300,10 +319,7 @@ impl Dimension {
     pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         self.attributes
             .get_mut(attr_name)
-            .map(|attr| {
-                let current_val = attr.get_current_rotation();
-                attr.rotation_values.retain(|val| val == &current_val);
-            })
+            .map(|attr| attr.clear_old_rotation_values())
             .ok_or(Error::AttributeNotFound(attr_name.to_string()))
     }
 
