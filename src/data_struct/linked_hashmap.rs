@@ -1,5 +1,8 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{
+        hash_map::{Entry, OccupiedEntry},
+        HashMap,
+    },
     hash::Hash,
 };
 
@@ -46,17 +49,12 @@ where
     type Item = &'a V;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(key) = self.current_key {
-            match self.lhm.get_link_entry(key) {
-                Some(entry) => {
-                    self.current_key = entry.next_key.as_ref();
-                    Some(entry.get_value())
-                }
-                None => None,
-            }
-        } else {
-            None
-        }
+        self.current_key.and_then(|key| {
+            self.lhm.get_link_entry(key).map(|entry| {
+                self.current_key = entry.next_key.as_ref();
+                entry.get_value()
+            })
+        })
     }
 }
 
@@ -67,7 +65,7 @@ where
     V: Clone,
 {
     map: HashMap<K, LinkedEntry<K, V>>,
-    roots: Vec<K>,
+    //roots: Vec<K>,
 }
 
 impl<K, V> LinkedHashMap<K, V>
@@ -78,15 +76,31 @@ where
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
-            roots: Vec::new(),
+            //roots: Vec::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: HashMap::with_capacity(capacity),
-            roots: Vec::with_capacity(capacity),
+            //roots: Vec::with_capacity(capacity),
         }
+    }
+
+    /// Internal pattern matching
+    fn expected_entry(
+        &'_ mut self,
+        key: K,
+    ) -> Result<OccupiedEntry<'_, K, LinkedEntry<K, V>>, Error> {
+        match self.map.entry(key) {
+            Entry::Occupied(e) => Ok(e),
+            Entry::Vacant(_) => Err(Error::KeyError("Key not found".to_string())),
+        }
+    }
+
+    /// Get internal type
+    fn get_link_entry(&self, key: &K) -> Option<&LinkedEntry<K, V>> {
+        self.map.get(key)
     }
 
     pub fn insert_root(&mut self, key: K, value: V) -> Result<(), Error> {
@@ -94,8 +108,8 @@ where
             Entry::Occupied(_) => Err(Error::KeyError("Key is already used".to_string())),
             Entry::Vacant(entry) => {
                 entry.insert(LinkedEntry::new(value));
-                self.roots.push(key);
-                self.roots.sort(); // allow binary search when removing root
+                //self.roots.push(key);
+                //self.roots.sort(); // allow binary search when removing root
                 Ok(())
             }
         }
@@ -131,10 +145,6 @@ where
         self.map.get(key).map(LinkedEntry::get_value)
     }
 
-    fn get_link_entry(&self, key: &K) -> Option<&LinkedEntry<K, V>> {
-        self.map.get(key)
-    }
-
     pub fn iter_link<'a>(&'a self, key: &'a K) -> impl Iterator<Item = &V> + 'a {
         LinkedHashMapIterator::<'a, K, V> {
             lhm: self,
@@ -147,55 +157,16 @@ where
     }
 
     /// Remove all but the last (key, value) pair from a link
-    pub fn pop_link(&mut self, root_key: K) -> Result<(), Error> {
-        let root_index = self
-            .roots
-            .binary_search(&root_key)
-            .map_err(|_| Error::KeyError("Root key not found".to_string()))?;
+    pub fn pop_chain(&mut self, root_key: K) -> Result<(), Error> {
+        let mut curr_entry = self.expected_entry(root_key)?;
 
-        /*match self.map.entry(root_key) {
-            Entry::Occupied(e) => match &e.get().next_key {
-                Some(next_key) => todo!(),
-                None => (),
-            },
-            Entry::Vacant(_) => (),
-        }*/
-
-        if let Entry::Occupied(root_entry) = self.map.entry(root_key) {
-            let mut curr_entry = root_entry;
-
-            while let Some(next_key) = curr_entry.get_mut().next_key.take() {
-                //self.roots[root_index] =
-                curr_entry.remove_entry();
-                curr_entry = match self.map.entry(next_key) {
-                    Entry::Occupied(e) => e,
-                    Entry::Vacant(_) => {
-                        return Err(Error::KeyError("Key not found".to_string()));
-                    }
-                }
-            }
-        } else {
-            return Err(Error::KeyError("Root key not found".to_string()));
+        // while our current entry has a next key, we remove it from the hashmap
+        while let Some(next_key) = curr_entry.get_mut().next_key.take() {
+            curr_entry.remove_entry();
+            curr_entry = self.expected_entry(next_key)?;
         }
 
-        todo!()
-
-        /*if let Some(root_entry) = self.map.entry(root_key) {
-            /*let mut curr_entry = root_entry;
-            while let Some(next_key) = curr_entry.next_key.as_ref() {
-                match self.get_link_entry(next_key) {
-                    Some(entry) => {
-                        curr_entry = entry;
-                    }
-                    None => return Err(Error::KeyError("Key not found".to_string())),
-                }
-            }
-            // curr_entry is the last entry in the chain
-            self.roots[root_index] = root_key.clone();*/
-            Ok(())
-        } else {
-            Err(Error::KeyError("Root key not found".to_string()))
-        }*/
+        Ok(())
     }
 }
 
@@ -215,10 +186,14 @@ fn test_linked_hashmap() -> Result<(), Error> {
     assert_eq!(lhm.get(&11), Some(&"key11".to_string()));
 
     let res: Vec<_> = lhm.iter().collect();
-    assert_eq!(res.len(), lhm.map.len());
+    assert_eq!(res.len(), 5);
 
     let res: Vec<_> = lhm.iter_link(&1).collect();
     assert_eq!(res, vec!["key1", "key11", "key111"]);
+
+    lhm.pop_chain(1)?;
+    let res: Vec<_> = lhm.iter().collect();
+    assert_eq!(res.len(), 3);
 
     Ok(())
 }
