@@ -46,13 +46,13 @@ where
     V: Clone,
     K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord,
 {
-    type Item = &'a V;
+    type Item = (&'a K, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.current_key.and_then(|key| {
             self.lhm.get_link_entry(key).map(|entry| {
                 self.current_key = entry.next_key.as_ref();
-                entry.get_value()
+                (key, entry.get_value())
             })
         })
     }
@@ -88,10 +88,7 @@ where
     }
 
     /// Internal pattern matching
-    fn expected_entry(
-        &'_ mut self,
-        key: K,
-    ) -> Result<OccupiedEntry<'_, K, LinkedEntry<K, V>>, Error> {
+    fn expected_entry(&mut self, key: K) -> Result<OccupiedEntry<K, LinkedEntry<K, V>>, Error> {
         match self.map.entry(key) {
             Entry::Occupied(e) => Ok(e),
             Entry::Vacant(_) => Err(Error::KeyError("Key not found".to_string())),
@@ -145,7 +142,7 @@ where
         self.map.get(key).map(LinkedEntry::get_value)
     }
 
-    pub fn iter_link<'a>(&'a self, key: &'a K) -> impl Iterator<Item = &V> + 'a {
+    pub fn iter_link<'a>(&'a self, key: &'a K) -> impl Iterator<Item = (&K, &V)> + 'a {
         LinkedHashMapIterator::<'a, K, V> {
             lhm: self,
             current_key: Some(key),
@@ -189,7 +186,14 @@ fn test_linked_hashmap() -> Result<(), Error> {
     assert_eq!(res.len(), 5);
 
     let res: Vec<_> = lhm.iter_link(&1).collect();
-    assert_eq!(res, vec!["key1", "key11", "key111"]);
+    assert_eq!(
+        res,
+        vec![
+            (&1, &"key1".to_string()),
+            (&11, &"key11".to_string()),
+            (&111, &"key111".to_string())
+        ]
+    );
 
     lhm.pop_chain(1)?;
     let res: Vec<_> = lhm.iter().collect();
