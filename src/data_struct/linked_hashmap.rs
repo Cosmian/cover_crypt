@@ -8,20 +8,40 @@ use std::{
 
 use crate::Error;
 
-struct LinkedEntry<K, V>
-where
-    V: Clone,
-{
+/// a `VersionedHashMap` stores a flat list of linked lists.
+/// each map entry contains its value as well as an optional key of the next
+/// entry version in the hash map.
+///
+/// Map {
+///     k1  : VersionedEntry { "data v1", k1' }
+///     k2  : VersionedEntry { "...", None }
+///     k1' : VersionedEntry { "data v2", k1'' }
+///     k3  : VersionedEntry { "value 1", k3' }
+///     k3' : VersionedEntry { "value 2", None }
+///     k1'': VersionedEntry { "data v3", None }
+/// }
+///
+/// The entry versions are stored in chronological order so that from any
+/// given version one can find all the following versions until the current one.
+#[derive(Default)]
+pub struct VersionedHashMap<K, V> {
+    map: HashMap<K, VersionedEntry<K, V>>,
+    //roots: Vec<K>,
+}
+
+/// a `VersionedEntry` stores a value and an optional key of the next entry
+/// version in the hash map.
+struct VersionedEntry<K, V> {
     value: V,
     next_key: Option<K>,
 }
 
-impl<K, V> LinkedEntry<K, V>
+impl<K, V> VersionedEntry<K, V>
 where
     V: Clone,
 {
     pub fn new(value: V) -> Self {
-        LinkedEntry {
+        VersionedEntry {
             value,
             next_key: None,
         }
@@ -32,16 +52,12 @@ where
     }
 }
 
-struct LinkedHashMapIterator<'a, K, V>
-where
-    V: Clone,
-    K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord,
-{
-    lhm: &'a LinkedHashMap<K, V>,
+struct VersionedHashMapIterator<'a, K, V> {
+    lhm: &'a VersionedHashMap<K, V>,
     current_key: Option<&'a K>,
 }
 
-impl<'a, K, V> Iterator for LinkedHashMapIterator<'a, K, V>
+impl<'a, K, V> Iterator for VersionedHashMapIterator<'a, K, V>
 where
     V: Clone,
     K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord,
@@ -58,17 +74,7 @@ where
     }
 }
 
-#[derive(Default)]
-pub struct LinkedHashMap<K, V>
-where
-    K: Hash + PartialEq + Eq + Clone + PartialOrd + Ord,
-    V: Clone,
-{
-    map: HashMap<K, LinkedEntry<K, V>>,
-    //roots: Vec<K>,
-}
-
-impl<K, V> LinkedHashMap<K, V>
+impl<K, V> VersionedHashMap<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + PartialOrd + Ord,
     V: Clone,
@@ -87,8 +93,16 @@ where
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
     /// Internal pattern matching
-    fn expected_entry(&mut self, key: K) -> Result<OccupiedEntry<K, LinkedEntry<K, V>>, Error> {
+    fn expected_entry(&mut self, key: K) -> Result<OccupiedEntry<K, VersionedEntry<K, V>>, Error> {
         match self.map.entry(key) {
             Entry::Occupied(e) => Ok(e),
             Entry::Vacant(_) => Err(Error::KeyError("Key not found".to_string())),
@@ -96,7 +110,7 @@ where
     }
 
     /// Get internal type
-    fn get_link_entry(&self, key: &K) -> Option<&LinkedEntry<K, V>> {
+    fn get_link_entry(&self, key: &K) -> Option<&VersionedEntry<K, V>> {
         self.map.get(key)
     }
 
@@ -104,7 +118,7 @@ where
         match self.map.entry(key.clone()) {
             Entry::Occupied(_) => Err(Error::KeyError("Key is already used".to_string())),
             Entry::Vacant(entry) => {
-                entry.insert(LinkedEntry::new(value));
+                entry.insert(VersionedEntry::new(value));
                 //self.roots.push(key);
                 //self.roots.sort(); // allow binary search when removing root
                 Ok(())
@@ -113,21 +127,22 @@ where
     }
 
     pub fn insert(&mut self, parent_key: &K, key: K, value: V) -> Result<(), Error> {
+        // Get parent element from hashmap and check that it has no child already
         let parent_entry = match self.map.get(parent_key) {
             Some(linked_entry) => Ok(linked_entry),
             None => Err(Error::KeyError("Parent key not found".to_string())),
         }?;
-
         if parent_entry.next_key.is_some() {
             return Err(Error::KeyError(
                 "Parent already contains a next key".to_string(),
             ));
         }
 
+        // Insert new key-value pair in hashmap and set parent child
         match self.map.entry(key.clone()) {
             Entry::Occupied(_) => Err(Error::KeyError("Key is already used".to_string())),
             Entry::Vacant(entry) => {
-                entry.insert(LinkedEntry::new(value));
+                entry.insert(VersionedEntry::new(value));
                 // cannot hold mutable reference from parent_entry
                 self.map
                     .get_mut(parent_key)
@@ -139,21 +154,22 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        self.map.get(key).map(LinkedEntry::get_value)
-    }
-
-    pub fn iter_link<'a>(&'a self, key: &'a K) -> impl Iterator<Item = (&K, &V)> + 'a {
-        LinkedHashMapIterator::<'a, K, V> {
-            lhm: self,
-            current_key: Some(key),
-        }
+        self.map.get(key).map(VersionedEntry::get_value)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.map.iter().map(|(k, entry)| (k, &entry.value))
     }
 
-    /// Remove all but the last (key, value) pair from a link
+    /// Iterates through all values from a link chain.
+    pub fn iter_chain<'a>(&'a self, key: &'a K) -> impl Iterator<Item = (&K, &V)> + 'a {
+        VersionedHashMapIterator::<'a, K, V> {
+            lhm: self,
+            current_key: Some(key),
+        }
+    }
+
+    /// Removes all but the last (key, value) pair from a link chain.
     pub fn pop_chain(&mut self, root_key: K) -> Result<(), Error> {
         let mut curr_entry = self.expected_entry(root_key)?;
 
@@ -169,7 +185,7 @@ where
 
 #[test]
 fn test_linked_hashmap() -> Result<(), Error> {
-    let mut lhm = LinkedHashMap::new();
+    let mut lhm = VersionedHashMap::new();
 
     lhm.insert_root(1, "key1".to_string())?;
     lhm.insert_root(2, "key2".to_string())?;
@@ -185,7 +201,7 @@ fn test_linked_hashmap() -> Result<(), Error> {
     let res: Vec<_> = lhm.iter().collect();
     assert_eq!(res.len(), 5);
 
-    let res: Vec<_> = lhm.iter_link(&1).collect();
+    let res: Vec<_> = lhm.iter_chain(&1).collect();
     assert_eq!(
         res,
         vec![
@@ -196,8 +212,7 @@ fn test_linked_hashmap() -> Result<(), Error> {
     );
 
     lhm.pop_chain(1)?;
-    let res: Vec<_> = lhm.iter().collect();
-    assert_eq!(res.len(), 3);
+    assert_eq!(lhm.len(), 3);
 
     Ok(())
 }
