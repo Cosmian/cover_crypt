@@ -1,6 +1,6 @@
 use std::collections::LinkedList;
 
-use crate::Error;
+use super::error::Error;
 
 /// a `VersionedVec` stores for each entry a linked list of versions.
 /// The entry versions are stored in reverse chronological order:
@@ -37,7 +37,6 @@ impl<T> VersionedVec<T> {
     }
 
     pub fn len(&self) -> usize {
-        //self.data.iter().map(|list| list.len()).sum()
         self.length
     }
 
@@ -45,19 +44,29 @@ impl<T> VersionedVec<T> {
         self.len() == 0
     }
 
+    pub fn push_front(&mut self, chain_index: usize, item: T) -> Result<(), Error> {
+        let chain = self
+            .data
+            .get_mut(chain_index)
+            .ok_or(Error::missing_entry(&chain_index))?;
+
+        self.length += 1;
+        chain.push_front(item);
+        Ok(())
+    }
+
     /// Inserts entry versions in reverse chronological order
     /// The iterator must be in chronological order as the items are inserted
     /// backward.
-    pub fn insert_new_chain(&mut self, iterator: impl Iterator<Item = T>) -> Result<(), Error> {
+    pub fn insert_new_chain(&mut self, iterator: impl Iterator<Item = T>) {
         let mut new_list = LinkedList::new();
         for item in iterator {
             new_list.push_front(item);
         }
-
-        self.length += new_list.len();
-        self.data.push(new_list);
-
-        Ok(())
+        if !new_list.is_empty() {
+            self.length += new_list.len();
+            self.data.push(new_list);
+        }
     }
 
     /// Removes old entry versions.
@@ -74,9 +83,20 @@ impl<T> VersionedVec<T> {
     }*/
 
     /// Removes old entry version.
-    pub fn pop_back(&mut self, chain_index: usize) -> Option<T> {
-        // TODO: update len
-        self.data.get_mut(chain_index)?.pop_back()
+    pub fn pop_back(&mut self, chain_index: usize) -> Result<T, Error> {
+        let chain = self
+            .data
+            .get_mut(chain_index)
+            .ok_or(Error::missing_entry(&chain_index))?;
+
+        let removed_item = chain.pop_back().expect("chains should not be empty");
+        self.length -= 1;
+
+        if chain.is_empty() {
+            self.data.swap_remove(chain_index);
+        }
+
+        Ok(removed_item)
     }
 
     /// Provides reference to the oldest entry version.
@@ -108,23 +128,23 @@ fn test_linked_vec() -> Result<(), Error> {
             (11, "key111".to_string()),
         ]
         .into_iter(),
-    )?;
-    lv.insert_new_chain(vec![(2, "key2".to_string()), (22, "key22".to_string())].into_iter())?;
-    lv.insert_new_chain(vec![(3, "key3".to_string())].into_iter())?;
+    );
+    lv.insert_new_chain(vec![(2, "key2".to_string()), (22, "key22".to_string())].into_iter());
+    lv.insert_new_chain(vec![(3, "key3".to_string())].into_iter());
 
     assert_eq!(lv.data.len(), 3);
     assert_eq!(lv.len(), 6);
 
-    assert!(lv.pop_back(0).is_some());
+    lv.pop_back(0)?;
     assert_eq!(lv.len(), 5);
 
-    assert!(lv.pop_back(1).is_some());
+    lv.pop_back(1)?;
     assert_eq!(lv.len(), 4);
 
-    assert!(lv.pop_back(2).is_some());
+    lv.pop_back(2)?;
     assert_eq!(lv.len(), 3);
     // the chain 3 was completely removed
-    assert!(lv.pop_back(2).is_none());
+    lv.pop_back(2)?;
 
     assert_eq!(lv.iter_chain(0).collect::<Vec<_>>().len(), 2);
 

@@ -3,26 +3,30 @@ use std::{
         hash_map::{Entry, OccupiedEntry},
         HashMap,
     },
+    fmt::Debug,
     hash::Hash,
 };
 
-use crate::Error;
+use super::error::Error;
 
 /// a `VersionedHashMap` stores a flat list of linked lists.
 /// each map entry contains its value as well as an optional key of the next
 /// entry version in the hash map.
 ///
 /// Map {
-///     k1  : VersionedEntry { "data v1", k1' }
-///     k2  : VersionedEntry { "...", None }
-///     k1' : VersionedEntry { "data v2", k1'' }
-///     k3  : VersionedEntry { "value 1", k3' }
-///     k3' : VersionedEntry { "value 2", None }
-///     k1'': VersionedEntry { "data v3", None }
+///     k1  : { "data v1",  k1'  }
+///     k2  : {     "...",  None }
+///     k1' : { "data v2",  k1'' }
+///     k3  : { "value 1",  k3'  }
+///     k3' : { "value 2",  None }
+///     k1'': { "data v3",  None }
 /// }
 ///
 /// The entry versions are stored in chronological order so that from any
 /// given version one can find all the following versions until the current one.
+///
+/// New entry versions can only be added at the back of the chain and removing
+/// starts from the beginning ensuring the order stays consistent.
 #[derive(Default)]
 pub struct VersionedHashMap<K, V> {
     map: HashMap<K, VersionedEntry<K, V>>,
@@ -60,7 +64,7 @@ struct VersionedHashMapIterator<'a, K, V> {
 impl<'a, K, V> Iterator for VersionedHashMapIterator<'a, K, V>
 where
     V: Clone,
-    K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord,
+    K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord + Debug,
 {
     type Item = (&'a K, &'a V);
 
@@ -76,7 +80,7 @@ where
 
 impl<K, V> VersionedHashMap<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + PartialOrd + Ord,
+    K: Hash + PartialEq + Eq + Clone + PartialOrd + Ord + Debug,
     V: Clone,
 {
     pub fn new() -> Self {
@@ -105,7 +109,7 @@ where
     fn expected_entry(&mut self, key: K) -> Result<OccupiedEntry<K, VersionedEntry<K, V>>, Error> {
         match self.map.entry(key) {
             Entry::Occupied(e) => Ok(e),
-            Entry::Vacant(_) => Err(Error::KeyError("Key not found".to_string())),
+            Entry::Vacant(e) => Err(Error::missing_entry(e.key())),
         }
     }
 
@@ -116,7 +120,7 @@ where
 
     pub fn insert_root(&mut self, key: K, value: V) -> Result<(), Error> {
         match self.map.entry(key.clone()) {
-            Entry::Occupied(_) => Err(Error::KeyError("Key is already used".to_string())),
+            Entry::Occupied(_) => Err(Error::existing_entry(&key)),
             Entry::Vacant(entry) => {
                 entry.insert(VersionedEntry::new(value));
                 //self.roots.push(key);
@@ -127,20 +131,18 @@ where
     }
 
     pub fn insert(&mut self, parent_key: &K, key: K, value: V) -> Result<(), Error> {
-        // Get parent element from hashmap and check that it has no child already
+        // Get parent from hashmap and check that it does not already have a child
         let parent_entry = match self.map.get(parent_key) {
             Some(linked_entry) => Ok(linked_entry),
-            None => Err(Error::KeyError("Parent key not found".to_string())),
+            None => Err(Error::missing_entry(parent_key)),
         }?;
         if parent_entry.next_key.is_some() {
-            return Err(Error::KeyError(
-                "Parent already contains a next key".to_string(),
-            ));
+            return Err(Error::already_has_child(parent_key));
         }
 
         // Insert new key-value pair in hashmap and set parent child
         match self.map.entry(key.clone()) {
-            Entry::Occupied(_) => Err(Error::KeyError("Key is already used".to_string())),
+            Entry::Occupied(_) => Err(Error::existing_entry(&key)),
             Entry::Vacant(entry) => {
                 entry.insert(VersionedEntry::new(value));
                 // cannot hold mutable reference from parent_entry

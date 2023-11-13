@@ -100,7 +100,7 @@ impl AttributeParameters {
         self.oldest_rotation_value = self.current_rotation_value
     }
 
-    pub fn all_rotation_values(&self) -> impl Iterator<Item = u32> {
+    pub fn all_rotation_values(&self) -> impl DoubleEndedIterator<Item = u32> {
         self.oldest_rotation_value..=self.current_rotation_value
     }
 

@@ -376,6 +376,7 @@ pub fn refresh(
     decryption_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
+    // TODO: keep track of previous rotation values
     usk.subkeys.clear();
 
     for partition in decryption_set {

@@ -179,7 +179,7 @@ impl Policy {
     /// The current value is returned first.
     pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
         self.get_attribute(attribute)
-            .map(|attr| attr.all_rotation_values().collect())
+            .map(|attr| attr.all_rotation_values().rev().collect())
     }
 
     /// Returns the hybridization hint of the given attribute.
