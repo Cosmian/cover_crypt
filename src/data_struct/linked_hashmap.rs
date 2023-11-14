@@ -13,13 +13,13 @@ use super::error::Error;
 /// each map entry contains its value as well as an optional key of the next
 /// entry version in the hash map.
 ///
-/// Map {
-///     k1  : { "data v1",  k1'  }
-///     k2  : {     "...",  None }
-///     k1' : { "data v2",  k1'' }
-///     k3  : { "value 1",  k3'  }
-///     k3' : { "value 2",  None }
-///     k1'': { "data v3",  None }
+/// Map {       value       prev    next
+///     k1  : { "data v1",  None,   k1'  }
+///     k2  : {     "...",  None,   None }
+///     k1' : { "data v2",  k1,     k1'' }
+///     k3  : { "value 1",  None,   k3'  }
+///     k3' : { "value 2",  k3,     None }
+///     k1'': { "data v3",  k1',    None }
 /// }
 ///
 /// The entry versions are stored in chronological order so that from any
@@ -30,13 +30,13 @@ use super::error::Error;
 #[derive(Default)]
 pub struct VersionedHashMap<K, V> {
     map: HashMap<K, VersionedEntry<K, V>>,
-    //roots: Vec<K>,
 }
 
 /// a `VersionedEntry` stores a value and an optional key of the next entry
 /// version in the hash map.
 struct VersionedEntry<K, V> {
     value: V,
+    prev_key: Option<K>,
     next_key: Option<K>,
 }
 
@@ -44,9 +44,10 @@ impl<K, V> VersionedEntry<K, V>
 where
     V: Clone,
 {
-    pub fn new(value: V) -> Self {
+    pub fn new(value: V, prev_key: Option<K>) -> Self {
         VersionedEntry {
             value,
+            prev_key,
             next_key: None,
         }
     }
@@ -70,7 +71,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.current_key.and_then(|key| {
-            self.lhm.get_link_entry(key).map(|entry| {
+            self.lhm.get_versioned_entry(key).map(|entry| {
                 self.current_key = entry.next_key.as_ref();
                 (key, entry.get_value())
             })
@@ -86,14 +87,12 @@ where
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
-            //roots: Vec::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: HashMap::with_capacity(capacity),
-            //roots: Vec::with_capacity(capacity),
         }
     }
 
@@ -113,8 +112,8 @@ where
         }
     }
 
-    /// Get internal type
-    fn get_link_entry(&self, key: &K) -> Option<&VersionedEntry<K, V>> {
+    /// Get internal entry
+    fn get_versioned_entry(&self, key: &K) -> Option<&VersionedEntry<K, V>> {
         self.map.get(key)
     }
 
@@ -122,7 +121,7 @@ where
         match self.map.entry(key.clone()) {
             Entry::Occupied(_) => Err(Error::existing_entry(&key)),
             Entry::Vacant(entry) => {
-                entry.insert(VersionedEntry::new(value));
+                entry.insert(VersionedEntry::new(value, None));
                 //self.roots.push(key);
                 //self.roots.sort(); // allow binary search when removing root
                 Ok(())
@@ -144,7 +143,7 @@ where
         match self.map.entry(key.clone()) {
             Entry::Occupied(_) => Err(Error::existing_entry(&key)),
             Entry::Vacant(entry) => {
-                entry.insert(VersionedEntry::new(value));
+                entry.insert(VersionedEntry::new(value, Some(parent_key.clone())));
                 // cannot hold mutable reference from parent_entry
                 self.map
                     .get_mut(parent_key)
@@ -171,18 +170,34 @@ where
         }
     }
 
-    /// Removes all but the last (key, value) pair from a link chain.
-    pub fn pop_chain(&mut self, root_key: K) -> Result<(), Error> {
-        let mut curr_entry = self.expected_entry(root_key)?;
+    /// Removes all parents of the given entry version, making it the oldest
+    /// stored version.
+    pub fn set_chain_parent(&mut self, key: K) -> Result<(), Error> {
+        // Get and remove prev_key from the given entry
+        let mut prev_key = self.expected_entry(key)?.get_mut().prev_key.take();
 
-        // while our current entry has a next key, we remove it from the hashmap
-        while let Some(next_key) = curr_entry.get_mut().next_key.take() {
+        // Go through all previous entries and remove them
+        while let Some(key) = prev_key.take() {
+            let mut curr_entry = self.expected_entry(key)?;
+            prev_key = curr_entry.get_mut().prev_key.take();
             curr_entry.remove_entry();
-            curr_entry = self.expected_entry(next_key)?;
         }
 
         Ok(())
     }
+
+    // Removes all but the last (key, value) pair from a link chain.
+    // pub fn pop_chain(&mut self, root_key: K) -> Result<(), Error> {
+    //      let mut curr_entry = self.expected_entry(root_key)?;
+    //
+    //      while our current entry has a next key, we remove it from the hashmap
+    //      while let Some(next_key) = curr_entry.get_mut().next_key.take() {
+    //          curr_entry.remove_entry();
+    //          curr_entry = self.expected_entry(next_key)?;
+    //      }
+    //
+    //      Ok(())
+    //  }
 }
 
 #[test]
@@ -213,7 +228,7 @@ fn test_linked_hashmap() -> Result<(), Error> {
         ]
     );
 
-    lhm.pop_chain(1)?;
+    lhm.set_chain_parent(111)?;
     assert_eq!(lhm.len(), 3);
 
     Ok(())
