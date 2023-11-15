@@ -131,9 +131,22 @@ where
         self.entries.data.iter().filter_map(|entry| entry.as_ref())
     }
 
-    /// Returns an iterator over keys in arbitrary order
-    pub fn keys(&self) -> impl Iterator<Item = &K> {
-        self.indices.keys()
+    /// Returns an iterator over keys and values in insertion order.
+    /// This function allocates a temporary vector to sort the keys.
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        let mut tmp_vec: Vec<_> = self.indices.iter().collect();
+        // Key's indexes correspond to insertion order,
+        // no two key can map to the same index.
+        tmp_vec.sort_unstable_by_key(|(_, index)| *index);
+
+        tmp_vec.into_iter().map(|(key, index)| {
+            (
+                key,
+                self.entries.data[*index]
+                    .as_ref()
+                    .expect("A dictionary key entry must have a corresponding value"),
+            )
+        })
     }
 }
 
@@ -142,24 +155,50 @@ fn test_dict() -> Result<(), Error> {
     let mut d: Dict<String, String> = Dict::new();
     assert!(d.is_empty());
 
+    // Insertions
     d.insert(String::from("ID1"), String::from("Foo"));
     d.insert(String::from("ID2"), String::from("Bar"));
     d.insert(String::from("ID3"), String::from("Baz"));
     assert_eq!(d.len(), 3);
 
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Bar", "Baz"]);
-
+    // Get
     assert_eq!(
         d.get_key_value(&String::from("ID2")).unwrap(),
         (&String::from("ID2"), &String::from("Bar"))
     );
 
+    // Edit
     d.update_key(&String::from("ID2"), String::from("ID2_bis"))?;
     assert!(d.get_key_value(&String::from("ID2")).is_none());
     assert_eq!(
         d.get_key_value(&String::from("ID2_bis")).unwrap(),
         (&String::from("ID2_bis"), &String::from("Bar"))
     );
+
+    // Iterators
+    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Bar", "Baz"]);
+
+    assert_eq!(
+        d.iter().collect::<Vec<_>>(),
+        vec![
+            (&String::from("ID1"), &String::from("Foo")),
+            (&String::from("ID2_bis"), &String::from("Bar")),
+            (&String::from("ID3"), &String::from("Baz")),
+        ]
+    );
+
+    // Remove
+    assert!(d.remove(&String::from("Missing")).is_none());
+    assert_eq!(d.remove(&String::from("ID2_bis")), Some("Bar".to_string()));
+    assert_eq!(d.len(), 2);
+
+    // Check order is maintained
+    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Baz"]);
+
+    // Insertion in free index
+    assert_eq!(d.entries.free_indices.len(), 1);
+    d.insert(String::from("ID4"), String::from("Test"));
+    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Baz", "Test"]);
 
     Ok(())
 }
