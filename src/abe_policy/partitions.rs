@@ -5,7 +5,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializer;
 use crate::Error;
 
 /// Partition associated to a subset. It corresponds to a combination
-/// of attributes across all axes.
+/// of attributes across all dimensions.
 #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone, Hash)]
 pub struct Partition(pub(crate) Vec<u8>);
 

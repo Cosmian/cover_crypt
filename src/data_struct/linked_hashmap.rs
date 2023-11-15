@@ -9,9 +9,9 @@ use std::{
 
 use super::error::Error;
 
-/// a `VersionedHashMap` stores a flat list of linked lists.
-/// each map entry contains its value as well as an optional key of the next
-/// entry version in the hash map.
+/// a `VersionedHashMap` stores flat linked lists where each element can be
+/// accessed in constant time. Each map entry contains the element value as well
+/// as optional keys of the next and prev element version in the hash map.
 ///
 /// Map {       value       prev    next
 ///     k1  : { "data v1",  None,   k1'  }
@@ -22,11 +22,9 @@ use super::error::Error;
 ///     k1'': { "data v3",  k1',    None }
 /// }
 ///
-/// The entry versions are stored in chronological order so that from any
-/// given version one can find all the following versions until the current one.
-///
-/// New entry versions can only be added at the back of the chain and removing
-/// starts from the beginning ensuring the order stays consistent.
+/// The element versions are stored in chronological order.
+/// New element versions can only be added at the back of the chain and removing
+/// one element of a linked list will remove all previous versions as well.
 #[derive(Default)]
 pub struct VersionedHashMap<K, V> {
     map: HashMap<K, VersionedEntry<K, V>>,

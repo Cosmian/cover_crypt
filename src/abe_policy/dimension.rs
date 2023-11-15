@@ -115,7 +115,6 @@ impl AttributeParameters {
 }
 
 type AttributeName = String;
-type AttributeId = u64;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 /// A dimension is a space that holds attributes. It can be ordered (an
@@ -163,11 +162,11 @@ impl Dimension {
         }*/
         //*seed_id += 1;
         //let attr_id = *seed_id;
-        let id_mapping: HashMap<AttributeName, AttributeId> =
+        /*let id_mapping: HashMap<AttributeName, AttributeId> =
             HashMap::with_capacity(dim.attributes_properties.len());
 
         let attributes_mapping: HashMap<AttributeId, AttributeParameters> =
-            HashMap::with_capacity(dim.attributes_properties.len());
+            HashMap::with_capacity(dim.attributes_properties.len());*/
 
         for x in dim.attributes_properties.iter() {
             todo!()
