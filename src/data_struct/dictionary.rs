@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap, LinkedList},
+    collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     hash::Hash,
     usize,
@@ -8,19 +8,13 @@ use std::{
 use super::error::Error;
 
 type Index = usize;
-/// Custom implementation based on Python dictionary.
-/// Hashmap keeping insertion order.
-/// This implementation does not store a duplicate of the key in the entries.
+/// HashMap keeping insertion order inspired by Python dictionary.
+/// Contrary to the Python one, this implementation does not store a duplicate
+/// of the key in the entries.
 #[derive(Default)]
 pub struct Dict<K, V> {
     indices: HashMap<K, Index>,
-    entries: InnerVec<V>,
-}
-
-#[derive(Default)]
-struct InnerVec<V> {
-    data: Vec<Option<V>>,
-    free_indices: LinkedList<Index>,
+    entries: Vec<V>,
 }
 
 impl<K, V> Dict<K, V>
@@ -30,20 +24,14 @@ where
     pub fn new() -> Self {
         Self {
             indices: HashMap::new(),
-            entries: InnerVec {
-                data: Vec::new(),
-                free_indices: LinkedList::new(),
-            },
+            entries: Vec::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             indices: HashMap::with_capacity(capacity),
-            entries: InnerVec {
-                data: Vec::with_capacity(capacity),
-                free_indices: LinkedList::new(),
-            },
+            entries: Vec::with_capacity(capacity),
         }
     }
 
@@ -55,45 +43,43 @@ where
         self.len() == 0
     }
 
-    /// Private function to insert a new entry in the vector unfilled positions
-    /// or at the end if full.
-    fn insert_entry(entries: &mut InnerVec<V>, value: V) -> Index {
-        if let Some(free_index) = entries.free_indices.pop_front() {
-            debug_assert!(entries.data[free_index].is_none());
-            let _ = std::mem::replace(&mut entries.data[free_index], Some(value));
-            free_index
-        } else {
-            let new_index = entries.data.len();
-            entries.data.push(Some(value));
-            new_index
-        }
-    }
-
+    /// Inserts a new entry with a given key.
+    /// If a given key already exists, the entry will be overwritten without
+    /// changing the order.
+    /// Otherwise, new entries are simply pushed at the end.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         match self.indices.entry(key) {
             Entry::Occupied(e) => {
                 // replace existing entry in vector
-                std::mem::replace(&mut self.entries.data[*e.get()], Some(value))
+                Some(std::mem::replace(&mut self.entries[*e.get()], value))
             }
             Entry::Vacant(e) => {
-                e.insert(Self::insert_entry(&mut self.entries, value));
+                let new_index = self.entries.len();
+                self.entries.push(value);
+                e.insert(new_index);
                 None
             }
         }
     }
 
+    /// Removes the entry corresponding to the given key.
+    /// To maintain order, all inserted entries after the removed one will be
+    /// shifted by one and the indices map will be updated accordingly.
+    /// Compared to a regular HashMap, this operation is O(n).
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let entry_index = self.indices.remove(key)?;
 
-        // add free index to our pool
-        self.entries.free_indices.push_back(entry_index);
+        // shift indices over entry_index by one
+        self.indices
+            .iter_mut()
+            .filter(|(_, index)| **index > entry_index)
+            .for_each(|(_, index)| *index -= 1);
 
         // replace vec entry with None
-        self.entries.data.get_mut(entry_index)?.take()
+        Some(self.entries.remove(entry_index))
     }
 
-    /// Updates the key for a given entry while retaining the given entry order
-    /// in the Vec.
+    /// Updates the key for a given entry while retaining the current order.
     pub fn update_key(&mut self, old_key: &K, new_key: K) -> Result<(), Error> {
         let index_entry = self
             .indices
@@ -111,42 +97,35 @@ where
 
     pub fn get(&self, key: &K) -> Option<&V> {
         let entry_index = self.indices.get(key)?;
-        self.entries.data.get(*entry_index)?.as_ref()
+        self.entries.get(*entry_index)
     }
 
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         let entry_index = self.indices.get(key)?;
-        self.entries.data.get_mut(*entry_index)?.as_mut()
+        self.entries.get_mut(*entry_index)
     }
 
     pub fn get_key_value(&self, key: &K) -> Option<(&K, &V)> {
         let (key, entry_index) = self.indices.get_key_value(key)?;
-        let value = self.entries.data.get(*entry_index)?.as_ref()?;
+        let value = self.entries.get(*entry_index)?;
         Some((key, value))
     }
 
     /// Returns an iterator over values in insertion order
     pub fn values(&self) -> impl Iterator<Item = &V> {
-        // Skip unfilled vector entry
-        self.entries.data.iter().filter_map(|entry| entry.as_ref())
+        self.entries.iter()
     }
 
     /// Returns an iterator over keys and values in insertion order.
     /// This function allocates a temporary vector to sort the keys.
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         let mut tmp_vec: Vec<_> = self.indices.iter().collect();
-        // Key's indexes correspond to insertion order,
-        // no two key can map to the same index.
+        // Key's indexes correspond to insertion order.
         tmp_vec.sort_unstable_by_key(|(_, index)| *index);
 
-        tmp_vec.into_iter().map(|(key, index)| {
-            (
-                key,
-                self.entries.data[*index]
-                    .as_ref()
-                    .expect("A dictionary key entry must have a corresponding value"),
-            )
-        })
+        tmp_vec
+            .into_iter()
+            .map(|(key, index)| (key, &self.entries[*index]))
     }
 }
 
@@ -168,6 +147,10 @@ fn test_dict() -> Result<(), Error> {
     );
 
     // Edit
+    // Overwrite value without changing order
+    d.insert("ID1".to_string(), "Foox".to_string());
+
+    // Update key without changing order
     d.update_key(&String::from("ID2"), String::from("ID2_bis"))?;
     assert!(d.get_key_value(&String::from("ID2")).is_none());
     assert_eq!(
@@ -176,12 +159,12 @@ fn test_dict() -> Result<(), Error> {
     );
 
     // Iterators
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Bar", "Baz"]);
+    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Bar", "Baz"]);
 
     assert_eq!(
         d.iter().collect::<Vec<_>>(),
         vec![
-            (&String::from("ID1"), &String::from("Foo")),
+            (&String::from("ID1"), &String::from("Foox")),
             (&String::from("ID2_bis"), &String::from("Bar")),
             (&String::from("ID3"), &String::from("Baz")),
         ]
@@ -193,12 +176,11 @@ fn test_dict() -> Result<(), Error> {
     assert_eq!(d.len(), 2);
 
     // Check order is maintained
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Baz"]);
+    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Baz"]);
 
-    // Insertion in free index
-    assert_eq!(d.entries.free_indices.len(), 1);
+    // Insertion after remove
     d.insert(String::from("ID4"), String::from("Test"));
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foo", "Baz", "Test"]);
+    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Baz", "Test"]);
 
     Ok(())
 }
