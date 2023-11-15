@@ -1,9 +1,12 @@
 use std::{
+    borrow::Borrow,
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     hash::Hash,
     usize,
 };
+
+use serde::{Deserialize, Serialize};
 
 use super::error::Error;
 
@@ -11,8 +14,11 @@ type Index = usize;
 /// HashMap keeping insertion order inspired by Python dictionary.
 /// Contrary to the Python one, this implementation does not store a duplicate
 /// of the key in the entries.
-#[derive(Default)]
-pub struct Dict<K, V> {
+#[derive(Default, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Dict<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+{
     indices: HashMap<K, Index>,
     entries: Vec<V>,
 }
@@ -75,7 +81,6 @@ where
             .filter(|(_, index)| **index > entry_index)
             .for_each(|(_, index)| *index -= 1);
 
-        // replace vec entry with None
         Some(self.entries.remove(entry_index))
     }
 
@@ -93,6 +98,14 @@ where
                 Ok(())
             }
         }
+    }
+
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.indices.contains_key(key)
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
@@ -116,6 +129,15 @@ where
         self.entries.iter()
     }
 
+    /// Returns an iterator over keys in insertion order.
+    /// This function allocates a temporary vector to sort the keys.
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        let mut tmp_vec: Vec<_> = self.indices.iter().collect();
+        // Key's indexes correspond to insertion order.
+        tmp_vec.sort_unstable_by_key(|(_, index)| *index);
+        tmp_vec.into_iter().map(|(key, _)| key)
+    }
+
     /// Returns an iterator over keys and values in insertion order.
     /// This function allocates a temporary vector to sort the keys.
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
@@ -126,6 +148,19 @@ where
         tmp_vec
             .into_iter()
             .map(|(key, index)| (key, &self.entries[*index]))
+    }
+}
+
+impl<K, V> FromIterator<(K, V)> for Dict<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let mut dict = Dict::new();
+        for (key, value) in iter {
+            dict.insert(key, value);
+        }
+        dict
     }
 }
 

@@ -6,7 +6,7 @@ use super::{
     attribute::{AttributeBuilder, EncryptionHint},
     AttributeStatus,
 };
-use crate::Error;
+use crate::{data_struct::dictionary::Dict, Error};
 
 ///
 /// Creates a dimension by its name and its underlying attribute properties.
@@ -121,7 +121,7 @@ type AttributeName = String;
 /// dimension) or unordered (a set).
 pub struct Dimension {
     pub order: Option<Vec<AttributeName>>,
-    pub attributes: HashMap<AttributeName, AttributeParameters>,
+    pub attributes: Dict<AttributeName, AttributeParameters>,
 }
 
 impl Dimension {
