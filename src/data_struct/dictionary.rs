@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, LinkedList},
+    collections::{hash_map::Entry, HashMap, LinkedList},
     fmt::Debug,
     hash::Hash,
     usize,
@@ -14,7 +14,12 @@ type Index = usize;
 #[derive(Default)]
 pub struct Dict<K, V> {
     indices: HashMap<K, Index>,
-    entries: Vec<Option<V>>,
+    entries: InnerVec<V>,
+}
+
+#[derive(Default)]
+struct InnerVec<V> {
+    data: Vec<Option<V>>,
     free_indices: LinkedList<Index>,
 }
 
@@ -25,16 +30,20 @@ where
     pub fn new() -> Self {
         Self {
             indices: HashMap::new(),
-            entries: Vec::new(),
-            free_indices: LinkedList::new(),
+            entries: InnerVec {
+                data: Vec::new(),
+                free_indices: LinkedList::new(),
+            },
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             indices: HashMap::with_capacity(capacity),
-            entries: Vec::with_capacity(capacity),
-            free_indices: LinkedList::new(),
+            entries: InnerVec {
+                data: Vec::with_capacity(capacity),
+                free_indices: LinkedList::new(),
+            },
         }
     }
 
@@ -48,18 +57,14 @@ where
 
     /// Private function to insert a new entry in the vector unfilled positions
     /// or at the end if full.
-    fn insert_entry(
-        entries: &mut Vec<Option<V>>,
-        free_indices: &mut LinkedList<Index>,
-        value: V,
-    ) -> Index {
-        if let Some(free_index) = free_indices.pop_front() {
-            debug_assert!(entries[free_index].is_none());
-            let _ = std::mem::replace(&mut entries[free_index], Some(value));
+    fn insert_entry(entries: &mut InnerVec<V>, value: V) -> Index {
+        if let Some(free_index) = entries.free_indices.pop_front() {
+            debug_assert!(entries.data[free_index].is_none());
+            let _ = std::mem::replace(&mut entries.data[free_index], Some(value));
             free_index
         } else {
-            let new_index = entries.len();
-            entries.push(Some(value));
+            let new_index = entries.data.len();
+            entries.data.push(Some(value));
             new_index
         }
     }
@@ -68,14 +73,10 @@ where
         match self.indices.entry(key) {
             Entry::Occupied(e) => {
                 // replace existing entry in vector
-                std::mem::replace(&mut self.entries[*e.get()], Some(value))
+                std::mem::replace(&mut self.entries.data[*e.get()], Some(value))
             }
             Entry::Vacant(e) => {
-                e.insert(Self::insert_entry(
-                    &mut self.entries,
-                    &mut self.free_indices,
-                    value,
-                ));
+                e.insert(Self::insert_entry(&mut self.entries, value));
                 None
             }
         }
@@ -85,10 +86,10 @@ where
         let entry_index = self.indices.remove(key)?;
 
         // add free index to our pool
-        self.free_indices.push_back(entry_index);
+        self.entries.free_indices.push_back(entry_index);
 
         // replace vec entry with None
-        self.entries.get_mut(entry_index)?.take()
+        self.entries.data.get_mut(entry_index)?.take()
     }
 
     /// Updates the key for a given entry while retaining the given entry order
@@ -110,24 +111,24 @@ where
 
     pub fn get(&self, key: &K) -> Option<&V> {
         let entry_index = self.indices.get(key)?;
-        self.entries.get(*entry_index)?.as_ref()
+        self.entries.data.get(*entry_index)?.as_ref()
     }
 
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         let entry_index = self.indices.get(key)?;
-        self.entries.get_mut(*entry_index)?.as_mut()
+        self.entries.data.get_mut(*entry_index)?.as_mut()
     }
 
     pub fn get_key_value(&self, key: &K) -> Option<(&K, &V)> {
         let (key, entry_index) = self.indices.get_key_value(key)?;
-        let value = self.entries.get(*entry_index)?.as_ref()?;
+        let value = self.entries.data.get(*entry_index)?.as_ref()?;
         Some((key, value))
     }
 
     /// Returns an iterator over values in insertion order
     pub fn values(&self) -> impl Iterator<Item = &V> {
         // Skip unfilled vector entry
-        self.entries.iter().filter_map(|entry| entry.as_ref())
+        self.entries.data.iter().filter_map(|entry| entry.as_ref())
     }
 
     /// Returns an iterator over keys in arbitrary order
