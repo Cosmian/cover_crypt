@@ -156,8 +156,9 @@ where
     K: Hash + PartialEq + Eq + Clone + Debug,
 {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
-        let mut dict = Dict::new();
-        for (key, value) in iter {
+        let iterator = iter.into_iter();
+        let mut dict = Dict::with_capacity(iterator.size_hint().0);
+        for (key, value) in iterator {
             dict.insert(key, value);
         }
         dict
