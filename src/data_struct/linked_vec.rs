@@ -118,10 +118,12 @@ impl<T> VersionedVec<T> {
 
 #[test]
 fn test_linked_vec() -> Result<(), Error> {
-    let mut lv: VersionedVec<(u32, String)> = VersionedVec::new();
-    assert_eq!(lv.len(), 0);
+    let mut versioned_vec: VersionedVec<(u32, String)> = VersionedVec::new();
+    assert!(versioned_vec.is_empty());
 
-    lv.insert_new_chain(
+    // Inserting new chains
+    let first_chain_index = 0;
+    versioned_vec.insert_new_chain(
         vec![
             (1, "key1".to_string()),
             (11, "key11".to_string()),
@@ -129,24 +131,54 @@ fn test_linked_vec() -> Result<(), Error> {
         ]
         .into_iter(),
     );
-    lv.insert_new_chain(vec![(2, "key2".to_string()), (22, "key22".to_string())].into_iter());
-    lv.insert_new_chain(vec![(3, "key3".to_string())].into_iter());
+    let second_chain_index = 1;
+    versioned_vec
+        .insert_new_chain(vec![(2, "key2".to_string()), (22, "key22".to_string())].into_iter());
+    let third_chain_index = 2;
+    versioned_vec.insert_new_chain(vec![(3, "key3".to_string())].into_iter());
 
-    assert_eq!(lv.data.len(), 3);
-    assert_eq!(lv.len(), 6);
+    assert_eq!(versioned_vec.data.len(), 3);
+    assert_eq!(versioned_vec.len(), 6);
 
-    lv.pop_back(0)?;
-    assert_eq!(lv.len(), 5);
+    // Get front
+    assert_eq!(
+        versioned_vec.front(second_chain_index),
+        Some(&(22, "key22".to_string()))
+    );
 
-    lv.pop_back(1)?;
-    assert_eq!(lv.len(), 4);
+    // Push back
+    let new_entry_version = (222, "key222".to_string());
+    versioned_vec.push_front(second_chain_index, new_entry_version.clone())?;
 
-    lv.pop_back(2)?;
-    assert_eq!(lv.len(), 3);
+    assert_eq!(
+        versioned_vec.front(second_chain_index),
+        Some(&new_entry_version)
+    );
+
+    // Remove elements
+    versioned_vec.pop_back(first_chain_index)?;
+    assert_eq!(versioned_vec.len(), 6);
+
+    versioned_vec.pop_back(second_chain_index)?;
+    assert_eq!(versioned_vec.len(), 5);
+    // Front element should be the same
+    assert_eq!(
+        versioned_vec.front(second_chain_index),
+        Some(&new_entry_version)
+    );
+
+    versioned_vec.pop_back(third_chain_index)?;
+    assert_eq!(versioned_vec.len(), 4);
     // the chain 3 was completely removed
-    lv.pop_back(2)?;
+    assert!(versioned_vec.pop_back(third_chain_index).is_err());
 
-    assert_eq!(lv.iter_chain(0).collect::<Vec<_>>().len(), 2);
+    assert_eq!(
+        versioned_vec
+            .iter_chain(first_chain_index)
+            .collect::<Vec<_>>()
+            .len(),
+        2
+    );
 
     Ok(())
 }
