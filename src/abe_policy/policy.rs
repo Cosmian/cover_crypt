@@ -103,7 +103,7 @@ impl Policy {
     /// once the keys are updated.
     pub fn remove_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            if dim.attributes.len() == 1 {
+            if dim.nb_attributes() == 1 {
                 self.remove_dimension(&attr.dimension)
             } else {
                 dim.remove_attribute(&attr.name)
@@ -156,8 +156,7 @@ impl Policy {
         self.dimensions
             .iter()
             .flat_map(|(dim_name, dim)| {
-                dim.attributes
-                    .keys()
+                dim.get_attributes_name()
                     .map(|attr_name| Attribute::new(dim_name, attr_name))
             })
             .collect::<Vec<_>>()
@@ -167,8 +166,7 @@ impl Policy {
     /// Fails if there is no such attribute.
     fn get_attribute(&self, attr: &Attribute) -> Result<&AttributeParameters, Error> {
         if let Some(dim) = self.dimensions.get(&attr.dimension) {
-            dim.attributes
-                .get(&attr.name)
+            dim.get_attribute(&attr.name)
                 .ok_or(Error::AttributeNotFound(attr.to_string()))
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
@@ -254,8 +252,7 @@ impl Policy {
         for (dim_name, dim) in &self.dimensions {
             attr_values_per_dim.insert(
                 dim_name.clone(),
-                dim.attributes
-                    .values()
+                dim.attributes_properties()
                     .flat_map(|attr| attr.flatten_properties())
                     .collect(),
             );
@@ -363,8 +360,7 @@ fn generate_current_attribute_partitions(
         if !current_attr_value_per_dim.contains_key(dim) {
             // gather all the latest value for that dim
             let values = dim_properties
-                .attributes
-                .values()
+                .attributes_properties()
                 .map(|attr| {
                     (
                         attr.get_current_rotation(),
@@ -403,7 +399,7 @@ mod tests {
         let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
         for dim in axes {
             let mut dim_attributes: Vec<(Attribute, u32)> = vec![];
-            for name in policy.dimensions[dim].attributes.keys() {
+            for name in policy.dimensions[dim].get_attributes_name() {
                 let attribute = Attribute::new(dim, name);
                 let value = policy.attribute_current_value(&attribute)?;
                 dim_attributes.push((attribute, value));
@@ -518,7 +514,7 @@ mod tests {
         // all attributes of the Security Level dim
         let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
         let dim_properties = policy.dimensions.get("Security Level").unwrap();
-        for attr_name in dim_properties.attributes.keys() {
+        for attr_name in dim_properties.get_attributes_name() {
             let attr_value =
                 policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
             let mut partition = vec![hr_value, attr_value];

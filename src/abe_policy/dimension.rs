@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -125,9 +125,9 @@ type AttributeName = String;
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 /// A dimension is a space that holds attributes. It can be ordered (an
 /// dimension) or unordered (a set).
-pub struct Dimension {
-    pub order: Option<Vec<AttributeName>>,
-    pub attributes: Dict<AttributeName, AttributeParameters>,
+pub enum Dimension {
+    Unordered(HashMap<AttributeName, AttributeParameters>),
+    Ordered(Dict<AttributeName, AttributeParameters>),
 }
 
 impl Dimension {
@@ -140,31 +140,47 @@ impl Dimension {
     /// * `seed_id` - A mutable reference to a seed ID used for generating
     ///   unique values for attributes.
     pub fn new(dim: &DimensionBuilder, seed_id: &mut u32) -> Self {
-        let attributes_mapping = dim
-            .attributes_properties
-            .iter()
-            .map(|attr| {
-                (
-                    attr.name.clone(),
-                    AttributeParameters::new(attr.encryption_hint, seed_id),
-                )
-            })
-            .collect();
+        let attributes_mapping = dim.attributes_properties.iter().map(|attr| {
+            (
+                attr.name.clone(),
+                AttributeParameters::new(attr.encryption_hint, seed_id),
+            )
+        });
 
         match dim.hierarchical {
-            true => Self {
-                order: Some(
-                    dim.attributes_properties
-                        .iter()
-                        .map(|attr| attr.name.clone())
-                        .collect(),
-                ),
-                attributes: attributes_mapping,
-            },
-            false => Self {
-                order: None,
-                attributes: attributes_mapping,
-            },
+            true => Self::Ordered(attributes_mapping.collect()),
+            false => Self::Unordered(attributes_mapping.collect()),
+        }
+    }
+
+    pub fn nb_attributes(&self) -> usize {
+        match self {
+            Dimension::Unordered(attributes) => attributes.len(),
+            Dimension::Ordered(attributes) => attributes.len(),
+        }
+    }
+
+    pub fn is_ordered(&self) -> bool {
+        match self {
+            Dimension::Unordered(_) => false,
+            Dimension::Ordered(_) => true,
+        }
+    }
+
+    /// Returns an iterator over the attributes name.
+    /// If the dimension is ordered, the names are returned in this order,
+    /// otherwise they are returned in arbitrary order.
+    pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
+        match self {
+            Dimension::Unordered(attributes) => Box::new(attributes.keys()),
+            Dimension::Ordered(attributes) => Box::new(attributes.keys()),
+        }
+    }
+
+    pub fn get_attribute(&self, attr_name: &AttributeName) -> Option<&AttributeParameters> {
+        match self {
+            Dimension::Unordered(attributes) => attributes.get(attr_name),
+            Dimension::Ordered(attributes) => attributes.get(attr_name),
         }
     }
 
@@ -184,12 +200,21 @@ impl Dimension {
         attr_name: &AttributeName,
         seed_id: &mut u32,
     ) -> Result<(), Error> {
-        match self.attributes.get_mut(attr_name) {
-            Some(attr) => {
-                attr.rotate_current_value(seed_id);
-                Ok(())
-            }
-            None => Err(Error::AttributeNotFound(attr_name.to_string())),
+        match self {
+            Dimension::Unordered(attributes) => match attributes.get_mut(attr_name) {
+                Some(attr) => {
+                    attr.rotate_current_value(seed_id);
+                    Ok(())
+                }
+                None => Err(Error::AttributeNotFound(attr_name.to_string())),
+            },
+            Dimension::Ordered(attributes) => match attributes.get_mut(attr_name) {
+                Some(attr) => {
+                    attr.rotate_current_value(seed_id);
+                    Ok(())
+                }
+                None => Err(Error::AttributeNotFound(attr_name.to_string())),
+            },
         }
     }
 
@@ -209,20 +234,23 @@ impl Dimension {
         encryption_hint: EncryptionHint,
         seed_id: &mut u32,
     ) -> Result<(), Error> {
-        if self.order.is_some() {
-            Err(Error::OperationNotPermitted(
+        match self {
+            Dimension::Unordered(attributes) => {
+                if attributes.contains_key(attr_name) {
+                    Err(Error::OperationNotPermitted(
+                        "Attribute already in dimension".to_string(),
+                    ))
+                } else {
+                    attributes.insert(
+                        attr_name.clone(),
+                        AttributeParameters::new(encryption_hint, seed_id),
+                    );
+                    Ok(())
+                }
+            }
+            Dimension::Ordered(_) => Err(Error::OperationNotPermitted(
                 "Hierarchical dimension are immutable".to_string(),
-            ))
-        } else if self.attributes.contains_key(attr_name) {
-            Err(Error::OperationNotPermitted(
-                "Attribute already in dimension".to_string(),
-            ))
-        } else {
-            self.attributes.insert(
-                attr_name.clone(),
-                AttributeParameters::new(encryption_hint, seed_id),
-            );
-            Ok(())
+            )),
         }
     }
 
@@ -237,15 +265,15 @@ impl Dimension {
     /// Returns an error if the operation is not permitted or if the attribute
     /// is not found.
     pub fn remove_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        if self.order.is_some() {
-            Err(Error::OperationNotPermitted(
-                "Hierarchical dimension are immutable".to_string(),
-            ))
-        } else {
-            self.attributes
+        match self {
+            Dimension::Unordered(attributes) => attributes
                 .remove(attr_name)
                 .map(|_| ())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+
+            Dimension::Ordered(_) => Err(Error::OperationNotPermitted(
+                "Hierarchical dimension are immutable".to_string(),
+            )),
         }
     }
 
@@ -259,10 +287,17 @@ impl Dimension {
     ///
     /// Returns an error if the attribute is not found.
     pub fn disable_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        self.attributes
-            .get_mut(attr_name)
-            .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
-            .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+        match self {
+            Dimension::Unordered(attributes) => attributes
+                .get_mut(attr_name)
+                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+
+            Dimension::Ordered(attributes) => attributes
+                .get_mut(attr_name)
+                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+        }
     }
 
     /// Renames an attribute with a new name.
@@ -281,24 +316,36 @@ impl Dimension {
         attr_name: &AttributeName,
         new_name: &str,
     ) -> Result<(), Error> {
-        if self.attributes.contains_key(new_name) {
-            return Err(Error::OperationNotPermitted(
-                "New attribute name is already used in the same dimension".to_string(),
-            ));
-        }
-        match self.attributes.remove(attr_name) {
-            Some(attr_params) => {
-                self.attributes.insert(new_name.to_string(), attr_params);
-                if let Some(order) = self.order.as_mut() {
-                    order.iter_mut().for_each(|name| {
-                        if name == attr_name {
-                            *name = new_name.to_string()
-                        }
-                    })
+        match self {
+            Dimension::Unordered(attributes) => {
+                if attributes.contains_key(new_name) {
+                    return Err(Error::OperationNotPermitted(
+                        "New attribute name is already used in the same dimension".to_string(),
+                    ));
                 }
-                Ok(())
+                match attributes.remove(attr_name) {
+                    Some(attr_params) => {
+                        attributes.insert(new_name.to_string(), attr_params);
+                        Ok(())
+                    }
+                    None => Err(Error::AttributeNotFound(attr_name.to_string())),
+                }
             }
-            None => Err(Error::AttributeNotFound(attr_name.to_string())),
+
+            Dimension::Ordered(attributes) => {
+                if attributes.contains_key(new_name) {
+                    return Err(Error::OperationNotPermitted(
+                        "New attribute name is already used in the same dimension".to_string(),
+                    ));
+                }
+                match attributes.remove(attr_name) {
+                    Some(attr_params) => {
+                        attributes.insert(new_name.to_string(), attr_params);
+                        Ok(())
+                    }
+                    None => Err(Error::AttributeNotFound(attr_name.to_string())),
+                }
+            }
         }
     }
 
@@ -312,30 +359,36 @@ impl Dimension {
     ///
     /// Returns an error if the attribute is not found.
     pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        self.attributes
-            .get_mut(attr_name)
-            .map(|attr| attr.clear_old_rotation_values())
-            .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+        match self {
+            Dimension::Unordered(attributes) => attributes
+                .get_mut(attr_name)
+                .map(|attr| attr.clear_old_rotation_values())
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+
+            Dimension::Ordered(attributes) => attributes
+                .get_mut(attr_name)
+                .map(|attr| attr.clear_old_rotation_values())
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+        }
     }
 
-    /// Returns the list of Attributes of this Policy.
+    /// Returns an iterator over the AttributesParameters and parameters.
     /// If the dimension is ordered, the attributes are returned in order.
-    pub fn attributes_properties(&self) -> Vec<(String, EncryptionHint)> {
-        if let Some(ordered_attrs) = &self.order {
-            ordered_attrs
-                .iter()
-                .map(|name| {
-                    (
-                        name.to_string(),
-                        self.attributes.get(name).unwrap().encryption_hint,
-                    )
-                })
-                .collect()
-        } else {
-            self.attributes
-                .iter()
-                .map(|(name, attr_params)| (name.to_string(), attr_params.encryption_hint))
-                .collect()
+    pub fn attributes_properties(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
+        match self {
+            Dimension::Unordered(attributes) => Box::new(attributes.values()),
+            Dimension::Ordered(attributes) => Box::new(attributes.values()),
+        }
+    }
+
+    /// Returns an iterator over the Attributes names and parameters.
+    /// If the dimension is ordered, the attributes are returned in order.
+    pub fn iter_attributes(
+        &self,
+    ) -> Box<dyn '_ + Iterator<Item = (&AttributeName, &AttributeParameters)>> {
+        match self {
+            Dimension::Unordered(attributes) => Box::new(attributes.iter()),
+            Dimension::Ordered(attributes) => Box::new(attributes.iter()),
         }
     }
 }

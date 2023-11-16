@@ -1,8 +1,8 @@
 mod dictionary;
 pub mod error;
-mod linked_hashmap;
-mod linked_vec;
+mod versioned_hashmap;
+mod versioned_vec;
 
 pub use dictionary::Dict;
-pub use linked_hashmap::VersionedHashMap;
-pub use linked_vec::VersionedVec;
+pub use versioned_hashmap::VersionedHashMap;
+pub use versioned_vec::VersionedVec;

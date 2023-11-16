@@ -91,9 +91,11 @@ fn test_rotate_policy_attributes() -> Result<(), Error> {
     policy.clear_old_attribute_values(&attributes[0])?;
     assert_eq!(1, policy.attribute_values(&attributes[0])?.len());
 
-    assert!(policy
-        .clear_old_attribute_values(&Attribute::new("Department", "Missing"))
-        .is_err());
+    assert!(
+        policy
+            .clear_old_attribute_values(&Attribute::new("Department", "Missing"))
+            .is_err()
+    );
 
     Ok(())
 }
@@ -104,26 +106,32 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     assert_eq!(policy.attributes().len(), 7);
 
     // Try renaming Research to already used name MKG
-    assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG",)
-        .is_err());
+    assert!(
+        policy
+            .rename_attribute(&Attribute::new("Department", "R&D"), "MKG",)
+            .is_err()
+    );
 
     // Rename R&D to Research
-    assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "Research",)
-        .is_ok());
+    assert!(
+        policy
+            .rename_attribute(&Attribute::new("Department", "R&D"), "Research",)
+            .is_ok()
+    );
 
     // Rename ordered dimension
-    assert!(policy
-        .rename_attribute(&Attribute::new("Security Level", "Protected"), "Open",)
-        .is_ok());
-    let order = policy
+    assert!(
+        policy
+            .rename_attribute(&Attribute::new("Security Level", "Protected"), "Open",)
+            .is_ok()
+    );
+    let order: Vec<_> = policy
         .dimensions
         .get("Security Level")
         .unwrap()
-        .order
-        .clone()
-        .unwrap();
+        .get_attributes_name()
+        .cloned()
+        .collect();
     assert!(order.len() == 3);
     assert!(order.contains(&"Open".to_string()));
     assert!(!order.contains(&"Protected".to_string()));
@@ -131,22 +139,28 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     assert_eq!(policy.attributes().len(), 7);
     // Add new attribute Sales
     let new_attr = Attribute::new("Department", "Sales");
-    assert!(policy
-        .add_attribute(new_attr.clone(), EncryptionHint::Classic)
-        .is_ok());
+    assert!(
+        policy
+            .add_attribute(new_attr.clone(), EncryptionHint::Classic)
+            .is_ok()
+    );
     assert_eq!(policy.attributes().len(), 8);
 
     // Try adding already existing attribute HR
     let duplicate_attr = Attribute::new("Department", "HR");
-    assert!(policy
-        .add_attribute(duplicate_attr, EncryptionHint::Classic)
-        .is_err());
+    assert!(
+        policy
+            .add_attribute(duplicate_attr, EncryptionHint::Classic)
+            .is_err()
+    );
 
     // Try adding attribute to non existing dimension
     let missing_dimension = Attribute::new("Missing", "dimension");
-    assert!(policy
-        .add_attribute(missing_dimension.clone(), EncryptionHint::Classic)
-        .is_err());
+    assert!(
+        policy
+            .add_attribute(missing_dimension.clone(), EncryptionHint::Classic)
+            .is_err()
+    );
 
     // Remove research attribute
     let delete_attr = Attribute::new("Department", "Research");
@@ -186,9 +200,11 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     assert!(policy.remove_dimension("MissingDim").is_err());
 
     // Try modifying hierarchical dimension
-    assert!(policy
-        .remove_attribute(&Attribute::new("Security Level", "Top Secret"))
-        .is_err());
+    assert!(
+        policy
+            .remove_attribute(&Attribute::new("Security Level", "Top Secret"))
+            .is_err()
+    );
 
     // Removing a hierarchical dimension is permitted
     assert!(policy.remove_dimension("Security Level").is_ok());

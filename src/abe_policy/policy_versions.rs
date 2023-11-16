@@ -54,30 +54,26 @@ impl From<PolicyV1> for PolicyV2 {
     fn from(val: PolicyV1) -> Self {
         let mut dimensions = HashMap::with_capacity(val.axes.len());
         for (axis_name, axis_params) in val.axes {
+            let attributes = val
+                .attributes
+                .clone()
+                .into_iter()
+                .filter(|(attr, _)| attr.dimension == axis_name)
+                .map(|(attr, attr_params)| {
+                    (
+                        attr.name.clone(),
+                        AttributeParameters {
+                            rotation_values: attr_params.values.clone(),
+                            encryption_hint: attr_params.encryption_hint,
+                            write_status: AttributeStatus::EncryptDecrypt,
+                        },
+                    )
+                });
             dimensions.insert(
                 axis_name.clone(),
-                Dimension {
-                    order: if axis_params.is_hierarchical {
-                        Some(axis_params.attribute_names)
-                    } else {
-                        None
-                    },
-                    attributes: val
-                        .attributes
-                        .clone()
-                        .iter()
-                        .filter(|(attr, _)| attr.dimension == axis_name)
-                        .map(|(attr, attr_params)| {
-                            (
-                                attr.name.clone(),
-                                AttributeParameters {
-                                    rotation_values: attr_params.values.clone(),
-                                    encryption_hint: attr_params.encryption_hint,
-                                    write_status: AttributeStatus::EncryptDecrypt,
-                                },
-                            )
-                        })
-                        .collect(),
+                match axis_params.is_hierarchical {
+                    true => Dimension::Ordered(attributes.collect()),
+                    false => Dimension::Unordered(attributes.collect()),
                 },
             );
         }
@@ -107,30 +103,26 @@ impl From<LegacyPolicy> for PolicyV2 {
     fn from(val: LegacyPolicy) -> Self {
         let mut dimensions = HashMap::with_capacity(val.axes.len());
         for (axis_name, axis_params) in val.axes {
+            let attributes = val
+                .attributes
+                .clone()
+                .into_iter()
+                .filter(|(attr, _)| attr.dimension == axis_name)
+                .map(|(attr, values)| {
+                    (
+                        attr.name.clone(),
+                        AttributeParameters {
+                            rotation_values: values.clone(),
+                            encryption_hint: EncryptionHint::Classic,
+                            write_status: AttributeStatus::EncryptDecrypt,
+                        },
+                    )
+                });
             dimensions.insert(
                 axis_name.clone(),
-                Dimension {
-                    order: if axis_params.is_hierarchical {
-                        Some(axis_params.attribute_names)
-                    } else {
-                        None
-                    },
-                    attributes: val
-                        .attributes
-                        .clone()
-                        .iter()
-                        .filter(|(attr, _)| attr.dimension == axis_name)
-                        .map(|(attr, values)| {
-                            (
-                                attr.name.clone(),
-                                AttributeParameters {
-                                    rotation_values: values.clone(),
-                                    encryption_hint: EncryptionHint::Classic,
-                                    write_status: AttributeStatus::EncryptDecrypt,
-                                },
-                            )
-                        })
-                        .collect(),
+                match axis_params.is_hierarchical {
+                    true => Dimension::Ordered(attributes.collect()),
+                    false => Dimension::Unordered(attributes.collect()),
                 },
             );
         }
