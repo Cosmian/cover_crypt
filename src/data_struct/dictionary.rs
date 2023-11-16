@@ -1,12 +1,17 @@
 use std::{
     borrow::Borrow,
     collections::{hash_map::Entry, HashMap},
-    fmt::Debug,
+    fmt::{self, Debug},
     hash::Hash,
+    marker::PhantomData,
     usize,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{MapAccess, Visitor},
+    ser::SerializeMap,
+    Deserialize, Deserializer, Serialize,
+};
 
 use super::error::Error;
 
@@ -14,7 +19,7 @@ type Index = usize;
 /// HashMap keeping insertion order inspired by Python dictionary.
 /// Contrary to the Python one, this implementation does not store a duplicate
 /// of the key in the entries.
-#[derive(Default, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Default, Clone, Eq, PartialEq, Debug)]
 pub struct Dict<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + Debug,
@@ -157,11 +162,92 @@ where
 {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let iterator = iter.into_iter();
-        let mut dict = Dict::with_capacity(iterator.size_hint().0);
+        let mut dict = Self::with_capacity(iterator.size_hint().0);
         for (key, value) in iterator {
             dict.insert(key, value);
         }
         dict
+    }
+}
+
+// TODO: test serialize and deserialize
+impl<K, V> Serialize for Dict<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug + Serialize,
+    V: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.len()))?;
+        for (k, v) in self.iter() {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
+    }
+}
+
+struct DictVisitor<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+{
+    marker: PhantomData<fn() -> Dict<K, V>>,
+}
+
+impl<K, V> DictVisitor<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+{
+    fn new() -> Self {
+        Self {
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'de, K, V> Visitor<'de> for DictVisitor<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug + Deserialize<'de>,
+    V: Deserialize<'de>,
+{
+    // The type that our Visitor is going to produce.
+    type Value = Dict<K, V>;
+
+    // Format a message stating what data this Visitor expects to receive.
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a Dict")
+    }
+
+    // Deserialize MyMap from an abstract "map" provided by the
+    // Deserializer. The MapAccess input is a callback provided by
+    // the Deserializer to let us see each entry in the map.
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut map = Dict::with_capacity(access.size_hint().unwrap_or(0));
+
+        // While there are entries remaining in the input, add them
+        // into our map.
+        while let Some((key, value)) = access.next_entry()? {
+            map.insert(key, value);
+        }
+
+        Ok(map)
+    }
+}
+
+impl<'de, K, V> Deserialize<'de> for Dict<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug + Deserialize<'de>,
+    V: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(DictVisitor::new())
     }
 }
 

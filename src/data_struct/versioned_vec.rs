@@ -172,13 +172,7 @@ fn test_linked_vec() -> Result<(), Error> {
     // the chain 3 was completely removed
     assert!(versioned_vec.pop_back(third_chain_index).is_err());
 
-    assert_eq!(
-        versioned_vec
-            .iter_chain(first_chain_index)
-            .collect::<Vec<_>>()
-            .len(),
-        2
-    );
+    assert_eq!(versioned_vec.iter_chain(first_chain_index).count(), 2);
 
     Ok(())
 }

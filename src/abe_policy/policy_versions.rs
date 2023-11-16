@@ -61,7 +61,7 @@ impl From<PolicyV1> for PolicyV2 {
                 .filter(|(attr, _)| attr.dimension == axis_name)
                 .map(|(attr, attr_params)| {
                     (
-                        attr.name.clone(),
+                        attr.name,
                         AttributeParameters {
                             rotation_values: attr_params.values.clone(),
                             encryption_hint: attr_params.encryption_hint,
@@ -110,9 +110,9 @@ impl From<LegacyPolicy> for PolicyV2 {
                 .filter(|(attr, _)| attr.dimension == axis_name)
                 .map(|(attr, values)| {
                     (
-                        attr.name.clone(),
+                        attr.name,
                         AttributeParameters {
-                            rotation_values: values.clone(),
+                            rotation_values: values,
                             encryption_hint: EncryptionHint::Classic,
                             write_status: AttributeStatus::EncryptDecrypt,
                         },

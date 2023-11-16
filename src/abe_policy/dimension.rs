@@ -155,15 +155,15 @@ impl Dimension {
 
     pub fn nb_attributes(&self) -> usize {
         match self {
-            Dimension::Unordered(attributes) => attributes.len(),
-            Dimension::Ordered(attributes) => attributes.len(),
+            Self::Unordered(attributes) => attributes.len(),
+            Self::Ordered(attributes) => attributes.len(),
         }
     }
 
     pub fn is_ordered(&self) -> bool {
         match self {
-            Dimension::Unordered(_) => false,
-            Dimension::Ordered(_) => true,
+            Self::Unordered(_) => false,
+            Self::Ordered(_) => true,
         }
     }
 
@@ -172,15 +172,15 @@ impl Dimension {
     /// otherwise they are returned in arbitrary order.
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
         match self {
-            Dimension::Unordered(attributes) => Box::new(attributes.keys()),
-            Dimension::Ordered(attributes) => Box::new(attributes.keys()),
+            Self::Unordered(attributes) => Box::new(attributes.keys()),
+            Self::Ordered(attributes) => Box::new(attributes.keys()),
         }
     }
 
     pub fn get_attribute(&self, attr_name: &AttributeName) -> Option<&AttributeParameters> {
         match self {
-            Dimension::Unordered(attributes) => attributes.get(attr_name),
-            Dimension::Ordered(attributes) => attributes.get(attr_name),
+            Self::Unordered(attributes) => attributes.get(attr_name),
+            Self::Ordered(attributes) => attributes.get(attr_name),
         }
     }
 
@@ -201,14 +201,14 @@ impl Dimension {
         seed_id: &mut u32,
     ) -> Result<(), Error> {
         match self {
-            Dimension::Unordered(attributes) => match attributes.get_mut(attr_name) {
+            Self::Unordered(attributes) => match attributes.get_mut(attr_name) {
                 Some(attr) => {
                     attr.rotate_current_value(seed_id);
                     Ok(())
                 }
                 None => Err(Error::AttributeNotFound(attr_name.to_string())),
             },
-            Dimension::Ordered(attributes) => match attributes.get_mut(attr_name) {
+            Self::Ordered(attributes) => match attributes.get_mut(attr_name) {
                 Some(attr) => {
                     attr.rotate_current_value(seed_id);
                     Ok(())
@@ -235,7 +235,7 @@ impl Dimension {
         seed_id: &mut u32,
     ) -> Result<(), Error> {
         match self {
-            Dimension::Unordered(attributes) => {
+            Self::Unordered(attributes) => {
                 if attributes.contains_key(attr_name) {
                     Err(Error::OperationNotPermitted(
                         "Attribute already in dimension".to_string(),
@@ -248,7 +248,7 @@ impl Dimension {
                     Ok(())
                 }
             }
-            Dimension::Ordered(_) => Err(Error::OperationNotPermitted(
+            Self::Ordered(_) => Err(Error::OperationNotPermitted(
                 "Hierarchical dimension are immutable".to_string(),
             )),
         }
@@ -266,12 +266,11 @@ impl Dimension {
     /// is not found.
     pub fn remove_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         match self {
-            Dimension::Unordered(attributes) => attributes
+            Self::Unordered(attributes) => attributes
                 .remove(attr_name)
                 .map(|_| ())
                 .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-
-            Dimension::Ordered(_) => Err(Error::OperationNotPermitted(
+            Self::Ordered(_) => Err(Error::OperationNotPermitted(
                 "Hierarchical dimension are immutable".to_string(),
             )),
         }
@@ -288,12 +287,11 @@ impl Dimension {
     /// Returns an error if the attribute is not found.
     pub fn disable_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         match self {
-            Dimension::Unordered(attributes) => attributes
+            Self::Unordered(attributes) => attributes
                 .get_mut(attr_name)
                 .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-
-            Dimension::Ordered(attributes) => attributes
+            Self::Ordered(attributes) => attributes
                 .get_mut(attr_name)
                 .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(attr_name.to_string())),
@@ -317,7 +315,7 @@ impl Dimension {
         new_name: &str,
     ) -> Result<(), Error> {
         match self {
-            Dimension::Unordered(attributes) => {
+            Self::Unordered(attributes) => {
                 if attributes.contains_key(new_name) {
                     return Err(Error::OperationNotPermitted(
                         "New attribute name is already used in the same dimension".to_string(),
@@ -331,8 +329,7 @@ impl Dimension {
                     None => Err(Error::AttributeNotFound(attr_name.to_string())),
                 }
             }
-
-            Dimension::Ordered(attributes) => {
+            Self::Ordered(attributes) => {
                 if attributes.contains_key(new_name) {
                     return Err(Error::OperationNotPermitted(
                         "New attribute name is already used in the same dimension".to_string(),
@@ -360,12 +357,11 @@ impl Dimension {
     /// Returns an error if the attribute is not found.
     pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
         match self {
-            Dimension::Unordered(attributes) => attributes
+            Self::Unordered(attributes) => attributes
                 .get_mut(attr_name)
                 .map(|attr| attr.clear_old_rotation_values())
                 .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-
-            Dimension::Ordered(attributes) => attributes
+            Self::Ordered(attributes) => attributes
                 .get_mut(attr_name)
                 .map(|attr| attr.clear_old_rotation_values())
                 .ok_or(Error::AttributeNotFound(attr_name.to_string())),
@@ -376,8 +372,8 @@ impl Dimension {
     /// If the dimension is ordered, the attributes are returned in order.
     pub fn attributes_properties(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
         match self {
-            Dimension::Unordered(attributes) => Box::new(attributes.values()),
-            Dimension::Ordered(attributes) => Box::new(attributes.values()),
+            Self::Unordered(attributes) => Box::new(attributes.values()),
+            Self::Ordered(attributes) => Box::new(attributes.values()),
         }
     }
 
@@ -387,8 +383,8 @@ impl Dimension {
         &self,
     ) -> Box<dyn '_ + Iterator<Item = (&AttributeName, &AttributeParameters)>> {
         match self {
-            Dimension::Unordered(attributes) => Box::new(attributes.iter()),
-            Dimension::Ordered(attributes) => Box::new(attributes.iter()),
+            Self::Unordered(attributes) => Box::new(attributes.iter()),
+            Self::Ordered(attributes) => Box::new(attributes.iter()),
         }
     }
 }

@@ -43,7 +43,7 @@ where
     V: Clone,
 {
     pub fn new(value: V, prev_key: Option<K>) -> Self {
-        VersionedEntry {
+        Self {
             value,
             prev_key,
             next_key: None,
