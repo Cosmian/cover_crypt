@@ -1,4 +1,4 @@
-use std::collections::LinkedList;
+use std::collections::{linked_list, LinkedList};
 
 use serde::{Deserialize, Serialize};
 
@@ -124,11 +124,48 @@ impl<T> VersionedVec<T> {
         self.data.iter().flat_map(|chain| chain.iter())
     }
 
-    // TODO: iter in bfs
+    pub fn bfs(&self) -> BfsIterator<T> {
+        BfsIterator::new(self)
+    }
+}
+
+pub struct BfsIterator<'a, T> {
+    chains: Vec<linked_list::Iter<'a, T>>,
+    index: usize,
+}
+
+impl<'a, T> BfsIterator<'a, T> {
+    pub fn new(versioned_vec: &'a VersionedVec<T>) -> Self {
+        Self {
+            chains: versioned_vec.data.iter().map(LinkedList::iter).collect(),
+            index: 0,
+        }
+    }
+}
+
+impl<'a, T> Iterator for BfsIterator<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.chains.is_empty() {
+                return None;
+            }
+            self.index %= self.chains.len();
+            let chain = &mut self.chains[self.index];
+
+            if let Some(next_entry) = chain.next() {
+                self.index += 1;
+                break Some(next_entry);
+            } else {
+                let _ = self.chains.remove(self.index);
+            }
+        }
+    }
 }
 
 #[test]
-fn test_linked_vec() -> Result<(), Error> {
+fn test_versioned_vec() -> Result<(), Error> {
     let mut versioned_vec: VersionedVec<(u32, String)> = VersionedVec::new();
     assert!(versioned_vec.is_empty());
 
@@ -138,7 +175,7 @@ fn test_linked_vec() -> Result<(), Error> {
         vec![
             (1, "key1".to_string()),
             (11, "key11".to_string()),
-            (11, "key111".to_string()),
+            (111, "key111".to_string()),
         ]
         .into_iter(),
     );
@@ -188,4 +225,30 @@ fn test_linked_vec() -> Result<(), Error> {
     assert_eq!(versioned_vec.iter().count(), versioned_vec.len());
 
     Ok(())
+}
+
+#[test]
+fn test_versioned_vec_iterator() {
+    let mut versioned_vec: VersionedVec<u32> = VersionedVec::new();
+
+    // Inserting new chains
+    versioned_vec.insert_new_chain(vec![1, 11, 111].into_iter());
+    versioned_vec.insert_new_chain(vec![2, 22].into_iter());
+    versioned_vec.insert_new_chain(vec![3].into_iter());
+
+    // Depth iter
+    let depth_iter: Vec<_> = versioned_vec.iter().copied().collect();
+    assert_eq!(depth_iter, vec![111, 11, 1, 22, 2, 3]);
+
+    // Breadth iter
+    let bfs: Vec<_> = versioned_vec.bfs().copied().collect();
+    assert_eq!(bfs, vec![111, 22, 3, 11, 2, 1]);
+
+    // Iter chain by chain <=> depth iter
+    assert_eq!(
+        versioned_vec.iter().collect::<Vec<_>>(),
+        (0..3)
+            .flat_map(|index| versioned_vec.iter_chain(index))
+            .collect::<Vec<_>>()
+    );
 }

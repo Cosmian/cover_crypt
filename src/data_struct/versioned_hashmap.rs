@@ -199,7 +199,7 @@ where
 }
 
 #[test]
-fn test_linked_hashmap() -> Result<(), Error> {
+fn test_versioned_hashmap() -> Result<(), Error> {
     let mut lhm = VersionedHashMap::new();
 
     lhm.insert_root(1, "key1".to_string())?;
