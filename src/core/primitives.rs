@@ -231,7 +231,9 @@ pub fn decaps(
 ) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
     let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
     for encapsulation_i in &encapsulation.encs {
-        for (_, (sk_j, x_j)) in usk.subkeys.iter() {
+        // BFS search user subkeys to first try the most recent rotations of each
+        // partitions.
+        for (_, (sk_j, x_j)) in usk.subkeys.bfs() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
