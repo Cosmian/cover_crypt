@@ -1,12 +1,14 @@
 use std::collections::LinkedList;
 
+use serde::{Deserialize, Serialize};
+
 use super::error::Error;
 
 /// a `VersionedVec` stores for each entry a linked list of versions.
 /// The entry versions are stored in reverse chronological order:
 ///
 /// Vec [
-///     0: a'' -> a' -> a
+///     0: a" -> a' -> a
 ///     1: b
 ///     2: c' -> c
 /// ]
@@ -15,7 +17,9 @@ use super::error::Error;
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Default)]
+// TODO: does index matter for Eq compare?
+// TODO: check Serialize/Deserialize
+#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionedVec<T> {
     data: Vec<LinkedList<T>>,
     length: usize,
@@ -114,6 +118,13 @@ impl<T> VersionedVec<T> {
     pub fn iter_chain(&self, chain_index: usize) -> impl Iterator<Item = &T> {
         self.data[chain_index].iter()
     }
+
+    /// Iterates through all versions of all entries
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.data.iter().flat_map(|chain| chain.iter())
+    }
+
+    // TODO: iter in bfs
 }
 
 #[test]
@@ -172,7 +183,9 @@ fn test_linked_vec() -> Result<(), Error> {
     // the chain 3 was completely removed
     assert!(versioned_vec.pop_back(third_chain_index).is_err());
 
+    // Iterate
     assert_eq!(versioned_vec.iter_chain(first_chain_index).count(), 2);
+    assert_eq!(versioned_vec.iter().count(), versioned_vec.len());
 
     Ok(())
 }

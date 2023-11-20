@@ -14,12 +14,12 @@ use super::error::Error;
 /// as optional keys of the next and prev element version in the hash map.
 ///
 /// Map {       value       prev    next
-///     k1  : { "data v1",  None,   k1'  }
-///     k2  : {     "...",  None,   None }
-///     k1' : { "data v2",  k1,     k1'' }
-///     k3  : { "value 1",  None,   k3'  }
-///     k3' : { "value 2",  k3,     None }
-///     k1'': { "data v3",  k1',    None }
+///     k1  : { data v1,  None,   k1'  }
+///     k2  : {     ...,  None,   None }
+///     k1' : { data v2,  k1,     k1"  }
+///     k3  : { value 1,  None,   k3'  }
+///     k3' : { value 2,  k3,     None }
+///     k1'': { data v3,  k1',    None }
 /// }
 ///
 /// The element versions are stored in chronological order.

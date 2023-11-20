@@ -36,6 +36,8 @@ pub fn policy() -> Result<Policy, Error> {
 
 #[cfg(test)]
 mod tests {
+    use std::iter;
+
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     use super::*;
@@ -129,21 +131,23 @@ mod tests {
         // 4 partitions accessed by the user were rotated (MKG Protected, Low Secret,
         // Medium Secret and High Secret)
         assert_eq!(usk.subkeys.len(), original_usk.subkeys.len() + 4);
-        for x_i in &original_usk.subkeys {
-            assert!(usk.subkeys.contains(x_i));
+        for x_i in original_usk.subkeys.iter() {
+            assert!(usk.subkeys.iter().any(|x| x == x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)?;
         // the user should still have access to the same number of partitions
         assert_eq!(usk.subkeys.len(), original_usk.subkeys.len());
-        for x_i in &original_usk.subkeys {
-            assert!(!usk.subkeys.contains(x_i));
+        for x_i in original_usk.subkeys.iter() {
+            assert!(!usk.subkeys.iter().any(|x| x == x_i));
         }
 
         // try to modify the user key and refresh
         let part = Partition::from(vec![1, 6]);
-        usk.subkeys
-            .push((part.clone(), msk.subkeys.get(&part).unwrap().clone()));
+        usk.subkeys.insert_new_chain(iter::once((
+            part.clone(),
+            msk.subkeys.get(&part).unwrap().clone(),
+        )));
         assert!(cover_crypt
             .refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)
             .is_err());

@@ -21,6 +21,7 @@ use super::{
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
+    data_struct::VersionedVec,
     Error,
 };
 
@@ -41,7 +42,7 @@ fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<K
         let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
         kmac.update(&usk.b.to_bytes());
 
-        for (partition, (sk_i, x_i)) in &usk.subkeys {
+        for (partition, (sk_i, x_i)) in usk.subkeys.iter() {
             kmac.update(&partition.0);
             if let Some(sk_i) = sk_i {
                 kmac.update(sk_i);
@@ -143,7 +144,8 @@ pub fn keygen(
 ) -> UserSecretKey {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    let mut subkeys: Vec<_> = decryption_set
+    let subkeys: VersionedVec<_> = VersionedVec::with_capacity(decryption_set.len());
+    /*decryption_set
         .iter()
         .filter_map(|partition| {
             msk.subkeys
@@ -151,7 +153,7 @@ pub fn keygen(
                 .map(|subkey| (partition.clone(), subkey.clone()))
         })
         .collect();
-    subkeys.sort_by(|(part_a, _), (part_b, _)| part_a.cmp(part_b));
+    subkeys.sort_by(|(part_a, _), (part_b, _)| part_a.cmp(part_b));*/
     let mut usk = UserSecretKey {
         a,
         b,
@@ -229,7 +231,7 @@ pub fn decaps(
 ) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
     let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
     for encapsulation_i in &encapsulation.encs {
-        for (_, (sk_j, x_j)) in &usk.subkeys {
+        for (_, (sk_j, x_j)) in usk.subkeys.iter() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
@@ -377,16 +379,17 @@ pub fn refresh(
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
     // TODO: keep track of previous rotation values
-    usk.subkeys.clear();
+    //usk.subkeys.clear();
 
     for partition in decryption_set {
-        if let Some(x_i) = msk.subkeys.get(partition) {
-            usk.subkeys.push((partition.clone(), x_i.clone()));
+        if let Some(_x_i) = msk.subkeys.get(partition) {
+            //usk.subkeys.push((partition.clone(), x_i.clone()));
+            todo!()
         }
     }
 
-    usk.subkeys
-        .sort_by(|(part_a, _), (part_b, _)| part_a.cmp(part_b));
+    //usk.subkeys
+    //    .sort_by(|(part_a, _), (part_b, _)| part_a.cmp(part_b));
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
@@ -396,6 +399,8 @@ pub fn refresh(
 
 #[cfg(test)]
 mod tests {
+    use std::iter;
+
     use cosmian_crypto_core::{
         bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
     };
@@ -640,22 +645,26 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
-        assert!(!usk.subkeys.contains(&(
-            partition_1.clone(),
-            old_msk.subkeys.get(&partition_1).unwrap().clone()
-        )));
-        assert!(usk.subkeys.contains(&(
-            partition_2.clone(),
-            msk.subkeys.get(&partition_2).unwrap().clone()
-        )));
-        assert!(!usk.subkeys.contains(&(
-            partition_3.clone(),
-            old_msk.subkeys.get(&partition_3).unwrap().clone()
-        )));
-        assert!(usk.subkeys.contains(&(
-            partition_4.clone(),
-            msk.subkeys.get(&partition_4).unwrap().clone()
-        )));
+        assert!(!usk.subkeys.iter().any(|x| x
+            == &(
+                partition_1.clone(),
+                old_msk.subkeys.get(&partition_1).unwrap().clone()
+            )));
+        assert!(usk.subkeys.iter().any(|x| x
+            == &(
+                partition_2.clone(),
+                msk.subkeys.get(&partition_2).unwrap().clone()
+            )));
+        assert!(!usk.subkeys.iter().any(|x| x
+            == &(
+                partition_3.clone(),
+                old_msk.subkeys.get(&partition_3).unwrap().clone()
+            )));
+        assert!(usk.subkeys.iter().any(|x| x
+            == &(
+                partition_4.clone(),
+                msk.subkeys.get(&partition_4).unwrap().clone()
+            )));
         Ok(())
     }
 
@@ -686,10 +695,10 @@ mod tests {
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
-        usk.subkeys.push((
+        usk.subkeys.insert_new_chain(iter::once((
             Partition(b"3".to_vec()),
             (None, R25519PrivateKey::new(&mut rng)),
-        ));
+        )));
         // KMAC verify will fail after modifying the user key
         assert!(verify_user_key_kmac(&msk, &usk).is_err());
 

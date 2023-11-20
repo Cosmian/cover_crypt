@@ -15,6 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
+    data_struct::VersionedVec,
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -162,7 +163,7 @@ impl Serializable for UserSecretKey {
             + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
-        for (partition, (sk_i, _)) in &self.subkeys {
+        for (partition, (sk_i, _)) in self.subkeys.iter() {
             length += (to_leb128_len(partition.len()) + partition.len())
                 + (1 + sk_i
                     .as_ref()
@@ -176,7 +177,7 @@ impl Serializable for UserSecretKey {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, (sk_i, x_i)) in &self.subkeys {
+        for (partition, (sk_i, x_i)) in self.subkeys.iter() {
             n += ser.write_vec(partition)?;
             if let Some(sk_i) = sk_i {
                 n += ser.write_leb128_u64(1)?;
@@ -216,7 +217,7 @@ impl Serializable for UserSecretKey {
         Ok(Self {
             a,
             b,
-            subkeys,
+            subkeys: VersionedVec::new(), //subkeys,
             kmac,
         })
     }
