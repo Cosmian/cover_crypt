@@ -25,13 +25,18 @@ use super::error::Error;
 /// The element versions are stored in chronological order.
 /// New element versions can only be added at the back of the chain and removing
 /// one element of a linked list will remove all previous versions as well.
-#[derive(Default)]
-pub struct VersionedHashMap<K, V> {
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct VersionedHashMap<K, V>
+where
+    K: Debug + PartialEq + Eq + Hash,
+    V: Debug + PartialEq + Eq,
+{
     map: HashMap<K, VersionedEntry<K, V>>,
 }
 
 /// a `VersionedEntry` stores a value and an optional key of the next entry
 /// version in the hash map.
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct VersionedEntry<K, V> {
     value: V,
     prev_key: Option<K>,
@@ -55,14 +60,18 @@ where
     }
 }
 
-struct VersionedHashMapIterator<'a, K, V> {
+struct VersionedHashMapIterator<'a, K, V>
+where
+    K: Debug + PartialEq + Eq + Hash,
+    V: Debug + PartialEq + Eq,
+{
     lhm: &'a VersionedHashMap<K, V>,
     current_key: Option<&'a K>,
 }
 
 impl<'a, K, V> Iterator for VersionedHashMapIterator<'a, K, V>
 where
-    V: Clone,
+    V: Clone + Debug + Eq + PartialEq,
     K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord + Debug,
 {
     type Item = (&'a K, &'a V);
@@ -80,7 +89,7 @@ where
 impl<K, V> VersionedHashMap<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + PartialOrd + Ord + Debug,
-    V: Clone,
+    V: Clone + Debug + PartialEq + Eq,
 {
     pub fn new() -> Self {
         Self {
@@ -154,6 +163,14 @@ where
 
     pub fn get(&self, key: &K) -> Option<&V> {
         self.map.get(key).map(VersionedEntry::get_value)
+    }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.map.contains_key(key)
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.map.keys()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {

@@ -21,7 +21,7 @@ use super::{
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::VersionedVec,
+    data_struct::{VersionedHashMap, VersionedVec},
     Error,
 };
 
@@ -116,7 +116,7 @@ pub fn setup(
             s,
             s1,
             s2,
-            subkeys: sub_sk,
+            subkeys: VersionedHashMap::new(), // TODO: sub_sk,
             kmac_key,
         },
         MasterPublicKey {
@@ -354,7 +354,7 @@ pub fn update(
         }
     }
 
-    msk.subkeys = new_sub_sk;
+    // TODO: msk.subkeys = new_sub_sk;
     mpk.subkeys = new_sub_pk;
 
     Ok(())

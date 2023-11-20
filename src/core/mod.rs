@@ -10,7 +10,10 @@ use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey, SymmetricKey};
 use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 use zeroize::ZeroizeOnDrop;
 
-use crate::{abe_policy::Partition, data_struct::VersionedVec};
+use crate::{
+    abe_policy::Partition,
+    data_struct::{VersionedHashMap, VersionedVec},
+};
 
 #[macro_use]
 pub mod macros;
@@ -74,7 +77,7 @@ pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
-    pub(crate) subkeys: HashMap<Partition, Subkey>,
+    pub(crate) subkeys: VersionedHashMap<Partition, Subkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
 }
 

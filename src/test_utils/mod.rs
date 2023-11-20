@@ -77,7 +77,7 @@ mod tests {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        let partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
@@ -87,7 +87,7 @@ mod tests {
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
@@ -100,7 +100,7 @@ mod tests {
         policy.clear_old_attribute_values(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
@@ -161,7 +161,7 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
@@ -182,7 +182,7 @@ mod tests {
         )?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
@@ -225,7 +225,7 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
@@ -252,7 +252,7 @@ mod tests {
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
         for p in &new_partitions_msk {
@@ -291,7 +291,7 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         assert_eq!(partitions_msk.len(), partitions_mpk.len());
         for p in &partitions_msk {
@@ -318,7 +318,7 @@ mod tests {
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         // the disabled partition have been removed from mpk
         assert_eq!(new_partitions_msk.len() - 5, new_partitions_mpk.len());
@@ -368,7 +368,7 @@ mod tests {
         // Rotating the disabled attribute should only change the msk
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.clone().into_keys().collect();
+        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.clone().into_keys().collect();
         // 5 new partitions added to the msk
         assert_eq!(new_partitions_msk.len() - 10, new_partitions_mpk.len());
