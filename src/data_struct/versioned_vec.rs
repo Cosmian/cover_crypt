@@ -1,4 +1,7 @@
-use std::collections::{linked_list, LinkedList};
+use std::{
+    collections::{linked_list, LinkedList},
+    iter,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -161,6 +164,20 @@ impl<'a, T> Iterator for BfsIterator<'a, T> {
                 let _ = self.chains.remove(self.index);
             }
         }
+    }
+}
+
+/// Create VersionedVec from an iterator, each element will be inserted in a
+/// different chain. Use `insert_new_chain` to collect an iterator inside the
+/// same chain.
+impl<T> FromIterator<T> for VersionedVec<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let iterator = iter.into_iter();
+        let mut vec = Self::with_capacity(iterator.size_hint().0);
+        for item in iterator {
+            vec.insert_new_chain(iter::once(item))
+        }
+        vec
     }
 }
 

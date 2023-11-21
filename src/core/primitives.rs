@@ -144,8 +144,8 @@ pub fn keygen(
 ) -> UserSecretKey {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    let subkeys: VersionedVec<_> = VersionedVec::with_capacity(decryption_set.len());
-    /*decryption_set
+    // Only the last partitions rotation are used
+    let subkeys: VersionedVec<_> = decryption_set
         .iter()
         .filter_map(|partition| {
             msk.subkeys
@@ -153,7 +153,7 @@ pub fn keygen(
                 .map(|subkey| (partition.clone(), subkey.clone()))
         })
         .collect();
-    subkeys.sort_by(|(part_a, _), (part_b, _)| part_a.cmp(part_b));*/
+
     let mut usk = UserSecretKey {
         a,
         b,
@@ -377,21 +377,12 @@ pub fn update(
 pub fn refresh(
     msk: &MasterSecretKey,
     usk: &mut UserSecretKey,
-    decryption_set: &HashSet<Partition>,
+    _decryption_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
-    // TODO: keep track of previous rotation values
-    //usk.subkeys.clear();
 
-    for partition in decryption_set {
-        if let Some(_x_i) = msk.subkeys.get(partition) {
-            //usk.subkeys.push((partition.clone(), x_i.clone()));
-            todo!()
-        }
-    }
-
-    //usk.subkeys
-    //    .sort_by(|(part_a, _), (part_b, _)| part_a.cmp(part_b));
+    // TODO: for each chain in USK, check that the current rotation still exist in
+    // MSK, add new rotations if any, remove old rotations if not present in MSK
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
