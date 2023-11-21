@@ -3,8 +3,6 @@ use std::{
     iter,
 };
 
-use serde::{Deserialize, Serialize};
-
 use super::error::Error;
 
 /// a `VersionedVec` stores for each entry a linked list of versions.
@@ -22,7 +20,7 @@ use super::error::Error;
 /// This guarantees that the entry versions are always ordered.
 // TODO: does index matter for Eq compare?
 // TODO: check Serialize/Deserialize
-#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct VersionedVec<T> {
     data: Vec<LinkedList<T>>,
     length: usize,
@@ -181,91 +179,96 @@ impl<T> FromIterator<T> for VersionedVec<T> {
     }
 }
 
-#[test]
-fn test_versioned_vec() -> Result<(), Error> {
-    let mut versioned_vec: VersionedVec<(u32, String)> = VersionedVec::new();
-    assert!(versioned_vec.is_empty());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Inserting new chains
-    let first_chain_index = 0;
-    versioned_vec.insert_new_chain(
-        vec![
-            (1, "key1".to_string()),
-            (11, "key11".to_string()),
-            (111, "key111".to_string()),
-        ]
-        .into_iter(),
-    );
-    let second_chain_index = 1;
-    versioned_vec
-        .insert_new_chain(vec![(2, "key2".to_string()), (22, "key22".to_string())].into_iter());
-    let third_chain_index = 2;
-    versioned_vec.insert_new_chain(vec![(3, "key3".to_string())].into_iter());
+    #[test]
+    fn test_versioned_vec() -> Result<(), Error> {
+        let mut versioned_vec: VersionedVec<(u32, String)> = VersionedVec::new();
+        assert!(versioned_vec.is_empty());
 
-    assert_eq!(versioned_vec.data.len(), 3);
-    assert_eq!(versioned_vec.len(), 6);
+        // Inserting new chains
+        let first_chain_index = 0;
+        versioned_vec.insert_new_chain(
+            vec![
+                (1, "key1".to_string()),
+                (11, "key11".to_string()),
+                (111, "key111".to_string()),
+            ]
+            .into_iter(),
+        );
+        let second_chain_index = 1;
+        versioned_vec
+            .insert_new_chain(vec![(2, "key2".to_string()), (22, "key22".to_string())].into_iter());
+        let third_chain_index = 2;
+        versioned_vec.insert_new_chain(vec![(3, "key3".to_string())].into_iter());
 
-    // Get front
-    assert_eq!(
-        versioned_vec.front(second_chain_index),
-        Some(&(22, "key22".to_string()))
-    );
+        assert_eq!(versioned_vec.data.len(), 3);
+        assert_eq!(versioned_vec.len(), 6);
 
-    // Push back
-    let new_entry_version = (222, "key222".to_string());
-    versioned_vec.push_front(second_chain_index, new_entry_version.clone())?;
+        // Get front
+        assert_eq!(
+            versioned_vec.front(second_chain_index),
+            Some(&(22, "key22".to_string()))
+        );
 
-    assert_eq!(
-        versioned_vec.front(second_chain_index),
-        Some(&new_entry_version)
-    );
+        // Push back
+        let new_entry_version = (222, "key222".to_string());
+        versioned_vec.push_front(second_chain_index, new_entry_version.clone())?;
 
-    // Remove elements
-    versioned_vec.pop_back(first_chain_index)?;
-    assert_eq!(versioned_vec.len(), 6);
+        assert_eq!(
+            versioned_vec.front(second_chain_index),
+            Some(&new_entry_version)
+        );
 
-    versioned_vec.pop_back(second_chain_index)?;
-    assert_eq!(versioned_vec.len(), 5);
-    // Front element should be the same
-    assert_eq!(
-        versioned_vec.front(second_chain_index),
-        Some(&new_entry_version)
-    );
+        // Remove elements
+        versioned_vec.pop_back(first_chain_index)?;
+        assert_eq!(versioned_vec.len(), 6);
 
-    versioned_vec.pop_back(third_chain_index)?;
-    assert_eq!(versioned_vec.len(), 4);
-    // the chain 3 was completely removed
-    assert!(versioned_vec.pop_back(third_chain_index).is_err());
+        versioned_vec.pop_back(second_chain_index)?;
+        assert_eq!(versioned_vec.len(), 5);
+        // Front element should be the same
+        assert_eq!(
+            versioned_vec.front(second_chain_index),
+            Some(&new_entry_version)
+        );
 
-    // Iterate
-    assert_eq!(versioned_vec.iter_chain(first_chain_index).count(), 2);
-    assert_eq!(versioned_vec.iter().count(), versioned_vec.len());
+        versioned_vec.pop_back(third_chain_index)?;
+        assert_eq!(versioned_vec.len(), 4);
+        // the chain 3 was completely removed
+        assert!(versioned_vec.pop_back(third_chain_index).is_err());
 
-    Ok(())
-}
+        // Iterate
+        assert_eq!(versioned_vec.iter_chain(first_chain_index).count(), 2);
+        assert_eq!(versioned_vec.iter().count(), versioned_vec.len());
 
-#[test]
-fn test_versioned_vec_iterator() {
-    let mut versioned_vec: VersionedVec<u32> = VersionedVec::new();
+        Ok(())
+    }
 
-    // Inserting new chains
-    versioned_vec.insert_new_chain(vec![1, 11, 111].into_iter());
-    versioned_vec.insert_new_chain(vec![2, 22].into_iter());
-    versioned_vec.insert_new_chain(vec![3].into_iter());
+    #[test]
+    fn test_versioned_vec_iterator() {
+        let mut versioned_vec: VersionedVec<u32> = VersionedVec::new();
 
-    // Depth iter
-    let depth_iter: Vec<_> = versioned_vec.iter().copied().collect();
-    assert_eq!(depth_iter, vec![111, 11, 1, 22, 2, 3]);
+        // Inserting new chains
+        versioned_vec.insert_new_chain(vec![1, 11, 111].into_iter());
+        versioned_vec.insert_new_chain(vec![2, 22].into_iter());
+        versioned_vec.insert_new_chain(vec![3].into_iter());
 
-    // Breadth iter
-    let bfs: Vec<_> = versioned_vec.bfs().copied().collect();
-    assert_eq!(bfs, vec![111, 22, 3, 11, 2, 1]);
+        // Depth iter
+        let depth_iter: Vec<_> = versioned_vec.iter().copied().collect();
+        assert_eq!(depth_iter, vec![111, 11, 1, 22, 2, 3]);
 
-    // Iter chain by chain <=> depth iter
-    assert_eq!(
-        versioned_vec.iter().collect::<Vec<_>>(),
-        (0..3)
-            .flat_map(|index| versioned_vec.iter_chain(index))
-            .collect::<Vec<_>>()
-    );
+        // Breadth iter
+        let bfs: Vec<_> = versioned_vec.bfs().copied().collect();
+        assert_eq!(bfs, vec![111, 22, 3, 11, 2, 1]);
+
+        // Iter chain by chain <=> depth iter
+        assert_eq!(
+            versioned_vec.iter().collect::<Vec<_>>(),
+            (0..3)
+                .flat_map(|index| versioned_vec.iter_chain(index))
+                .collect::<Vec<_>>()
+        );
+    }
 }

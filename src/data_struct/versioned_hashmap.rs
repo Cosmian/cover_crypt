@@ -201,8 +201,8 @@ where
         Ok(())
     }
 
-    // Removes all but the last (key, value) pair from a link chain.
-    // pub fn pop_chain(&mut self, root_key: K) -> Result<(), Error> {
+    //  Removes all but the last (key, value) pair from a link chain.
+    //  pub fn pop_chain(&mut self, root_key: K) -> Result<(), Error> {
     //      let mut curr_entry = self.expected_entry(root_key)?;
     //
     //      while our current entry has a next key, we remove it from the hashmap
@@ -215,36 +215,44 @@ where
     //  }
 }
 
-#[test]
-fn test_versioned_hashmap() -> Result<(), Error> {
-    let mut lhm = VersionedHashMap::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    lhm.insert_root(1, "key1".to_string())?;
-    lhm.insert_root(2, "key2".to_string())?;
-    lhm.insert_root(3, "key3".to_string())?;
+    #[test]
+    fn test_versioned_hashmap() -> Result<(), Error> {
+        let mut versioned_hashmap = VersionedHashMap::new();
+        assert!(versioned_hashmap.is_empty());
 
-    lhm.insert(&1, 11, "key11".to_string())?;
-    assert!(lhm.insert(&1, 12, "key12".to_string()).is_err());
-    lhm.insert(&11, 111, "key111".to_string())?;
+        versioned_hashmap.insert_root(1, "key1".to_string())?;
+        versioned_hashmap.insert_root(2, "key2".to_string())?;
+        versioned_hashmap.insert_root(3, "key3".to_string())?;
 
-    assert_eq!(lhm.get(&1), Some(&"key1".to_string()));
-    assert_eq!(lhm.get(&11), Some(&"key11".to_string()));
+        versioned_hashmap.insert(&1, 11, "key11".to_string())?;
+        assert!(versioned_hashmap
+            .insert(&1, 12, "key12".to_string())
+            .is_err());
+        versioned_hashmap.insert(&11, 111, "key111".to_string())?;
 
-    let res: Vec<_> = lhm.iter().collect();
-    assert_eq!(res.len(), 5);
+        assert_eq!(versioned_hashmap.get(&1), Some(&"key1".to_string()));
+        assert_eq!(versioned_hashmap.get(&11), Some(&"key11".to_string()));
 
-    let res: Vec<_> = lhm.iter_chain(&1).collect();
-    assert_eq!(
-        res,
-        vec![
-            (&1, &"key1".to_string()),
-            (&11, &"key11".to_string()),
-            (&111, &"key111".to_string())
-        ]
-    );
+        let res: Vec<_> = versioned_hashmap.iter().collect();
+        assert_eq!(res.len(), 5);
 
-    lhm.set_chain_parent(111)?;
-    assert_eq!(lhm.len(), 3);
+        let res: Vec<_> = versioned_hashmap.iter_chain(&1).collect();
+        assert_eq!(
+            res,
+            vec![
+                (&1, &"key1".to_string()),
+                (&11, &"key11".to_string()),
+                (&111, &"key111".to_string())
+            ]
+        );
 
-    Ok(())
+        versioned_hashmap.set_chain_parent(111)?;
+        assert_eq!(versioned_hashmap.len(), 3);
+
+        Ok(())
+    }
 }

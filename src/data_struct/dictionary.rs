@@ -251,58 +251,89 @@ where
     }
 }
 
-#[test]
-fn test_dict() -> Result<(), Error> {
-    let mut d: Dict<String, String> = Dict::new();
-    assert!(d.is_empty());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Insertions
-    d.insert(String::from("ID1"), String::from("Foo"));
-    d.insert(String::from("ID2"), String::from("Bar"));
-    d.insert(String::from("ID3"), String::from("Baz"));
-    assert_eq!(d.len(), 3);
+    #[test]
+    fn test_dict() -> Result<(), Error> {
+        let mut d: Dict<String, String> = Dict::new();
+        assert!(d.is_empty());
 
-    // Get
-    assert_eq!(
-        d.get_key_value(&String::from("ID2")).unwrap(),
-        (&String::from("ID2"), &String::from("Bar"))
-    );
+        // Insertions
+        d.insert(String::from("ID1"), String::from("Foo"));
+        d.insert(String::from("ID2"), String::from("Bar"));
+        d.insert(String::from("ID3"), String::from("Baz"));
+        assert_eq!(d.len(), 3);
 
-    // Edit
-    // Overwrite value without changing order
-    d.insert("ID1".to_string(), "Foox".to_string());
+        // Get
+        assert_eq!(
+            d.get_key_value(&String::from("ID2")).unwrap(),
+            (&String::from("ID2"), &String::from("Bar"))
+        );
 
-    // Update key without changing order
-    d.update_key(&String::from("ID2"), String::from("ID2_bis"))?;
-    assert!(d.get_key_value(&String::from("ID2")).is_none());
-    assert_eq!(
-        d.get_key_value(&String::from("ID2_bis")).unwrap(),
-        (&String::from("ID2_bis"), &String::from("Bar"))
-    );
+        // Edit
+        // Overwrite value without changing order
+        d.insert("ID1".to_string(), "Foox".to_string());
 
-    // Iterators
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Bar", "Baz"]);
+        // Update key without changing order
+        d.update_key(&String::from("ID2"), String::from("ID2_bis"))?;
+        assert!(d.get_key_value(&String::from("ID2")).is_none());
+        assert_eq!(
+            d.get_key_value(&String::from("ID2_bis")).unwrap(),
+            (&String::from("ID2_bis"), &String::from("Bar"))
+        );
 
-    assert_eq!(
-        d.iter().collect::<Vec<_>>(),
-        vec![
-            (&String::from("ID1"), &String::from("Foox")),
-            (&String::from("ID2_bis"), &String::from("Bar")),
-            (&String::from("ID3"), &String::from("Baz")),
-        ]
-    );
+        // Iterators
+        assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Bar", "Baz"]);
 
-    // Remove
-    assert!(d.remove(&String::from("Missing")).is_none());
-    assert_eq!(d.remove(&String::from("ID2_bis")), Some("Bar".to_string()));
-    assert_eq!(d.len(), 2);
+        assert_eq!(
+            d.iter().collect::<Vec<_>>(),
+            vec![
+                (&String::from("ID1"), &String::from("Foox")),
+                (&String::from("ID2_bis"), &String::from("Bar")),
+                (&String::from("ID3"), &String::from("Baz")),
+            ]
+        );
 
-    // Check order is maintained
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Baz"]);
+        // Remove
+        assert!(d.remove(&String::from("Missing")).is_none());
+        assert_eq!(d.remove(&String::from("ID2_bis")), Some("Bar".to_string()));
+        assert_eq!(d.len(), 2);
 
-    // Insertion after remove
-    d.insert(String::from("ID4"), String::from("Test"));
-    assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Baz", "Test"]);
+        // Check order is maintained
+        assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Baz"]);
 
-    Ok(())
+        // Insertion after remove
+        d.insert(String::from("ID4"), String::from("Test"));
+        assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Baz", "Test"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_dict_serialization() {
+        // Init dict
+        let mut d: Dict<String, String> = Dict::new();
+        d.insert("ID1".to_string(), "Foo".to_string());
+        d.insert("ID2".to_string(), "Bar".to_string());
+        d.insert("ID3".to_string(), "Baz".to_string());
+        d.remove(&"ID2".to_string());
+        d.insert("ID4".to_string(), "Bar2".to_string());
+
+        // serialize
+        let data = serde_json::to_vec(&d).unwrap();
+
+        // can be read as a hashmap but this the order will be lost
+        let map: HashMap<String, String> = serde_json::from_slice(&data).unwrap();
+        assert_eq!(map.len(), d.len());
+        assert!(map.contains_key("ID1"));
+        assert!(map.contains_key("ID3"));
+        assert!(map.contains_key("ID4"));
+
+        // deserialization as dict will keep the order
+        let d2: Dict<String, String> = serde_json::from_slice(&data).unwrap();
+        assert_eq!(d2.len(), d.len());
+        assert_eq!(d2.iter().collect::<Vec<_>>(), d.iter().collect::<Vec<_>>());
+    }
 }
