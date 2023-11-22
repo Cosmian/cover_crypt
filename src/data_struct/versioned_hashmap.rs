@@ -31,16 +31,16 @@ where
     K: Debug + PartialEq + Eq + Hash,
     V: Debug + PartialEq + Eq,
 {
-    map: HashMap<K, VersionedEntry<K, V>>,
+    pub(crate) map: HashMap<K, VersionedEntry<K, V>>,
 }
 
 /// a `VersionedEntry` stores a value and an optional key of the next entry
 /// version in the hash map.
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct VersionedEntry<K, V> {
-    value: V,
-    prev_key: Option<K>,
-    next_key: Option<K>,
+pub struct VersionedEntry<K, V> {
+    pub(crate) value: V,
+    pub(crate) prev_key: Option<K>,
+    pub(crate) next_key: Option<K>,
 }
 
 impl<K, V> VersionedEntry<K, V>
@@ -72,7 +72,7 @@ where
 impl<'a, K, V> Iterator for VersionedHashMapIterator<'a, K, V>
 where
     V: Clone + Debug + Eq + PartialEq,
-    K: Hash + Eq + PartialEq + Clone + PartialOrd + Ord + Debug,
+    K: Hash + Eq + PartialEq + Clone + Debug,
 {
     type Item = (&'a K, &'a V);
 
@@ -88,7 +88,7 @@ where
 
 impl<K, V> VersionedHashMap<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + PartialOrd + Ord + Debug,
+    K: Hash + PartialEq + Eq + Clone + Debug,
     V: Clone + Debug + PartialEq + Eq,
 {
     pub fn new() -> Self {
@@ -173,6 +173,7 @@ where
         self.map.keys()
     }
 
+    /// Iterates through all values in arbitrary order.
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.map.iter().map(|(k, entry)| (k, &entry.value))
     }

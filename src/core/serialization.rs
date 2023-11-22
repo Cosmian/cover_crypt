@@ -19,6 +19,32 @@ use crate::{
     CleartextHeader, EncryptedHeader, Error,
 };
 
+/// Serialize an optional value as a LEB128-encoded unsigned integer followed by
+/// the serialization of the contained value if any.
+macro_rules! serialize_option {
+    ($serializer:expr, $n:expr, $option:expr, $value:ident, $method:expr) => {{
+        if let Some($value) = &$option {
+            $n += $serializer.write_leb128_u64(1)?;
+            $n += $method?;
+        } else {
+            $n += $serializer.write_leb128_u64(0)?;
+        }
+    }};
+}
+
+/// Deserialize an optional value from a LEB128-encoded unsigned integer
+/// followed by the deserialization of the contained value if any.
+macro_rules! deserialize_option {
+    ($deserializer:expr, $method:expr) => {{
+        let is_some = $deserializer.read_leb128_u64()?;
+        if is_some == 1 {
+            Some($method)
+        } else {
+            None
+        }
+    }};
+}
+
 impl Serializable for MasterPublicKey {
     type Error = Error;
 
@@ -42,12 +68,7 @@ impl Serializable for MasterPublicKey {
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, (pk_i, h_i)) in &self.subkeys {
             n += ser.write_vec(partition)?;
-            if let Some(pk_i) = pk_i {
-                n += ser.write_leb128_u64(1)?;
-                n += ser.write_array(pk_i)?;
-            } else {
-                n += ser.write_leb128_u64(0)?;
-            }
+            serialize_option!(ser, n, pk_i, value, ser.write_array(value));
             n += ser.write_array(&h_i.to_bytes())?;
         }
         Ok(n)
@@ -60,12 +81,7 @@ impl Serializable for MasterPublicKey {
         let mut subkeys = HashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
             let partition = de.read_vec()?;
-            let is_hybridized = de.read_leb128_u64()?;
-            let pk_i = if is_hybridized == 1 {
-                Some(KyberPublicKey(de.read_array()?))
-            } else {
-                None
-            };
+            let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
             let h_i = de.read_array::<{ R25519PublicKey::LENGTH }>()?;
             subkeys.insert(
                 Partition::from(partition),
@@ -99,14 +115,15 @@ impl Serializable for MasterSecretKey {
         n += ser.write_array(&self.s2.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, (sk_i, x_i)) in self.subkeys.iter() {
+        for (partition, entry) in &self.subkeys.map {
+            // serialize partition, next and prev
             n += ser.write_vec(partition)?;
-            if let Some(sk_i) = sk_i {
-                n += ser.write_leb128_u64(1)?;
-                n += ser.write_array(sk_i)?;
-            } else {
-                n += ser.write_leb128_u64(0)?;
-            }
+            serialize_option!(ser, n, entry.next_key, value, ser.write_vec(value));
+            serialize_option!(ser, n, entry.prev_key, value, ser.write_vec(value));
+
+            // serialize key values
+            let (sk_i, x_i) = &entry.value;
+            serialize_option!(ser, n, sk_i, value, ser.write_array(value));
             n += ser.write_array(&x_i.to_bytes())?;
         }
         if let Some(kmac_key) = &self.kmac_key {
@@ -127,12 +144,7 @@ impl Serializable for MasterSecretKey {
         let mut subkeys = HashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
             let partition = de.read_vec()?;
-            let is_hybridized = de.read_leb128_u64()?;
-            let sk_i = if is_hybridized == 1 {
-                Some(KyberSecretKey(de.read_array()?))
-            } else {
-                None
-            };
+            let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
             subkeys.insert(
                 Partition::from(partition),
@@ -179,12 +191,7 @@ impl Serializable for UserSecretKey {
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, (sk_i, x_i)) in self.subkeys.iter() {
             n += ser.write_vec(partition)?;
-            if let Some(sk_i) = sk_i {
-                n += ser.write_leb128_u64(1)?;
-                n += ser.write_array(sk_i)?;
-            } else {
-                n += ser.write_leb128_u64(0)?;
-            }
+            serialize_option!(ser, n, sk_i, value, ser.write_array(value));
             n += ser.write_array(&x_i.to_bytes())?;
         }
         if let Some(kmac) = &self.kmac {
@@ -200,12 +207,7 @@ impl Serializable for UserSecretKey {
         let mut subkeys = Vec::with_capacity(n_partitions);
         for _ in 0..n_partitions {
             let partition = de.read_vec()?;
-            let is_hybridized = de.read_leb128_u64()?;
-            let sk_i = if is_hybridized == 1 {
-                Some(KyberSecretKey(de.read_array()?))
-            } else {
-                None
-            };
+            let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
             subkeys.push((
                 Partition::from(partition),
