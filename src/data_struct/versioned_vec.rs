@@ -49,6 +49,14 @@ impl<T> VersionedVec<T> {
         self.len() == 0
     }
 
+    pub fn nb_chains(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn chain_length(&self, chain_index: usize) -> usize {
+        self.data[chain_index].len()
+    }
+
     pub fn push_front(&mut self, chain_index: usize, item: T) -> Result<(), Error> {
         let chain = self
             .data
@@ -205,7 +213,11 @@ mod tests {
         versioned_vec.insert_new_chain(vec![(3, "key3".to_string())].into_iter());
 
         assert_eq!(versioned_vec.data.len(), 3);
+        assert_eq!(versioned_vec.nb_chains(), 3);
         assert_eq!(versioned_vec.len(), 6);
+        assert_eq!(versioned_vec.chain_length(first_chain_index), 3);
+        assert_eq!(versioned_vec.chain_length(second_chain_index), 2);
+        assert_eq!(versioned_vec.chain_length(third_chain_index), 1);
 
         // Get front
         assert_eq!(
@@ -266,7 +278,7 @@ mod tests {
         // Iter chain by chain <=> depth iter
         assert_eq!(
             versioned_vec.iter().collect::<Vec<_>>(),
-            (0..3)
+            (0..versioned_vec.nb_chains())
                 .flat_map(|index| versioned_vec.iter_chain(index))
                 .collect::<Vec<_>>()
         );

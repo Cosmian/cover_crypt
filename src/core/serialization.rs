@@ -95,6 +95,7 @@ impl Serializable for MasterPublicKey {
 impl Serializable for MasterSecretKey {
     type Error = Error;
 
+    // TODO: fix
     fn length(&self) -> usize {
         let mut length = 3 * R25519PrivateKey::LENGTH
             + self.kmac_key.as_ref().map_or_else(|| 0, |key| key.len())
@@ -141,15 +142,16 @@ impl Serializable for MasterSecretKey {
         let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
 
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = HashMap::with_capacity(n_partitions);
+        let mut subkeys = VersionedHashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
-            let partition = de.read_vec()?;
+            let partition = Partition::from(de.read_vec()?);
+            let next = deserialize_option!(de, de.read_vec()?).map(Partition::from);
+            let prev = deserialize_option!(de, de.read_vec()?).map(Partition::from);
+
             let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
             let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
-            subkeys.insert(
-                Partition::from(partition),
-                (sk_i, R25519PrivateKey::try_from_bytes(x_i)?),
-            );
+            let value = (sk_i, R25519PrivateKey::try_from_bytes(x_i)?);
+            subkeys.insert_entry(partition, next, prev, value);
         }
 
         let kmac_key = match de.read_array::<{ KMAC_KEY_LENGTH }>() {
@@ -161,7 +163,7 @@ impl Serializable for MasterSecretKey {
             s,
             s1,
             s2,
-            subkeys: VersionedHashMap::new(),
+            subkeys,
             kmac_key,
         })
     }
@@ -170,6 +172,7 @@ impl Serializable for MasterSecretKey {
 impl Serializable for UserSecretKey {
     type Error = Error;
 
+    // TODO: fix
     fn length(&self) -> usize {
         let mut length = 2 * R25519PrivateKey::LENGTH
             + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
@@ -188,11 +191,14 @@ impl Serializable for UserSecretKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
-        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, (sk_i, x_i)) in self.subkeys.iter() {
-            n += ser.write_vec(partition)?;
-            serialize_option!(ser, n, sk_i, value, ser.write_array(value));
-            n += ser.write_array(&x_i.to_bytes())?;
+        n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
+        for chain_index in 0..self.subkeys.nb_chains() {
+            n += ser.write_leb128_u64(self.subkeys.chain_length(chain_index) as u64)?;
+            for (partition, (sk_i, x_i)) in self.subkeys.iter_chain(chain_index) {
+                n += ser.write_vec(partition)?;
+                serialize_option!(ser, n, sk_i, value, ser.write_array(value));
+                n += ser.write_array(&x_i.to_bytes())?;
+            }
         }
         if let Some(kmac) = &self.kmac {
             n += ser.write_array(kmac)?;
@@ -201,6 +207,7 @@ impl Serializable for UserSecretKey {
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        // TODO: fix read
         let a = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let b = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;

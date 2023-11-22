@@ -124,13 +124,29 @@ where
         self.map.get(key)
     }
 
+    /// Internal insertion method
+    pub(crate) fn insert_entry(
+        &mut self,
+        key: K,
+        next_key: Option<K>,
+        prev_key: Option<K>,
+        value: V,
+    ) -> Option<VersionedEntry<K, V>> {
+        self.map.insert(
+            key,
+            VersionedEntry {
+                value,
+                prev_key,
+                next_key,
+            },
+        )
+    }
+
     pub fn insert_root(&mut self, key: K, value: V) -> Result<(), Error> {
         match self.map.entry(key.clone()) {
             Entry::Occupied(_) => Err(Error::existing_entry(&key)),
             Entry::Vacant(entry) => {
                 entry.insert(VersionedEntry::new(value, None));
-                //self.roots.push(key);
-                //self.roots.sort(); // allow binary search when removing root
                 Ok(())
             }
         }

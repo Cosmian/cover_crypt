@@ -17,8 +17,6 @@ use super::error::Error;
 
 type Index = usize;
 /// HashMap keeping insertion order inspired by Python dictionary.
-/// Contrary to the Python one, this implementation does not store a duplicate
-/// of the key in the entries.
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
 pub struct Dict<K, V>
 where
@@ -178,7 +176,6 @@ where
     }
 }
 
-// TODO: test serialize and deserialize
 impl<K, V> Serialize for Dict<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + Debug + Serialize,
