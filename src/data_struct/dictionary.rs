@@ -25,7 +25,7 @@ where
     K: Hash + PartialEq + Eq + Clone + Debug,
 {
     indices: HashMap<K, Index>,
-    entries: Vec<V>,
+    entries: Vec<(K, V)>,
 }
 
 impl<K, V> Dict<K, V>
@@ -59,14 +59,14 @@ where
     /// changing the order.
     /// Otherwise, new entries are simply pushed at the end.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        match self.indices.entry(key) {
+        match self.indices.entry(key.clone()) {
             Entry::Occupied(e) => {
-                // replace existing entry in vector
-                Some(std::mem::replace(&mut self.entries[*e.get()], value))
+                // replace existing entry value in vector
+                Some(std::mem::replace(&mut self.entries[*e.get()].1, value))
             }
             Entry::Vacant(e) => {
                 let new_index = self.entries.len();
-                self.entries.push(value);
+                self.entries.push((key, value));
                 e.insert(new_index);
                 None
             }
@@ -86,20 +86,27 @@ where
             .filter(|(_, index)| **index > entry_index)
             .for_each(|(_, index)| *index -= 1);
 
-        Some(self.entries.remove(entry_index))
+        Some(self.entries.remove(entry_index).1)
     }
 
     /// Updates the key for a given entry while retaining the current order.
     pub fn update_key(&mut self, old_key: &K, new_key: K) -> Result<(), Error> {
-        let index_entry = self
+        // Get index from old_key
+        let index_entry = *self
             .indices
-            .remove(old_key)
+            .get(old_key)
             .ok_or(Error::missing_entry(old_key))?;
 
-        match self.indices.entry(new_key) {
+        match self.indices.entry(new_key.clone()) {
             Entry::Occupied(e) => Err(Error::existing_entry(e.key())),
             Entry::Vacant(e) => {
+                // Insert new key inside indices
                 e.insert(index_entry);
+                // Remove old key from indices
+                let _ = self.indices.remove(old_key);
+                // Replace old_key with new_key inside entries
+                let replaced_key = std::mem::replace(&mut self.entries[index_entry].0, new_key);
+                assert_eq!(&replaced_key, old_key);
                 Ok(())
             }
         }
@@ -113,46 +120,47 @@ where
         self.indices.contains_key(key)
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let entry_index = self.indices.get(key)?;
-        self.entries.get(*entry_index)
+        self.entries.get(*entry_index).map(|(_, v)| v)
     }
 
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let entry_index = self.indices.get(key)?;
-        self.entries.get_mut(*entry_index)
+        self.entries.get_mut(*entry_index).map(|(_, v)| v)
     }
 
-    pub fn get_key_value(&self, key: &K) -> Option<(&K, &V)> {
-        let (key, entry_index) = self.indices.get_key_value(key)?;
-        let value = self.entries.get(*entry_index)?;
+    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        let entry_index = self.indices.get(key)?;
+        let (key, value) = self.entries.get(*entry_index)?;
         Some((key, value))
+    }
+
+    /// Returns an iterator over keys and values in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.entries.iter().map(|(k, v)| (k, v))
     }
 
     /// Returns an iterator over values in insertion order
     pub fn values(&self) -> impl Iterator<Item = &V> {
-        self.entries.iter()
+        self.entries.iter().map(|(_, v)| v)
     }
 
     /// Returns an iterator over keys in insertion order.
-    /// This function allocates a temporary vector to sort the keys.
     pub fn keys(&self) -> impl Iterator<Item = &K> {
-        let mut tmp_vec: Vec<_> = self.indices.iter().collect();
-        // Key's indexes correspond to insertion order.
-        tmp_vec.sort_unstable_by_key(|(_, index)| *index);
-        tmp_vec.into_iter().map(|(key, _)| key)
-    }
-
-    /// Returns an iterator over keys and values in insertion order.
-    /// This function allocates a temporary vector to sort the keys.
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
-        let mut tmp_vec: Vec<_> = self.indices.iter().collect();
-        // Key's indexes correspond to insertion order.
-        tmp_vec.sort_unstable_by_key(|(_, index)| *index);
-
-        tmp_vec
-            .into_iter()
-            .map(|(key, index)| (key, &self.entries[*index]))
+        self.entries.iter().map(|(k, _)| k)
     }
 }
 
@@ -261,15 +269,15 @@ mod tests {
         assert!(d.is_empty());
 
         // Insertions
-        d.insert(String::from("ID1"), String::from("Foo"));
-        d.insert(String::from("ID2"), String::from("Bar"));
-        d.insert(String::from("ID3"), String::from("Baz"));
+        d.insert("ID1".to_string(), "Foo".to_string());
+        d.insert("ID2".to_string(), "Bar".to_string());
+        d.insert("ID3".to_string(), "Baz".to_string());
         assert_eq!(d.len(), 3);
 
         // Get
         assert_eq!(
-            d.get_key_value(&String::from("ID2")).unwrap(),
-            (&String::from("ID2"), &String::from("Bar"))
+            d.get_key_value("ID2").unwrap(),
+            (&"ID2".to_string(), &"Bar".to_string())
         );
 
         // Edit
@@ -277,12 +285,18 @@ mod tests {
         d.insert("ID1".to_string(), "Foox".to_string());
 
         // Update key without changing order
-        d.update_key(&String::from("ID2"), String::from("ID2_bis"))?;
+        d.update_key(&"ID2".to_string(), "ID2_bis".to_string())?;
         assert!(d.get_key_value(&String::from("ID2")).is_none());
         assert_eq!(
-            d.get_key_value(&String::from("ID2_bis")).unwrap(),
-            (&String::from("ID2_bis"), &String::from("Bar"))
+            d.get_key_value(&"ID2_bis".to_string()).unwrap(),
+            (&"ID2_bis".to_string(), &"Bar".to_string())
         );
+
+        // Update key error cases
+        // missing old key
+        assert!(d.update_key(&"Bad".to_string(), "New".to_string()).is_err());
+        // existing new key
+        assert!(d.update_key(&"ID1".to_string(), "ID3".to_string()).is_err());
 
         // Iterators
         assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Bar", "Baz"]);

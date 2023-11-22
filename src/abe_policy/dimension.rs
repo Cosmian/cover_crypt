@@ -329,20 +329,9 @@ impl Dimension {
                     None => Err(Error::AttributeNotFound(attr_name.to_string())),
                 }
             }
-            Self::Ordered(attributes) => {
-                if attributes.contains_key(new_name) {
-                    return Err(Error::OperationNotPermitted(
-                        "New attribute name is already used in the same dimension".to_string(),
-                    ));
-                }
-                match attributes.remove(attr_name) {
-                    Some(attr_params) => {
-                        attributes.insert(new_name.to_string(), attr_params);
-                        Ok(())
-                    }
-                    None => Err(Error::AttributeNotFound(attr_name.to_string())),
-                }
-            }
+            Self::Ordered(attributes) => attributes
+                .update_key(attr_name, new_name.to_string())
+                .map_err(|e| Error::OperationNotPermitted(e.to_string())),
         }
     }
 
