@@ -83,7 +83,7 @@ mod tests {
         for p in &partitions_msk {
             assert!(partitions_mpk.contains(p));
         }
-        // rotate he FIN department
+        // rotate the FIN department
         policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
@@ -108,6 +108,50 @@ mod tests {
         }
         // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_keys_partition_rotation() -> Result<(), Error> {
+        let d1 = DimensionBuilder::new(
+            "D1",
+            vec![
+                ("D1A1", EncryptionHint::Classic),
+                ("D1A2", EncryptionHint::Classic),
+            ],
+            false,
+        );
+        let d2 = DimensionBuilder::new(
+            "D2",
+            vec![
+                ("D2A1", EncryptionHint::Classic),
+                ("D2A2", EncryptionHint::Classic),
+            ],
+            false,
+        );
+        let mut policy = Policy::new();
+        policy.add_dimension(d1)?;
+        policy.add_dimension(d2)?;
+
+        let cover_crypt = Covercrypt::default();
+        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
+        assert_eq!(mpk.subkeys.keys().len(), 2 * 2);
+
+        policy.rotate(&Attribute::new("D1", "D1A1"))?;
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        assert_eq!(mpk.subkeys.keys().len(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
+
+        policy.rotate(&Attribute::new("D1", "D1A2"))?;
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        assert_eq!(mpk.subkeys.keys().len(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
+
+        policy.rotate(&Attribute::new("D2", "D2A1"))?;
+        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        assert_eq!(mpk.subkeys.keys().len(), 8 + 4);
+        // Problem: adding 4 instead of 2 new partitions keys
+        // D1A1:D2A1', D1A2:D2A1', D1A1':D2A1', D1A2':D2A1'
+        // Only the last 2 ones are actually useful
 
         Ok(())
     }
