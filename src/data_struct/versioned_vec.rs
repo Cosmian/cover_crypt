@@ -124,7 +124,7 @@ impl<T> VersionedVec<T> {
 
     /// Iterates through all versions of an entry starting from the most recent
     /// one.
-    pub fn iter_chain(&self, chain_index: usize) -> impl Iterator<Item = &T> {
+    pub fn iter_chain(&self, chain_index: usize) -> impl DoubleEndedIterator<Item = &T> {
         self.data[chain_index].iter()
     }
 
