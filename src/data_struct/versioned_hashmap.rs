@@ -29,7 +29,7 @@ use super::error::Error;
 pub struct VersionedHashMap<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
-    V: Debug + PartialEq + Eq,
+    V: Debug, // + PartialEq + Eq,
 {
     pub(crate) map: HashMap<K, VersionedEntry<K, V>>,
 }
@@ -60,10 +60,10 @@ where
     }
 }
 
-struct VersionedHashMapIterator<'a, K, V>
+pub struct VersionedHashMapIterator<'a, K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
-    V: Debug + PartialEq + Eq,
+    V: Debug,
 {
     lhm: &'a VersionedHashMap<K, V>,
     current_key: Option<&'a K>,
@@ -89,7 +89,7 @@ where
 impl<K, V> VersionedHashMap<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + Debug,
-    V: Clone + Debug + PartialEq + Eq,
+    V: Clone + Debug,
 {
     pub fn new() -> Self {
         Self {
@@ -195,7 +195,7 @@ where
     }
 
     /// Iterates through all values from a link chain.
-    pub fn iter_chain<'a>(&'a self, key: &'a K) -> impl Iterator<Item = (&K, &V)> + 'a {
+    pub fn iter_chain<'a>(&'a self, key: &'a K) -> VersionedHashMapIterator<K, V> {
         VersionedHashMapIterator::<'a, K, V> {
             lhm: self,
             current_key: Some(key),

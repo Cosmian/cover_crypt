@@ -112,6 +112,11 @@ impl<T> VersionedVec<T> {
         Ok(removed_item)
     }
 
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.length = self.data.len();
+    }
+
     /// Provides reference to the oldest entry version.
     pub fn back(&self, chain_index: usize) -> Option<&T> {
         self.data.get(chain_index)?.back()
@@ -254,6 +259,9 @@ mod tests {
         // Iterate
         assert_eq!(versioned_vec.iter_chain(first_chain_index).count(), 2);
         assert_eq!(versioned_vec.iter().count(), versioned_vec.len());
+
+        versioned_vec.clear();
+        assert!(versioned_vec.is_empty());
 
         Ok(())
     }

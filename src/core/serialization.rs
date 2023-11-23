@@ -442,7 +442,7 @@ mod tests {
         let bytes = msk.serialize()?;
         assert_eq!(bytes.len(), msk.length(), "Wrong master secret key length");
         let msk_ = MasterSecretKey::deserialize(&bytes)?;
-        assert_eq!(msk, msk_, "Wrong `MasterSecretKey` derserialization.");
+        assert_eq!(msk, msk_, "Wrong `MasterSecretKey` deserialization.");
         assert!(
             msk_.kmac_key.is_some(),
             "Wrong `MasterSecretKey` deserialization."

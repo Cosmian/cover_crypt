@@ -1,7 +1,10 @@
 //! Implements the cryptographic primitives of `Covercrypt`, based on
 //! `bib/Covercrypt.pdf`.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    iter,
+};
 
 use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey,
@@ -87,7 +90,7 @@ pub fn setup(
     let g1 = R25519PublicKey::from(&s1);
     let g2 = R25519PublicKey::from(&s2);
 
-    let mut sub_sk = HashMap::with_capacity(partitions.len());
+    let mut sub_sk = VersionedHashMap::with_capacity(partitions.len());
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
     for (partition, &(is_hybridized, _)) in partitions {
@@ -105,7 +108,9 @@ pub fn setup(
             (None, None)
         };
 
-        sub_sk.insert(partition.clone(), (sk_pq, sk_i));
+        sub_sk
+            .insert_root(partition.clone(), (sk_pq, sk_i))
+            .expect("Partitions are unique");
         sub_pk.insert(partition.clone(), (pk_pq, pk_i));
     }
 
@@ -116,7 +121,7 @@ pub fn setup(
             s,
             s1,
             s2,
-            subkeys: VersionedHashMap::new(), // TODO: sub_sk,
+            subkeys: sub_sk,
             kmac_key,
         },
         MasterPublicKey {
@@ -293,7 +298,7 @@ pub fn update(
     mpk: &mut MasterPublicKey,
     partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
-    let mut new_sub_sk = HashMap::with_capacity(partitions_set.len());
+    let mut new_sub_sk = VersionedHashMap::with_capacity(partitions_set.len());
     let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
     let h = R25519PublicKey::from(&msk.s);
 
@@ -331,7 +336,9 @@ pub fn update(
                 }
                 new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
-            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
+            new_sub_sk
+                .insert_root(partition.clone(), (sk_i, x_i.clone()))
+                .expect("Partitions are unique");
         } else {
             // Create new entry.
             let x_i = R25519PrivateKey::new(rng);
@@ -346,7 +353,9 @@ pub fn update(
             } else {
                 (None, None)
             };
-            new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
+            new_sub_sk
+                .insert_root(partition.clone(), (sk_pq, x_i))
+                .expect("Partitions are unique");
             if write_status == AttributeStatus::EncryptDecrypt {
                 // Only add non read only partition to the public key
                 new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
@@ -354,7 +363,7 @@ pub fn update(
         }
     }
 
-    // TODO: msk.subkeys = new_sub_sk;
+    msk.subkeys = new_sub_sk;
     mpk.subkeys = new_sub_pk;
 
     Ok(())
@@ -377,12 +386,20 @@ pub fn update(
 pub fn refresh(
     msk: &MasterSecretKey,
     usk: &mut UserSecretKey,
-    _decryption_set: &HashSet<Partition>,
+    decryption_set: &HashSet<Partition>,
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
 
     // TODO: for each chain in USK, check that the current rotation still exist in
     // MSK, add new rotations if any, remove old rotations if not present in MSK
+    usk.subkeys.clear();
+
+    for partition in decryption_set {
+        if let Some(x_i) = msk.subkeys.get(partition) {
+            usk.subkeys
+                .insert_new_chain(iter::once((partition.clone(), x_i.clone())))
+        }
+    }
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
