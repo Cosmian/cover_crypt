@@ -69,9 +69,9 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub(crate) rotation_values: Vec<u32>,
-    pub(crate) encryption_hint: EncryptionHint,
-    pub(crate) write_status: AttributeStatus,
+    pub(super) attribute_id: u32,
+    pub(super) encryption_hint: EncryptionHint,
+    pub(super) write_status: AttributeStatus,
 }
 
 impl AttributeParameters {
@@ -80,43 +80,28 @@ impl AttributeParameters {
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
-            rotation_values: vec![*seed_id],
+            attribute_id: *seed_id,
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,
         }
     }
 
-    /// Gets the current rotation of the Attribute.
-    pub fn get_current_rotation(&self) -> u32 {
-        self.rotation_values
-            .last()
-            .copied()
-            .expect("Attribute should always have at least one value")
+    pub fn get_attribute_id(&self) -> u32 {
+        self.attribute_id
     }
 
-    pub fn rotate_current_value(&mut self, seed_id: &mut u32) {
-        *seed_id += 1;
-        self.rotation_values.push(*seed_id)
+    pub fn get_encryption_hint(&self) -> EncryptionHint {
+        self.encryption_hint
     }
 
-    pub fn clear_old_rotation_values(&mut self) {
-        // TODO: use VecDeque ?
-        let current_val = self.get_current_rotation();
-        self.rotation_values.retain(|val| val == &current_val);
+    pub fn get_status(&self) -> AttributeStatus {
+        self.write_status
     }
 
-    pub fn all_rotation_values(&self) -> impl '_ + DoubleEndedIterator<Item = u32> {
-        self.rotation_values.iter().copied()
-    }
-
-    /// Flattens the properties of the `AttributeParameters` into a vector of
-    /// tuples where each tuple contains a rotation value, the associated
-    /// encryption hint, and the `read_only` flag.
-    pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
-        self.rotation_values
-            .iter()
-            .map(|&value| (value, self.encryption_hint, self.write_status))
-            .collect()
+    /// Returns a tuple containing the attribute id, the associated encryption
+    /// hint, and the `read_only` flag.
+    pub fn get_attribute_properties(&self) -> (u32, EncryptionHint, AttributeStatus) {
+        (self.attribute_id, self.encryption_hint, self.write_status)
     }
 }
 
@@ -197,25 +182,10 @@ impl Dimension {
     /// Returns an error if the attribute with the specified name is not found.
     pub fn rotate_attribute(
         &mut self,
-        attr_name: &AttributeName,
-        seed_id: &mut u32,
+        _attr_name: &AttributeName,
+        _seed_id: &mut u32,
     ) -> Result<(), Error> {
-        match self {
-            Self::Unordered(attributes) => match attributes.get_mut(attr_name) {
-                Some(attr) => {
-                    attr.rotate_current_value(seed_id);
-                    Ok(())
-                }
-                None => Err(Error::AttributeNotFound(attr_name.to_string())),
-            },
-            Self::Ordered(attributes) => match attributes.get_mut(attr_name) {
-                Some(attr) => {
-                    attr.rotate_current_value(seed_id);
-                    Ok(())
-                }
-                None => Err(Error::AttributeNotFound(attr_name.to_string())),
-            },
-        }
+        todo!()
     }
 
     /// Adds a new attribute to the dimension with the provided properties.
@@ -344,17 +314,8 @@ impl Dimension {
     /// # Errors
     ///
     /// Returns an error if the attribute is not found.
-    pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        match self {
-            Self::Unordered(attributes) => attributes
-                .get_mut(attr_name)
-                .map(|attr| attr.clear_old_rotation_values())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-            Self::Ordered(attributes) => attributes
-                .get_mut(attr_name)
-                .map(|attr| attr.clear_old_rotation_values())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-        }
+    pub fn clear_old_attribute_values(&mut self, _attr_name: &AttributeName) -> Result<(), Error> {
+        todo!()
     }
 
     /// Returns an iterator over the AttributesParameters and parameters.

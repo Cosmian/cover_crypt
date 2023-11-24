@@ -29,7 +29,7 @@ use super::error::Error;
 pub struct VersionedHashMap<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
-    V: Debug, // + PartialEq + Eq,
+    V: Debug,
 {
     pub(crate) map: HashMap<K, VersionedEntry<K, V>>,
 }
