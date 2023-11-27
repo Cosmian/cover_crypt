@@ -66,7 +66,7 @@ where
         chain.push_front(value);
     }
 
-    /// Inserts value at key and return the current version for this key.
+    /// Inserts value at the front of the chain for a given key
     pub fn insert(&mut self, key: K, value: V) {
         // All branches will add an element in the map.
         self.length += 1;

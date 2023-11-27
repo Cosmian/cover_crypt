@@ -1,10 +1,7 @@
 //! Implements the cryptographic primitives of `Covercrypt`, based on
 //! `bib/Covercrypt.pdf`.
 
-use std::{
-    collections::{HashMap, HashSet},
-    iter,
-};
+use std::collections::{HashMap, HashSet};
 
 use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
@@ -377,15 +374,23 @@ pub fn update(
 }
 
 pub fn rotate(
-    _rng: &mut impl CryptoRngCore,
-    _msk: &mut MasterSecretKey,
-    _mpk: &mut MasterPublicKey,
-    _partitions_to_rotate: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    rng: &mut impl CryptoRngCore,
+    msk: &mut MasterSecretKey,
+    mpk: &mut MasterPublicKey,
+    partitions_to_rotate: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
     // let partitions_to_rotate =
     //      self.access_policy_to_partitions(&AccessPolicy::Attr(attr.clone()),
     // false)?;
-    todo!()
+    let h = R25519PublicKey::from(&msk.s);
+    for (partition, (is_hybridized, write_status)) in partitions_to_rotate {
+        let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, *is_hybridized);
+        msk.subkeys.insert(partition.clone(), (sk_pq, sk_i));
+        if *write_status == AttributeStatus::EncryptDecrypt {
+            mpk.subkeys.insert(partition.clone(), (pk_pq, pk_i));
+        }
+    }
+    Ok(())
 }
 /// Refresh a user key from the master secret key and the given decryption set.
 ///
@@ -401,23 +406,20 @@ pub fn rotate(
 /// - `decryption_set`  : set of partitions the user is granted the decryption
 ///   right for
 /// - `keep_old_rights` : whether or not to keep old decryption rights
-pub fn refresh(
-    msk: &MasterSecretKey,
-    usk: &mut UserSecretKey,
-    decryption_set: &HashSet<Partition>,
-) -> Result<(), Error> {
+pub fn refresh(msk: &MasterSecretKey, usk: &mut UserSecretKey) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
 
     // TODO: for each chain in USK, check that the current rotation still exist in
     // MSK, add new rotations if any, remove old rotations if not present in MSK
-    usk.subkeys.clear();
+
+    /*usk.subkeys.clear();
 
     for partition in decryption_set {
         if let Some(x_i) = msk.subkeys.get_current_revision(partition) {
             usk.subkeys
                 .insert_new_chain(iter::once((partition.clone(), x_i.clone())))
         }
-    }
+    }*/
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
@@ -519,7 +521,7 @@ mod tests {
         let client_target_set = HashSet::from([client_partition.clone()]);
 
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh(&msk, &mut dev_usk, &HashSet::from([dev_partition.clone()]))?;
+        refresh(&msk, &mut dev_usk); //, &HashSet::from([dev_partition.clone()]))?;
 
         // The dev partition matches a hybridized sub-key.
         let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
@@ -669,9 +671,8 @@ mod tests {
         update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
         // refresh the user key with partitions 2 and 4
         refresh(
-            &msk,
-            &mut usk,
-            &HashSet::from([partition_2.clone(), partition_4.clone()]),
+            &msk, &mut usk,
+            //&HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
         assert!(!usk.subkeys.iter().any(|x| {
             x == &(

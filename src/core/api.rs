@@ -110,17 +110,13 @@ impl Covercrypt {
     pub fn refresh_user_secret_key(
         &self,
         usk: &mut UserSecretKey,
-        access_policy: &AccessPolicy,
+        _access_policy: &AccessPolicy,
         msk: &MasterSecretKey,
-        policy: &Policy,
+        _policy: &Policy,
         _keep_old_rotations: bool,
     ) -> Result<(), Error> {
         // TODO: use keep_old_rotations
-        refresh(
-            msk,
-            usk,
-            &policy.access_policy_to_partitions(access_policy, true)?,
-        )
+        refresh(msk, usk)
     }
 
     /// Generates a random symmetric key to be used with a DEM scheme and
