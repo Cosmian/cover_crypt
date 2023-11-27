@@ -362,7 +362,6 @@ impl AccessPolicy {
                     .ok_or_else(|| Error::DimensionNotFound(attr.dimension.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
                 if include_lower_attributes_from_dim && dim_parameters.is_ordered() {
-                    // TODO: optimize `Dict` for this step
                     // add attribute values for all attributes below the given one
                     for name in dim_parameters
                         .get_attributes_name()

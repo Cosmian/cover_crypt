@@ -270,23 +270,18 @@ impl Policy {
     /// partitions.
     ///
     /// - `access_policy`               : access policy to convert
-    /// - `follow_hierarchical_axes`    : set to `true` to combine lower dim
+    /// - `follow_hierarchical_dim`    : set to `true` to combine lower dim
     ///   attributes
     pub fn access_policy_to_partitions(
         &self,
         access_policy: &AccessPolicy,
-        follow_hierarchical_axes: bool,
-        include_old_rotations: bool,
+        follow_hierarchical_dim: bool,
     ) -> Result<HashSet<Partition>, Error> {
         let attr_combinations =
-            access_policy.to_attribute_combinations(self, follow_hierarchical_axes)?;
+            access_policy.to_attribute_combinations(self, follow_hierarchical_dim)?;
         let mut res = HashSet::with_capacity(attr_combinations.len());
         for attr_combination in &attr_combinations {
-            for partition in generate_current_attribute_partitions(
-                attr_combination,
-                self,
-                include_old_rotations,
-            )? {
+            for partition in generate_attribute_partitions(attr_combination, self)? {
                 let is_unique = res.insert(partition);
                 if !is_unique {
                     return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
@@ -318,16 +313,16 @@ impl TryFrom<&Policy> for Vec<u8> {
 ///
 /// - `attributes`  : list of attributes
 /// - `policy`      : global policy data
-fn generate_current_attribute_partitions(
+fn generate_attribute_partitions(
     attributes: &[Attribute],
     policy: &Policy,
-    _include_old_partitions: bool,
 ) -> Result<HashSet<Partition>, Error> {
     let mut attr_params_per_dim =
         HashMap::<String, Vec<(u32, EncryptionHint, AttributeStatus)>>::with_capacity(
             policy.dimensions.len(),
         ); // maximum bound
     for attribute in attributes.iter() {
+        // TODO: move logic to dimension?
         let entry = attr_params_per_dim
             .entry(attribute.dimension.clone())
             .or_default();
@@ -393,11 +388,8 @@ mod tests {
 
         // this should create the combination of the first attribute
         // with all those of the second dim
-        let partitions_0 = generate_current_attribute_partitions(
-            &[axes_attributes[0][0].0.clone()],
-            &policy,
-            false,
-        )?;
+        let partitions_0 =
+            generate_attribute_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
@@ -407,13 +399,12 @@ mod tests {
 
         // this should create the single combination of the first attribute
         // of the first dim with that of the second dim
-        let partitions_1 = generate_current_attribute_partitions(
+        let partitions_1 = generate_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -421,14 +412,13 @@ mod tests {
 
         // this should create the 2 combinations of the first attribute
         // of the first dim with that the wo of the second dim
-        let partitions_2 = generate_current_attribute_partitions(
+        let partitions_2 = generate_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
                 axes_attributes[1][1].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
@@ -442,13 +432,12 @@ mod tests {
 
         // this should create the single combination of the first attribute
         // of the first dim with that of the second dim
-        let partitions_3 = generate_current_attribute_partitions(
+        let partitions_3 = generate_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_3.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
@@ -474,7 +463,7 @@ mod tests {
 
         //
         // create partitions from access policy
-        let partitions = policy.access_policy_to_partitions(&access_policy, true, false)?;
+        let partitions = policy.access_policy_to_partitions(&access_policy, true)?;
 
         //
         // manually create the partitions
@@ -514,7 +503,7 @@ mod tests {
         )
         .unwrap();
         let partition_4 = policy
-            .access_policy_to_partitions(&policy_attributes_4, true, false)
+            .access_policy_to_partitions(&policy_attributes_4, true)
             .unwrap();
 
         let policy_attributes_5 = AccessPolicy::from_boolean_expression(
@@ -523,7 +512,7 @@ mod tests {
         )
         .unwrap();
         let partition_5 = policy
-            .access_policy_to_partitions(&policy_attributes_5, true, false)
+            .access_policy_to_partitions(&policy_attributes_5, true)
             .unwrap();
         assert_eq!(partition_4.len(), 4);
         assert_eq!(partition_5.len(), 5);

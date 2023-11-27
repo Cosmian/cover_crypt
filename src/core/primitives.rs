@@ -24,7 +24,7 @@ use super::{
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{RevisionMap, VersionedHashMap, VersionedVec},
+    data_struct::{RevisionMap, VersionedVec},
     Error,
 };
 
@@ -90,7 +90,7 @@ pub fn setup(
     let g1 = R25519PublicKey::from(&s1);
     let g2 = R25519PublicKey::from(&s2);
 
-    let mut sub_sk = VersionedHashMap::with_capacity(partitions.len());
+    let mut sub_sk = RevisionMap::with_capacity(partitions.len());
     let mut sub_pk = RevisionMap::with_capacity(partitions.len());
 
     for (partition, &(is_hybridized, _)) in partitions {
@@ -108,9 +108,7 @@ pub fn setup(
             (None, None)
         };
 
-        sub_sk
-            .insert_root(partition.clone(), (sk_pq, sk_i))
-            .expect("Partitions are unique");
+        sub_sk.insert(partition.clone(), (sk_pq, sk_i));
         sub_pk.insert(partition.clone(), (pk_pq, pk_i));
     }
 
@@ -149,12 +147,13 @@ pub fn keygen(
 ) -> UserSecretKey {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    // Only the last partitions rotation are used
+    // Use the last key for each partitions in the decryption set
+    // TODO: error out if missing partitions?
     let subkeys: VersionedVec<_> = decryption_set
         .iter()
         .filter_map(|partition| {
             msk.subkeys
-                .get(partition)
+                .get_current_revision(partition)
                 .map(|subkey| (partition.clone(), subkey.clone()))
         })
         .collect();
@@ -298,12 +297,13 @@ pub fn update(
     mpk: &mut MasterPublicKey,
     partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
-    let mut new_sub_sk = VersionedHashMap::with_capacity(partitions_set.len());
+    let mut new_sub_sk = RevisionMap::with_capacity(partitions_set.len());
     let mut new_sub_pk = RevisionMap::with_capacity(partitions_set.len());
     let h = R25519PublicKey::from(&msk.s);
 
     for (partition, &(is_hybridized, write_status)) in partitions_set {
-        if let Some((sk_i, x_i)) = msk.subkeys.get(partition) {
+        // TODO: get all revisions
+        if let Some((sk_i, x_i)) = msk.subkeys.get_current_revision(partition) {
             // regenerate the public sub-key.
             let h_i = &h * x_i;
             // Set the correct hybridization property.
@@ -336,9 +336,7 @@ pub fn update(
                 }
                 new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
-            new_sub_sk
-                .insert_root(partition.clone(), (sk_i, x_i.clone()))
-                .expect("Partitions are unique");
+            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
         } else {
             // Create new entry.
             let x_i = R25519PrivateKey::new(rng);
@@ -353,9 +351,7 @@ pub fn update(
             } else {
                 (None, None)
             };
-            new_sub_sk
-                .insert_root(partition.clone(), (sk_pq, x_i))
-                .expect("Partitions are unique");
+            new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
             if write_status == AttributeStatus::EncryptDecrypt {
                 // Only add non read only partition to the public key
                 new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
@@ -395,7 +391,7 @@ pub fn refresh(
     usk.subkeys.clear();
 
     for partition in decryption_set {
-        if let Some(x_i) = msk.subkeys.get(partition) {
+        if let Some(x_i) = msk.subkeys.get_current_revision(partition) {
             usk.subkeys
                 .insert_new_chain(iter::once((partition.clone(), x_i.clone())))
         }
@@ -454,12 +450,12 @@ mod tests {
         let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // The admin partition matches a hybridized sub-key.
-        let admin_secret_subkeys = msk.subkeys.get(&admin_partition);
+        let admin_secret_subkeys = msk.subkeys.get_current_revision(&admin_partition);
         assert!(admin_secret_subkeys.is_some());
         assert!(admin_secret_subkeys.unwrap().0.is_some());
 
         // The developer partition matches a classic sub-key.
-        let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
@@ -504,12 +500,12 @@ mod tests {
         refresh(&msk, &mut dev_usk, &HashSet::from([dev_partition.clone()]))?;
 
         // The dev partition matches a hybridized sub-key.
-        let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_some());
 
         // The client partition matches a classic sub-key.
-        let client_secret_subkeys = msk.subkeys.get(&client_partition);
+        let client_secret_subkeys = msk.subkeys.get_current_revision(&client_partition);
         assert!(client_secret_subkeys.is_some());
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
@@ -655,26 +651,44 @@ mod tests {
             &mut usk,
             &HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
-        assert!(!usk.subkeys.iter().any(|x| x
-            == &(
+        assert!(!usk.subkeys.iter().any(|x| {
+            x == &(
                 partition_1.clone(),
-                old_msk.subkeys.get(&partition_1).unwrap().clone()
-            )));
-        assert!(usk.subkeys.iter().any(|x| x
-            == &(
+                old_msk
+                    .subkeys
+                    .get_current_revision(&partition_1)
+                    .unwrap()
+                    .clone(),
+            )
+        }));
+        assert!(usk.subkeys.iter().any(|x| {
+            x == &(
                 partition_2.clone(),
-                msk.subkeys.get(&partition_2).unwrap().clone()
-            )));
-        assert!(!usk.subkeys.iter().any(|x| x
-            == &(
+                msk.subkeys
+                    .get_current_revision(&partition_2)
+                    .unwrap()
+                    .clone(),
+            )
+        }));
+        assert!(!usk.subkeys.iter().any(|x| {
+            x == &(
                 partition_3.clone(),
-                old_msk.subkeys.get(&partition_3).unwrap().clone()
-            )));
-        assert!(usk.subkeys.iter().any(|x| x
-            == &(
+                old_msk
+                    .subkeys
+                    .get_current_revision(&partition_3)
+                    .unwrap()
+                    .clone(),
+            )
+        }));
+        assert!(usk.subkeys.iter().any(|x| {
+            x == &(
                 partition_4.clone(),
-                msk.subkeys.get(&partition_4).unwrap().clone()
-            )));
+                msk.subkeys
+                    .get_current_revision(&partition_4)
+                    .unwrap()
+                    .clone(),
+            )
+        }));
         Ok(())
     }
 

@@ -190,7 +190,7 @@ mod tests {
         let part = Partition::from(vec![1, 6]);
         usk.subkeys.insert_new_chain(iter::once((
             part.clone(),
-            msk.subkeys.get(&part).unwrap().clone(),
+            msk.subkeys.get_current_revision(&part).unwrap().clone(),
         )));
         assert!(cover_crypt
             .refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)

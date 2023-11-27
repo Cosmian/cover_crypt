@@ -8,7 +8,7 @@ use zeroize::ZeroizeOnDrop;
 
 use crate::{
     abe_policy::Partition,
-    data_struct::{RevisionMap, VersionedHashMap, VersionedVec},
+    data_struct::{RevisionMap, VersionedVec},
 };
 
 #[macro_use]
@@ -59,8 +59,6 @@ impl Deref for KyberSecretKey {
     }
 }
 
-type Subkey = (Option<KyberSecretKey>, R25519PrivateKey);
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     g1: R25519PublicKey,
@@ -68,12 +66,13 @@ pub struct MasterPublicKey {
     pub(crate) subkeys: RevisionMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
 }
 
+type Subkey = (Option<KyberSecretKey>, R25519PrivateKey);
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
-    pub(crate) subkeys: VersionedHashMap<Partition, Subkey>,
+    pub(crate) subkeys: RevisionMap<Partition, Subkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
 }
 
