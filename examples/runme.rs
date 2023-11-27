@@ -1,7 +1,7 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
 use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
+    abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
     Covercrypt, EncryptedHeader,
 };
 
@@ -62,9 +62,9 @@ fn main() {
 
     //
     // Rotate the `Security Level::Top Secret` attribute
-    policy
-        .rotate(&Attribute::from(("Security Level", "Top Secret")))
-        .unwrap();
+    //policy
+    //    .rotate(&Attribute::from(("Security Level", "Top Secret")))
+    //    .unwrap();
 
     // Master keys need to be updated to take into account the policy rotation
     cover_crypt

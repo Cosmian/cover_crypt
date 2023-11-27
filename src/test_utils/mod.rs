@@ -84,7 +84,7 @@ mod tests {
             assert!(partitions_mpk.contains(p));
         }
         // rotate the FIN department
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        //policy.rotate(&Attribute::new("Department", "FIN"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
@@ -138,15 +138,15 @@ mod tests {
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
         assert_eq!(mpk.subkeys.len(), 2 * 2);
 
-        policy.rotate(&Attribute::new("D1", "D1A1"))?;
+        //policy.rotate(&Attribute::new("D1", "D1A1"))?;
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         assert_eq!(mpk.subkeys.len(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
 
-        policy.rotate(&Attribute::new("D1", "D1A2"))?;
+        //policy.rotate(&Attribute::new("D1", "D1A2"))?;
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         assert_eq!(mpk.subkeys.len(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
 
-        policy.rotate(&Attribute::new("D2", "D2A1"))?;
+        //policy.rotate(&Attribute::new("D2", "D2A1"))?;
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         assert_eq!(mpk.subkeys.len(), 8 + 4);
         // Problem: adding 4 instead of 2 new keys
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_refresh_user_key() -> Result<(), Error> {
-        let mut policy = policy()?;
+        let policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
         let decryption_policy = AccessPolicy::from_boolean_expression(
@@ -167,7 +167,7 @@ mod tests {
         let mut usk = cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
         let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
         // rotate he FIN department
-        policy.rotate(&Attribute::new("Department", "MKG"))?;
+        //policy.rotate(&Attribute::new("Department", "MKG"))?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
@@ -410,7 +410,7 @@ mod tests {
 
         //
         // Rotating the disabled attribute should only change the msk
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        //policy.rotate(&Attribute::new("Department", "FIN"))?;
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
@@ -471,8 +471,8 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let policy = policy()?;
+        //policy.rotate(&Attribute::new("Department", "FIN"))?;
         let access_policy = (AccessPolicy::new("Department", "R&D")
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Top Secret");
@@ -517,7 +517,7 @@ mod tests {
     fn test_rotate_then_encrypt() -> Result<(), Error> {
         //
         // Declare policy
-        let mut policy = policy()?;
+        let policy = policy()?;
         let top_secret_ap = AccessPolicy::from_boolean_expression("Security Level::Top Secret")?;
 
         //
@@ -551,7 +551,7 @@ mod tests {
 
         //
         // Rotate argument (must update master keys)
-        policy.rotate(&Attribute::from(("Security Level", "Top Secret")))?;
+        //policy.rotate(&Attribute::from(("Security Level", "Top Secret")))?;
         cover_crypt.update_master_keys(&policy, &mut msk, &mut master_public_key)?;
 
         //

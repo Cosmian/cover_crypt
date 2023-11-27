@@ -7,8 +7,8 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey,
-    RandomFixedSizeCBytes, SymmetricKey,
+    kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
+    R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
 };
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
@@ -72,6 +72,30 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
     Ok(())
 }
 
+pub(crate) fn create_key_pair(
+    rng: &mut impl CryptoRngCore,
+    h: &R25519CurvePoint,
+    is_hybridized: EncryptionHint,
+) -> (
+    (R25519PublicKey, Option<KyberPublicKey>),
+    (R25519PrivateKey, Option<KyberSecretKey>),
+) {
+    let sk_i = R25519PrivateKey::new(rng);
+    let pk_i = h * &sk_i;
+
+    let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
+        let (mut sk, mut pk) = (
+            KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
+            KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
+        );
+        indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
+        (Some(sk), Some(pk))
+    } else {
+        (None, None)
+    };
+    ((pk_i, pk_pq), (sk_i, sk_pq))
+}
+
 /// Generates the master secret key and master public key of the `Covercrypt`
 /// scheme.
 ///
@@ -94,20 +118,7 @@ pub fn setup(
     let mut sub_pk = RevisionMap::with_capacity(partitions.len());
 
     for (partition, &(is_hybridized, _)) in partitions {
-        let sk_i = R25519PrivateKey::new(rng);
-        let pk_i = &h * &sk_i;
-
-        let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
-            let (mut sk, mut pk) = (
-                KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-                KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-            );
-            indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
-            (Some(sk), Some(pk))
-        } else {
-            (None, None)
-        };
-
+        let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, is_hybridized);
         sub_sk.insert(partition.clone(), (sk_pq, sk_i));
         sub_pk.insert(partition.clone(), (pk_pq, pk_i));
     }
@@ -365,6 +376,17 @@ pub fn update(
     Ok(())
 }
 
+pub fn rotate(
+    _rng: &mut impl CryptoRngCore,
+    _msk: &mut MasterSecretKey,
+    _mpk: &mut MasterPublicKey,
+    _partitions_to_rotate: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+) -> Result<(), Error> {
+    // let partitions_to_rotate =
+    //      self.access_policy_to_partitions(&AccessPolicy::Attr(attr.clone()),
+    // false)?;
+    todo!()
+}
 /// Refresh a user key from the master secret key and the given decryption set.
 ///
 /// If `keep_old_rights` is set to false, old sub-keys are removed.

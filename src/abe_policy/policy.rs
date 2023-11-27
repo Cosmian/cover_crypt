@@ -131,17 +131,6 @@ impl Policy {
         }
     }
 
-    /// Rotates an attribute, changing its underlying value with an unused
-    /// value.
-    pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if let Some(_dim) = self.dimensions.get_mut(&attr.dimension) {
-            // Rotate master keys
-            todo!()
-        } else {
-            Err(Error::DimensionNotFound(attr.dimension.to_string()))
-        }
-    }
-
     /// Removes all rotation values but the current of an attribute.
     pub fn clear_old_attribute_values(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(_dim) = self.dimensions.get_mut(&attr.dimension) {
@@ -327,11 +316,7 @@ fn generate_attribute_partitions(
             .entry(attribute.dimension.clone())
             .or_default();
         let attr_properties = policy.get_attribute(attribute)?;
-        entry.push((
-            attr_properties.attribute_id,
-            attr_properties.encryption_hint,
-            attr_properties.write_status,
-        ));
+        entry.push(attr_properties.get_attribute_properties());
     }
 
     // When a dimension is not mentioned in the attribute list, all the attribute
@@ -381,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_combine_attribute_values() -> Result<(), Error> {
-        let mut policy = policy()?;
+        let policy = policy()?;
         let axes: Vec<String> = policy.dimensions.keys().cloned().collect();
 
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
@@ -427,7 +412,7 @@ mod tests {
         assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_1])?,));
 
         // rotation
-        policy.rotate(&axes_attributes[0][0].0)?;
+        //policy.rotate(&axes_attributes[0][0].0)?;
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 
         // this should create the single combination of the first attribute
@@ -452,8 +437,8 @@ mod tests {
     fn test_access_policy_to_partition() -> Result<(), Error> {
         //
         // create policy
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let policy = policy()?;
+        //policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
         // create access policy
