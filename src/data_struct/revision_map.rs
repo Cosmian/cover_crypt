@@ -9,8 +9,6 @@ use std::{
     iter,
 };
 
-type Revision = u32;
-type LinkedEntry<V> = LinkedList<(Revision, V)>;
 /// a `VersionedMap` stores linked lists.
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionMap<K, V>
@@ -18,7 +16,7 @@ where
     K: Debug + PartialEq + Eq + Hash,
     V: Debug,
 {
-    pub(crate) map: HashMap<K, LinkedEntry<V>>,
+    pub(crate) map: HashMap<K, LinkedList<V>>,
     length: usize,
 }
 
@@ -49,23 +47,27 @@ where
         self.length == 0
     }
 
-    fn insert_new_chain(entry: VacantEntry<K, LinkedEntry<V>>, value: V) -> Revision {
-        let first_rev = 1;
-        let mut new_chain = LinkedList::new();
-        new_chain.push_front((first_rev, value));
-        entry.insert(new_chain);
-        first_rev
+    pub fn nb_chains(&self) -> usize {
+        self.map.len()
     }
 
-    fn insert_in_chain(mut entry: OccupiedEntry<K, LinkedEntry<V>>, value: V) -> Revision {
+    pub fn chain_length(&self, key: &K) -> Option<usize> {
+        self.map.get(key).map(|chain| chain.len())
+    }
+
+    fn insert_new_chain(entry: VacantEntry<K, LinkedList<V>>, value: V) {
+        let mut new_chain = LinkedList::new();
+        new_chain.push_front(value);
+        entry.insert(new_chain);
+    }
+
+    fn insert_in_chain(mut entry: OccupiedEntry<K, LinkedList<V>>, value: V) {
         let chain = entry.get_mut();
-        let new_rev: u32 = 1 + chain.front().map_or(0, |(rev, _)| *rev);
-        chain.push_front((new_rev, value));
-        new_rev
+        chain.push_front(value);
     }
 
     /// Inserts value at key and return the current version for this key.
-    pub fn insert(&mut self, key: K, value: V) -> Revision {
+    pub fn insert(&mut self, key: K, value: V) {
         // All branches will add an element in the map.
         self.length += 1;
 
@@ -81,9 +83,11 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map
-            .get(key)
-            .and_then(|chain| chain.front().map(|(_, value)| value))
+        self.map.get(key).and_then(|chain| chain.front())
+    }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.map.contains_key(key)
     }
 
     /// Iterates through all keys in arbitrary order.
@@ -95,7 +99,7 @@ where
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.map
             .iter()
-            .flat_map(|(k, chain)| chain.iter().map(move |(_, v)| (k, v)))
+            .flat_map(|(k, chain)| chain.iter().map(move |v| (k, v)))
     }
 
     /// Iterates through all revisions of a given key starting with the more
@@ -106,7 +110,7 @@ where
         Q: Hash + Eq + ?Sized,
     {
         match self.map.get(key) {
-            Some(chain) => Box::new(chain.iter().map(|(_, v)| v)),
+            Some(chain) => Box::new(chain.iter()),
             None => Box::new(iter::empty()),
         }
     }
@@ -120,7 +124,7 @@ where
         match self.map.remove(key) {
             Some(chain) => {
                 self.length -= chain.len();
-                Box::new(chain.into_iter().map(|(_, v)| v))
+                Box::new(chain.into_iter())
             }
             None => Box::new(iter::empty()),
         }
@@ -139,11 +143,12 @@ where
             entry.remove_entry();
         }
 
-        removed_entry.map(|(_, value)| {
-            // update map length
+        // update map length
+        if removed_entry.is_some() {
             self.length -= 1;
-            value
-        })
+        }
+
+        removed_entry
     }
 }
 
@@ -159,11 +164,9 @@ mod tests {
         assert!(map.is_empty());
 
         // Insertions
-        let rev1 = map.insert("Part1".to_string(), "Rotation1".to_string());
-        assert_eq!(rev1, 1);
+        map.insert("Part1".to_string(), "Rotation1".to_string());
         assert_eq!(map.map.len(), 1);
-        let rev2 = map.insert("Part1".to_string(), "Rotation2".to_string());
-        assert_eq!(rev2, 2);
+        map.insert("Part1".to_string(), "Rotation2".to_string());
         assert_eq!(map.len(), 2);
         // the inner map only has 1 entry with 2 revisions
         assert_eq!(map.map.len(), 1);

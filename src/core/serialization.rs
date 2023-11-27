@@ -1,6 +1,6 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
@@ -15,7 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
-    data_struct::{VersionedHashMap, VersionedVec},
+    data_struct::{RevisionMap, VersionedHashMap, VersionedVec},
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -60,9 +60,13 @@ impl Serializable for MasterPublicKey {
 
     fn length(&self) -> usize {
         let mut length = 2 * R25519PublicKey::LENGTH
-            + to_leb128_len(self.subkeys.len())
+            // subkeys serialization
+            + to_leb128_len(self.subkeys.nb_chains())
+            // upper bound on chains leb128 length
+            + self.subkeys.nb_chains() * to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PublicKey::LENGTH;
-        for (partition, (pk_i, _)) in &self.subkeys {
+        for (partition, (pk_i, _)) in self.subkeys.iter() {
+            // TODO: partitions should only be counted once
             length += (to_leb128_len(partition.len()) + partition.len())
                 + serialize_len_option!(pk_i, _value, KYBER_INDCPA_PUBLICKEYBYTES);
         }
@@ -72,11 +76,14 @@ impl Serializable for MasterPublicKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.g1.to_bytes())?;
         n += ser.write_array(&self.g2.to_bytes())?;
-        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, (pk_i, h_i)) in &self.subkeys {
+        n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
+        for (partition, chain) in &self.subkeys.map {
             n += ser.write_vec(partition)?;
-            serialize_option!(ser, n, pk_i, value, ser.write_array(value));
-            n += ser.write_array(&h_i.to_bytes())?;
+            n += ser.write_leb128_u64(chain.len() as u64)?;
+            for (sk_i, x_i) in chain {
+                serialize_option!(ser, n, sk_i, value, ser.write_array(value));
+                n += ser.write_array(&x_i.to_bytes())?;
+            }
         }
         Ok(n)
     }
@@ -85,15 +92,18 @@ impl Serializable for MasterPublicKey {
         let g1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = HashMap::with_capacity(n_partitions);
+        let mut subkeys = RevisionMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
-            let partition = de.read_vec()?;
-            let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
-            let h_i = de.read_array::<{ R25519PublicKey::LENGTH }>()?;
-            subkeys.insert(
-                Partition::from(partition),
-                (pk_i, R25519PublicKey::try_from_bytes(h_i)?),
-            );
+            let partition = Partition::from(de.read_vec()?);
+            let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
+            let chain: Result<LinkedList<_>, Self::Error> = (0..n_keys)
+                .map(|_| {
+                    let sk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
+                    let x_i = de.read_array::<{ R25519PublicKey::LENGTH }>()?;
+                    Ok((sk_i, R25519PublicKey::try_from_bytes(x_i)?))
+                })
+                .collect();
+            subkeys.map.insert(partition, chain?);
         }
         Ok(Self { g1, g2, subkeys })
     }
@@ -102,7 +112,6 @@ impl Serializable for MasterPublicKey {
 impl Serializable for MasterSecretKey {
     type Error = Error;
 
-    // TODO: fix
     fn length(&self) -> usize {
         let mut length = 3 * R25519PrivateKey::LENGTH
             + self.kmac_key.as_ref().map_or_else(|| 0, |key| key.len())
@@ -409,6 +418,8 @@ impl Serializable for CleartextHeader {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 
     use super::*;

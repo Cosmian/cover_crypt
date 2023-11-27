@@ -24,7 +24,7 @@ use super::{
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{VersionedHashMap, VersionedVec},
+    data_struct::{RevisionMap, VersionedHashMap, VersionedVec},
     Error,
 };
 
@@ -91,7 +91,7 @@ pub fn setup(
     let g2 = R25519PublicKey::from(&s2);
 
     let mut sub_sk = VersionedHashMap::with_capacity(partitions.len());
-    let mut sub_pk = HashMap::with_capacity(partitions.len());
+    let mut sub_pk = RevisionMap::with_capacity(partitions.len());
 
     for (partition, &(is_hybridized, _)) in partitions {
         let sk_i = R25519PrivateKey::new(rng);
@@ -190,7 +190,7 @@ pub fn encaps(
     let c2 = &mpk.g2 * &r;
     let mut encs = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
-        if let Some((pk_i, h_i)) = mpk.subkeys.get(partition) {
+        if let Some((pk_i, h_i)) = mpk.subkeys.get_current_revision(partition) {
             let mut e_i = [0; SYM_KEY_LENGTH];
             kdf256!(&mut e_i, &(h_i * &r).to_bytes());
             xor_in_place(&mut e_i, &seed);
@@ -299,7 +299,7 @@ pub fn update(
     partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
     let mut new_sub_sk = VersionedHashMap::with_capacity(partitions_set.len());
-    let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
+    let mut new_sub_pk = RevisionMap::with_capacity(partitions_set.len());
     let h = R25519PublicKey::from(&msk.s);
 
     for (partition, &(is_hybridized, write_status)) in partitions_set {
@@ -311,7 +311,7 @@ pub fn update(
                 if sk_i.is_some() {
                     let pk_i = mpk
                         .subkeys
-                        .get(partition)
+                        .get_current_revision(partition)
                         .map(|(pk_i, _)| pk_i)
                         .unwrap_or(&None);
                     (sk_i.clone(), pk_i.clone())

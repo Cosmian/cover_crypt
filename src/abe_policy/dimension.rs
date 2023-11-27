@@ -169,25 +169,6 @@ impl Dimension {
         }
     }
 
-    /// Rotates the attribute with the given name by incrementing its rotation
-    /// value.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to rotate.
-    /// * `seed_id` - A seed used for generating the new rotation value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the attribute with the specified name is not found.
-    pub fn rotate_attribute(
-        &mut self,
-        _attr_name: &AttributeName,
-        _seed_id: &mut u32,
-    ) -> Result<(), Error> {
-        todo!()
-    }
-
     /// Adds a new attribute to the dimension with the provided properties.
     ///
     /// # Arguments
@@ -303,19 +284,6 @@ impl Dimension {
                 .update_key(attr_name, new_name.to_string())
                 .map_err(|e| Error::OperationNotPermitted(e.to_string())),
         }
-    }
-
-    /// Clears the old rotations of an attribute, keeping only the current ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to clear old rotations for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the attribute is not found.
-    pub fn clear_old_attribute_values(&mut self, _attr_name: &AttributeName) -> Result<(), Error> {
-        todo!()
     }
 
     /// Returns an iterator over the AttributesParameters and parameters.
