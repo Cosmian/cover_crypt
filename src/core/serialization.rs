@@ -15,7 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
-    data_struct::{RevisionMap, VersionedVec},
+    data_struct::{RevisionList, RevisionMap, RevisionVec},
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -47,11 +47,7 @@ macro_rules! serialize_option {
 macro_rules! deserialize_option {
     ($deserializer:expr, $method:expr) => {{
         let is_some = $deserializer.read_leb128_u64()?;
-        if is_some == 1 {
-            Some($method)
-        } else {
-            None
-        }
+        if is_some == 1 { Some($method) } else { None }
     }};
 }
 
@@ -192,12 +188,18 @@ impl Serializable for UserSecretKey {
             + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             // subkeys serialization
             + to_leb128_len(self.subkeys.nb_chains())
-            // upper bound on chains leb128 length
-            + self.subkeys.nb_chains() * to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
-        for (partition, (sk_i, _)) in self.subkeys.iter() {
+        /*for (partition, (sk_i, _)) in self.subkeys.iter() {
             length += (to_leb128_len(partition.len()) + partition.len())
                 + serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
+        }*/
+        for chain in &self.subkeys.chains {
+            let partition = chain.get_key();
+            length += to_leb128_len(partition.len()) + partition.len();
+            length += to_leb128_len(chain.len());
+            for (_, (sk_i, _)) in chain.iter() {
+                length += serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
+            }
         }
         length
     }
@@ -206,12 +208,12 @@ impl Serializable for UserSecretKey {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
-        for chain_index in 0..self.subkeys.nb_chains() {
-            n += ser.write_leb128_u64(self.subkeys.chain_length(chain_index) as u64)?;
-            // Iterate through all partitions in the chain (stored in ante-chronological
-            // order) so we reverse it to write the older partition first.
-            for (partition, (sk_i, x_i)) in self.subkeys.iter_chain(chain_index).rev() {
-                n += ser.write_vec(partition)?;
+        for chain in &self.subkeys.chains {
+            // write chain partition
+            n += ser.write_vec(chain.get_key())?;
+            // iterate through all subkeys in the chain
+            n += ser.write_leb128_u64(chain.len() as u64)?;
+            for (_, (sk_i, x_i)) in chain.iter() {
                 serialize_option!(ser, n, sk_i, value, ser.write_array(value));
                 n += ser.write_array(&x_i.to_bytes())?;
             }
@@ -225,23 +227,20 @@ impl Serializable for UserSecretKey {
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let a = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let b = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
-        let n_partitions_chains = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = VersionedVec::with_capacity(n_partitions_chains);
-        for _ in 0..n_partitions_chains {
-            // Read all partitions forming a chain and inserting them all at one.
-            let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-            let it = (0..n_partitions)
+        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = RevisionVec::with_capacity(n_partitions);
+        for _ in 0..n_partitions {
+            let partition = Partition::from(de.read_vec()?);
+            // read all keys forming a chain and inserting them all at once.
+            let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
+            let it = (0..n_keys)
                 .map(|_| {
-                    let partition = de.read_vec()?;
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
-                    Ok::<_, Self::Error>((
-                        Partition::from(partition),
-                        (sk_i, R25519PrivateKey::try_from_bytes(x_i)?),
-                    ))
+                    Ok::<_, Self::Error>((sk_i, R25519PrivateKey::try_from_bytes(x_i)?))
                 })
                 .filter_map(Result::ok);
-            subkeys.insert_new_chain(it);
+            subkeys.chains.push(RevisionList::from_iter(partition, it))
         }
         let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
 

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, iter};
 
 use super::error::Error;
 
@@ -19,21 +19,21 @@ use super::error::Error;
 // TODO: check Serialize/Deserialize
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
-    data: Vec<RevisionList<K, T>>,
+    pub(crate) chains: Vec<RevisionList<K, T>>,
     length: usize,
 }
 
 impl<K, T> RevisionVec<K, T> {
     pub fn new() -> Self {
         Self {
-            data: Vec::new(),
+            chains: Vec::new(),
             length: 0,
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            data: Vec::with_capacity(capacity),
+            chains: Vec::with_capacity(capacity),
             length: 0,
         }
     }
@@ -47,16 +47,16 @@ impl<K, T> RevisionVec<K, T> {
     }
 
     pub fn nb_chains(&self) -> usize {
-        self.data.len()
+        self.chains.len()
     }
 
     pub fn chain_length(&self, chain_index: usize) -> usize {
-        self.data[chain_index].len()
+        self.chains[chain_index].len()
     }
 
     pub fn push_front(&mut self, chain_index: usize, item: T) -> Result<(), Error> {
         let chain = self
-            .data
+            .chains
             .get_mut(chain_index)
             .ok_or(Error::missing_entry(&chain_index))?;
 
@@ -68,57 +68,37 @@ impl<K, T> RevisionVec<K, T> {
     /// Inserts entry versions in reverse chronological order
     /// The iterator must be in chronological order as the items are inserted
     /// backward.
-    pub fn insert_new_chain(&mut self, _iterator: impl Iterator<Item = T>) {
-        /*let mut new_list = LinkedList::new();
+    pub fn insert_new_chain(&mut self, key: K, iterator: impl Iterator<Item = T>) {
+        let mut new_list = RevisionList::new(key);
         for item in iterator {
             new_list.push_front(item);
         }
         if !new_list.is_empty() {
             self.length += new_list.len();
-            self.data.push(new_list);
-        }*/
-        todo!()
-    }
-
-    /// Removes old entry version.
-    pub fn pop_back(&mut self, _chain_index: usize) -> Result<T, Error> {
-        /*let chain = self
-            .data
-            .get_mut(chain_index)
-            .ok_or(Error::missing_entry(&chain_index))?;
-
-        let removed_item = chain.pop_back().expect("chains should not be empty");
-        self.length -= 1;
-
-        if chain.is_empty() {
-            self.data.swap_remove(chain_index);
+            self.chains.push(new_list);
         }
-
-        Ok(removed_item)*/
-        todo!()
     }
 
     pub fn clear(&mut self) {
-        self.data.clear();
-        self.length = self.data.len();
+        self.chains.clear();
+        self.length = self.chains.len();
     }
 
     /// Provides reference to the current entry version.
     pub fn front(&self, chain_index: usize) -> Option<&T> {
-        self.data.get(chain_index)?.front()
+        self.chains.get(chain_index)?.front()
     }
 
     /// Iterates through all versions of an entry starting from the most recent
     /// one.
     pub fn iter_chain(&self, chain_index: usize) -> impl Iterator<Item = &T> {
-        self.data[chain_index].iter().map(|(_, v)| v)
+        self.chains[chain_index].iter().map(|(_, v)| v)
     }
 
     /// Iterates through all versions of all entries
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.data
-            .iter()
-            .flat_map(|chain| chain.iter().map(|(_, v)| v))
+    /// Returns the key and value for each entry.
+    pub fn flat_iter(&self) -> impl Iterator<Item = (&K, &T)> {
+        self.chains.iter().flat_map(|chain| chain.iter())
     }
 
     pub fn bfs(&self) -> BfsIterator<T> {
@@ -127,12 +107,19 @@ impl<K, T> RevisionVec<K, T> {
 }
 
 pub struct BfsIterator<'a, T> {
-    chains: VecDeque<&'a Element<T>>,
+    queue: VecDeque<&'a Element<T>>,
 }
 
 impl<'a, T> BfsIterator<'a, T> {
-    pub fn new<K>(_versioned_vec: &'a RevisionVec<K, T>) -> Self {
-        todo!()
+    pub fn new<K>(revision_vec: &'a RevisionVec<K, T>) -> Self {
+        // add all chain heads to the iterator queue
+        Self {
+            queue: revision_vec
+                .chains
+                .iter()
+                .filter_map(|chain| Some(chain.head.as_ref()?.as_ref()))
+                .collect(),
+        }
     }
 }
 
@@ -140,36 +127,27 @@ impl<'a, T> Iterator for BfsIterator<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        /*loop {
-            if self.chains.is_empty() {
-                return None;
-            }
-            self.index %= self.chains.len();
-            let chain = &mut self.chains[self.index];
-
-            if let Some(next_entry) = chain.next() {
-                self.index += 1;
-                break Some(next_entry);
-            } else {
-                let _ = self.chains.remove(self.index);
-            }
-        }*/
-        todo!()
+        // get first element in the iterator queue
+        let current_element = self.queue.pop_front()?;
+        if let Some(next_element) = current_element.next.as_ref() {
+            // add next element of this chain at the back of the queue
+            self.queue.push_back(next_element);
+        }
+        Some(&current_element.data)
     }
 }
 
-/// Create VersionedVec from an iterator, each element will be inserted in a
+/// Create `RevisionVec`` from an iterator, each element will be inserted in a
 /// different chain. Use `insert_new_chain` to collect an iterator inside the
 /// same chain.
-impl<K, T> FromIterator<T> for RevisionVec<K, T> {
-    fn from_iter<I: IntoIterator<Item = T>>(_iter: I) -> Self {
-        /*let iterator = iter.into_iter();
+impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
+    fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
+        let iterator = iter.into_iter();
         let mut vec = Self::with_capacity(iterator.size_hint().0);
-        for item in iterator {
-            vec.insert_new_chain(iter::once(item))
+        for (key, item) in iterator {
+            vec.insert_new_chain(key, iter::once(item))
         }
-        vec*/
-        todo!()
+        vec
     }
 }
 
@@ -177,6 +155,15 @@ impl<K, T> FromIterator<T> for RevisionVec<K, T> {
 struct Element<T> {
     data: T,
     next: Option<Box<Element<T>>>,
+}
+
+impl<T> Element<T> {
+    pub fn new(item: T) -> Self {
+        Self {
+            data: item,
+            next: None,
+        }
+    }
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -203,6 +190,10 @@ impl<K, T> RevisionList<K, T> {
         self.head.is_none()
     }
 
+    pub fn get_key(&self) -> &K {
+        &self.key
+    }
+
     pub fn push_front(&mut self, val: T) {
         let new_element = Element {
             data: val,
@@ -219,6 +210,32 @@ impl<K, T> RevisionList<K, T> {
 
     pub fn iter(&self) -> impl Iterator<Item = (&K, &T)> {
         RevisionListIter::new(self)
+    }
+
+    /// Creates a `RevisionList` from an iterator by inserting elements in the
+    /// order of arrival: first item in the iterator will end up at the front.
+    pub fn from_iter(key: K, mut iter: impl Iterator<Item = T>) -> Self {
+        if let Some(first_element) = iter.next() {
+            let mut length = 1;
+            let mut head = Some(Box::new(Element::new(first_element)));
+            let mut current_element = head.as_mut().expect("next element was inserted above");
+            for next_item in iter {
+                current_element.next = Some(Box::new(Element::new(next_item)));
+                current_element = current_element
+                    .next
+                    .as_mut()
+                    .expect("next element was inserted above");
+                length += 1;
+            }
+
+            Self { key, length, head }
+        } else {
+            Self {
+                key,
+                length: 0,
+                head: None,
+            }
+        }
     }
 }
 

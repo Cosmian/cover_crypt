@@ -21,7 +21,7 @@ use super::{
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{RevisionMap, VersionedVec},
+    data_struct::{RevisionMap, RevisionVec},
     Error,
 };
 
@@ -42,7 +42,7 @@ fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<K
         let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
         kmac.update(&usk.b.to_bytes());
 
-        for (partition, (sk_i, x_i)) in usk.subkeys.iter() {
+        for (partition, (sk_i, x_i)) in usk.subkeys.flat_iter() {
             kmac.update(&partition.0);
             if let Some(sk_i) = sk_i {
                 kmac.update(sk_i);
@@ -157,7 +157,7 @@ pub fn keygen(
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
     // Use the last key for each partitions in the decryption set
     // TODO: error out if missing partitions?
-    let subkeys: VersionedVec<_> = decryption_set
+    let subkeys: RevisionVec<_, _> = decryption_set
         .iter()
         .filter_map(|partition| {
             msk.subkeys
@@ -245,7 +245,7 @@ pub fn decaps(
     for encapsulation_i in &encapsulation.encs {
         // BFS search user subkeys to first try the most recent rotations of each
         // partitions.
-        for (_, (sk_j, x_j)) in usk.subkeys.bfs() {
+        for (sk_j, x_j) in usk.subkeys.bfs() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
@@ -674,42 +674,28 @@ mod tests {
             &msk, &mut usk,
             //&HashSet::from([partition_2.clone(), partition_4.clone()]),
         )?;
-        assert!(!usk.subkeys.iter().any(|x| {
-            x == &(
-                partition_1.clone(),
-                old_msk
-                    .subkeys
-                    .get_current_revision(&partition_1)
-                    .unwrap()
-                    .clone(),
+        assert!(!usk.subkeys.flat_iter().any(|x| {
+            x == (
+                &partition_1,
+                old_msk.subkeys.get_current_revision(&partition_1).unwrap(),
             )
         }));
-        assert!(usk.subkeys.iter().any(|x| {
-            x == &(
-                partition_2.clone(),
-                msk.subkeys
-                    .get_current_revision(&partition_2)
-                    .unwrap()
-                    .clone(),
+        assert!(usk.subkeys.flat_iter().any(|x| {
+            x == (
+                &partition_2,
+                msk.subkeys.get_current_revision(&partition_2).unwrap(),
             )
         }));
-        assert!(!usk.subkeys.iter().any(|x| {
-            x == &(
-                partition_3.clone(),
-                old_msk
-                    .subkeys
-                    .get_current_revision(&partition_3)
-                    .unwrap()
-                    .clone(),
+        assert!(!usk.subkeys.flat_iter().any(|x| {
+            x == (
+                &partition_3,
+                old_msk.subkeys.get_current_revision(&partition_3).unwrap(),
             )
         }));
-        assert!(usk.subkeys.iter().any(|x| {
-            x == &(
-                partition_4.clone(),
-                msk.subkeys
-                    .get_current_revision(&partition_4)
-                    .unwrap()
-                    .clone(),
+        assert!(usk.subkeys.flat_iter().any(|x| {
+            x == (
+                &partition_4,
+                msk.subkeys.get_current_revision(&partition_4).unwrap(),
             )
         }));
         Ok(())
@@ -742,10 +728,10 @@ mod tests {
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
-        usk.subkeys.insert_new_chain(iter::once((
+        usk.subkeys.insert_new_chain(
             Partition(b"3".to_vec()),
-            (None, R25519PrivateKey::new(&mut rng)),
-        )));
+            iter::once((None, R25519PrivateKey::new(&mut rng))),
+        );
         // KMAC verify will fail after modifying the user key
         assert!(verify_user_key_kmac(&msk, &usk).is_err());
 

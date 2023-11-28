@@ -8,7 +8,7 @@ use zeroize::ZeroizeOnDrop;
 
 use crate::{
     abe_policy::Partition,
-    data_struct::{RevisionMap, VersionedVec},
+    data_struct::{RevisionMap, RevisionVec},
 };
 
 #[macro_use]
@@ -80,7 +80,7 @@ pub struct MasterSecretKey {
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub(crate) subkeys: VersionedVec<(Partition, Subkey)>,
+    pub(crate) subkeys: RevisionVec<Partition, Subkey>,
     kmac: Option<KmacSignature>,
 }
 
