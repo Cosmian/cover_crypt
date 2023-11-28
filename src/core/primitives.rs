@@ -521,7 +521,7 @@ mod tests {
         let client_target_set = HashSet::from([client_partition.clone()]);
 
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh(&msk, &mut dev_usk); //, &HashSet::from([dev_partition.clone()]))?;
+        refresh(&msk, &mut dev_usk)?;
 
         // The dev partition matches a hybridized sub-key.
         let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
