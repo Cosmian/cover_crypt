@@ -152,9 +152,9 @@ impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
-struct Element<T> {
-    data: T,
-    next: Option<Box<Element<T>>>,
+pub struct Element<T> {
+    pub(crate) data: T,
+    pub(crate) next: Option<Box<Element<T>>>,
 }
 
 impl<T> Element<T> {
@@ -169,8 +169,8 @@ impl<T> Element<T> {
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionList<K, T> {
     key: K,
-    length: usize,
-    head: Option<Box<Element<T>>>,
+    pub(crate) length: usize,
+    pub(crate) head: Option<Box<Element<T>>>,
 }
 
 impl<K, T> RevisionList<K, T> {
@@ -227,7 +227,6 @@ impl<K, T> RevisionList<K, T> {
                     .expect("next element was inserted above");
                 length += 1;
             }
-
             Self { key, length, head }
         } else {
             Self {

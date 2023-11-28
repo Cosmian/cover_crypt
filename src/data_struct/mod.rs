@@ -5,4 +5,4 @@ mod revision_vec;
 
 pub use dictionary::Dict;
 pub use revision_map::RevisionMap;
-pub use revision_vec::{RevisionList, RevisionVec};
+pub use revision_vec::{Element, RevisionList, RevisionVec};

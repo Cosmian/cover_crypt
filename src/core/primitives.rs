@@ -21,7 +21,7 @@ use super::{
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{RevisionMap, RevisionVec},
+    data_struct::{Element, RevisionMap, RevisionVec},
     Error,
 };
 
@@ -409,17 +409,54 @@ pub fn rotate(
 pub fn refresh(msk: &MasterSecretKey, usk: &mut UserSecretKey) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
 
-    // TODO: for each chain in USK, check that the current rotation still exist in
-    // MSK, add new rotations if any, remove old rotations if not present in MSK
+    // TODO: use keep_old_rights
 
-    /*usk.subkeys.clear();
+    // Remove partitions missing from master keys
+    usk.subkeys
+        .chains
+        .retain(|chain| msk.subkeys.contains_key(chain.get_key()));
 
-    for partition in decryption_set {
-        if let Some(x_i) = msk.subkeys.get_current_revision(partition) {
-            usk.subkeys
-                .insert_new_chain(iter::once((partition.clone(), x_i.clone())))
+    for user_chain in &mut usk.subkeys.chains {
+        let partition = user_chain.get_key().clone();
+        let mut master_chain = msk.subkeys.iter_chain(&partition);
+
+        let mut updated_chain_length = 0;
+
+        // 1 - add new master subkeys in user key
+        let user_first_key = user_chain.head.take().expect("at least one key");
+        let mut insertion_cursor = &mut user_chain.head;
+
+        // go through new keys found in MSK missing from USK
+        for master_subkey in master_chain.by_ref() {
+            updated_chain_length += 1;
+            if master_subkey == &user_first_key.data {
+                break;
+            }
+            let new_element = Element::new(master_subkey.clone());
+            insertion_cursor = &mut insertion_cursor.insert(Box::new(new_element)).next;
         }
-    }*/
+        // 1 (end) - add the first usk key back to the end of newly added keys or head
+        // if no key was added
+        insertion_cursor = &mut insertion_cursor.insert(user_first_key).next;
+
+        // 2 - go through the remaining keys of master chain if any
+        for master_subkey in master_chain {
+            let Some(current_user_subkey) = insertion_cursor else {
+                // USK does not contain master keys from older rotations
+                break;
+            };
+            // existing keys in both should match
+            assert!(master_subkey != &current_user_subkey.data);
+            insertion_cursor = &mut current_user_subkey.next;
+            updated_chain_length += 1;
+        }
+
+        // 3 - old subkeys in USK not present in the MSK should be removed
+        let _ = insertion_cursor.take();
+
+        // update length
+        user_chain.length = updated_chain_length;
+    }
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);

@@ -47,7 +47,11 @@ macro_rules! serialize_option {
 macro_rules! deserialize_option {
     ($deserializer:expr, $method:expr) => {{
         let is_some = $deserializer.read_leb128_u64()?;
-        if is_some == 1 { Some($method) } else { None }
+        if is_some == 1 {
+            Some($method)
+        } else {
+            None
+        }
     }};
 }
 
