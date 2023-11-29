@@ -403,13 +403,13 @@ pub fn rotate(
 ///
 /// - `msk`             : master secret key
 /// - `usk`             : user secret key
-/// - `decryption_set`  : set of partitions the user is granted the decryption
-///   right for
 /// - `keep_old_rights` : whether or not to keep old decryption rights
-pub fn refresh(msk: &MasterSecretKey, usk: &mut UserSecretKey) -> Result<(), Error> {
+pub fn refresh(
+    msk: &MasterSecretKey,
+    usk: &mut UserSecretKey,
+    keep_old_rights: bool,
+) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
-
-    // TODO: use keep_old_rights
 
     // Remove partitions missing from master keys
     usk.subkeys
@@ -420,38 +420,51 @@ pub fn refresh(msk: &MasterSecretKey, usk: &mut UserSecretKey) -> Result<(), Err
         let partition = user_chain.get_key().clone();
         let mut master_chain = msk.subkeys.iter_chain(&partition);
 
-        let mut updated_chain_length = 0;
+        if !keep_old_rights {
+            // find the most recent key between the master and user key
+            let master_first_key = master_chain.next().expect("at least one key");
+            if Some(master_first_key) != user_chain.head.as_ref().map(|item| &item.data) {
+                // new key
+                let new_element = Box::new(Element::new(master_first_key.clone()));
+                user_chain.head.replace(new_element);
+            }
+            // remove older keys if any
+            let _ = user_chain.head.as_mut().unwrap().next.take();
+            // skip to next chain
+            continue;
+        }
 
-        // 1 - add new master subkeys in user key
+        // 1 - add new master subkeys in user key if any
         let user_first_key = user_chain.head.take().expect("at least one key");
         let mut insertion_cursor = &mut user_chain.head;
 
+        let mut updated_chain_length = 0;
         // go through new keys found in MSK missing from USK
         for master_subkey in master_chain.by_ref() {
             updated_chain_length += 1;
             if master_subkey == &user_first_key.data {
+                // we reached the first matching key between user and master keys
+                // add this key back to the user subkeys and continue to step 2
+                insertion_cursor = &mut insertion_cursor.insert(user_first_key).next;
                 break;
             }
             let new_element = Element::new(master_subkey.clone());
             insertion_cursor = &mut insertion_cursor.insert(Box::new(new_element)).next;
         }
-        // 1 (end) - add the first usk key back to the end of newly added keys or head
-        // if no key was added
-        insertion_cursor = &mut insertion_cursor.insert(user_first_key).next;
 
-        // 2 - go through the remaining keys of master chain if any
+        // 2 - go through the remaining matching keys between the master and user chain
         for master_subkey in master_chain {
             let Some(current_user_subkey) = insertion_cursor else {
                 // USK does not contain master keys from older rotations
                 break;
             };
             // existing keys in both should match
-            assert!(master_subkey != &current_user_subkey.data);
+            assert!(master_subkey == &current_user_subkey.data);
             insertion_cursor = &mut current_user_subkey.next;
             updated_chain_length += 1;
         }
 
-        // 3 - old subkeys in USK not present in the MSK should be removed
+        // 3 - old keys in USK not present in the MSK should be removed
         let _ = insertion_cursor.take();
 
         // update length
@@ -558,7 +571,7 @@ mod tests {
         let client_target_set = HashSet::from([client_partition.clone()]);
 
         update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh(&msk, &mut dev_usk)?;
+        refresh(&msk, &mut dev_usk, true)?;
 
         // The dev partition matches a hybridized sub-key.
         let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
@@ -707,10 +720,7 @@ mod tests {
         let old_msk = MasterSecretKey::deserialize(msk.serialize()?.as_slice())?;
         update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
         // refresh the user key with partitions 2 and 4
-        refresh(
-            &msk, &mut usk,
-            //&HashSet::from([partition_2.clone(), partition_4.clone()]),
-        )?;
+        refresh(&msk, &mut usk, true)?;
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_1,

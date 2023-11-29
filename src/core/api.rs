@@ -102,7 +102,6 @@ impl Covercrypt {
     /// is set, the old user access will be preserved.
     ///
     /// - `usk`                 : the user key to refresh
-    /// - `user_policy`         : the access policy of the user key
     /// - `msk`                 : master secret key
     /// - `policy`              : global policy of the master secret key
     /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
@@ -110,13 +109,11 @@ impl Covercrypt {
     pub fn refresh_user_secret_key(
         &self,
         usk: &mut UserSecretKey,
-        _access_policy: &AccessPolicy,
         msk: &MasterSecretKey,
-        _policy: &Policy,
-        _keep_old_rotations: bool,
+        keep_old_rights: bool,
     ) -> Result<(), Error> {
         // TODO: use keep_old_rotations
-        refresh(msk, usk)
+        refresh(msk, usk, keep_old_rights)
     }
 
     /// Generates a random symmetric key to be used with a DEM scheme and

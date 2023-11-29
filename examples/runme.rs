@@ -82,7 +82,7 @@ fn main() {
 
     // refresh user secret key, do not grant old encryption access
     cover_crypt
-        .refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, false)
+        .refresh_user_secret_key(&mut usk, &msk, false)
         .unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.

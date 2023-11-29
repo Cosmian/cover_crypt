@@ -171,7 +171,7 @@ mod tests {
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
-        cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, true)?;
+        cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
         // 4 partitions accessed by the user were rotated (MKG Protected, Low Secret,
         // Medium Secret and High Secret)
         assert_eq!(usk.subkeys.len(), original_usk.subkeys.len() + 4);
@@ -179,7 +179,7 @@ mod tests {
             assert!(usk.subkeys.flat_iter().any(|x| x == x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
-        cover_crypt.refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)?;
+        cover_crypt.refresh_user_secret_key(&mut usk, &msk, false)?;
         // the user should still have access to the same number of partitions
         assert_eq!(usk.subkeys.len(), original_usk.subkeys.len());
         for x_i in original_usk.subkeys.flat_iter() {
@@ -193,7 +193,7 @@ mod tests {
             iter::once(msk.subkeys.get_current_revision(&part).unwrap().clone()),
         );
         assert!(cover_crypt
-            .refresh_user_secret_key(&mut usk, &decryption_policy, &msk, &policy, false)
+            .refresh_user_secret_key(&mut usk, &msk, false)
             .is_err());
 
         Ok(())
@@ -248,13 +248,7 @@ mod tests {
             .decrypt(&cover_crypt, &low_secret_usk, None)
             .is_err());
 
-        cover_crypt.refresh_user_secret_key(
-            &mut low_secret_usk,
-            &decryption_policy,
-            &msk,
-            &policy,
-            false,
-        )?;
+        cover_crypt.refresh_user_secret_key(&mut low_secret_usk, &msk, false)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &low_secret_usk, None)
@@ -310,18 +304,12 @@ mod tests {
             .is_ok());
 
         // refresh the user key and preserve access to old partitions
-        let new_decryption_policy =
+        let _new_decryption_policy =
             AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
 
         // refreshing the user key will remove access to removed partitions even if we
         // keep old rotations
-        cover_crypt.refresh_user_secret_key(
-            &mut top_secret_fin_usk,
-            &new_decryption_policy,
-            &msk,
-            &policy,
-            true,
-        )?;
+        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_err());
@@ -383,27 +371,15 @@ mod tests {
         );
 
         // refresh the user key and preserve access to old partitions
-        let new_decryption_policy =
+        let _new_decryption_policy =
             AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
-        cover_crypt.refresh_user_secret_key(
-            &mut top_secret_fin_usk,
-            &new_decryption_policy,
-            &msk,
-            &policy,
-            true,
-        )?;
+        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
 
         // refresh the user key and remove access to old partitions
-        cover_crypt.refresh_user_secret_key(
-            &mut top_secret_fin_usk,
-            &new_decryption_policy,
-            &msk,
-            &policy,
-            false,
-        )?;
+        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
@@ -452,16 +428,10 @@ mod tests {
             .is_ok());
 
         // refresh the user key and preserve access to old partitions
-        let new_decryption_policy = AccessPolicy::from_boolean_expression(
+        let _new_decryption_policy = AccessPolicy::from_boolean_expression(
             "Security Level::Top Secret && Department::Finance",
         )?;
-        cover_crypt.refresh_user_secret_key(
-            &mut top_secret_fin_usk,
-            &new_decryption_policy,
-            &msk,
-            &policy,
-            false,
-        )?;
+        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
@@ -570,15 +540,7 @@ mod tests {
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_err());
 
-        cover_crypt.refresh_user_secret_key(
-            &mut top_secret_fin_usk,
-            &AccessPolicy::from_boolean_expression(
-                "Security Level::Top Secret && Department::FIN",
-            )?,
-            &msk,
-            &policy,
-            false,
-        )?;
+        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
 
         // The refreshed key can decrypt the header
         assert!(encrypted_header
