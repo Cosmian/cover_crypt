@@ -15,8 +15,8 @@ use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroizing;
 
 use super::{
-    KmacSignature, KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, SYM_KEY_LENGTH,
-    TAG_LENGTH,
+    KmacSignature, KyberPublicKey, KyberSecretKey, PublicSubkey, SecretSubkey, KMAC_KEY_LENGTH,
+    KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::{AttributeStatus, EncryptionHint, Partition},
@@ -69,30 +69,42 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
     Ok(())
 }
 
-pub(crate) fn create_key_pair(
+fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, KyberSecretKey) {
+    let (mut sk, mut pk) = (
+        KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
+        KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
+    );
+    indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
+    (pk, sk)
+}
+
+fn create_key_pair(
     rng: &mut impl CryptoRngCore,
     h: &R25519CurvePoint,
     is_hybridized: EncryptionHint,
-) -> (
-    (R25519PublicKey, Option<KyberPublicKey>),
-    (R25519PrivateKey, Option<KyberSecretKey>),
-) {
+) -> (PublicSubkey, SecretSubkey) {
     let sk_i = R25519PrivateKey::new(rng);
     let pk_i = h * &sk_i;
 
-    let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
-        let (mut sk, mut pk) = (
-            KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-            KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-        );
-        indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
-        (Some(sk), Some(pk))
+    let (pk_pq, sk_pq) = if is_hybridized == EncryptionHint::Hybridized {
+        let (pk, sk) = create_kyber_key_pair(rng);
+        (Some(pk), Some(sk))
     } else {
         (None, None)
     };
-    ((pk_i, pk_pq), (sk_i, sk_pq))
+    ((pk_pq, pk_i), (sk_pq, sk_i))
 }
 
+fn update_key_pair(
+    _rng: &mut impl CryptoRngCore,
+    _h: &R25519CurvePoint,
+    _mpk: Option<&PublicSubkey>,
+    _msk: &SecretSubkey,
+    _is_hybridized: EncryptionHint,
+    _write_status: AttributeStatus,
+) -> (PublicSubkey, SecretSubkey) {
+    todo!()
+}
 /// Generates the master secret key and master public key of the `Covercrypt`
 /// scheme.
 ///
@@ -114,10 +126,12 @@ pub fn setup(
     let mut sub_sk = RevisionMap::with_capacity(partitions.len());
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
-    for (partition, &(is_hybridized, _)) in partitions {
-        let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, is_hybridized);
-        sub_sk.insert(partition.clone(), (sk_pq, sk_i));
-        sub_pk.insert(partition.clone(), (pk_pq, pk_i));
+    for (partition, &(is_hybridized, write_status)) in partitions {
+        let (public_subkey, secret_subkey) = create_key_pair(rng, &h, is_hybridized);
+        sub_sk.insert(partition.clone(), secret_subkey);
+        if write_status == AttributeStatus::EncryptDecrypt {
+            sub_pk.insert(partition.clone(), public_subkey);
+        }
     }
 
     let kmac_key = Some(SymmetricKey::<KMAC_KEY_LENGTH>::new(rng));
@@ -305,9 +319,40 @@ pub fn update(
     mpk: &mut MasterPublicKey,
     partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
-    let mut new_sub_sk = RevisionMap::with_capacity(partitions_set.len());
-    let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
+    // Remove keys from partitions deleted from Policy
+    msk.subkeys.retain_keys(partitions_set.keys().collect());
+    mpk.subkeys
+        .retain(|part, _| partitions_set.contains_key(part));
+
     let h = R25519PublicKey::from(&msk.s);
+    for (partition, &(is_hybridized, write_status)) in partitions_set {
+        // check if secret key exist
+        let (public_subkey, secret_subkey) =
+        // remove master secret key here?
+            if let Some(secret_subkey) = msk.subkeys.get_current_revision(partition) {
+                // check if is_hybridized -> pub + secret exist or gen
+                update_key_pair(
+                    rng,
+                    &h,
+                    mpk.subkeys.get(partition),
+                    secret_subkey,
+                    is_hybridized,
+                    write_status,
+                )
+            } else {
+                // generate new keys
+                create_key_pair(rng, &h, is_hybridized)
+            };
+        // update secret key
+        // error out if missing kyber key for pubkey
+        // update pubkey
+        msk.subkeys.insert(partition.clone(), secret_subkey);
+        if write_status == AttributeStatus::EncryptDecrypt {
+            mpk.subkeys.insert(partition.clone(), public_subkey);
+        }
+    }
+
+    /*
 
     for (partition, &(is_hybridized, write_status)) in partitions_set {
         // only regenerate public subkey for current subkey in master secret key
@@ -324,11 +369,7 @@ pub fn update(
                         .unwrap_or(&None);
                     (sk_i.clone(), pk_i.clone())
                 } else {
-                    let (mut sk_i, mut pk_i) = (
-                        KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-                        KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-                    );
-                    indcpa_keypair(&mut pk_i.0, &mut sk_i.0, None, rng);
+                    let (pk_i, sk_i) = create_kyber_key_pair(rng);
                     (Some(sk_i), Some(pk_i))
                 }
             } else {
@@ -345,30 +386,7 @@ pub fn update(
                 new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
             new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
-        } else {
-            // Create new entry.
-            let x_i = R25519PrivateKey::new(rng);
-            let h_i = &h * &x_i;
-            let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
-                let (mut sk_pq, mut pk_pq) = (
-                    KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-                    KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-                );
-                indcpa_keypair(&mut pk_pq.0, &mut sk_pq.0, None, rng);
-                (Some(sk_pq), Some(pk_pq))
-            } else {
-                (None, None)
-            };
-            new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
-            if write_status == AttributeStatus::EncryptDecrypt {
-                // Only add non read only partition to the public key
-                new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
-            }
-        }
-    }
-
-    msk.subkeys = new_sub_sk;
-    mpk.subkeys = new_sub_pk;
+        */
 
     Ok(())
 }
@@ -381,19 +399,19 @@ pub fn rekey(
 ) -> Result<(), Error> {
     let h = R25519PublicKey::from(&msk.s);
     for partition in partitions_to_rotate {
-        // write a `get_encryption`` function in a dedicated Subkey class?
+        // write a `get_encryption`` function in a dedicated SecretSubkey struct?
         let is_hybridized = EncryptionHint::new(
             msk.subkeys
                 .get_current_revision(partition)
                 .and_then(|(sk_i, _)| sk_i.as_ref())
                 .is_some(),
         );
-        let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, is_hybridized);
-        msk.subkeys.insert(partition.clone(), (sk_pq, sk_i));
+        let (public_subkey, secret_subkey) = create_key_pair(rng, &h, is_hybridized);
+        msk.subkeys.insert(partition.clone(), secret_subkey);
 
         // update public subkey if partition is not read only
         if mpk.subkeys.contains_key(partition) {
-            mpk.subkeys.insert(partition.clone(), (pk_pq, pk_i));
+            mpk.subkeys.insert(partition.clone(), public_subkey);
         }
     }
     Ok(())

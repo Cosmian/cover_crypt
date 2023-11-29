@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     collections::{
         hash_map::{Entry, OccupiedEntry, VacantEntry},
-        HashMap, LinkedList,
+        HashMap, HashSet, LinkedList,
     },
     fmt::Debug,
     hash::Hash,
@@ -149,6 +149,15 @@ where
         }
 
         removed_entry
+    }
+
+    pub fn retain_keys(&mut self, keys: HashSet<&K>) {
+        let inner_keys: Vec<K> = self.keys().cloned().collect();
+        for key in inner_keys {
+            if !keys.contains(&key) {
+                let _ = self.remove_chain(&key);
+            }
+        }
     }
 }
 
