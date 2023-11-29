@@ -1,6 +1,6 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::collections::{HashSet, LinkedList};
+use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
@@ -61,14 +61,11 @@ impl Serializable for MasterPublicKey {
     fn length(&self) -> usize {
         let mut length = 2 * R25519PublicKey::LENGTH
             // subkeys serialization
-            + to_leb128_len(self.subkeys.nb_chains())
+            + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PublicKey::LENGTH;
-        for (partition, chain) in &self.subkeys.map {
+        for (partition, (pk_i, _)) in &self.subkeys {
             length += to_leb128_len(partition.len()) + partition.len();
-            length += to_leb128_len(chain.len());
-            for (pk_i, _) in chain {
-                length += serialize_len_option!(pk_i, _value, KYBER_INDCPA_PUBLICKEYBYTES);
-            }
+            length += serialize_len_option!(pk_i, _value, KYBER_INDCPA_PUBLICKEYBYTES);
         }
         length
     }
@@ -76,14 +73,11 @@ impl Serializable for MasterPublicKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.g1.to_bytes())?;
         n += ser.write_array(&self.g2.to_bytes())?;
-        n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
-        for (partition, chain) in &self.subkeys.map {
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
+        for (partition, (pk_i, h_i)) in &self.subkeys {
             n += ser.write_vec(partition)?;
-            n += ser.write_leb128_u64(chain.len() as u64)?;
-            for (pk_i, h_i) in chain {
-                serialize_option!(ser, n, pk_i, value, ser.write_array(value));
-                n += ser.write_array(&h_i.to_bytes())?;
-            }
+            serialize_option!(ser, n, pk_i, value, ser.write_array(value));
+            n += ser.write_array(&h_i.to_bytes())?;
         }
         Ok(n)
     }
@@ -92,18 +86,13 @@ impl Serializable for MasterPublicKey {
         let g1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = RevisionMap::with_capacity(n_partitions);
+        let mut subkeys = HashMap::with_capacity(n_partitions);
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
-            let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let chain: Result<LinkedList<_>, Self::Error> = (0..n_keys)
-                .map(|_| {
-                    let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
-                    let h_i = de.read_array::<{ R25519PublicKey::LENGTH }>()?;
-                    Ok((pk_i, R25519PublicKey::try_from_bytes(h_i)?))
-                })
-                .collect();
-            subkeys.map.insert(partition, chain?);
+            let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
+            let h_i =
+                R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
+            subkeys.insert(partition, (pk_i, h_i));
         }
         Ok(Self { g1, g2, subkeys })
     }

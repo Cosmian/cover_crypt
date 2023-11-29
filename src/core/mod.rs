@@ -1,6 +1,10 @@
 //! Implements the core functionalities of `Covercrypt`.
 
-use std::{collections::HashSet, hash::Hash, ops::Deref};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    ops::Deref,
+};
 
 use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey, SymmetricKey};
 use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
@@ -63,7 +67,7 @@ impl Deref for KyberSecretKey {
 pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
-    pub(crate) subkeys: RevisionMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
+    pub(crate) subkeys: HashMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
 }
 
 type Subkey = (Option<KyberSecretKey>, R25519PrivateKey);

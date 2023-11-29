@@ -112,7 +112,7 @@ pub fn setup(
     let g2 = R25519PublicKey::from(&s2);
 
     let mut sub_sk = RevisionMap::with_capacity(partitions.len());
-    let mut sub_pk = RevisionMap::with_capacity(partitions.len());
+    let mut sub_pk = HashMap::with_capacity(partitions.len());
 
     for (partition, &(is_hybridized, _)) in partitions {
         let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, is_hybridized);
@@ -197,7 +197,7 @@ pub fn encaps(
     let c2 = &mpk.g2 * &r;
     let mut encs = HashSet::with_capacity(encryption_set.len());
     for partition in encryption_set {
-        if let Some((pk_i, h_i)) = mpk.subkeys.get_current_revision(partition) {
+        if let Some((pk_i, h_i)) = mpk.subkeys.get(partition) {
             let mut e_i = [0; SYM_KEY_LENGTH];
             kdf256!(&mut e_i, &(h_i * &r).to_bytes());
             xor_in_place(&mut e_i, &seed);
@@ -306,11 +306,11 @@ pub fn update(
     partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
     let mut new_sub_sk = RevisionMap::with_capacity(partitions_set.len());
-    let mut new_sub_pk = RevisionMap::with_capacity(partitions_set.len());
+    let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
     let h = R25519PublicKey::from(&msk.s);
 
     for (partition, &(is_hybridized, write_status)) in partitions_set {
-        // TODO: get all revisions
+        // only regenerate public subkey for current subkey in master secret key
         if let Some((sk_i, x_i)) = msk.subkeys.get_current_revision(partition) {
             // regenerate the public sub-key.
             let h_i = &h * x_i;
@@ -319,7 +319,7 @@ pub fn update(
                 if sk_i.is_some() {
                     let pk_i = mpk
                         .subkeys
-                        .get_current_revision(partition)
+                        .get(partition)
                         .map(|(pk_i, _)| pk_i)
                         .unwrap_or(&None);
                     (sk_i.clone(), pk_i.clone())
@@ -373,20 +373,26 @@ pub fn update(
     Ok(())
 }
 
-pub fn rotate(
+pub fn rekey(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    partitions_to_rotate: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    partitions_to_rotate: &HashSet<Partition>,
 ) -> Result<(), Error> {
-    // let partitions_to_rotate =
-    //      self.access_policy_to_partitions(&AccessPolicy::Attr(attr.clone()),
-    // false)?;
     let h = R25519PublicKey::from(&msk.s);
-    for (partition, (is_hybridized, write_status)) in partitions_to_rotate {
-        let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, *is_hybridized);
+    for partition in partitions_to_rotate {
+        // write a `get_encryption`` function in a dedicated Subkey class?
+        let is_hybridized = EncryptionHint::new(
+            msk.subkeys
+                .get_current_revision(partition)
+                .and_then(|(sk_i, _)| sk_i.as_ref())
+                .is_some(),
+        );
+        let ((pk_i, pk_pq), (sk_i, sk_pq)) = create_key_pair(rng, &h, is_hybridized);
         msk.subkeys.insert(partition.clone(), (sk_pq, sk_i));
-        if *write_status == AttributeStatus::EncryptDecrypt {
+
+        // update public subkey if partition is not read only
+        if mpk.subkeys.contains_key(partition) {
             mpk.subkeys.insert(partition.clone(), (pk_pq, pk_i));
         }
     }

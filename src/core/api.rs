@@ -10,7 +10,7 @@ use cosmian_crypto_core::{
 use crate::{
     abe_policy::{AccessPolicy, Policy},
     core::{
-        primitives::{decaps, encaps, keygen, refresh, setup, update},
+        primitives::{decaps, encaps, keygen, refresh, rekey, setup, update},
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SYM_KEY_LENGTH,
     },
     Error,
@@ -74,6 +74,22 @@ impl Covercrypt {
         )
     }
 
+    /// Generates new key pairs for a given AccessPolicy
+    pub fn rekey_master_keys(
+        &self,
+        access_policy: &AccessPolicy,
+        policy: &Policy,
+        msk: &mut MasterSecretKey,
+        mpk: &mut MasterPublicKey,
+    ) -> Result<(), Error> {
+        rekey(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            mpk,
+            &policy.access_policy_to_partitions(access_policy, false)?,
+        )
+    }
+
     /// Generates a user secret key.
     ///
     /// A new user secret key does NOT include to old (i.e. rotated) partitions.
@@ -103,7 +119,6 @@ impl Covercrypt {
     ///
     /// - `usk`                 : the user key to refresh
     /// - `msk`                 : master secret key
-    /// - `policy`              : global policy of the master secret key
     /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
     ///   rotation) should be kept
     pub fn refresh_user_secret_key(
@@ -112,7 +127,6 @@ impl Covercrypt {
         msk: &MasterSecretKey,
         keep_old_rights: bool,
     ) -> Result<(), Error> {
-        // TODO: use keep_old_rotations
         refresh(msk, usk, keep_old_rights)
     }
 
