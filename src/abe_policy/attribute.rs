@@ -39,6 +39,12 @@ impl EncryptionHint {
     }
 }
 
+impl From<EncryptionHint> for bool {
+    fn from(val: EncryptionHint) -> Self {
+        val == EncryptionHint::Hybridized
+    }
+}
+
 /// Whether to provide an encryption key in the master public key for this
 /// attribute.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

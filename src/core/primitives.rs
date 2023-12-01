@@ -93,7 +93,7 @@ fn create_subkey_pair(
     let sk_i = R25519PrivateKey::new(rng);
     let pk_i = h * &sk_i;
 
-    let (pk_pq, sk_pq) = if is_hybridized == EncryptionHint::Hybridized {
+    let (pk_pq, sk_pq) = if is_hybridized.into() {
         let (pk, sk) = create_kyber_key_pair(rng);
         (Some(pk), Some(sk))
     } else {
@@ -117,7 +117,7 @@ fn update_subkey_pair(
     *pk_i = h * &sk_i;
 
     // create or reuse Kyber keys
-    if is_hybridized == EncryptionHint::Hybridized {
+    if is_hybridized.into() {
         match (&pk_pq, &sk_pq) {
             (None, _) => {
                 // generate a new Kyber key pair
@@ -145,7 +145,7 @@ fn update_master_subkey(
 ) {
     let (sk_pq, _) = msk;
     // Add Kyber key if needed
-    if is_hybridized == EncryptionHint::Hybridized && sk_pq.is_none() {
+    if is_hybridized.into() && sk_pq.is_none() {
         let (_, sk) = create_kyber_key_pair(rng);
         sk_pq.replace(sk);
     }
@@ -444,12 +444,9 @@ pub fn refresh(
     verify_user_key_kmac(msk, usk)?;
 
     // Remove partitions missing from master keys
-    usk.subkeys
-        .chains
-        .retain(|chain| msk.subkeys.contains_key(chain.get_key()));
+    usk.subkeys.retain_keys(msk.subkeys.keys().collect());
 
-    for user_chain in &mut usk.subkeys.chains {
-        let partition = user_chain.get_key().clone();
+    for (partition, user_chain) in usk.subkeys.iter_mut() {
         let mut master_chain = msk.subkeys.iter_chain(&partition);
 
         if !keep_old_rights {

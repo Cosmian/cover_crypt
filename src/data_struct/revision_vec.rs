@@ -1,6 +1,8 @@
-use std::{collections::VecDeque, iter};
-
-use super::error::Error;
+use std::{
+    collections::{HashSet, VecDeque},
+    hash::Hash,
+    iter,
+};
 
 /// a `RevisionVec` stores for each entry a linked list of versions.
 /// The entry versions are stored in reverse chronological order:
@@ -16,10 +18,9 @@ use super::error::Error;
 ///
 /// This guarantees that the entry versions are always ordered.
 // TODO: does index matter for Eq compare?
-// TODO: check Serialize/Deserialize
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
-    pub(crate) chains: Vec<RevisionList<K, T>>,
+    chains: Vec<RevisionList<K, T>>,
     length: usize,
 }
 
@@ -50,32 +51,12 @@ impl<K, T> RevisionVec<K, T> {
         self.chains.len()
     }
 
-    pub fn chain_length(&self, chain_index: usize) -> usize {
-        self.chains[chain_index].len()
-    }
-
-    pub fn push_front(&mut self, chain_index: usize, item: T) -> Result<(), Error> {
-        let chain = self
-            .chains
-            .get_mut(chain_index)
-            .ok_or(Error::missing_entry(&chain_index))?;
-
-        self.length += 1;
-        chain.push_front(item);
-        Ok(())
-    }
-
-    /// Inserts entry versions in reverse chronological order
-    /// The iterator must be in chronological order as the items are inserted
-    /// backward.
-    pub fn insert_new_chain(&mut self, key: K, iterator: impl Iterator<Item = T>) {
-        let mut new_list = RevisionList::new(key);
-        for item in iterator {
-            new_list.push_front(item);
-        }
-        if !new_list.is_empty() {
-            self.length += new_list.len();
-            self.chains.push(new_list);
+    /// Insert new chain entries in order of arrival
+    pub fn insert_new_chain(&mut self, key: K, iter: impl Iterator<Item = T>) {
+        let new_chain = RevisionList::from_iter(key, iter);
+        if !new_chain.is_empty() {
+            self.length += new_chain.len();
+            self.chains.push(new_chain);
         }
     }
 
@@ -84,15 +65,27 @@ impl<K, T> RevisionVec<K, T> {
         self.length = self.chains.len();
     }
 
-    /// Provides reference to the current entry version.
-    pub fn front(&self, chain_index: usize) -> Option<&T> {
-        self.chains.get(chain_index)?.front()
+    pub fn retain_keys(&mut self, keys: HashSet<&K>)
+    where
+        K: Hash + Eq,
+    {
+        self.chains
+            .retain(|chain: &RevisionList<K, T>| keys.contains(&chain.key));
     }
 
-    /// Iterates through all versions of an entry starting from the most recent
-    /// one.
-    pub fn iter_chain(&self, chain_index: usize) -> impl Iterator<Item = &T> {
-        self.chains[chain_index].iter().map(|(_, v)| v)
+    /// Returns an iterator over each key-chains pair
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &RevisionList<K, T>)> {
+        self.chains.iter().map(|chain| (&chain.key, chain))
+    }
+
+    /// Returns an iterator over each key-chains pair that allow modifying chain
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut RevisionList<K, T>)>
+    where
+        K: Clone,
+    {
+        self.chains
+            .iter_mut()
+            .map(|chain| (chain.key.clone(), chain))
     }
 
     /// Iterates through all versions of all entries
@@ -137,7 +130,7 @@ impl<'a, T> Iterator for BfsIterator<'a, T> {
     }
 }
 
-/// Create `RevisionVec`` from an iterator, each element will be inserted in a
+/// Create `RevisionVec` from an iterator, each element will be inserted in a
 /// different chain. Use `insert_new_chain` to collect an iterator inside the
 /// same chain.
 impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
@@ -188,10 +181,6 @@ impl<K, T> RevisionList<K, T> {
 
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
-    }
-
-    pub fn get_key(&self) -> &K {
-        &self.key
     }
 
     pub fn push_front(&mut self, val: T) {
@@ -264,10 +253,9 @@ impl<'a, K, T> Iterator for RevisionListIter<'a, K, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
-    fn test_revision_vec() -> Result<(), Error> {
+    fn test_revision_vec() {
         todo!()
     }
 }

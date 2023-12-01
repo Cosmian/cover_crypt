@@ -15,7 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
-    data_struct::{RevisionList, RevisionMap, RevisionVec},
+    data_struct::{RevisionMap, RevisionVec},
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -183,12 +183,7 @@ impl Serializable for UserSecretKey {
             // subkeys serialization
             + to_leb128_len(self.subkeys.nb_chains())
             + self.subkeys.len() * R25519PrivateKey::LENGTH;
-        /*for (partition, (sk_i, _)) in self.subkeys.iter() {
-            length += (to_leb128_len(partition.len()) + partition.len())
-                + serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
-        }*/
-        for chain in &self.subkeys.chains {
-            let partition = chain.get_key();
+        for (partition, chain) in self.subkeys.iter() {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
             for (_, (sk_i, _)) in chain.iter() {
@@ -202,9 +197,9 @@ impl Serializable for UserSecretKey {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
-        for chain in &self.subkeys.chains {
+        for (partition, chain) in self.subkeys.iter() {
             // write chain partition
-            n += ser.write_vec(chain.get_key())?;
+            n += ser.write_vec(partition)?;
             // iterate through all subkeys in the chain
             n += ser.write_leb128_u64(chain.len() as u64)?;
             for (_, (sk_i, x_i)) in chain.iter() {
@@ -234,7 +229,7 @@ impl Serializable for UserSecretKey {
                     Ok::<_, Self::Error>((sk_i, R25519PrivateKey::try_from_bytes(x_i)?))
                 })
                 .filter_map(Result::ok);
-            subkeys.chains.push(RevisionList::from_iter(partition, it))
+            subkeys.insert_new_chain(partition, it);
         }
         let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
 
