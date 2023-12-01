@@ -86,6 +86,15 @@ where
         self.map.get(key).and_then(|chain| chain.front())
     }
 
+    /// Returns a mutable reference to the last revised value for a given key.
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.get_mut(key).and_then(|chain| chain.front_mut())
+    }
+
     pub fn contains_key(&self, key: &K) -> bool {
         self.map.contains_key(key)
     }

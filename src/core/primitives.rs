@@ -19,7 +19,11 @@ use super::{
     KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, EncryptionHint, Partition},
+    abe_policy::{
+        AttributeStatus,
+        AttributeStatus::{DecryptOnly, EncryptDecrypt},
+        EncryptionHint, Partition,
+    },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     data_struct::{Element, RevisionMap, RevisionVec},
     Error,
@@ -69,6 +73,7 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
     Ok(())
 }
 
+/// Returns newly generated public and private Kyber key pair
 fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, KyberSecretKey) {
     let (mut sk, mut pk) = (
         KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
@@ -78,7 +83,9 @@ fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, Kyber
     (pk, sk)
 }
 
-fn create_key_pair(
+/// Returns a newly generated pair of public and private subkeys with optional
+/// Kyber keys if required
+fn create_subkey_pair(
     rng: &mut impl CryptoRngCore,
     h: &R25519CurvePoint,
     is_hybridized: EncryptionHint,
@@ -95,16 +102,55 @@ fn create_key_pair(
     ((pk_pq, pk_i), (sk_pq, sk_i))
 }
 
-fn update_key_pair(
-    _rng: &mut impl CryptoRngCore,
-    _h: &R25519CurvePoint,
-    _mpk: Option<&PublicSubkey>,
-    _msk: &SecretSubkey,
-    _is_hybridized: EncryptionHint,
-    _write_status: AttributeStatus,
-) -> (PublicSubkey, SecretSubkey) {
-    todo!()
+/// Update a pair of public and private subkeys of a `ReadWrite` partition
+fn update_subkey_pair(
+    rng: &mut impl CryptoRngCore,
+    h: &R25519CurvePoint,
+    mpk: &mut PublicSubkey,
+    msk: &mut SecretSubkey,
+    is_hybridized: EncryptionHint,
+) -> Result<(), Error> {
+    let (pk_pq, pk_i) = mpk;
+    let (sk_pq, sk_i) = msk;
+
+    // update public subkey
+    *pk_i = h * &sk_i;
+
+    // create or reuse Kyber keys
+    if is_hybridized == EncryptionHint::Hybridized {
+        match (&pk_pq, &sk_pq) {
+            (None, _) => {
+                // generate a new Kyber key pair
+                let (pk, sk) = create_kyber_key_pair(rng);
+                pk_pq.replace(pk);
+                sk_pq.replace(sk);
+            }
+            (Some(_), Some(_)) => {} // keep existing key
+            (Some(_), None) => {
+                return Err(Error::KeyError(
+                    "Kyber public key cannot be computed from the secret key.".to_string(),
+                ));
+            }
+        };
+    }
+    Ok(())
 }
+
+/// Update the private subkey of a `ReadOnly` partition
+fn update_master_subkey(
+    rng: &mut impl CryptoRngCore,
+    _h: &R25519CurvePoint,
+    msk: &mut SecretSubkey,
+    is_hybridized: EncryptionHint,
+) {
+    let (sk_pq, _) = msk;
+    // Add Kyber key if needed
+    if is_hybridized == EncryptionHint::Hybridized && sk_pq.is_none() {
+        let (_, sk) = create_kyber_key_pair(rng);
+        sk_pq.replace(sk);
+    }
+}
+
 /// Generates the master secret key and master public key of the `Covercrypt`
 /// scheme.
 ///
@@ -127,9 +173,9 @@ pub fn setup(
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
     for (partition, &(is_hybridized, write_status)) in partitions {
-        let (public_subkey, secret_subkey) = create_key_pair(rng, &h, is_hybridized);
+        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
         sub_sk.insert(partition.clone(), secret_subkey);
-        if write_status == AttributeStatus::EncryptDecrypt {
+        if write_status == EncryptDecrypt {
             sub_pk.insert(partition.clone(), public_subkey);
         }
     }
@@ -326,67 +372,29 @@ pub fn update(
 
     let h = R25519PublicKey::from(&msk.s);
     for (partition, &(is_hybridized, write_status)) in partitions_set {
-        // check if secret key exist
-        let (public_subkey, secret_subkey) =
-        // remove master secret key here?
-            if let Some(secret_subkey) = msk.subkeys.get_current_revision(partition) {
-                // check if is_hybridized -> pub + secret exist or gen
-                update_key_pair(
-                    rng,
-                    &h,
-                    mpk.subkeys.get(partition),
-                    secret_subkey,
-                    is_hybridized,
-                    write_status,
-                )
-            } else {
-                // generate new keys
-                create_key_pair(rng, &h, is_hybridized)
-            };
-        // update secret key
-        // error out if missing kyber key for pubkey
-        // update pubkey
-        msk.subkeys.insert(partition.clone(), secret_subkey);
-        if write_status == AttributeStatus::EncryptDecrypt {
-            mpk.subkeys.insert(partition.clone(), public_subkey);
+        // check if secret key exist for this partition
+        if let Some(secret_subkey) = msk.subkeys.get_mut(partition) {
+            // update the master secret and public subkey if needed
+            match (write_status, mpk.subkeys.get_mut(partition)) {
+                (EncryptDecrypt, None) => unreachable!(),
+                (EncryptDecrypt, Some(public_subkey)) => {
+                    update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?
+                }
+                (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized),
+                (DecryptOnly, Some(_)) => {
+                    mpk.subkeys.remove(partition);
+                    update_master_subkey(rng, &h, secret_subkey, is_hybridized)
+                }
+            }
+        } else {
+            // generate new keys
+            let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+            msk.subkeys.insert(partition.clone(), secret_subkey);
+            if write_status == EncryptDecrypt {
+                mpk.subkeys.insert(partition.clone(), public_subkey);
+            }
         }
     }
-
-    /*
-
-    for (partition, &(is_hybridized, write_status)) in partitions_set {
-        // only regenerate public subkey for current subkey in master secret key
-        if let Some((sk_i, x_i)) = msk.subkeys.get_current_revision(partition) {
-            // regenerate the public sub-key.
-            let h_i = &h * x_i;
-            // Set the correct hybridization property.
-            let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
-                if sk_i.is_some() {
-                    let pk_i = mpk
-                        .subkeys
-                        .get(partition)
-                        .map(|(pk_i, _)| pk_i)
-                        .unwrap_or(&None);
-                    (sk_i.clone(), pk_i.clone())
-                } else {
-                    let (pk_i, sk_i) = create_kyber_key_pair(rng);
-                    (Some(sk_i), Some(pk_i))
-                }
-            } else {
-                (None, None)
-            };
-
-            if write_status == AttributeStatus::EncryptDecrypt {
-                // Only add non read only partition to the public key
-                if sk_i.is_some() && pk_i.is_none() {
-                    return Err(Error::KeyError(
-                        "Kyber public key cannot be computed from the secret key.".to_string(),
-                    ));
-                }
-                new_sub_pk.insert(partition.clone(), (pk_i, h_i));
-            }
-            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
-        */
 
     Ok(())
 }
@@ -406,7 +414,7 @@ pub fn rekey(
                 .and_then(|(sk_i, _)| sk_i.as_ref())
                 .is_some(),
         );
-        let (public_subkey, secret_subkey) = create_key_pair(rng, &h, is_hybridized);
+        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
         msk.subkeys.insert(partition.clone(), secret_subkey);
 
         // update public subkey if partition is not read only
