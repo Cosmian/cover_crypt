@@ -2,13 +2,21 @@ use std::{
     borrow::Borrow,
     collections::{
         hash_map::{Entry, OccupiedEntry, VacantEntry},
-        HashMap, HashSet, LinkedList,
+        HashMap, LinkedList,
     },
     fmt::Debug,
     hash::Hash,
 };
 
-/// a `VersionedMap` stores linked lists.
+/// a `RevisionMap` stores linked lists indexed by given keys.
+/// The element inside the linked list are stored in reverse insertion order
+/// while the keys are stored in arbitrary order.
+///
+/// Map {
+///     key2: b
+///     key1: a" -> a' > a
+///     key3: c' -> c
+/// }
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionMap<K, V>
 where
@@ -134,13 +142,9 @@ where
             .map(|chain| chain.split_off(1).into_iter())
     }
 
-    pub fn retain_keys(&mut self, keys: HashSet<&K>) {
-        let inner_keys: Vec<K> = self.keys().cloned().collect();
-        for key in inner_keys {
-            if !keys.contains(&key) {
-                let _ = self.remove_chain(&key);
-            }
-        }
+    /// Retains only the elements with a key validating the given predicate.
+    pub fn retain(&mut self, f: impl Fn(&K) -> bool) {
+        self.map.retain(|key, _| f(key));
     }
 }
 
@@ -157,17 +161,20 @@ mod tests {
 
         // Insertions
         map.insert("Part1".to_string(), "Part1V1".to_string());
-        assert_eq!(map.map.len(), 1);
+        assert_eq!(map.nb_chains(), 1);
         map.insert("Part1".to_string(), "Part1V2".to_string());
         assert_eq!(map.len(), 2);
-        // the inner map only has 1 entry with 2 revisions
-        assert_eq!(map.map.len(), 1);
+        // only one chain
+        assert_eq!(map.nb_chains(), 1);
 
         map.insert("Part2".to_string(), "Part2V1".to_string());
         map.insert("Part2".to_string(), "Part2V2".to_string());
         map.insert("Part2".to_string(), "Part2V3".to_string());
-        assert_eq!(map.map.len(), 2);
+        assert_eq!(map.nb_chains(), 2);
         assert_eq!(map.len(), 5);
+
+        map.insert("Part3".to_string(), "Part3V1".to_string());
+        assert_eq!(map.len(), 6);
 
         // Get
         assert_eq!(map.get_current_revision("Part1").unwrap(), "Part1V2");
@@ -188,16 +195,22 @@ mod tests {
         // Remove values
         let vec: Vec<_> = map.remove_chain("Part1").unwrap().collect();
         assert_eq!(vec, vec!["Part1V2".to_string(), "Part1V1".to_string()]);
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.map.len(), 1);
+        assert_eq!(map.len(), 4);
+        assert_eq!(map.nb_chains(), 2);
 
         // Pop tail
         let vec: Vec<_> = map.pop_tail("Part2").unwrap().collect();
         assert_eq!(vec, vec!["Part2V2".to_string(), "Part2V1".to_string()]);
-        assert_eq!(map.len(), 1);
+        assert_eq!(map.len(), 2);
         let vec: Vec<_> = map.remove_chain("Part2").unwrap().collect();
         assert_eq!(vec, vec!["Part2V3".to_string()]);
+        // Empty pop tail
+        assert!(map.pop_tail("Part3").unwrap().next().is_none());
 
+        // Retain
+        map.retain(|_| true);
+        assert_eq!(map.len(), 1);
+        map.retain(|_| false);
         assert!(map.is_empty());
     }
 }

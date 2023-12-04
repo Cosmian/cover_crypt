@@ -1,10 +1,7 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    hash::Hash,
-};
+use std::collections::VecDeque;
 
 /// a `RevisionVec` stores for each entry a linked list of versions.
-/// The entry versions are stored in reverse chronological order:
+/// The entry versions are stored in reverse insertion order:
 ///
 /// Vec [
 ///     0: key -> a" -> a' -> a
@@ -16,8 +13,8 @@ use std::{
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-// TODO: does index matter for Eq compare?
 #[derive(Default, Debug, PartialEq, Eq)]
+// TODO does index matter for Eq compare?
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, RevisionList<T>)>,
 }
@@ -67,11 +64,9 @@ impl<K, T> RevisionVec<K, T> {
         self.chains.clear();
     }
 
-    pub fn retain_keys(&mut self, keys: HashSet<&K>)
-    where
-        K: Hash + Eq,
-    {
-        self.chains.retain(|(key, _)| keys.contains(key));
+    /// Retains only the elements with a key validating the given predicate.
+    pub fn retain(&mut self, f: impl Fn(&K) -> bool) {
+        self.chains.retain(|(key, _)| f(key));
     }
 
     /// Returns an iterator over each key-chains pair
@@ -87,7 +82,7 @@ impl<K, T> RevisionVec<K, T> {
         self.chains.iter_mut().map(|(ref key, chain)| (key, chain))
     }
 
-    /// Iterates through all versions of all entries
+    /// Iterates through all versions of all entries in a depth-first manner.
     /// Returns the key and value for each entry.
     pub fn flat_iter(&self) -> impl Iterator<Item = (&K, &T)> {
         self.chains
@@ -95,11 +90,13 @@ impl<K, T> RevisionVec<K, T> {
             .flat_map(|(key, chain)| chain.iter().map(move |val| (key, val)))
     }
 
+    /// Iterates through all versions of all entry in a breadth-first manner.
     pub fn bfs(&self) -> BfsIterator<T> {
         BfsIterator::new(self)
     }
 }
 
+/// Breadth-first search iterator for `RevisionVec`.
 pub struct BfsIterator<'a, T> {
     queue: VecDeque<&'a Element<T>>,
 }
@@ -184,18 +181,18 @@ impl<T> RevisionList<T> {
 
     pub fn pop_tail(&mut self) -> RevisionListIter<T> {
         self.length = self.head.as_ref().map_or(0, |_| 1);
-        match &self.head {
+        match &mut self.head {
             Some(head) => RevisionListIter {
-                current_element: &head.next,
+                current_element: head.next.take(),
             },
             None => RevisionListIter {
-                current_element: &None,
+                current_element: None,
             },
         }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        RevisionListIter::new(self)
+        RefRevisionListIter::new(self)
     }
 }
 
@@ -226,11 +223,11 @@ impl<T> FromIterator<T> for RevisionList<T> {
     }
 }
 
-pub struct RevisionListIter<'a, T> {
+pub struct RefRevisionListIter<'a, T> {
     current_element: &'a Option<Box<Element<T>>>,
 }
 
-impl<'a, T> RevisionListIter<'a, T> {
+impl<'a, T> RefRevisionListIter<'a, T> {
     pub fn new(rev_list: &'a RevisionList<T>) -> Self {
         Self {
             current_element: &rev_list.head,
@@ -238,7 +235,7 @@ impl<'a, T> RevisionListIter<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for RevisionListIter<'a, T> {
+impl<'a, T> Iterator for RefRevisionListIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -248,11 +245,133 @@ impl<'a, T> Iterator for RevisionListIter<'a, T> {
     }
 }
 
+pub struct RevisionListIter<T> {
+    current_element: Option<Box<Element<T>>>,
+}
+
+impl<T> Iterator for RevisionListIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let element = self.current_element.take()?;
+        self.current_element = element.next;
+        Some(element.data)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn test_revision_vec() {
-        todo!()
+        let mut revision_vec: RevisionVec<i32, String> = RevisionVec::new();
+        assert!(revision_vec.is_empty());
+        assert_eq!(revision_vec.nb_chains(), 0);
+
+        // Insert
+        revision_vec.insert_new_chain(
+            1,
+            vec!["a\"".to_string(), "a'".to_string(), "a".to_string()]
+                .into_iter()
+                .collect(),
+        );
+        revision_vec.create_chain_with_single_value(2, "b".to_string());
+        revision_vec.insert_new_chain(
+            3,
+            vec!["c'".to_string(), "c".to_string()]
+                .into_iter()
+                .collect(),
+        );
+
+        assert_eq!(revision_vec.len(), 6);
+        assert_eq!(revision_vec.nb_chains(), 3);
+
+        // Iterators
+        let depth_iter: Vec<_> = revision_vec.flat_iter().collect();
+        assert_eq!(
+            depth_iter,
+            vec![
+                (&1, &"a\"".to_string()),
+                (&1, &"a'".to_string()),
+                (&1, &"a".to_string()),
+                (&2, &"b".to_string()),
+                (&3, &"c'".to_string()),
+                (&3, &"c".to_string()),
+            ]
+        );
+
+        let breadth_iter: Vec<_> = revision_vec.bfs().collect();
+        assert_eq!(
+            breadth_iter,
+            vec![
+                &"a\"".to_string(),
+                &"b".to_string(),
+                &"c'".to_string(),
+                &"a'".to_string(),
+                &"c".to_string(),
+                &"a".to_string(),
+            ]
+        );
+
+        // Retain
+        revision_vec.retain(|key| key == &1);
+        assert_eq!(revision_vec.len(), 3);
+        assert_eq!(revision_vec.nb_chains(), 1);
+
+        // Clear
+        revision_vec.clear();
+        assert!(revision_vec.is_empty());
+    }
+
+    #[test]
+    fn test_revision_list() {
+        let mut revision_list: RevisionList<i32> = RevisionList::new();
+        assert!(revision_list.is_empty());
+        assert_eq!(revision_list.front(), None);
+
+        // Insertions
+        revision_list.push_front(1);
+        revision_list.push_front(2);
+        revision_list.push_front(3);
+        assert_eq!(revision_list.len(), 3);
+
+        // Get and iter
+        assert_eq!(revision_list.front(), Some(&3));
+        {
+            let mut iter = revision_list.iter();
+            assert_eq!(iter.next(), Some(&3));
+            assert_eq!(iter.next(), Some(&2));
+            assert_eq!(iter.next(), Some(&1));
+            assert_eq!(iter.next(), None);
+        }
+
+        // Pop
+        let popped_tail = revision_list.pop_tail().collect::<Vec<_>>();
+        assert_eq!(popped_tail, vec![2, 1]);
+        assert_eq!(revision_list.len(), 1);
+
+        assert_eq!(revision_list.front(), Some(&3));
+    }
+
+    #[test]
+    fn test_revision_list_from_iterator() {
+        // Test creating RevisionList from iterator
+        let input_iter = vec![1, 2, 3].into_iter();
+        let revision_list: RevisionList<i32> = input_iter.collect();
+
+        assert_eq!(revision_list.len(), 3);
+
+        let mut iter = revision_list.iter();
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), None);
+
+        // Test iterator behavior on an empty list
+        let revision_list: RevisionList<i32> = RevisionList::new();
+        let mut iter = revision_list.iter();
+        assert_eq!(iter.next(), None);
+        assert!(revision_list.is_empty());
     }
 }

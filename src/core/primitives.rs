@@ -368,7 +368,7 @@ pub fn update(
     partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
     // Remove keys from partitions deleted from Policy
-    msk.subkeys.retain_keys(partitions_set.keys().collect());
+    msk.subkeys.retain(|part| partitions_set.contains_key(part));
     mpk.subkeys
         .retain(|part, _| partitions_set.contains_key(part));
 
@@ -451,7 +451,7 @@ pub fn refresh(
     verify_user_key_kmac(msk, usk)?;
 
     // Remove partitions missing from master keys
-    usk.subkeys.retain_keys(msk.subkeys.keys().collect());
+    usk.subkeys.retain(|part| msk.subkeys.contains_key(part));
 
     for (partition, user_chain) in usk.subkeys.iter_mut() {
         let mut master_chain = msk.subkeys.iter_chain(partition).expect("at least one key");
