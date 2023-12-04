@@ -81,12 +81,14 @@ impl Covercrypt {
         policy: &Policy,
         msk: &mut MasterSecretKey,
         mpk: &mut MasterPublicKey,
+        keep_old_subkeys: bool,
     ) -> Result<(), Error> {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
             &policy.access_policy_to_partitions(access_policy, false)?,
+            keep_old_subkeys,
         )
     }
 

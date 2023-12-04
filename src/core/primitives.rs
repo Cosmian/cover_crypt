@@ -221,7 +221,9 @@ pub fn keygen(
         let subkey = msk
             .subkeys
             .get_current_revision(partition)
-            .ok_or(Error::KeyError("Missing master subkey".to_string()))?;
+            .ok_or(Error::KeyError(
+                "Master secret key and Policy are not in sync.".to_string(),
+            ))?;
         subkeys.create_chain_with_single_value(partition.clone(), subkey.clone());
         Ok::<_, Error>(())
     })?;
@@ -404,10 +406,11 @@ pub fn rekey(
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
     partitions_to_rotate: &HashSet<Partition>,
+    keep_old_subkeys: bool,
 ) -> Result<(), Error> {
     let h = R25519PublicKey::from(&msk.s);
     for partition in partitions_to_rotate {
-        // write a `get_encryption`` function in a dedicated SecretSubkey struct?
+        // write a `get_encryption` function in a dedicated SecretSubkey struct?
         let is_hybridized = EncryptionHint::new(
             msk.subkeys
                 .get_current_revision(partition)
@@ -416,6 +419,10 @@ pub fn rekey(
         );
         let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
         msk.subkeys.insert(partition.clone(), secret_subkey);
+        if !keep_old_subkeys {
+            // remove all older keys for a given partition
+            msk.subkeys.pop_tail(partition);
+        }
 
         // update public subkey if partition is not read only
         if mpk.subkeys.contains_key(partition) {
@@ -447,20 +454,19 @@ pub fn refresh(
     usk.subkeys.retain_keys(msk.subkeys.keys().collect());
 
     for (partition, user_chain) in usk.subkeys.iter_mut() {
-        let mut master_chain = msk.subkeys.iter_chain(partition);
+        let mut master_chain = msk.subkeys.iter_chain(partition).expect("at least one key");
 
         // Remove all but the most recent subkey for this partition
         if !keep_old_rights {
             // find the most recent subkey between the master and user key
-            let master_first_key = master_chain.next().expect("have one key");
+            let master_first_key = master_chain.next().expect("at least one key");
             if Some(master_first_key) != user_chain.head.as_ref().map(|item| &item.data) {
                 // new key
                 let new_element = Box::new(Element::new(master_first_key.clone()));
                 user_chain.head.replace(new_element);
             }
             // remove older keys if any and update length
-            let _ = user_chain.head.as_mut().expect("have one key").next.take();
-            user_chain.length = 1;
+            user_chain.pop_tail();
             // skip to next partition
             continue;
         }

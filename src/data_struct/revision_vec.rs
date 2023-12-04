@@ -20,26 +20,21 @@ use std::{
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, RevisionList<T>)>,
-    length: usize,
 }
 
 impl<K, T> RevisionVec<K, T> {
     pub fn new() -> Self {
-        Self {
-            chains: Vec::new(),
-            length: 0,
-        }
+        Self { chains: Vec::new() }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             chains: Vec::with_capacity(capacity),
-            length: 0,
         }
     }
 
     pub fn len(&self) -> usize {
-        self.length
+        self.chains.iter().map(|(_, chain)| chain.len()).sum()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -56,7 +51,6 @@ impl<K, T> RevisionVec<K, T> {
     pub fn create_chain_with_single_value(&mut self, key: K, val: T) {
         let mut new_chain = RevisionList::new();
         new_chain.push_front(val);
-        self.length += 1;
         self.chains.push((key, new_chain));
     }
 
@@ -65,14 +59,12 @@ impl<K, T> RevisionVec<K, T> {
     /// structure.
     pub fn insert_new_chain(&mut self, key: K, new_chain: RevisionList<T>) {
         if !new_chain.is_empty() {
-            self.length += new_chain.len();
             self.chains.push((key, new_chain));
         }
     }
 
     pub fn clear(&mut self) {
         self.chains.clear();
-        self.length = self.chains.len();
     }
 
     pub fn retain_keys(&mut self, keys: HashSet<&K>)
@@ -188,6 +180,18 @@ impl<T> RevisionList<T> {
 
     pub fn front(&self) -> Option<&T> {
         self.head.as_ref().map(|element| &element.data)
+    }
+
+    pub fn pop_tail(&mut self) -> RevisionListIter<T> {
+        self.length = self.head.as_ref().map_or(0, |_| 1);
+        match &self.head {
+            Some(head) => RevisionListIter {
+                current_element: &head.next,
+            },
+            None => RevisionListIter {
+                current_element: &None,
+            },
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
