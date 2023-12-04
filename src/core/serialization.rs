@@ -103,15 +103,17 @@ impl Serializable for MasterSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        let mut length = 2 * R25519PublicKey::LENGTH
+        let mut length = 3 * R25519PrivateKey::LENGTH
+            + self.kmac_key.as_ref().map_or_else(|| 0, |key| key.len())
             // subkeys serialization
             + to_leb128_len(self.subkeys.nb_chains())
-            + self.subkeys.len() * R25519PublicKey::LENGTH;
+            + self.subkeys.len() * R25519PrivateKey::LENGTH;
         for (partition, chain) in &self.subkeys.map {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
             for (sk_i, _) in chain {
-                length += serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
+                let x = serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
+                length += x;
             }
         }
         length

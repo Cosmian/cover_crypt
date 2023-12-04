@@ -131,16 +131,6 @@ impl Policy {
         }
     }
 
-    /// Removes all rotation values but the current of an attribute.
-    pub fn clear_old_attribute_values(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if let Some(_dim) = self.dimensions.get_mut(&attr.dimension) {
-            // Rotate master keys
-            todo!()
-        } else {
-            Err(Error::DimensionNotFound(attr.dimension.to_string()))
-        }
-    }
-
     /// Returns the list of Attributes of this Policy.
     #[must_use]
     pub fn attributes(&self) -> Vec<Attribute> {
@@ -410,25 +400,6 @@ mod tests {
         let att_1_1 = axes_attributes[1][1].1;
         assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_0])?,));
         assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_1])?,));
-
-        // rotation
-        //policy.rotate(&axes_attributes[0][0].0)?;
-        let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
-
-        // this should create the single combination of the first attribute
-        // of the first dim with that of the second dim
-        let partitions_3 = generate_attribute_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-            ],
-            &policy,
-        )?;
-        assert_eq!(partitions_3.len(), 1);
-        let att_1_0 = axes_attributes[1][0].1;
-        let att_0_0_new = axes_attributes[0][0].1;
-        assert!(partitions_3.contains(&Partition::from_attribute_ids(vec![att_0_0_new, att_1_0])?));
-        assert!(!partitions_3.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_0])?));
 
         Ok(())
     }
