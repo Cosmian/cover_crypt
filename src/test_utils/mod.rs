@@ -234,7 +234,7 @@ mod tests {
         // TODO: fix this behavior?
         assert!(encrypted_header
             .decrypt(&cover_crypt, &low_secret_usk, None)
-            .is_ok());
+            .is_err());
 
         Ok(())
     }

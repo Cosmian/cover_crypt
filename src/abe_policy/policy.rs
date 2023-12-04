@@ -55,6 +55,7 @@ impl Policy {
     }
 
     /// Adds the given dimension to the policy.
+    /// /!\ Might void all previously issued user keys and ciphers.
     pub fn add_dimension(&mut self, dim: DimensionBuilder) -> Result<(), Error> {
         if self.dimensions.get(&dim.name).is_some() {
             return Err(Error::ExistingPolicy(dim.name));
@@ -69,6 +70,7 @@ impl Policy {
     }
 
     /// Removes the given dim from the policy.
+    /// /!\ Will void all previously issued user keys and ciphers.
     /// Fails if there is no such dim in the policy.
     pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
         self.dimensions
@@ -78,6 +80,7 @@ impl Policy {
     }
 
     /// Adds the given attribute to the policy.
+    /// /!\ Only newly created user keys can have access to the attribute.
     /// Fails if the dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
