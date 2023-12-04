@@ -15,7 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
-    data_struct::{RevisionMap, RevisionVec},
+    data_struct::{RevisionList, RevisionMap, RevisionVec},
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -186,7 +186,7 @@ impl Serializable for UserSecretKey {
         for (partition, chain) in self.subkeys.iter() {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
-            for (_, (sk_i, _)) in chain.iter() {
+            for (sk_i, _) in chain.iter() {
                 length += serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
             }
         }
@@ -202,7 +202,7 @@ impl Serializable for UserSecretKey {
             n += ser.write_vec(partition)?;
             // iterate through all subkeys in the chain
             n += ser.write_leb128_u64(chain.len() as u64)?;
-            for (_, (sk_i, x_i)) in chain.iter() {
+            for (sk_i, x_i) in chain.iter() {
                 serialize_option!(ser, n, sk_i, value, ser.write_array(value));
                 n += ser.write_array(&x_i.to_bytes())?;
             }
@@ -222,14 +222,14 @@ impl Serializable for UserSecretKey {
             let partition = Partition::from(de.read_vec()?);
             // read all keys forming a chain and inserting them all at once.
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let it = (0..n_keys)
+            let new_chain: Result<RevisionList<_>, _> = (0..n_keys)
                 .map(|_| {
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
                     Ok::<_, Self::Error>((sk_i, R25519PrivateKey::try_from_bytes(x_i)?))
                 })
-                .filter_map(Result::ok);
-            subkeys.insert_new_chain(partition, it);
+                .collect();
+            subkeys.insert_new_chain(partition, new_chain?);
         }
         let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
 
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(mpk, mpk_, "Wrong `PublicKey` derserialization.");
 
         // Check Covercrypt `UserSecretKey` serialization.
-        let usk = keygen(&mut rng, &msk, &user_set);
+        let usk = keygen(&mut rng, &msk, &user_set)?;
         let bytes = usk.serialize()?;
         assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
         let usk_ = UserSecretKey::deserialize(&bytes)?;

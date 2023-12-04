@@ -36,8 +36,6 @@ pub fn policy() -> Result<Policy, Error> {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
-
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     use super::*;
@@ -188,9 +186,9 @@ mod tests {
 
         // try to modify the user key and refresh
         let part = Partition::from(vec![1, 6]);
-        usk.subkeys.insert_new_chain(
+        usk.subkeys.create_chain_with_single_value(
             part.clone(),
-            iter::once(msk.subkeys.get_current_revision(&part).unwrap().clone()),
+            msk.subkeys.get_current_revision(&part).unwrap().clone(),
         );
         assert!(cover_crypt
             .refresh_user_secret_key(&mut usk, &msk, false)

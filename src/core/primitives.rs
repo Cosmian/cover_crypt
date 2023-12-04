@@ -212,19 +212,19 @@ pub fn keygen(
     rng: &mut impl CryptoRngCore,
     msk: &MasterSecretKey,
     decryption_set: &HashSet<Partition>,
-) -> UserSecretKey {
+) -> Result<UserSecretKey, Error> {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
     // Use the last key for each partitions in the decryption set
-    // TODO: error out if missing partitions?
-    let subkeys: RevisionVec<_, _> = decryption_set
-        .iter()
-        .filter_map(|partition| {
-            msk.subkeys
-                .get_current_revision(partition)
-                .map(|subkey| (partition.clone(), subkey.clone()))
-        })
-        .collect();
+    let mut subkeys = RevisionVec::with_capacity(decryption_set.len());
+    decryption_set.iter().try_for_each(|partition| {
+        let subkey = msk
+            .subkeys
+            .get_current_revision(partition)
+            .ok_or(Error::KeyError("Missing master subkey".to_string()))?;
+        subkeys.create_chain_with_single_value(partition.clone(), subkey.clone());
+        Ok::<_, Error>(())
+    })?;
 
     let mut usk = UserSecretKey {
         a,
@@ -233,7 +233,7 @@ pub fn keygen(
         kmac: None,
     };
     usk.kmac = compute_user_key_kmac(msk, &usk);
-    usk
+    Ok(usk)
 }
 
 /// Generates a `Covercrypt` encapsulation of a random symmetric key.
@@ -447,24 +447,26 @@ pub fn refresh(
     usk.subkeys.retain_keys(msk.subkeys.keys().collect());
 
     for (partition, user_chain) in usk.subkeys.iter_mut() {
-        let mut master_chain = msk.subkeys.iter_chain(&partition);
+        let mut master_chain = msk.subkeys.iter_chain(partition);
 
+        // Remove all but the most recent subkey for this partition
         if !keep_old_rights {
-            // find the most recent key between the master and user key
-            let master_first_key = master_chain.next().expect("at least one key");
+            // find the most recent subkey between the master and user key
+            let master_first_key = master_chain.next().expect("have one key");
             if Some(master_first_key) != user_chain.head.as_ref().map(|item| &item.data) {
                 // new key
                 let new_element = Box::new(Element::new(master_first_key.clone()));
                 user_chain.head.replace(new_element);
             }
-            // remove older keys if any
-            let _ = user_chain.head.as_mut().unwrap().next.take();
-            // skip to next chain
+            // remove older keys if any and update length
+            let _ = user_chain.head.as_mut().expect("have one key").next.take();
+            user_chain.length = 1;
+            // skip to next partition
             continue;
         }
 
         // 1 - add new master subkeys in user key if any
-        let user_first_key = user_chain.head.take().expect("at least one key");
+        let user_first_key = user_chain.head.take().expect("have one key");
         let mut insertion_cursor = &mut user_chain.head;
 
         let mut updated_chain_length = 0;
@@ -508,8 +510,6 @@ pub fn refresh(
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
-
     use cosmian_crypto_core::{
         bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
     };
@@ -563,8 +563,8 @@ mod tests {
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
         // Generate user secret keys.
-        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0]);
-        let admin_usk = keygen(&mut rng, &msk, &users_set[1]);
+        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0])?;
+        let admin_usk = keygen(&mut rng, &msk, &users_set[1])?;
 
         // Encapsulate key for the admin target set.
         let (sym_key, encapsulation) = encaps(&mut rng, &mpk, &admin_target_set).unwrap();
@@ -645,7 +645,7 @@ mod tests {
         );
 
         // Client is able to decapsulate.
-        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]));
+        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]))?;
         let res0 = decaps(&client_usk, &new_encapsulation);
         match res0 {
             Err(err) => panic!("Client should be able to decapsulate: {err:?}"),
@@ -726,7 +726,7 @@ mod tests {
             &mut rng,
             &msk,
             &HashSet::from([partition_1.clone(), partition_2.clone()]),
-        );
+        )?;
 
         // now remove partition 1 and add partition 4
         let partition_4 = Partition(b"4".to_vec());
@@ -797,16 +797,16 @@ mod tests {
         // setup scheme
         let (msk, _) = setup(&mut rng, &partitions_set);
         // create a user key with access to partition 1 and 2
-        let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]));
+        let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
 
         assert!(verify_user_key_kmac(&msk, &usk).is_ok());
         let bytes = usk.serialize()?;
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
-        usk.subkeys.insert_new_chain(
+        usk.subkeys.create_chain_with_single_value(
             Partition(b"3".to_vec()),
-            iter::once((None, R25519PrivateKey::new(&mut rng))),
+            (None, R25519PrivateKey::new(&mut rng)),
         );
         // KMAC verify will fail after modifying the user key
         assert!(verify_user_key_kmac(&msk, &usk).is_err());

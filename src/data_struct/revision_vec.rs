@@ -1,7 +1,6 @@
 use std::{
     collections::{HashSet, VecDeque},
     hash::Hash,
-    iter,
 };
 
 /// a `RevisionVec` stores for each entry a linked list of versions.
@@ -20,7 +19,7 @@ use std::{
 // TODO: does index matter for Eq compare?
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
-    chains: Vec<RevisionList<K, T>>,
+    chains: Vec<(K, RevisionList<T>)>,
     length: usize,
 }
 
@@ -51,12 +50,23 @@ impl<K, T> RevisionVec<K, T> {
         self.chains.len()
     }
 
-    /// Insert new chain entries in order of arrival
-    pub fn insert_new_chain(&mut self, key: K, iter: impl Iterator<Item = T>) {
-        let new_chain = RevisionList::from_iter(key, iter);
+    /// Creates and insert a new chain with a single value.
+    /// /!\ Adding multiple chains with the same key will corrupt the data
+    /// structure.
+    pub fn create_chain_with_single_value(&mut self, key: K, val: T) {
+        let mut new_chain = RevisionList::new();
+        new_chain.push_front(val);
+        self.length += 1;
+        self.chains.push((key, new_chain));
+    }
+
+    /// Inserts a new chain with a corresponding key.
+    /// /!\ Adding multiple chains with the same key will corrupt the data
+    /// structure.
+    pub fn insert_new_chain(&mut self, key: K, new_chain: RevisionList<T>) {
         if !new_chain.is_empty() {
             self.length += new_chain.len();
-            self.chains.push(new_chain);
+            self.chains.push((key, new_chain));
         }
     }
 
@@ -69,29 +79,28 @@ impl<K, T> RevisionVec<K, T> {
     where
         K: Hash + Eq,
     {
-        self.chains
-            .retain(|chain: &RevisionList<K, T>| keys.contains(&chain.key));
+        self.chains.retain(|(key, _)| keys.contains(key));
     }
 
     /// Returns an iterator over each key-chains pair
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &RevisionList<K, T>)> {
-        self.chains.iter().map(|chain| (&chain.key, chain))
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &RevisionList<T>)> {
+        self.chains.iter().map(|(key, chain)| (key, chain))
     }
 
     /// Returns an iterator over each key-chains pair that allow modifying chain
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut RevisionList<K, T>)>
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut RevisionList<T>)>
     where
         K: Clone,
     {
-        self.chains
-            .iter_mut()
-            .map(|chain| (chain.key.clone(), chain))
+        self.chains.iter_mut().map(|(ref key, chain)| (key, chain))
     }
 
     /// Iterates through all versions of all entries
     /// Returns the key and value for each entry.
     pub fn flat_iter(&self) -> impl Iterator<Item = (&K, &T)> {
-        self.chains.iter().flat_map(|chain| chain.iter())
+        self.chains
+            .iter()
+            .flat_map(|(key, chain)| chain.iter().map(move |val| (key, val)))
     }
 
     pub fn bfs(&self) -> BfsIterator<T> {
@@ -110,7 +119,7 @@ impl<'a, T> BfsIterator<'a, T> {
             queue: revision_vec
                 .chains
                 .iter()
-                .filter_map(|chain| Some(chain.head.as_ref()?.as_ref()))
+                .filter_map(|(_, chain)| Some(chain.head.as_ref()?.as_ref()))
                 .collect(),
         }
     }
@@ -130,20 +139,6 @@ impl<'a, T> Iterator for BfsIterator<'a, T> {
     }
 }
 
-/// Create `RevisionVec` from an iterator, each element will be inserted in a
-/// different chain. Use `insert_new_chain` to collect an iterator inside the
-/// same chain.
-impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
-    fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
-        let iterator = iter.into_iter();
-        let mut vec = Self::with_capacity(iterator.size_hint().0);
-        for (key, item) in iterator {
-            vec.insert_new_chain(key, iter::once(item))
-        }
-        vec
-    }
-}
-
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Element<T> {
     pub(crate) data: T,
@@ -160,16 +155,14 @@ impl<T> Element<T> {
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
-pub struct RevisionList<K, T> {
-    key: K,
+pub struct RevisionList<T> {
     pub(crate) length: usize,
     pub(crate) head: Option<Box<Element<T>>>,
 }
 
-impl<K, T> RevisionList<K, T> {
-    pub fn new(key: K) -> Self {
+impl<T> RevisionList<T> {
+    pub fn new() -> Self {
         Self {
-            key,
             length: 0,
             head: None,
         }
@@ -197,29 +190,31 @@ impl<K, T> RevisionList<K, T> {
         self.head.as_ref().map(|element| &element.data)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &T)> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
         RevisionListIter::new(self)
     }
+}
 
+impl<T> FromIterator<T> for RevisionList<T> {
     /// Creates a `RevisionList` from an iterator by inserting elements in the
     /// order of arrival: first item in the iterator will end up at the front.
-    pub fn from_iter(key: K, mut iter: impl Iterator<Item = T>) -> Self {
-        if let Some(first_element) = iter.next() {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut iterator = iter.into_iter();
+        if let Some(first_element) = iterator.next() {
             let mut length = 1;
             let mut head = Some(Box::new(Element::new(first_element)));
-            let mut current_element = head.as_mut().expect("next element was inserted above");
-            for next_item in iter {
+            let mut current_element = head.as_mut().expect("element was inserted above");
+            for next_item in iterator {
                 current_element.next = Some(Box::new(Element::new(next_item)));
                 current_element = current_element
                     .next
                     .as_mut()
-                    .expect("next element was inserted above");
+                    .expect("element was inserted above");
                 length += 1;
             }
-            Self { key, length, head }
+            Self { length, head }
         } else {
             Self {
-                key,
                 length: 0,
                 head: None,
             }
@@ -227,27 +222,25 @@ impl<K, T> RevisionList<K, T> {
     }
 }
 
-pub struct RevisionListIter<'a, K, T> {
-    key: &'a K,
+pub struct RevisionListIter<'a, T> {
     current_element: &'a Option<Box<Element<T>>>,
 }
 
-impl<'a, K, T> RevisionListIter<'a, K, T> {
-    pub fn new(rev_list: &'a RevisionList<K, T>) -> Self {
+impl<'a, T> RevisionListIter<'a, T> {
+    pub fn new(rev_list: &'a RevisionList<T>) -> Self {
         Self {
-            key: &rev_list.key,
             current_element: &rev_list.head,
         }
     }
 }
 
-impl<'a, K, T> Iterator for RevisionListIter<'a, K, T> {
-    type Item = (&'a K, &'a T);
+impl<'a, T> Iterator for RevisionListIter<'a, T> {
+    type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
         let element = self.current_element.as_ref()?;
         self.current_element = &element.next;
-        Some((self.key, &element.data))
+        Some(&element.data)
     }
 }
 
