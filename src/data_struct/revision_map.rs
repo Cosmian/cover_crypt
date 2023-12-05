@@ -44,7 +44,7 @@ where
     }
 
     pub fn len(&self) -> usize {
-        self.map.values().map(|chain| chain.len()).sum()
+        self.map.values().map(LinkedList::len).sum()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -56,7 +56,7 @@ where
     }
 
     pub fn chain_length(&self, key: &K) -> Option<usize> {
-        self.map.get(key).map(|chain| chain.len())
+        self.map.get(key).map(LinkedList::len)
     }
 
     fn insert_new_chain(entry: VacantEntry<K, LinkedList<V>>, value: V) {
@@ -84,7 +84,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key).and_then(|chain| chain.front())
+        self.map.get(key).and_then(LinkedList::front)
     }
 
     /// Returns a mutable reference to the last revised value for a given key.
@@ -93,7 +93,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get_mut(key).and_then(|chain| chain.front_mut())
+        self.map.get_mut(key).and_then(LinkedList::front_mut)
     }
 
     pub fn contains_key(&self, key: &K) -> bool {
@@ -106,7 +106,7 @@ where
     }
 
     /// Iterates through all revisions of all keys.
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+    pub fn flat_iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.map
             .iter()
             .flat_map(|(k, chain)| chain.iter().map(move |v| (k, v)))
@@ -182,7 +182,7 @@ mod tests {
         assert!(map.get_current_revision("Missing").is_none());
 
         // Iterators
-        let vec: Vec<_> = map.iter().collect();
+        let vec: Vec<_> = map.flat_iter().collect();
         assert_eq!(vec.len(), map.len());
 
         let vec: Vec<_> = map.iter_chain("Part1").unwrap().collect();
