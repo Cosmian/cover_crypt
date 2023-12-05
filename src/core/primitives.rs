@@ -734,8 +734,7 @@ mod tests {
             &HashSet::from([partition_1.clone(), partition_2.clone()]),
         )?;
 
-        // now remove partition 1 and add partition 4
-        let partition_4 = Partition(b"4".to_vec());
+        // now remove partition 1 and remove hybrid key from partition 3
         let new_partition_set = HashMap::from([
             (
                 partition_2.clone(),
@@ -745,17 +744,14 @@ mod tests {
                 partition_3.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
-            (
-                partition_4.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
-            ),
         ]);
         //Covercrypt the master keys
 
         let old_msk = MasterSecretKey::deserialize(msk.serialize()?.as_slice())?;
         update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
-        // refresh the user key with partitions 2 and 4
+        // refresh the user key
         refresh(&msk, &mut usk, true)?;
+        // user key kept old access to partition 1
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_1,
@@ -768,18 +764,34 @@ mod tests {
                 msk.subkeys.get_current_revision(&partition_2).unwrap(),
             )
         }));
+        // user key kept the old hybrid key for partition 3
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_3,
                 old_msk.subkeys.get_current_revision(&partition_3).unwrap(),
             )
         }));
-        assert!(usk.subkeys.flat_iter().any(|x| {
-            x == (
-                &partition_4,
-                msk.subkeys.get_current_revision(&partition_4).unwrap(),
-            )
-        }));
+
+        // add new key for partition 2
+        rekey(
+            &mut rng,
+            &mut msk,
+            &mut mpk,
+            &HashSet::from([partition_2.clone()]),
+            true,
+        )?;
+        // refresh the user key
+        refresh(&msk, &mut usk, true)?;
+        let usk_subkeys: Vec<_> = usk
+            .subkeys
+            .flat_iter()
+            .filter(|(part, _)| *part == &partition_2)
+            .map(|(_, subkey)| subkey)
+            .collect();
+        let msk_subkeys: Vec<_> = msk.subkeys.iter_chain(&partition_2).unwrap().collect();
+        assert_eq!(usk_subkeys.len(), 2);
+        assert_eq!(usk_subkeys, msk_subkeys);
+
         Ok(())
     }
 
