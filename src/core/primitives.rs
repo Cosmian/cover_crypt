@@ -401,36 +401,54 @@ pub fn update(
     Ok(())
 }
 
+/// Rekeys the master keys by create new subkeys for specified coordinate.
+///
+/// # Parameters
+///
+/// - `rng`             : random number generator
+/// - `msk`             : master secret key
+/// - `mpk`             : master public key
+/// - `coordinate`      : set of keys coordinate to renew
 pub fn rekey(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    partitions_to_rotate: &HashSet<Partition>,
-    keep_old_subkeys: bool,
+    coordinates: &HashSet<Partition>,
 ) -> Result<(), Error> {
     let h = R25519PublicKey::from(&msk.s);
-    for partition in partitions_to_rotate {
+    for coordinate in coordinates {
         // write a `get_encryption` function in a dedicated SecretSubkey struct?
         let is_hybridized = EncryptionHint::new(
             msk.subkeys
-                .get_current_revision(partition)
+                .get_current_revision(coordinate)
                 .and_then(|(sk_i, _)| sk_i.as_ref())
                 .is_some(),
         );
         let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
-        msk.subkeys.insert(partition.clone(), secret_subkey);
-        if !keep_old_subkeys {
-            // remove all older keys for a given partition
-            msk.subkeys.pop_tail(partition);
-        }
+        msk.subkeys.insert(coordinate.clone(), secret_subkey);
 
         // update public subkey if partition is not read only
-        if mpk.subkeys.contains_key(partition) {
-            mpk.subkeys.insert(partition.clone(), public_subkey);
+        if mpk.subkeys.contains_key(coordinate) {
+            mpk.subkeys.insert(coordinate.clone(), public_subkey);
         }
     }
     Ok(())
 }
+
+/// Prunes old subkeys from the master secret key for specified coordinates.
+///
+/// # Parameters
+///
+/// - `msk`             : master secret key
+/// - `coordinates`     : set of subkeys coordinate to prune
+pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Result<(), Error> {
+    for coordinate in coordinates {
+        // remove all older subkeys for a given coordinate
+        msk.subkeys.pop_tail(coordinate);
+    }
+    Ok(())
+}
+
 /// Refresh a user key from the master secret key and the given decryption set.
 ///
 /// If `keep_old_rights` is set to false, old sub-keys are removed.
@@ -778,7 +796,6 @@ mod tests {
             &mut msk,
             &mut mpk,
             &HashSet::from([partition_2.clone()]),
-            true,
         )?;
         // refresh the user key
         refresh(&msk, &mut usk, true)?;

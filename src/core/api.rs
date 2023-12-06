@@ -7,6 +7,7 @@ use cosmian_crypto_core::{
     RandomFixedSizeCBytes, SymmetricKey,
 };
 
+use super::primitives::prune;
 use crate::{
     abe_policy::{AccessPolicy, Policy},
     core::{
@@ -74,21 +75,40 @@ impl Covercrypt {
         )
     }
 
-    /// Renew the keys associated to the given access policy in the master keys.
+    /// Renews the keys associated to the given access policy in the master
+    /// keys.
+    ///  - `access_policy`  : describe the keys to renew
+    ///  - `policy`         : global policy
+    ///  - `msk`            : master secret key
+    ///  - `mpk`            : master public key
     pub fn rekey_master_keys(
         &self,
         access_policy: &AccessPolicy,
         policy: &Policy,
         msk: &mut MasterSecretKey,
         mpk: &mut MasterPublicKey,
-        keep_old_subkeys: bool,
     ) -> Result<(), Error> {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
             &policy.access_policy_to_partitions(access_policy, false)?,
-            keep_old_subkeys,
+        )
+    }
+
+    /// Removes old keys from the master keys.
+    ///  - `access_policy`  : describe the keys to prune
+    ///  - `policy`         : global policy
+    ///  - `msk`            : master secret key
+    pub fn prune_master_keys(
+        &self,
+        access_policy: &AccessPolicy,
+        policy: &Policy,
+        msk: &mut MasterSecretKey,
+    ) -> Result<(), Error> {
+        prune(
+            msk,
+            &policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
@@ -96,9 +116,9 @@ impl Covercrypt {
     ///
     /// A new user secret key does NOT include to old (i.e. rotated) partitions.
     ///
-    /// - `msk`         : master secret key
-    /// - `user_policy` : user access policy
-    /// - `policy`      : global policy
+    /// - `msk`           : master secret key
+    /// - `access_policy` : user access policy
+    /// - `policy`        : global policy
     pub fn generate_user_secret_key(
         &self,
         msk: &MasterSecretKey,

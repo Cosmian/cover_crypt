@@ -81,15 +81,15 @@ mod tests {
 
         // rekey all partitions which include `Department::FIN`
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         // public key contains only the last subkeys
         assert_eq!(mpk.subkeys.len(), 20);
         // secret key stores the 5 old subkeys
         // 5 is the size of the security level dimension
         assert_eq!(msk.subkeys.count_elements(), 25);
 
-        // rekey `Department::FIN` but remove older subkeys
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, false)?;
+        // remove older subkeys for `Department::FIN`
+        cover_crypt.prune_master_keys(&rekey_access_policy, &policy, &mut msk)?;
         assert_eq!(mpk.subkeys.len(), 20);
         // we only keep the last subkeys in the secret key
         assert_eq!(msk.subkeys.count_elements(), 20);
@@ -124,15 +124,15 @@ mod tests {
         assert_eq!(msk.subkeys.count_elements(), 2 * 2);
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A1"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         assert_eq!(msk.subkeys.count_elements(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A2"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         assert_eq!(msk.subkeys.count_elements(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D2", "D2A1"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         assert_eq!(msk.subkeys.count_elements(), 8 + 2); // Adding 2 new keys D1A1':D2A1', D1A2':D2A1'
 
         Ok(())
@@ -150,7 +150,7 @@ mod tests {
         let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
         // rekey the MKG department
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "MKG"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
         // 4 partitions accessed by the user were rekeyed (MKG Protected, Low Secret,
@@ -179,9 +179,11 @@ mod tests {
             part.clone(),
             msk.subkeys.get_current_revision(&part).unwrap().clone(),
         );
-        assert!(cover_crypt
-            .refresh_user_secret_key(&mut usk, &msk, false)
-            .is_err());
+        assert!(
+            cover_crypt
+                .refresh_user_secret_key(&mut usk, &msk, false)
+                .is_err()
+        );
 
         Ok(())
     }
@@ -231,16 +233,20 @@ mod tests {
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &secret_sales_ap, None, None)?;
 
         // User cannot decrypt new message without refreshing its key
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &low_secret_usk, None)
-            .is_err());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &low_secret_usk, None)
+                .is_err()
+        );
 
         cover_crypt.refresh_user_secret_key(&mut low_secret_usk, &msk, false)?;
 
         // TODO: fix this behavior?
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &low_secret_usk, None)
-            .is_err());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &low_secret_usk, None)
+                .is_err()
+        );
 
         Ok(())
     }
@@ -287,9 +293,11 @@ mod tests {
         // 5 is the size of the security level dimension
         assert_eq!(new_partitions_msk.len(), partitions_msk.len() - 5);
 
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         // refresh the user key and preserve access to old partitions
         let _new_decryption_policy =
@@ -298,9 +306,11 @@ mod tests {
         // refreshing the user key will remove access to removed partitions even if we
         // keep old rotations
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_err());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_err()
+        );
 
         Ok(())
     }
@@ -342,9 +352,11 @@ mod tests {
         // msk has not changed
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
 
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         // Can not encrypt using deactivated attribute
         let top_secret_ap =
@@ -357,20 +369,24 @@ mod tests {
 
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         // refresh the user key and remove access to old partitions should still work
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         //
         // Rotating the disabled attribute should only change the msk
         let rekey_ap = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
-        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut mpk, true)?;
+        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut mpk)?;
         // 5 new partitions added to the msk
         assert_eq!(msk.subkeys.count_elements() - 10, mpk.subkeys.len());
 
@@ -403,18 +419,22 @@ mod tests {
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
 
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         // refresh the user key and preserve access to old partitions
         let _new_decryption_policy = AccessPolicy::from_boolean_expression(
             "Security Level::Top Secret && Department::Finance",
         )?;
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         Ok(())
     }
@@ -502,13 +522,7 @@ mod tests {
         //
         // Rotate argument (must update master keys)
         let rekey_ap = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
-        cover_crypt.rekey_master_keys(
-            &rekey_ap,
-            &policy,
-            &mut msk,
-            &mut master_public_key,
-            true,
-        )?;
+        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut master_public_key)?;
 
         //
         // Encrypt with new attribute
@@ -522,16 +536,20 @@ mod tests {
         )?;
 
         // Decryption fails without refreshing the user key
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_err());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_err()
+        );
 
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
 
         // The refreshed key can decrypt the header
-        assert!(encrypted_header
-            .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+        assert!(
+            encrypted_header
+                .decrypt(&cover_crypt, &top_secret_fin_usk, None)
+                .is_ok()
+        );
 
         Ok(())
     }
