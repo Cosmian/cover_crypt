@@ -69,7 +69,7 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub(super) attribute_id: u32,
+    pub(super) id: u32,
     pub(super) encryption_hint: EncryptionHint,
     pub(super) write_status: AttributeStatus,
 }
@@ -80,14 +80,14 @@ impl AttributeParameters {
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
-            attribute_id: *seed_id,
+            id: *seed_id,
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,
         }
     }
 
-    pub fn get_attribute_id(&self) -> u32 {
-        self.attribute_id
+    pub fn get_id(&self) -> u32 {
+        self.id
     }
 
     pub fn get_encryption_hint(&self) -> EncryptionHint {
@@ -101,7 +101,7 @@ impl AttributeParameters {
     /// Returns a tuple containing the attribute id, the associated encryption
     /// hint, and the `read_only` flag.
     pub fn get_attribute_properties(&self) -> (u32, EncryptionHint, AttributeStatus) {
-        (self.attribute_id, self.encryption_hint, self.write_status)
+        (self.id, self.encryption_hint, self.write_status)
     }
 }
 

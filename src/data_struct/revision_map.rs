@@ -43,16 +43,18 @@ where
         }
     }
 
+    /// Returns the number of chains stored.
     pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// Returns the total number of elements stored.
+    pub fn count_elements(&self) -> usize {
         self.map.values().map(LinkedList::len).sum()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn nb_chains(&self) -> usize {
-        self.map.len()
+        self.map.is_empty()
     }
 
     pub fn chain_length(&self, key: &K) -> Option<usize> {
@@ -161,20 +163,21 @@ mod tests {
 
         // Insertions
         map.insert("Part1".to_string(), "Part1V1".to_string());
-        assert_eq!(map.nb_chains(), 1);
+        assert_eq!(map.count_elements(), 1);
+        assert_eq!(map.len(), 1);
         map.insert("Part1".to_string(), "Part1V2".to_string());
-        assert_eq!(map.len(), 2);
-        // only one chain
-        assert_eq!(map.nb_chains(), 1);
+        assert_eq!(map.count_elements(), 2);
+        // two elements in the same chain
+        assert_eq!(map.len(), 1);
 
         map.insert("Part2".to_string(), "Part2V1".to_string());
         map.insert("Part2".to_string(), "Part2V2".to_string());
         map.insert("Part2".to_string(), "Part2V3".to_string());
-        assert_eq!(map.nb_chains(), 2);
-        assert_eq!(map.len(), 5);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.count_elements(), 5);
 
         map.insert("Part3".to_string(), "Part3V1".to_string());
-        assert_eq!(map.len(), 6);
+        assert_eq!(map.count_elements(), 6);
 
         // Get
         assert_eq!(map.get_current_revision("Part1").unwrap(), "Part1V2");
@@ -183,7 +186,7 @@ mod tests {
 
         // Iterators
         let vec: Vec<_> = map.flat_iter().collect();
-        assert_eq!(vec.len(), map.len());
+        assert_eq!(vec.len(), map.count_elements());
 
         let vec: Vec<_> = map.iter_chain("Part1").unwrap().collect();
         assert_eq!(vec, vec!["Part1V2", "Part1V1"]);
@@ -195,13 +198,13 @@ mod tests {
         // Remove values
         let vec: Vec<_> = map.remove_chain("Part1").unwrap().collect();
         assert_eq!(vec, vec!["Part1V2".to_string(), "Part1V1".to_string()]);
-        assert_eq!(map.len(), 4);
-        assert_eq!(map.nb_chains(), 2);
+        assert_eq!(map.count_elements(), 4);
+        assert_eq!(map.len(), 2);
 
         // Pop tail
         let vec: Vec<_> = map.pop_tail("Part2").unwrap().collect();
         assert_eq!(vec, vec!["Part2V2".to_string(), "Part2V1".to_string()]);
-        assert_eq!(map.len(), 2);
+        assert_eq!(map.count_elements(), 2);
         let vec: Vec<_> = map.remove_chain("Part2").unwrap().collect();
         assert_eq!(vec, vec!["Part2V3".to_string()]);
         // Empty pop tail
@@ -209,7 +212,7 @@ mod tests {
 
         // Retain
         map.retain(|_| true);
-        assert_eq!(map.len(), 1);
+        assert_eq!(map.count_elements(), 1);
         map.retain(|_| false);
         assert!(map.is_empty());
     }

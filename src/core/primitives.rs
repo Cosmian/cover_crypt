@@ -619,7 +619,7 @@ mod tests {
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
         // The developer now has a hybridized key.
-        assert_eq!(dev_usk.subkeys.len(), 1);
+        assert_eq!(dev_usk.subkeys.count_elements(), 1);
         for key_encapsulation in &encapsulation.encs {
             if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
                 panic!("Wrong hybridization type");

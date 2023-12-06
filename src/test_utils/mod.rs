@@ -77,7 +77,7 @@ mod tests {
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
         // same number of subkeys in public and secret key
         assert_eq!(mpk.subkeys.len(), 20);
-        assert_eq!(msk.subkeys.len(), 20);
+        assert_eq!(msk.subkeys.count_elements(), 20);
 
         // rekey all partitions which include `Department::FIN`
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
@@ -86,13 +86,13 @@ mod tests {
         assert_eq!(mpk.subkeys.len(), 20);
         // secret key stores the 5 old subkeys
         // 5 is the size of the security level dimension
-        assert_eq!(msk.subkeys.len(), 25);
+        assert_eq!(msk.subkeys.count_elements(), 25);
 
         // rekey `Department::FIN` but remove older subkeys
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, false)?;
         assert_eq!(mpk.subkeys.len(), 20);
         // we only keep the last subkeys in the secret key
-        assert_eq!(msk.subkeys.len(), 20);
+        assert_eq!(msk.subkeys.count_elements(), 20);
 
         Ok(())
     }
@@ -121,19 +121,19 @@ mod tests {
 
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        assert_eq!(msk.subkeys.len(), 2 * 2);
+        assert_eq!(msk.subkeys.count_elements(), 2 * 2);
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A1"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
-        assert_eq!(msk.subkeys.len(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
+        assert_eq!(msk.subkeys.count_elements(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A2"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
-        assert_eq!(msk.subkeys.len(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
+        assert_eq!(msk.subkeys.count_elements(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D2", "D2A1"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk, true)?;
-        assert_eq!(msk.subkeys.len(), 8 + 2); // Adding 2 new keys D1A1':D2A1', D1A2':D2A1'
+        assert_eq!(msk.subkeys.count_elements(), 8 + 2); // Adding 2 new keys D1A1':D2A1', D1A2':D2A1'
 
         Ok(())
     }
@@ -155,14 +155,20 @@ mod tests {
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
         // 4 partitions accessed by the user were rekeyed (MKG Protected, Low Secret,
         // Medium Secret and High Secret)
-        assert_eq!(usk.subkeys.len(), original_usk.subkeys.len() + 4);
+        assert_eq!(
+            usk.subkeys.count_elements(),
+            original_usk.subkeys.count_elements() + 4
+        );
         for x_i in original_usk.subkeys.flat_iter() {
             assert!(usk.subkeys.flat_iter().any(|x| x == x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, false)?;
         // the user should still have access to the same number of partitions
-        assert_eq!(usk.subkeys.len(), original_usk.subkeys.len());
+        assert_eq!(
+            usk.subkeys.count_elements(),
+            original_usk.subkeys.count_elements()
+        );
         for x_i in original_usk.subkeys.flat_iter() {
             assert!(!usk.subkeys.flat_iter().any(|x| x == x_i));
         }
@@ -366,7 +372,7 @@ mod tests {
         let rekey_ap = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
         cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut mpk, true)?;
         // 5 new partitions added to the msk
-        assert_eq!(msk.subkeys.len() - 10, mpk.subkeys.len());
+        assert_eq!(msk.subkeys.count_elements() - 10, mpk.subkeys.len());
 
         Ok(())
     }

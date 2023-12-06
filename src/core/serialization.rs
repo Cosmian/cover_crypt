@@ -106,8 +106,8 @@ impl Serializable for MasterSecretKey {
         let mut length = 3 * R25519PrivateKey::LENGTH
             + self.kmac_key.as_ref().map_or_else(|| 0, |key| key.len())
             // subkeys serialization
-            + to_leb128_len(self.subkeys.nb_chains())
-            + self.subkeys.len() * R25519PrivateKey::LENGTH;
+            + to_leb128_len(self.subkeys.len())
+            + self.subkeys.count_elements() * R25519PrivateKey::LENGTH;
         for (partition, chain) in &self.subkeys.map {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
@@ -123,7 +123,7 @@ impl Serializable for MasterSecretKey {
         let mut n = ser.write_array(&self.s1.to_bytes())?;
         n += ser.write_array(&self.s2.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
-        n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, chain) in &self.subkeys.map {
             n += ser.write_vec(partition)?;
             n += ser.write_leb128_u64(chain.len() as u64)?;
@@ -183,8 +183,8 @@ impl Serializable for UserSecretKey {
         let mut length = 2 * R25519PrivateKey::LENGTH
             + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             // subkeys serialization
-            + to_leb128_len(self.subkeys.nb_chains())
-            + self.subkeys.len() * R25519PrivateKey::LENGTH;
+            + to_leb128_len(self.subkeys.len())
+            + self.subkeys.count_elements() * R25519PrivateKey::LENGTH;
         for (partition, chain) in self.subkeys.iter() {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
@@ -198,7 +198,7 @@ impl Serializable for UserSecretKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
-        n += ser.write_leb128_u64(self.subkeys.nb_chains() as u64)?;
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
         for (partition, chain) in self.subkeys.iter() {
             // write chain partition
             n += ser.write_vec(partition)?;

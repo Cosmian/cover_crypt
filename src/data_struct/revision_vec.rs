@@ -30,31 +30,35 @@ impl<K, T> RevisionVec<K, T> {
         }
     }
 
+    /// Returns the number of chains stored.
     pub fn len(&self) -> usize {
+        self.chains.len()
+    }
+
+    /// Returns the total number of elements stored.
+    pub fn count_elements(&self) -> usize {
         self.chains.iter().map(|(_, chain)| chain.len()).sum()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn nb_chains(&self) -> usize {
-        self.chains.len()
+        self.chains.is_empty()
     }
 
     /// Creates and insert a new chain with a single value.
-    /// /!\ Adding multiple chains with the same key will corrupt the data
-    /// structure.
     pub fn create_chain_with_single_value(&mut self, key: K, val: T) {
+        // Be aware that inserting a value for a key that is already associated to a
+        // chain breaks the CoverCrypt scheme as two chains will exist for the same key.
+
         let mut new_chain = RevisionList::new();
         new_chain.push_front(val);
         self.chains.push((key, new_chain));
     }
 
     /// Inserts a new chain with a corresponding key.
-    /// /!\ Adding multiple chains with the same key will corrupt the data
-    /// structure.
     pub fn insert_new_chain(&mut self, key: K, new_chain: RevisionList<T>) {
+        // Be aware that inserting a new chain for a key that is already associated to a
+        // chain breaks the CoverCrypt scheme as two chains will exist for the same key.
+
         if !new_chain.is_empty() {
             self.chains.push((key, new_chain));
         }
@@ -267,7 +271,7 @@ mod tests {
     fn test_revision_vec() {
         let mut revision_vec: RevisionVec<i32, String> = RevisionVec::new();
         assert!(revision_vec.is_empty());
-        assert_eq!(revision_vec.nb_chains(), 0);
+        assert_eq!(revision_vec.len(), 0);
 
         // Insert
         revision_vec.insert_new_chain(
@@ -284,8 +288,8 @@ mod tests {
                 .collect(),
         );
 
-        assert_eq!(revision_vec.len(), 6);
-        assert_eq!(revision_vec.nb_chains(), 3);
+        assert_eq!(revision_vec.count_elements(), 6);
+        assert_eq!(revision_vec.len(), 3);
 
         // Iterators
         let depth_iter: Vec<_> = revision_vec.flat_iter().collect();
@@ -316,8 +320,8 @@ mod tests {
 
         // Retain
         revision_vec.retain(|key| key == &1);
-        assert_eq!(revision_vec.len(), 3);
-        assert_eq!(revision_vec.nb_chains(), 1);
+        assert_eq!(revision_vec.count_elements(), 3);
+        assert_eq!(revision_vec.len(), 1);
 
         // Clear
         revision_vec.clear();

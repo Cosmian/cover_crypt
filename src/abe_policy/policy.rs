@@ -80,8 +80,12 @@ impl Policy {
     }
 
     /// Adds the given attribute to the policy.
-    /// /!\ No old key will be able to use this attribute. In particular, keys which associated access policy was implicitly deriving rights for this dimension (e.g. "Security::High" implicitly derives rights for all attributes from any other dimensions) need to be regenerated. A refresh will *not* implicitly derive rights for this attribute.
-    /// Fails if the dim of the attribute does not exist in the policy.
+    /// /!\ No old key will be able to use this attribute. In particular, keys
+    /// which associated access policy was implicitly deriving rights for this
+    /// dimension (e.g. "Security::High" implicitly derives rights for all
+    /// attributes from any other dimensions) need to be regenerated. A refresh
+    /// will *not* implicitly derive rights for this attribute. Fails if the
+    /// dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
     /// * `encryption_hint` - Whether to use post quantum keys for this
@@ -158,7 +162,7 @@ impl Policy {
     }
 
     /// Returns the hybridization hint of the given attribute.
-    pub fn attribute_hybridization_hint(
+    pub fn get_attribute_hybridization_hint(
         &self,
         attribute: &Attribute,
     ) -> Result<EncryptionHint, Error> {
@@ -167,9 +171,9 @@ impl Policy {
     }
 
     /// Retrieves the ID of an attribute.
-    pub fn attribute_id(&self, attribute: &Attribute) -> Result<u32, Error> {
+    pub fn get_attribute_id(&self, attribute: &Attribute) -> Result<u32, Error> {
         self.get_attribute(attribute)
-            .map(AttributeParameters::get_attribute_id)
+            .map(AttributeParameters::get_id)
     }
 
     /// Generates all cross-dimension combinations of attributes.
@@ -348,7 +352,7 @@ mod tests {
             let mut dim_attributes: Vec<(Attribute, u32)> = vec![];
             for name in policy.dimensions[dim].get_attributes_name() {
                 let attribute = Attribute::new(dim, name);
-                let value = policy.attribute_id(&attribute)?;
+                let value = policy.get_attribute_id(&attribute)?;
                 dim_attributes.push((attribute, value));
             }
             axes_attributes.push(dim_attributes);
@@ -429,23 +433,25 @@ mod tests {
 
         // add the partitions associated with the HR department: combine with
         // all attributes of the Security Level dim
-        let hr_value = policy.attribute_id(&Attribute::new("Department", "HR"))?;
+        let hr_value = policy.get_attribute_id(&Attribute::new("Department", "HR"))?;
         let dim_properties = policy.dimensions.get("Security Level").unwrap();
         for attr_name in dim_properties.get_attributes_name() {
-            let attr_value = policy.attribute_id(&Attribute::new("Security Level", attr_name))?;
+            let attr_value =
+                policy.get_attribute_id(&Attribute::new("Security Level", attr_name))?;
             let mut partition = vec![hr_value, attr_value];
             partition.sort_unstable();
             partitions_.insert(Partition::from_attribute_ids(partition)?);
         }
 
         // add the other attribute combination: FIN && Low Secret
-        let fin_value = policy.attribute_id(&Attribute::new("Department", "FIN"))?;
-        let conf_value = policy.attribute_id(&Attribute::new("Security Level", "Low Secret"))?;
+        let fin_value = policy.get_attribute_id(&Attribute::new("Department", "FIN"))?;
+        let conf_value =
+            policy.get_attribute_id(&Attribute::new("Security Level", "Low Secret"))?;
         let mut partition = vec![fin_value, conf_value];
         partition.sort_unstable();
         partitions_.insert(Partition::from_attribute_ids(partition)?);
         // since this is a hierarchical dim, add the lower values: here only low secret
-        let prot_value = policy.attribute_id(&Attribute::new("Security Level", "Protected"))?;
+        let prot_value = policy.get_attribute_id(&Attribute::new("Security Level", "Protected"))?;
         let mut partition = vec![fin_value, prot_value];
         partition.sort_unstable();
         partitions_.insert(Partition::from_attribute_ids(partition)?);
