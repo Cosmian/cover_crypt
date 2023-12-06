@@ -55,7 +55,7 @@ impl Policy {
     }
 
     /// Adds the given dimension to the policy.
-    /// /!\ Might void all previously issued user keys and ciphers.
+    /// /!\ Invalidates all keys.
     pub fn add_dimension(&mut self, dim: DimensionBuilder) -> Result<(), Error> {
         if self.dimensions.get(&dim.name).is_some() {
             return Err(Error::ExistingPolicy(dim.name));
@@ -80,7 +80,7 @@ impl Policy {
     }
 
     /// Adds the given attribute to the policy.
-    /// /!\ Only newly created user keys can have access to the attribute.
+    /// /!\ No old key will be able to use this attribute. In particular, keys which associated access policy was implicitly deriving rights for this dimension (e.g. "Security::High" implicitly derives rights for all attributes from any other dimensions) need to be regenerated. A refresh will *not* implicitly derive rights for this attribute.
     /// Fails if the dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
@@ -166,13 +166,13 @@ impl Policy {
             .map(AttributeParameters::get_encryption_hint)
     }
 
-    /// Retrieves the id of an attribute.
+    /// Retrieves the ID of an attribute.
     pub fn attribute_id(&self, attribute: &Attribute) -> Result<u32, Error> {
         self.get_attribute(attribute)
             .map(AttributeParameters::get_attribute_id)
     }
 
-    /// Generates all cross-axes combinations of attributes.
+    /// Generates all cross-dimension combinations of attributes.
     ///
     /// - `current_dim`            : dim for which to combine other dim
     ///   attributes
@@ -302,9 +302,8 @@ fn generate_attribute_partitions(
     let mut attr_params_per_dim =
         HashMap::<String, Vec<(u32, EncryptionHint, AttributeStatus)>>::with_capacity(
             policy.dimensions.len(),
-        ); // maximum bound
+        );
     for attribute in attributes.iter() {
-        // TODO: move logic to dimension?
         let entry = attr_params_per_dim
             .entry(attribute.dimension.clone())
             .or_default();

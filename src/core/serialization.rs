@@ -19,7 +19,7 @@ use crate::{
     CleartextHeader, EncryptedHeader, Error,
 };
 
-/// Returns the bytes length of a serialized options
+/// Returns the byte length of a serialized option
 macro_rules! serialize_len_option {
     ($option:expr, $value:ident, $method:expr) => {{
         let mut length = 1;

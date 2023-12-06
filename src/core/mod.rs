@@ -64,6 +64,7 @@ impl Deref for KyberSecretKey {
 }
 
 pub(super) type PublicSubkey = (Option<KyberPublicKey>, R25519PublicKey);
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     g1: R25519PublicKey,

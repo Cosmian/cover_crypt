@@ -74,7 +74,7 @@ impl Covercrypt {
         )
     }
 
-    /// Generates new key pairs for a given AccessPolicy
+    /// Renew the keys associated to the given access policy in the master keys.
     pub fn rekey_master_keys(
         &self,
         access_policy: &AccessPolicy,
