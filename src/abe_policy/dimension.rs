@@ -86,23 +86,26 @@ impl AttributeParameters {
         }
     }
 
+    #[must_use]
     pub fn get_id(&self) -> u32 {
         self.id
     }
 
+    #[must_use]
     pub fn get_encryption_hint(&self) -> EncryptionHint {
         self.encryption_hint
     }
 
+    #[must_use]
     pub fn get_status(&self) -> AttributeStatus {
         self.write_status
     }
 
-    /// Returns a tuple containing the attribute id, the associated encryption
+    /*// Returns a tuple containing the attribute id, the associated encryption
     /// hint, and the `read_only` flag.
     pub fn get_attribute_properties(&self) -> (u32, EncryptionHint, AttributeStatus) {
         (self.id, self.encryption_hint, self.write_status)
-    }
+    }*/
 }
 
 type AttributeName = String;
@@ -138,6 +141,7 @@ impl Dimension {
         }
     }
 
+    #[must_use]
     pub fn nb_attributes(&self) -> usize {
         match self {
             Self::Unordered(attributes) => attributes.len(),
@@ -145,6 +149,7 @@ impl Dimension {
         }
     }
 
+    #[must_use]
     pub fn is_ordered(&self) -> bool {
         match self {
             Self::Unordered(_) => false,
@@ -155,6 +160,7 @@ impl Dimension {
     /// Returns an iterator over the attributes name.
     /// If the dimension is ordered, the names are returned in this order,
     /// otherwise they are returned in arbitrary order.
+    #[must_use]
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.keys()),
@@ -162,6 +168,7 @@ impl Dimension {
         }
     }
 
+    #[must_use]
     pub fn get_attribute(&self, attr_name: &AttributeName) -> Option<&AttributeParameters> {
         match self {
             Self::Unordered(attributes) => attributes.get(attr_name),
@@ -286,23 +293,13 @@ impl Dimension {
         }
     }
 
-    /// Returns an iterator over the AttributesParameters and parameters.
+    /// Returns an iterator over the `AttributesParameters` and parameters.
     /// If the dimension is ordered, the attributes are returned in order.
-    pub fn attributes_properties(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
+    #[must_use]
+    pub fn iter_attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.values()),
             Self::Ordered(attributes) => Box::new(attributes.values()),
-        }
-    }
-
-    /// Returns an iterator over the Attributes names and parameters.
-    /// If the dimension is ordered, the attributes are returned in order.
-    pub fn iter_attributes(
-        &self,
-    ) -> Box<dyn '_ + Iterator<Item = (&AttributeName, &AttributeParameters)>> {
-        match self {
-            Self::Unordered(attributes) => Box::new(attributes.iter()),
-            Self::Ordered(attributes) => Box::new(attributes.iter()),
         }
     }
 }

@@ -31,12 +31,14 @@ where
     K: Hash + PartialEq + Eq + Clone + Debug,
     V: Clone + Debug,
 {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
     }
 
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: HashMap::with_capacity(capacity),
@@ -44,6 +46,7 @@ where
     }
 
     /// Returns the number of chains stored.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.map.len()
     }
@@ -53,6 +56,7 @@ where
         self.map.values().map(LinkedList::len).sum()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }

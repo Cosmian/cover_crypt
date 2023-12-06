@@ -16,7 +16,7 @@ use serde::{
 use super::error::Error;
 
 type Index = usize;
-/// HashMap keeping insertion order inspired by Python dictionary.
+/// `HashMap` keeping insertion order inspired by Python dictionary.
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
 pub struct Dict<K, V>
 where
@@ -30,6 +30,7 @@ impl<K, V> Dict<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + Debug,
 {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             indices: HashMap::new(),
@@ -37,6 +38,7 @@ where
         }
     }
 
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             indices: HashMap::with_capacity(capacity),
@@ -44,10 +46,12 @@ where
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.indices.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -74,7 +78,7 @@ where
     /// Removes the entry corresponding to the given key.
     /// To maintain order, all inserted entries after the removed one will be
     /// shifted by one and the indices map will be updated accordingly.
-    /// Compared to a regular HashMap, this operation is O(n).
+    /// Compared to a regular `HashMap`, this operation is O(n).
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let entry_index = self.indices.remove(key)?;
 

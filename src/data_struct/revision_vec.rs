@@ -20,10 +20,12 @@ pub struct RevisionVec<K, T> {
 }
 
 impl<K, T> RevisionVec<K, T> {
+    #[must_use]
     pub fn new() -> Self {
         Self { chains: Vec::new() }
     }
 
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             chains: Vec::with_capacity(capacity),
@@ -31,15 +33,18 @@ impl<K, T> RevisionVec<K, T> {
     }
 
     /// Returns the number of chains stored.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.chains.len()
     }
 
     /// Returns the total number of elements stored.
+    #[must_use]
     pub fn count_elements(&self) -> usize {
         self.chains.iter().map(|(_, chain)| chain.len()).sum()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.chains.is_empty()
     }
@@ -95,6 +100,7 @@ impl<K, T> RevisionVec<K, T> {
     }
 
     /// Iterates through all versions of all entry in a breadth-first manner.
+    #[must_use]
     pub fn bfs(&self) -> BfsIterator<T> {
         BfsIterator::new(self)
     }
@@ -154,6 +160,7 @@ pub struct RevisionList<T> {
 }
 
 impl<T> RevisionList<T> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             length: 0,
@@ -161,10 +168,12 @@ impl<T> RevisionList<T> {
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.length
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
     }
@@ -179,6 +188,7 @@ impl<T> RevisionList<T> {
         self.length += 1;
     }
 
+    #[must_use]
     pub fn front(&self) -> Option<&T> {
         self.head.as_ref().map(|element| &element.data)
     }

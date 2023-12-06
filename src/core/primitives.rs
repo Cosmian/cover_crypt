@@ -380,12 +380,12 @@ pub fn update(
             match (write_status, mpk.subkeys.get_mut(partition)) {
                 (EncryptDecrypt, None) => unreachable!(),
                 (EncryptDecrypt, Some(public_subkey)) => {
-                    update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?
+                    update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?;
                 }
                 (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized),
                 (DecryptOnly, Some(_)) => {
                     mpk.subkeys.remove(partition);
-                    update_master_subkey(rng, &h, secret_subkey, is_hybridized)
+                    update_master_subkey(rng, &h, secret_subkey, is_hybridized);
                 }
             }
         } else {
