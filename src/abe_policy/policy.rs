@@ -83,8 +83,8 @@ impl Policy {
     /// which associated access policy was implicitly deriving rights for this
     /// dimension (e.g. "`Security::High`" implicitly derives rights for all
     /// attributes from any other dimensions) need to be regenerated. A refresh
-    /// will *not* implicitly derive rights for this attribute. Fails if the
-    /// dim of the attribute does not exist in the policy.
+    /// will *not* implicitly derive rights for this attribute.
+    /// Fails if the dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
     /// * `encryption_hint` - Whether to use post quantum keys for this

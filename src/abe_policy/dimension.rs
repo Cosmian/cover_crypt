@@ -100,12 +100,6 @@ impl AttributeParameters {
     pub fn get_status(&self) -> AttributeStatus {
         self.write_status
     }
-
-    /*// Returns a tuple containing the attribute id, the associated encryption
-    /// hint, and the `read_only` flag.
-    pub fn get_attribute_properties(&self) -> (u32, EncryptionHint, AttributeStatus) {
-        (self.id, self.encryption_hint, self.write_status)
-    }*/
 }
 
 type AttributeName = String;
