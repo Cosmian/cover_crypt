@@ -290,7 +290,7 @@ impl Dimension {
     /// Returns an iterator over the `AttributesParameters` and parameters.
     /// If the dimension is ordered, the attributes are returned in order.
     #[must_use]
-    pub fn iter_attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
+    pub fn attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.values()),
             Self::Ordered(attributes) => Box::new(attributes.values()),

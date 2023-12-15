@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 
-/// a `RevisionVec` stores for each entry a linked list of versions.
-/// The entry versions are stored in reverse insertion order:
+/// A `RevisionVec` is a vector that stores  pairs containing a key
+/// and a sequence of values. Inserting a new value in the sequence
+/// associated to an existing key prepends this value to the sequence.
 ///
 /// Vec [
 ///     0: key -> a" -> a' -> a
@@ -14,7 +15,6 @@ use std::collections::VecDeque;
 ///
 /// This guarantees that the entry versions are always ordered.
 #[derive(Default, Debug, PartialEq, Eq)]
-// TODO does index matter for Eq compare?
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, RevisionList<T>)>,
 }
@@ -101,17 +101,17 @@ impl<K, T> RevisionVec<K, T> {
 
     /// Iterates through all versions of all entry in a breadth-first manner.
     #[must_use]
-    pub fn bfs(&self) -> BfsIterator<T> {
-        BfsIterator::new(self)
+    pub fn bfs(&self) -> BfsQueue<T> {
+        BfsQueue::new(self)
     }
 }
 
 /// Breadth-first search iterator for `RevisionVec`.
-pub struct BfsIterator<'a, T> {
+pub struct BfsQueue<'a, T> {
     queue: VecDeque<&'a Element<T>>,
 }
 
-impl<'a, T> BfsIterator<'a, T> {
+impl<'a, T> BfsQueue<'a, T> {
     pub fn new<K>(revision_vec: &'a RevisionVec<K, T>) -> Self {
         // add all chain heads to the iterator queue
         Self {
@@ -124,7 +124,7 @@ impl<'a, T> BfsIterator<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for BfsIterator<'a, T> {
+impl<'a, T> Iterator for BfsQueue<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -230,7 +230,7 @@ impl Policy {
     ) -> Result<HashMap<Partition, (EncryptionHint, AttributeStatus)>, Error> {
         let mut attr_params_per_dim = HashMap::with_capacity(self.dimensions.len());
         for (dim_name, dim) in &self.dimensions {
-            attr_params_per_dim.insert(dim_name.clone(), dim.iter_attributes().collect());
+            attr_params_per_dim.insert(dim_name.clone(), dim.attributes().collect());
         }
 
         // Combine axes values into partitions.
@@ -307,7 +307,7 @@ fn generate_attribute_partitions(
     for (dim, dim_properties) in &policy.dimensions {
         if !attr_params_per_dim.contains_key(dim) {
             // gather all the latest value for that dim
-            let values = dim_properties.iter_attributes().collect();
+            let values = dim_properties.attributes().collect();
             attr_params_per_dim.insert(dim.clone(), values);
         }
     }

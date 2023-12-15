@@ -92,7 +92,7 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            &policy.access_policy_to_partitions(access_policy, false)?,
+            policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 

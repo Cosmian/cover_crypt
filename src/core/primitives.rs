@@ -73,7 +73,7 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
     Ok(())
 }
 
-/// Returns newly generated public and private Kyber key pair
+/// Returns newly generated public and private Kyber key pair.
 fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, KyberSecretKey) {
     let (mut sk, mut pk) = (
         KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
@@ -84,7 +84,7 @@ fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, Kyber
 }
 
 /// Returns a newly generated pair of public and private subkeys with optional
-/// Kyber keys if required
+/// Kyber keys if hybridized.
 fn create_subkey_pair(
     rng: &mut impl CryptoRngCore,
     h: &R25519CurvePoint,
@@ -102,7 +102,7 @@ fn create_subkey_pair(
     ((pk_pq, pk_i), (sk_pq, sk_i))
 }
 
-/// Update a pair of public and private subkeys of a `ReadWrite` partition
+/// Update a pair of public and private subkeys of a `ReadWrite` partition.
 fn update_subkey_pair(
     rng: &mut impl CryptoRngCore,
     h: &R25519CurvePoint,
@@ -401,7 +401,7 @@ pub fn update(
     Ok(())
 }
 
-/// Rekeys the master keys by create new subkeys for specified coordinate.
+/// Rekeys the master keys by creating new subkeys for the given coordinates.
 ///
 /// # Parameters
 ///
@@ -413,14 +413,13 @@ pub fn rekey(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    coordinates: &HashSet<Partition>,
+    coordinates: HashSet<Partition>,
 ) -> Result<(), Error> {
     let h = R25519PublicKey::from(&msk.s);
     for coordinate in coordinates {
-        // write a `get_encryption` function in a dedicated SecretSubkey struct?
         let is_hybridized = EncryptionHint::new(
             msk.subkeys
-                .get_current_revision(coordinate)
+                .get_current_revision(&coordinate)
                 .and_then(|(sk_i, _)| sk_i.as_ref())
                 .is_some(),
         );
@@ -428,8 +427,8 @@ pub fn rekey(
         msk.subkeys.insert(coordinate.clone(), secret_subkey);
 
         // update public subkey if partition is not read only
-        if mpk.subkeys.contains_key(coordinate) {
-            mpk.subkeys.insert(coordinate.clone(), public_subkey);
+        if mpk.subkeys.contains_key(&coordinate) {
+            mpk.subkeys.insert(coordinate, public_subkey);
         }
     }
     Ok(())
@@ -444,7 +443,7 @@ pub fn rekey(
 pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Result<(), Error> {
     for coordinate in coordinates {
         // remove all older subkeys for a given coordinate
-        msk.subkeys.pop_tail(coordinate);
+        msk.subkeys.keep(coordinate, 1);
     }
     Ok(())
 }
@@ -468,11 +467,11 @@ pub fn refresh(
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
 
-    // Remove partitions missing from master keys
-    usk.subkeys.retain(|part| msk.subkeys.contains_key(part));
+    usk.subkeys
+        .retain(|coordinate| msk.subkeys.contains_key(coordinate));
 
     for (partition, user_chain) in usk.subkeys.iter_mut() {
-        let mut master_chain = msk.subkeys.iter_chain(partition).expect("at least one key");
+        let mut master_chain = msk.subkeys.get(partition).expect("at least one key");
 
         // Remove all but the most recent subkey for this partition
         if !keep_old_rights {
@@ -795,7 +794,7 @@ mod tests {
             &mut rng,
             &mut msk,
             &mut mpk,
-            &HashSet::from([partition_2.clone()]),
+            HashSet::from([partition_2.clone()]),
         )?;
         // refresh the user key
         refresh(&msk, &mut usk, true)?;
@@ -805,7 +804,7 @@ mod tests {
             .filter(|(part, _)| *part == &partition_2)
             .map(|(_, subkey)| subkey)
             .collect();
-        let msk_subkeys: Vec<_> = msk.subkeys.iter_chain(&partition_2).unwrap().collect();
+        let msk_subkeys: Vec<_> = msk.subkeys.get(&partition_2).unwrap().collect();
         assert_eq!(usk_subkeys.len(), 2);
         assert_eq!(usk_subkeys, msk_subkeys);
 

@@ -8,15 +8,20 @@ use std::{
     hash::Hash,
 };
 
-/// a `RevisionMap` stores linked lists indexed by given keys.
-/// The element inside the linked list are stored in reverse insertion order
-/// while the keys are stored in arbitrary order.
+/// A `RevisionMap` is a `HashMap` which keys are mapped to sequences of values.
+/// Upon insertion for an existing key, the new value is prepended to the
+/// sequence of older values instead of replacing it.
 ///
 /// Map {
 ///     key2: b
 ///     key1: a" -> a' > a
 ///     key3: c' -> c
 /// }
+///
+/// Insertions are only allowed at the front of the linked list.
+/// Deletions can only happen at the end of the linked list.
+///
+/// This guarantees that the entry versions are always ordered.
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionMap<K, V>
 where
@@ -59,10 +64,6 @@ where
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
-    }
-
-    pub fn chain_length(&self, key: &K) -> Option<usize> {
-        self.map.get(key).map(LinkedList::len)
     }
 
     fn insert_new_chain(entry: VacantEntry<K, LinkedList<V>>, value: V) {
@@ -111,16 +112,9 @@ where
         self.map.keys()
     }
 
-    /// Iterates through all revisions of all keys.
-    pub fn flat_iter(&self) -> impl Iterator<Item = (&K, &V)> {
-        self.map
-            .iter()
-            .flat_map(|(k, chain)| chain.iter().map(move |v| (k, v)))
-    }
-
     /// Iterates through all revisions of a given key starting with the more
     /// recent one.
-    pub fn iter_chain<Q>(&self, key: &Q) -> Option<impl Iterator<Item = &V>>
+    pub fn get<Q>(&self, key: &Q) -> Option<impl Iterator<Item = &V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -129,7 +123,7 @@ where
     }
 
     /// Removes and returns an iterator over all revisions from a given key.
-    pub fn remove_chain<Q>(&mut self, key: &Q) -> Option<impl Iterator<Item = V>>
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<impl Iterator<Item = V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -137,15 +131,16 @@ where
         self.map.remove(key).map(LinkedList::into_iter)
     }
 
-    /// Removes and returns the older revisions from a given key.
-    pub fn pop_tail<Q>(&mut self, key: &Q) -> Option<impl Iterator<Item = V>>
+    /// Keeps the n more recent values for a given key and returns the removed
+    /// older values.
+    pub fn keep<Q>(&mut self, key: &Q, n: usize) -> Option<impl Iterator<Item = V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
         self.map
             .get_mut(key)
-            .map(|chain| chain.split_off(1).into_iter())
+            .map(|chain| chain.split_off(n).into_iter())
     }
 
     /// Retains only the elements with a key validating the given predicate.
@@ -189,10 +184,7 @@ mod tests {
         assert!(map.get_current_revision("Missing").is_none());
 
         // Iterators
-        let vec: Vec<_> = map.flat_iter().collect();
-        assert_eq!(vec.len(), map.count_elements());
-
-        let vec: Vec<_> = map.iter_chain("Part1").unwrap().collect();
+        let vec: Vec<_> = map.get("Part1").unwrap().collect();
         assert_eq!(vec, vec!["Part1V2", "Part1V1"]);
 
         let keys_set = map.keys().collect::<HashSet<_>>();
@@ -200,19 +192,19 @@ mod tests {
         assert!(keys_set.contains(&"Part2".to_string()));
 
         // Remove values
-        let vec: Vec<_> = map.remove_chain("Part1").unwrap().collect();
+        let vec: Vec<_> = map.remove("Part1").unwrap().collect();
         assert_eq!(vec, vec!["Part1V2".to_string(), "Part1V1".to_string()]);
         assert_eq!(map.count_elements(), 4);
         assert_eq!(map.len(), 2);
 
-        // Pop tail
-        let vec: Vec<_> = map.pop_tail("Part2").unwrap().collect();
+        // Remove older values in a chain
+        let vec: Vec<_> = map.keep("Part2", 1).unwrap().collect();
         assert_eq!(vec, vec!["Part2V2".to_string(), "Part2V1".to_string()]);
         assert_eq!(map.count_elements(), 2);
-        let vec: Vec<_> = map.remove_chain("Part2").unwrap().collect();
+        let vec: Vec<_> = map.remove("Part2").unwrap().collect();
         assert_eq!(vec, vec!["Part2V3".to_string()]);
         // Empty pop tail
-        assert!(map.pop_tail("Part3").unwrap().next().is_none());
+        assert!(map.keep("Part3", 1).unwrap().next().is_none());
 
         // Retain
         map.retain(|_| true);
