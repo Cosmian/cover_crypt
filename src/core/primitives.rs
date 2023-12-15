@@ -25,7 +25,7 @@ use crate::{
         EncryptionHint, Partition,
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{Element, RevisionMap, RevisionVec},
+    data_struct::{RevisionMap, RevisionVec},
     Error,
 };
 
@@ -442,7 +442,6 @@ pub fn rekey(
 /// - `coordinates`     : set of subkeys coordinate to prune
 pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Result<(), Error> {
     for coordinate in coordinates {
-        // remove all older subkeys for a given coordinate
         msk.subkeys.keep(coordinate, 1);
     }
     Ok(())
@@ -473,56 +472,40 @@ pub fn refresh(
     for (partition, user_chain) in usk.subkeys.iter_mut() {
         let mut master_chain = msk.subkeys.get(partition).expect("at least one key");
 
-        // Remove all but the most recent subkey for this partition
+        // Remove all but the most recent subkey for this coordinate
         if !keep_old_rights {
-            // find the most recent subkey between the master and user key
+            user_chain.keep(0);
             let master_first_key = master_chain.next().expect("at least one key");
-            if Some(master_first_key) != user_chain.head.as_ref().map(|item| &item.data) {
-                // new key
-                let new_element = Box::new(Element::new(master_first_key.clone()));
-                user_chain.head.replace(new_element);
-            }
-            // remove older keys if any and update length
-            user_chain.pop_tail();
-            // skip to next partition
+            user_chain.push_front(master_first_key.clone());
             continue;
         }
 
         // 1 - add new master subkeys in user key if any
-        let user_first_key = user_chain.head.take().expect("have one key");
-        let mut insertion_cursor = &mut user_chain.head;
-
-        let mut updated_chain_length = 0;
-        // go through new keys found in MSK missing from USK
-        for master_subkey in master_chain.by_ref() {
-            updated_chain_length += 1;
-            if master_subkey == &user_first_key.data {
-                // we reached the first matching key between user and master keys
-                // add this key back to the user subkeys and continue to step 2
-                insertion_cursor = &mut insertion_cursor.insert(user_first_key).next;
-                break;
-            }
-            let new_element = Element::new(master_subkey.clone());
-            insertion_cursor = &mut insertion_cursor.insert(Box::new(new_element)).next;
-        }
+        let user_first_key = user_chain.front().expect("have one key").clone();
+        let new_master_subkeys = master_chain
+            .by_ref()
+            .take_while(|&master_subkey| master_subkey != &user_first_key)
+            .cloned();
+        let mut user_chain_cursor = user_chain.prepend(new_master_subkeys);
+        // possible off by one
 
         // 2 - go through the remaining matching keys between the master and user chain
         for master_subkey in master_chain {
-            let Some(current_user_subkey) = insertion_cursor else {
+            let Some(current_user_subkey) = user_chain_cursor else {
                 // USK does not contain master keys from older rotations
                 break;
             };
             // existing keys in both should match
             assert!(master_subkey == &current_user_subkey.data);
-            insertion_cursor = &mut current_user_subkey.next;
-            updated_chain_length += 1;
+            user_chain_cursor = &mut current_user_subkey.next;
         }
 
         // 3 - old keys in USK not present in the MSK should be removed
-        let _ = insertion_cursor.take();
+        let _ = user_chain_cursor.take();
 
         // update length
-        user_chain.length = updated_chain_length;
+        // min(msk_chain, usk_chain)
+        //user_chain.length = updated_chain_length;
     }
 
     // Update user key KMAC

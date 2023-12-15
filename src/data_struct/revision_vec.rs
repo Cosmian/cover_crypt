@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{cmp::min, collections::VecDeque};
 
 /// A `RevisionVec` is a vector that stores  pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
@@ -193,16 +193,39 @@ impl<T> RevisionList<T> {
         self.head.as_ref().map(|element| &element.data)
     }
 
-    pub fn pop_tail(&mut self) -> RevisionListIter<T> {
-        self.length = self.head.as_ref().map_or(0, |_| 1);
-        match &mut self.head {
-            Some(head) => RevisionListIter {
-                current_element: head.next.take(),
-            },
-            None => RevisionListIter {
-                current_element: None,
-            },
+    pub fn prepend(&mut self, new_values: impl Iterator<Item = T>) -> &mut Option<Box<Element<T>>> {
+        let previous_head = self.head.take();
+        let mut insertion_cursor = &mut self.head;
+        for val in new_values {
+            let new_element: Element<T> = Element::new(val);
+            insertion_cursor = &mut insertion_cursor.insert(Box::new(new_element)).next;
+            self.length += 1;
         }
+        if let Some(previous_head) = previous_head {
+            insertion_cursor.replace(previous_head);
+        }
+        insertion_cursor
+    }
+
+    /// Keeps the n first elements of the list and returns the removed ones.
+    pub fn keep(&mut self, n: usize) -> RevisionListIter<T> {
+        self.length = min(self.length, n);
+        if n == 0 {
+            return RevisionListIter::new(self.head.take());
+        }
+
+        let mut cursor = self.head.as_mut();
+        let mut n = n;
+        while let Some(next_element) = cursor {
+            n -= 1;
+            if n == 0 {
+                return RevisionListIter::new(next_element.next.take());
+            } else {
+                cursor = next_element.next.as_mut();
+            }
+        }
+        // n is greater than list size
+        RevisionListIter::new(None)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
@@ -259,8 +282,38 @@ impl<'a, T> Iterator for RefRevisionListIter<'a, T> {
     }
 }
 
+pub struct RefMutRevisionListIter<'a, T> {
+    cursor: &'a mut Option<Box<Element<T>>>,
+}
+
+impl<'a, T> RefMutRevisionListIter<'a, T> {
+    pub fn new(start_element: &'a mut Option<Box<Element<T>>>) -> Self {
+        Self {
+            cursor: start_element,
+        }
+    }
+
+    fn next(&'a mut self) -> Option<&'a T> {
+        let element = self.cursor.as_mut()?;
+        self.cursor = &mut element.next;
+        Some(&element.data)
+    }
+
+    fn get_mut(&'a mut self) -> Option<&'a mut Box<Element<T>>> {
+        self.cursor.as_mut()
+    }
+}
+
 pub struct RevisionListIter<T> {
     current_element: Option<Box<Element<T>>>,
+}
+
+impl<T> RevisionListIter<T> {
+    pub fn new(start_element: Option<Box<Element<T>>>) -> Self {
+        Self {
+            current_element: start_element,
+        }
+    }
 }
 
 impl<T> Iterator for RevisionListIter<T> {
@@ -360,12 +413,15 @@ mod tests {
             assert_eq!(iter.next(), None);
         }
 
-        // Pop
-        let popped_tail = revision_list.pop_tail().collect::<Vec<_>>();
+        // Keep and remove elements
+        let popped_tail = revision_list.keep(1).collect::<Vec<_>>();
         assert_eq!(popped_tail, vec![2, 1]);
         assert_eq!(revision_list.len(), 1);
 
         assert_eq!(revision_list.front(), Some(&3));
+
+        revision_list.keep(0);
+        assert!(revision_list.is_empty());
     }
 
     #[test]
