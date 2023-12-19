@@ -145,7 +145,6 @@ where
         Q: Hash + Eq + ?Sized,
     {
         self.map.get_mut(key).map(|chain| chain.keep(n))
-        //.map(|chain| chain.split_off(n).into_iter())
     }
 
     /// Retains only the elements with a key validating the given predicate.

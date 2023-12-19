@@ -61,20 +61,7 @@ impl<T> RevisionList<T> {
         self.head.as_mut().map(|element| &mut element.data)
     }
 
-    /*pub fn prepend(&mut self, new_values: impl Iterator<Item = T>) -> &mut Link<T> {
-        let previous_head = self.head.take();
-        let mut insertion_cursor = &mut self.head;
-        for val in new_values {
-            let new_element: Element<T> = Element::new(val);
-            insertion_cursor = &mut insertion_cursor.insert(Box::new(new_element)).next;
-            self.length += 1;
-        }
-        if let Some(previous_head) = previous_head {
-            insertion_cursor.replace(previous_head);
-        }
-        insertion_cursor
-    }*/
-
+    /// Provides a cursor at the head of the list.
     pub fn cursor(&mut self) -> Cursor<'_, T> {
         Cursor::new(self)
     }
@@ -156,24 +143,36 @@ impl<'a, T> Cursor<'a, T> {
         }
     }
 
-    pub fn prepend(&mut self, new_values: impl Iterator<Item = T>) {
+    /// Moves the cursor to the next element in the list.
+    pub fn move_next(&mut self) {
+        let Some(cursor) = self.cursor_ptr.take() else {
+            return;
+        };
+
+        if let Some(element) = cursor.as_mut() {
+            self.cursor_ptr = Some(&mut element.next);
+            self.cursor_position += 1;
+        }
+    }
+
+    /// Iterates through new values adding them before the current cursor.
+    pub fn prepend(&mut self, new_value: T) {
         let Some(mut cursor) = self.cursor_ptr.take() else {
             return;
         };
-        let previous_element = cursor.take();
 
-        for val in new_values {
-            let new_element: Element<T> = Element::new(val);
-            cursor = &mut cursor.insert(Box::new(new_element)).next;
-            *self.rev_list_len += 1;
-            self.cursor_position += 1;
-        }
-        if let Some(previous_element) = previous_element {
-            cursor.replace(previous_element);
-        }
+        let new_element = Element {
+            data: new_value,
+            next: cursor.take(),
+        };
+        cursor = &mut cursor.insert(Box::new(new_element)).next;
+        *self.rev_list_len += 1;
+        self.cursor_position += 1;
+
         self.cursor_ptr = Some(cursor);
     }
 
+    /// Moves the cursor down the list while the given predicate is true.
     pub fn skip_while(&mut self, mut f: impl FnMut(&T) -> bool) {
         loop {
             if let Some(Some(element)) = &self.cursor_ptr {
@@ -185,12 +184,11 @@ impl<'a, T> Cursor<'a, T> {
             } else {
                 return;
             }
-            let element = self.cursor_ptr.take().unwrap().as_mut().unwrap();
-            self.cursor_ptr = Some(&mut element.next);
-            self.cursor_position += 1;
+            self.move_next()
         }
     }
 
+    /// Removes all elements from the cursor (included) to the end.
     pub fn cutoff(&mut self) {
         if let Some(cursor) = self.cursor_ptr.take() {
             *self.rev_list_len = self.cursor_position;
@@ -303,25 +301,28 @@ mod tests {
     }
 
     #[test]
-    fn test_revision_list_cursor() {
+    fn test_revision_list_cursor_refresh() {
         let mut revision_list = RevisionList::new();
         revision_list.push_front(1);
 
         // Add input while value is superior to 1
         let input = [3, 2, 1, 0];
-        let mut input_iter = input.iter();
+        let mut input_iter = input.iter().peekable();
         let mut cursor = revision_list.cursor();
 
-        cursor.prepend(input_iter.by_ref().take_while(|&x| *x > 1).cloned());
-        // Consumed the one
-        assert_eq!(input_iter.next(), Some(&0));
+        // will add 3 and 2 before the current head
+        while let Some(new_value) = input_iter.next_if(|&x| *x > 1) {
+            cursor.prepend(*new_value);
+        }
 
-        cursor.skip_while(|x| *x > 1);
-        cursor.cutoff();
-        assert_eq!(revision_list.len(), 2);
+        // consumed the input iterator unit value 1
+        assert_eq!(input_iter.next(), Some(&1));
+
+        assert_eq!(revision_list.len(), 3);
         let mut iter = revision_list.iter();
         assert_eq!(iter.next(), Some(&3));
         assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&1));
         assert_eq!(iter.next(), None);
     }
 }

@@ -7,7 +7,6 @@ use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
     R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
 };
-use peeking_take_while::PeekableExt;
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
@@ -483,16 +482,17 @@ pub fn refresh(
             let master_first_key = master_chain_iter.next().expect("at least one key");
             user_chain.push_front(master_first_key.clone());
             continue;
+            // TODO: master_chain_iter = master_chain_iter.take(1);
         }
 
         // 1 - add new master subkeys in user key if any
         let user_first_key = user_chain.front().expect("have one key").clone();
-        let new_master_subkeys = master_chain_iter
-            .by_ref()
-            .peeking_take_while(|&master_subkey| master_subkey != &user_first_key)
-            .cloned();
         let mut user_chain_cursor = user_chain.cursor();
-        user_chain_cursor.prepend(new_master_subkeys);
+        while let Some(new_master_subkey) =
+            master_chain_iter.next_if(|&master_subkey| master_subkey != &user_first_key)
+        {
+            user_chain_cursor.prepend(new_master_subkey.clone());
+        }
 
         // 2 - go through the remaining matching keys between the master and user chain
         user_chain_cursor.skip_while(|user_subkey| Some(user_subkey) == master_chain_iter.next());
