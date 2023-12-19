@@ -1,6 +1,6 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::collections::{HashMap, HashSet, LinkedList};
+use std::collections::{HashMap, HashSet};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
@@ -111,7 +111,7 @@ impl Serializable for MasterSecretKey {
         for (partition, chain) in &self.subkeys.map {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
-            for (sk_i, _) in chain {
+            for (sk_i, _) in chain.iter() {
                 let x = serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
                 length += x;
             }
@@ -127,7 +127,7 @@ impl Serializable for MasterSecretKey {
         for (partition, chain) in &self.subkeys.map {
             n += ser.write_vec(partition)?;
             n += ser.write_leb128_u64(chain.len() as u64)?;
-            for (sk_i, x_i) in chain {
+            for (sk_i, x_i) in chain.iter() {
                 serialize_option!(ser, n, sk_i, value, ser.write_array(value));
                 n += ser.write_array(&x_i.to_bytes())?;
             }
@@ -151,7 +151,7 @@ impl Serializable for MasterSecretKey {
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let chain: Result<LinkedList<_>, Self::Error> = (0..n_keys)
+            let chain: Result<RevisionList<_>, Self::Error> = (0..n_keys)
                 .map(|_| {
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;

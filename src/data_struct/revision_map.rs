@@ -2,11 +2,13 @@ use std::{
     borrow::Borrow,
     collections::{
         hash_map::{Entry, OccupiedEntry, VacantEntry},
-        HashMap, LinkedList,
+        HashMap,
     },
     fmt::Debug,
     hash::Hash,
 };
+
+use super::RevisionList;
 
 /// A `RevisionMap` is a `HashMap` which keys are mapped to sequences of values.
 /// Upon insertion for an existing key, the new value is prepended to the
@@ -28,7 +30,7 @@ where
     K: Debug + PartialEq + Eq + Hash,
     V: Debug,
 {
-    pub(crate) map: HashMap<K, LinkedList<V>>,
+    pub(crate) map: HashMap<K, RevisionList<V>>,
 }
 
 impl<K, V> RevisionMap<K, V>
@@ -58,7 +60,11 @@ where
 
     /// Returns the total number of elements stored.
     pub fn count_elements(&self) -> usize {
-        self.map.values().map(LinkedList::len).sum()
+        self.map.values().map(RevisionList::len).sum()
+    }
+
+    pub fn chain_length(&self, key: &K) -> usize {
+        self.map.get(key).map_or(0, |chain| chain.len())
     }
 
     #[must_use]
@@ -66,13 +72,13 @@ where
         self.map.is_empty()
     }
 
-    fn insert_new_chain(entry: VacantEntry<K, LinkedList<V>>, value: V) {
-        let mut new_chain = LinkedList::new();
+    fn insert_new_chain(entry: VacantEntry<K, RevisionList<V>>, value: V) {
+        let mut new_chain = RevisionList::new();
         new_chain.push_front(value);
         entry.insert(new_chain);
     }
 
-    fn insert_in_chain(mut entry: OccupiedEntry<K, LinkedList<V>>, value: V) {
+    fn insert_in_chain(mut entry: OccupiedEntry<K, RevisionList<V>>, value: V) {
         let chain = entry.get_mut();
         chain.push_front(value);
     }
@@ -91,7 +97,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key).and_then(LinkedList::front)
+        self.map.get(key).and_then(RevisionList::front)
     }
 
     /// Returns a mutable reference to the last revised value for a given key.
@@ -100,7 +106,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get_mut(key).and_then(LinkedList::front_mut)
+        self.map.get_mut(key).and_then(RevisionList::front_mut)
     }
 
     pub fn contains_key(&self, key: &K) -> bool {
@@ -119,7 +125,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key).map(LinkedList::iter)
+        self.map.get(key).map(RevisionList::iter)
     }
 
     /// Removes and returns an iterator over all revisions from a given key.
@@ -128,7 +134,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.remove(key).map(LinkedList::into_iter)
+        self.map.remove(key).map(RevisionList::into_iter)
     }
 
     /// Keeps the n more recent values for a given key and returns the removed
@@ -138,9 +144,8 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map
-            .get_mut(key)
-            .map(|chain| chain.split_off(n).into_iter())
+        self.map.get_mut(key).map(|chain| chain.keep(n))
+        //.map(|chain| chain.split_off(n).into_iter())
     }
 
     /// Retains only the elements with a key validating the given predicate.

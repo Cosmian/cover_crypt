@@ -7,6 +7,7 @@ use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
     R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
 };
+use peeking_take_while::PeekableExt;
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
@@ -470,42 +471,34 @@ pub fn refresh(
         .retain(|coordinate| msk.subkeys.contains_key(coordinate));
 
     for (partition, user_chain) in usk.subkeys.iter_mut() {
-        let mut master_chain = msk.subkeys.get(partition).expect("at least one key");
+        let mut master_chain_iter = msk
+            .subkeys
+            .get(partition)
+            .expect("at least one key")
+            .peekable();
 
         // Remove all but the most recent subkey for this coordinate
         if !keep_old_rights {
             user_chain.keep(0);
-            let master_first_key = master_chain.next().expect("at least one key");
+            let master_first_key = master_chain_iter.next().expect("at least one key");
             user_chain.push_front(master_first_key.clone());
             continue;
         }
 
         // 1 - add new master subkeys in user key if any
         let user_first_key = user_chain.front().expect("have one key").clone();
-        let new_master_subkeys = master_chain
+        let new_master_subkeys = master_chain_iter
             .by_ref()
-            .take_while(|&master_subkey| master_subkey != &user_first_key)
+            .peeking_take_while(|&master_subkey| master_subkey != &user_first_key)
             .cloned();
-        let mut user_chain_cursor = user_chain.prepend(new_master_subkeys);
-        // possible off by one
+        let mut user_chain_cursor = user_chain.cursor();
+        user_chain_cursor.prepend(new_master_subkeys);
 
         // 2 - go through the remaining matching keys between the master and user chain
-        for master_subkey in master_chain {
-            let Some(current_user_subkey) = user_chain_cursor else {
-                // USK does not contain master keys from older rotations
-                break;
-            };
-            // existing keys in both should match
-            assert!(master_subkey == &current_user_subkey.data);
-            user_chain_cursor = &mut current_user_subkey.next;
-        }
+        user_chain_cursor.skip_while(|user_subkey| Some(user_subkey) == master_chain_iter.next());
 
         // 3 - old keys in USK not present in the MSK should be removed
-        let _ = user_chain_cursor.take();
-
-        // update length
-        // min(msk_chain, usk_chain)
-        //user_chain.length = updated_chain_length;
+        user_chain_cursor.cutoff();
     }
 
     // Update user key KMAC
