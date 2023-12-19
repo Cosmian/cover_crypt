@@ -120,12 +120,13 @@ where
 
     /// Iterates through all revisions of a given key starting with the more
     /// recent one.
-    pub fn get<Q>(&self, key: &Q) -> Option<impl Iterator<Item = &V>>
+    pub fn get<Q>(&self, key: &Q) -> Option<&RevisionList<V>>
+    //impl Iterator<Item = &V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key).map(RevisionList::iter)
+        self.map.get(key) //.map(RevisionList::iter)
     }
 
     /// Removes and returns an iterator over all revisions from a given key.
@@ -188,7 +189,7 @@ mod tests {
         assert!(map.get_current_revision("Missing").is_none());
 
         // Iterators
-        let vec: Vec<_> = map.get("Part1").unwrap().collect();
+        let vec: Vec<_> = map.get("Part1").unwrap().iter().collect();
         assert_eq!(vec, vec!["Part1V2", "Part1V1"]);
 
         let keys_set = map.keys().collect::<HashSet<_>>();

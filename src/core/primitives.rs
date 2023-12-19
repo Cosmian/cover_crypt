@@ -470,20 +470,16 @@ pub fn refresh(
         .retain(|coordinate| msk.subkeys.contains_key(coordinate));
 
     for (partition, user_chain) in usk.subkeys.iter_mut() {
-        let mut master_chain_iter = msk
-            .subkeys
-            .get(partition)
-            .expect("at least one key")
+        let master_chain = msk.subkeys.get(partition).expect("at least one key");
+        // compare against all master subkeys or the last one to remove old rights
+        let mut master_chain_iter = master_chain
+            .iter()
+            .take(if keep_old_rights {
+                master_chain.len()
+            } else {
+                1
+            })
             .peekable();
-
-        // Remove all but the most recent subkey for this coordinate
-        if !keep_old_rights {
-            user_chain.keep(0);
-            let master_first_key = master_chain_iter.next().expect("at least one key");
-            user_chain.push_front(master_first_key.clone());
-            continue;
-            // TODO: master_chain_iter = master_chain_iter.take(1);
-        }
 
         // 1 - add new master subkeys in user key if any
         let user_first_key = user_chain.front().expect("have one key").clone();
@@ -780,7 +776,7 @@ mod tests {
             .filter(|(part, _)| *part == &partition_2)
             .map(|(_, subkey)| subkey)
             .collect();
-        let msk_subkeys: Vec<_> = msk.subkeys.get(&partition_2).unwrap().collect();
+        let msk_subkeys: Vec<_> = msk.subkeys.get(&partition_2).unwrap().iter().collect();
         assert_eq!(usk_subkeys.len(), 2);
         assert_eq!(usk_subkeys, msk_subkeys);
 
