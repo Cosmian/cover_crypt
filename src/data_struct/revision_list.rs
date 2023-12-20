@@ -155,7 +155,7 @@ impl<'a, T> Cursor<'a, T> {
         }
     }
 
-    /// Iterates through new values adding them before the current cursor.
+    /// Adds a new value in the list before the current cursor.
     pub fn prepend(&mut self, new_value: T) {
         let Some(mut cursor) = self.cursor_ptr.take() else {
             return;
@@ -174,17 +174,11 @@ impl<'a, T> Cursor<'a, T> {
 
     /// Moves the cursor down the list while the given predicate is true.
     pub fn skip_while(&mut self, mut f: impl FnMut(&T) -> bool) {
-        loop {
-            if let Some(Some(element)) = &self.cursor_ptr {
-                {
-                    if !f(&element.data) {
-                        return;
-                    }
-                }
-            } else {
-                return;
+        while let Some(Some(element)) = &self.cursor_ptr {
+            match f(&element.data) {
+                true => self.move_next(),
+                false => return,
             }
-            self.move_next()
         }
     }
 

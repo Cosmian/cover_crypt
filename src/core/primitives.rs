@@ -472,14 +472,10 @@ pub fn refresh(
     for (partition, user_chain) in usk.subkeys.iter_mut() {
         let master_chain = msk.subkeys.get(partition).expect("at least one key");
         // compare against all master subkeys or the last one to remove old rights
-        let mut master_chain_iter = master_chain
-            .iter()
-            .take(if keep_old_rights {
-                master_chain.len()
-            } else {
-                1
-            })
-            .peekable();
+        let mut master_chain_iter = match keep_old_rights {
+            true => master_chain.iter().take(master_chain.len()).peekable(),
+            false => master_chain.iter().take(1).peekable(),
+        };
 
         // 1 - add new master subkeys in user key if any
         let user_first_key = user_chain.front().expect("have one key").clone();
