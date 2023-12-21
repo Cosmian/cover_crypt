@@ -47,7 +47,7 @@ impl Covercrypt {
     ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         Ok(setup(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            &policy.generate_all_partitions()?,
+            policy.generate_all_partitions()?,
         ))
     }
 
@@ -71,7 +71,7 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            &policy.generate_all_partitions()?,
+            policy.generate_all_partitions()?,
         )
     }
 

@@ -160,7 +160,7 @@ fn update_master_subkey(
 /// - `partitions`      : set of partition to be used
 pub fn setup(
     rng: &mut impl CryptoRngCore,
-    partitions: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    partitions: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> (MasterSecretKey, MasterPublicKey) {
     let s = R25519PrivateKey::new(rng);
     let s1 = R25519PrivateKey::new(rng);
@@ -172,11 +172,11 @@ pub fn setup(
     let mut sub_sk = RevisionMap::with_capacity(partitions.len());
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
-    for (partition, &(is_hybridized, write_status)) in partitions {
+    for (partition, (is_hybridized, write_status)) in partitions {
         let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
         sub_sk.insert(partition.clone(), secret_subkey);
         if write_status == EncryptDecrypt {
-            sub_pk.insert(partition.clone(), public_subkey);
+            sub_pk.insert(partition, public_subkey);
         }
     }
 
@@ -362,7 +362,7 @@ pub fn update(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    partitions_set: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
     // Remove keys from partitions deleted from Policy
     msk.subkeys.retain(|part| partitions_set.contains_key(part));
@@ -370,18 +370,18 @@ pub fn update(
         .retain(|part, _| partitions_set.contains_key(part));
 
     let h = R25519PublicKey::from(&msk.s);
-    for (partition, &(is_hybridized, write_status)) in partitions_set {
+    for (partition, (is_hybridized, write_status)) in partitions_set {
         // check if secret key exist for this partition
-        if let Some(secret_subkey) = msk.subkeys.get_latest_mut(partition) {
+        if let Some(secret_subkey) = msk.subkeys.get_latest_mut(&partition) {
             // update the master secret and public subkey if needed
-            match (write_status, mpk.subkeys.get_mut(partition)) {
+            match (write_status, mpk.subkeys.get_mut(&partition)) {
                 (EncryptDecrypt, None) => unreachable!(),
                 (EncryptDecrypt, Some(public_subkey)) => {
                     update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?;
                 }
                 (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized),
                 (DecryptOnly, Some(_)) => {
-                    mpk.subkeys.remove(partition);
+                    mpk.subkeys.remove(&partition);
                     update_master_subkey(rng, &h, secret_subkey, is_hybridized);
                 }
             }
@@ -390,7 +390,7 @@ pub fn update(
             let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
             msk.subkeys.insert(partition.clone(), secret_subkey);
             if write_status == EncryptDecrypt {
-                mpk.subkeys.insert(partition.clone(), public_subkey);
+                mpk.subkeys.insert(partition, public_subkey);
             }
         }
     }
@@ -538,7 +538,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
 
         // The admin partition matches a hybridized sub-key.
         let admin_secret_subkeys = msk.subkeys.get_latest(&admin_partition);
@@ -587,7 +587,7 @@ mod tests {
         ]);
         let client_target_set = HashSet::from([client_partition.clone()]);
 
-        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        update(&mut rng, &mut msk, &mut mpk, new_partitions_set)?;
         refresh(&msk, &mut dev_usk, true)?;
 
         // The dev partition matches a hybridized sub-key.
@@ -661,7 +661,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition(b"3".to_vec());
@@ -675,7 +675,7 @@ mod tests {
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
-        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        update(&mut rng, &mut msk, &mut mpk, new_partitions_set)?;
         assert!(!msk.subkeys.contains_key(&partition_1));
         assert!(msk.subkeys.contains_key(&partition_2));
         assert!(msk.subkeys.contains_key(&partition_3));
@@ -708,7 +708,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
         // create a user key with access to partition 1 and 2
         let mut usk = keygen(
             &mut rng,
@@ -730,7 +730,7 @@ mod tests {
         //Covercrypt the master keys
 
         let old_msk = MasterSecretKey::deserialize(msk.serialize()?.as_slice())?;
-        update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
+        update(&mut rng, &mut msk, &mut mpk, new_partition_set)?;
         // refresh the user key
         refresh(&msk, &mut usk, true)?;
         // user key kept old access to partition 1
@@ -792,7 +792,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (msk, _) = setup(&mut rng, &partitions_set);
+        let (msk, _) = setup(&mut rng, partitions_set);
         // create a user key with access to partition 1 and 2
         let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
 

@@ -434,7 +434,7 @@ mod tests {
         let target_set = HashSet::from([admin_partition, dev_partition]);
         let mut rng = CsRng::from_entropy();
 
-        let (msk, mpk) = setup(&mut rng, &partitions_set);
+        let (msk, mpk) = setup(&mut rng, partitions_set);
 
         // Check Covercrypt `MasterSecretKey` serialization.
         let bytes = msk.serialize()?;
