@@ -25,7 +25,7 @@ use crate::{
         EncryptionHint, Partition,
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{RevisionMap, RevisionVec},
+    data_struct::{Cursor, RevisionMap, RevisionVec},
     Error,
 };
 
@@ -472,25 +472,25 @@ pub fn refresh(
     for (partition, user_chain) in usk.subkeys.iter_mut() {
         let master_chain = msk.subkeys.get(partition).expect("at least one key");
         // compare against all master subkeys or the last one to remove old rights
-        let mut master_chain_iter = match keep_old_rights {
+        let mut master_chain = match keep_old_rights {
             true => master_chain.iter().take(master_chain.len()).peekable(),
             false => master_chain.iter().take(1).peekable(),
         };
 
         // 1 - add new master subkeys in user key if any
         let user_first_key = user_chain.front().expect("have one key").clone();
-        let mut user_chain_cursor = user_chain.cursor();
+        let mut cursor = Cursor::new(user_chain);
         while let Some(new_master_subkey) =
-            master_chain_iter.next_if(|&master_subkey| master_subkey != &user_first_key)
+            master_chain.next_if(|&master_subkey| master_subkey != &user_first_key)
         {
-            user_chain_cursor.prepend(new_master_subkey.clone());
+            cursor = cursor.prepend(new_master_subkey.clone());
         }
 
         // 2 - go through the remaining matching keys between the master and user chain
-        user_chain_cursor.skip_while(|user_subkey| Some(user_subkey) == master_chain_iter.next());
+        cursor = cursor.skip_while(|user_subkey| Some(user_subkey) == master_chain.next());
 
         // 3 - old keys in USK not present in the MSK should be removed
-        user_chain_cursor.cutoff();
+        cursor.cutoff();
     }
 
     // Update user key KMAC

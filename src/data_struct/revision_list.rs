@@ -1,9 +1,9 @@
-use std::cmp::min;
+type Link<T> = Option<Box<Element<T>>>;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Element<T> {
     pub(crate) data: T,
-    pub(crate) next: Option<Box<Element<T>>>,
+    pub(crate) next: Link<T>,
 }
 
 impl<T> Element<T> {
@@ -14,8 +14,6 @@ impl<T> Element<T> {
         }
     }
 }
-
-type Link<T> = Option<Box<Element<T>>>;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionList<T> {
@@ -61,30 +59,18 @@ impl<T> RevisionList<T> {
         self.head.as_mut().map(|element| &mut element.data)
     }
 
-    /// Provides a cursor at the head of the list.
-    pub fn cursor(&mut self) -> Cursor<'_, T> {
-        Cursor::new(self)
-    }
-
     /// Keeps the n first elements of the list and returns the removed ones.
     pub fn keep(&mut self, n: usize) -> RevisionListIter<T> {
-        self.length = min(self.length, n);
-        if n == 0 {
-            return RevisionListIter::new(self.head.take());
-        }
-
-        let mut cursor = self.head.as_mut();
-        let mut n = n;
-        while let Some(next_element) = cursor {
-            n -= 1;
-            if n == 0 {
-                return RevisionListIter::new(next_element.next.take());
+        let mut current_element = &mut self.head;
+        for _ in 0..n {
+            if let Some(element) = current_element {
+                current_element = &mut element.next;
             } else {
-                cursor = next_element.next.as_mut();
+                return RevisionListIter::new(None);
             }
         }
-        // n is greater than list size
-        RevisionListIter::new(None)
+        self.length = n;
+        RevisionListIter::new(current_element.take())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
@@ -128,66 +114,54 @@ impl<T> FromIterator<T> for RevisionList<T> {
     }
 }
 
+/// Hacky structure allowing to iterate on and mutate a linked list.
 pub struct Cursor<'a, T> {
-    rev_list_len: &'a mut usize,
-    cursor_ptr: Option<&'a mut Link<T>>,
-    cursor_position: usize,
+    list_length: &'a mut usize,
+    link: &'a mut Link<T>,
+    position: usize,
 }
 
 impl<'a, T> Cursor<'a, T> {
     pub fn new(rev_list: &'a mut RevisionList<T>) -> Self {
         Self {
-            rev_list_len: &mut rev_list.length,
-            cursor_ptr: Some(&mut rev_list.head),
-            cursor_position: 0,
+            list_length: &mut rev_list.length,
+            link: &mut rev_list.head,
+            position: 0,
         }
     }
 
     /// Moves the cursor to the next element in the list.
-    pub fn move_next(&mut self) {
-        let Some(cursor) = self.cursor_ptr.take() else {
-            return;
-        };
-
-        if let Some(element) = cursor.as_mut() {
-            self.cursor_ptr = Some(&mut element.next);
-            self.cursor_position += 1;
+    pub fn next(mut self) -> Self {
+        if let Some(element) = self.link {
+            self.link = &mut element.next;
+            self.position += 1;
         }
+        self
     }
 
     /// Adds a new value in the list before the current cursor.
-    pub fn prepend(&mut self, new_value: T) {
-        let Some(mut cursor) = self.cursor_ptr.take() else {
-            return;
-        };
-
+    pub fn prepend(self, data: T) -> Self {
         let new_element = Element {
-            data: new_value,
-            next: cursor.take(),
+            data,
+            next: self.link.take(),
         };
-        cursor = &mut cursor.insert(Box::new(new_element)).next;
-        *self.rev_list_len += 1;
-        self.cursor_position += 1;
-
-        self.cursor_ptr = Some(cursor);
+        *self.link = Some(Box::new(new_element));
+        *self.list_length += 1;
+        self.next()
     }
 
     /// Moves the cursor down the list while the given predicate is true.
-    pub fn skip_while(&mut self, mut f: impl FnMut(&T) -> bool) {
-        while let Some(Some(element)) = &self.cursor_ptr {
-            match f(&element.data) {
-                true => self.move_next(),
-                false => return,
-            }
+    pub fn skip_while(mut self, mut f: impl FnMut(&T) -> bool) -> Self {
+        while self.link.as_ref().map(|e| f(&e.data)) == Some(true) {
+            self = self.next();
         }
+        self
     }
 
     /// Removes all elements from the cursor (included) to the end.
     pub fn cutoff(&mut self) {
-        if let Some(cursor) = self.cursor_ptr.take() {
-            *self.rev_list_len = self.cursor_position;
-            cursor.take();
-        }
+        self.link.take();
+        *self.list_length = self.position;
     }
 }
 
@@ -295,28 +269,45 @@ mod tests {
     }
 
     #[test]
-    fn test_revision_list_cursor_refresh() {
+    fn test_revision_list_cursor() {
         let mut revision_list = RevisionList::new();
         revision_list.push_front(1);
 
         // Add input while value is superior to 1
         let input = [3, 2, 1, 0];
         let mut input_iter = input.iter().peekable();
-        let mut cursor = revision_list.cursor();
+        let mut cursor = Cursor::new(&mut revision_list);
 
         // will add 3 and 2 before the current head
         while let Some(new_value) = input_iter.next_if(|&x| *x > 1) {
-            cursor.prepend(*new_value);
+            cursor = cursor.prepend(*new_value);
         }
 
         // consumed the input iterator unit value 1
         assert_eq!(input_iter.next(), Some(&1));
 
         assert_eq!(revision_list.len(), 3);
-        let mut iter = revision_list.iter();
-        assert_eq!(iter.next(), Some(&3));
-        assert_eq!(iter.next(), Some(&2));
-        assert_eq!(iter.next(), Some(&1));
-        assert_eq!(iter.next(), None);
+        {
+            let mut iter = revision_list.iter();
+            assert_eq!(iter.next(), Some(&3));
+            assert_eq!(iter.next(), Some(&2));
+            assert_eq!(iter.next(), Some(&1));
+            assert_eq!(iter.next(), None);
+        }
+
+        // will remove 2 and 1 from list
+        cursor = Cursor::new(&mut revision_list);
+        cursor = cursor.skip_while(|x| *x > 2);
+        cursor.cutoff();
+        assert_eq!(revision_list.len(), 1);
+        {
+            let mut iter = revision_list.iter();
+            assert_eq!(iter.next(), Some(&3));
+        }
+
+        // remove the last element
+        cursor = Cursor::new(&mut revision_list);
+        cursor.cutoff();
+        assert!(revision_list.is_empty());
     }
 }
