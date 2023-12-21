@@ -69,9 +69,9 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub(crate) rotation_values: Vec<u32>,
-    pub(crate) encryption_hint: EncryptionHint,
-    pub(crate) write_status: AttributeStatus,
+    pub(super) id: u32,
+    pub(super) encryption_hint: EncryptionHint,
+    pub(super) write_status: AttributeStatus,
 }
 
 impl AttributeParameters {
@@ -80,43 +80,25 @@ impl AttributeParameters {
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
-            rotation_values: vec![*seed_id],
+            id: *seed_id,
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,
         }
     }
 
-    /// Gets the current rotation of the Attribute.
-    pub fn get_current_rotation(&self) -> u32 {
-        self.rotation_values
-            .last()
-            .copied()
-            .expect("Attribute should always have at least one value")
+    #[must_use]
+    pub fn get_id(&self) -> u32 {
+        self.id
     }
 
-    pub fn rotate_current_value(&mut self, seed_id: &mut u32) {
-        *seed_id += 1;
-        self.rotation_values.push(*seed_id)
+    #[must_use]
+    pub fn get_encryption_hint(&self) -> EncryptionHint {
+        self.encryption_hint
     }
 
-    pub fn clear_old_rotation_values(&mut self) {
-        // TODO: use VecDeque ?
-        let current_val = self.get_current_rotation();
-        self.rotation_values.retain(|val| val == &current_val);
-    }
-
-    pub fn all_rotation_values(&self) -> impl '_ + DoubleEndedIterator<Item = u32> {
-        self.rotation_values.iter().copied()
-    }
-
-    /// Flattens the properties of the `AttributeParameters` into a vector of
-    /// tuples where each tuple contains a rotation value, the associated
-    /// encryption hint, and the `read_only` flag.
-    pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
-        self.rotation_values
-            .iter()
-            .map(|&value| (value, self.encryption_hint, self.write_status))
-            .collect()
+    #[must_use]
+    pub fn get_status(&self) -> AttributeStatus {
+        self.write_status
     }
 }
 
@@ -153,6 +135,7 @@ impl Dimension {
         }
     }
 
+    #[must_use]
     pub fn nb_attributes(&self) -> usize {
         match self {
             Self::Unordered(attributes) => attributes.len(),
@@ -160,6 +143,7 @@ impl Dimension {
         }
     }
 
+    #[must_use]
     pub fn is_ordered(&self) -> bool {
         match self {
             Self::Unordered(_) => false,
@@ -170,6 +154,7 @@ impl Dimension {
     /// Returns an iterator over the attributes name.
     /// If the dimension is ordered, the names are returned in this order,
     /// otherwise they are returned in arbitrary order.
+    #[must_use]
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.keys()),
@@ -177,44 +162,11 @@ impl Dimension {
         }
     }
 
+    #[must_use]
     pub fn get_attribute(&self, attr_name: &AttributeName) -> Option<&AttributeParameters> {
         match self {
             Self::Unordered(attributes) => attributes.get(attr_name),
             Self::Ordered(attributes) => attributes.get(attr_name),
-        }
-    }
-
-    /// Rotates the attribute with the given name by incrementing its rotation
-    /// value.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to rotate.
-    /// * `seed_id` - A seed used for generating the new rotation value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the attribute with the specified name is not found.
-    pub fn rotate_attribute(
-        &mut self,
-        attr_name: &AttributeName,
-        seed_id: &mut u32,
-    ) -> Result<(), Error> {
-        match self {
-            Self::Unordered(attributes) => match attributes.get_mut(attr_name) {
-                Some(attr) => {
-                    attr.rotate_current_value(seed_id);
-                    Ok(())
-                }
-                None => Err(Error::AttributeNotFound(attr_name.to_string())),
-            },
-            Self::Ordered(attributes) => match attributes.get_mut(attr_name) {
-                Some(attr) => {
-                    attr.rotate_current_value(seed_id);
-                    Ok(())
-                }
-                None => Err(Error::AttributeNotFound(attr_name.to_string())),
-            },
         }
     }
 
@@ -335,45 +287,13 @@ impl Dimension {
         }
     }
 
-    /// Clears the old rotations of an attribute, keeping only the current ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to clear old rotations for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the attribute is not found.
-    pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        match self {
-            Self::Unordered(attributes) => attributes
-                .get_mut(attr_name)
-                .map(|attr| attr.clear_old_rotation_values())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-            Self::Ordered(attributes) => attributes
-                .get_mut(attr_name)
-                .map(|attr| attr.clear_old_rotation_values())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-        }
-    }
-
-    /// Returns an iterator over the AttributesParameters and parameters.
+    /// Returns an iterator over the `AttributesParameters` and parameters.
     /// If the dimension is ordered, the attributes are returned in order.
-    pub fn attributes_properties(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
+    #[must_use]
+    pub fn attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.values()),
             Self::Ordered(attributes) => Box::new(attributes.values()),
-        }
-    }
-
-    /// Returns an iterator over the Attributes names and parameters.
-    /// If the dimension is ordered, the attributes are returned in order.
-    pub fn iter_attributes(
-        &self,
-    ) -> Box<dyn '_ + Iterator<Item = (&AttributeName, &AttributeParameters)>> {
-        match self {
-            Self::Unordered(attributes) => Box::new(attributes.iter()),
-            Self::Ordered(attributes) => Box::new(attributes.iter()),
         }
     }
 }

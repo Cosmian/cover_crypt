@@ -12,7 +12,7 @@ use zeroize::ZeroizeOnDrop;
 
 use crate::{
     abe_policy::Partition,
-    data_struct::{VersionedHashMap, VersionedVec},
+    data_struct::{RevisionMap, RevisionVec},
 };
 
 #[macro_use]
@@ -63,21 +63,23 @@ impl Deref for KyberSecretKey {
     }
 }
 
-type Subkey = (Option<KyberSecretKey>, R25519PrivateKey);
+pub(super) type PublicSubkey = (Option<KyberPublicKey>, R25519PublicKey);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
-    pub(crate) subkeys: HashMap<Partition, (Option<KyberPublicKey>, R25519PublicKey)>,
+    pub(crate) subkeys: HashMap<Partition, PublicSubkey>,
 }
+
+pub(super) type SecretSubkey = (Option<KyberSecretKey>, R25519PrivateKey);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
-    pub(crate) subkeys: VersionedHashMap<Partition, Subkey>,
+    pub(crate) subkeys: RevisionMap<Partition, SecretSubkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
 }
 
@@ -85,7 +87,7 @@ pub struct MasterSecretKey {
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub(crate) subkeys: VersionedVec<(Partition, Subkey)>,
+    pub(crate) subkeys: RevisionVec<Partition, SecretSubkey>,
     kmac: Option<KmacSignature>,
 }
 

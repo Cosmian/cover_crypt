@@ -25,20 +25,20 @@ impl Error {
     where
         T: Debug,
     {
-        Self::EntryNotFound(format!("{:?}", key))
+        Self::EntryNotFound(format!("{key:?}"))
     }
 
     pub fn existing_entry<T>(key: &T) -> Self
     where
         T: Debug,
     {
-        Self::ExistingEntry(format!("{:?}", key))
+        Self::ExistingEntry(format!("{key:?}"))
     }
 
     pub fn already_has_child<T>(key: &T) -> Self
     where
         T: Debug,
     {
-        Self::AlreadyHasChild(format!("{:?}", key))
+        Self::AlreadyHasChild(format!("{key:?}"))
     }
 }

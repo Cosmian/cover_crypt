@@ -55,6 +55,7 @@ impl Policy {
     }
 
     /// Adds the given dimension to the policy.
+    /// /!\ Invalidates all previous keys and ciphers.
     pub fn add_dimension(&mut self, dim: DimensionBuilder) -> Result<(), Error> {
         if self.dimensions.get(&dim.name).is_some() {
             return Err(Error::ExistingPolicy(dim.name));
@@ -69,7 +70,7 @@ impl Policy {
     }
 
     /// Removes the given dim from the policy.
-    /// Fails if there is no such dim in the policy.
+    /// /!\ Invalidates all previous keys and ciphers.
     pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
         self.dimensions
             .remove(dim_name)
@@ -78,6 +79,11 @@ impl Policy {
     }
 
     /// Adds the given attribute to the policy.
+    /// /!\ No old key will be able to use this attribute. In particular, keys
+    /// which associated access policy was implicitly deriving rights for this
+    /// dimension (e.g. "`Security::High`" implicitly derives rights for all
+    /// attributes from any other dimensions) need to be regenerated. A refresh
+    /// will *not* implicitly derive rights for this attribute.
     /// Fails if the dim of the attribute does not exist in the policy.
     ///
     /// * `attr` - The name and dimension of the new attribute.
@@ -131,25 +137,6 @@ impl Policy {
         }
     }
 
-    /// Rotates an attribute, changing its underlying value with an unused
-    /// value.
-    pub fn rotate(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            dim.rotate_attribute(&attr.name, &mut self.last_attribute_value)
-        } else {
-            Err(Error::DimensionNotFound(attr.dimension.to_string()))
-        }
-    }
-
-    /// Removes all rotation values but the current of an attribute.
-    pub fn clear_old_attribute_values(&mut self, attr: &Attribute) -> Result<(), Error> {
-        if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
-            dim.clear_old_attribute_values(&attr.name)
-        } else {
-            Err(Error::DimensionNotFound(attr.dimension.to_string()))
-        }
-    }
-
     /// Returns the list of Attributes of this Policy.
     #[must_use]
     pub fn attributes(&self) -> Vec<Attribute> {
@@ -173,41 +160,34 @@ impl Policy {
         }
     }
 
-    /// Returns the list of all values given to this attribute over rotations.
-    /// The current value is returned first.
-    pub fn attribute_values(&self, attribute: &Attribute) -> Result<Vec<u32>, Error> {
-        self.get_attribute(attribute)
-            .map(|attr| attr.all_rotation_values().rev().collect())
-    }
-
     /// Returns the hybridization hint of the given attribute.
-    pub fn attribute_hybridization_hint(
+    pub fn get_attribute_hybridization_hint(
         &self,
         attribute: &Attribute,
     ) -> Result<EncryptionHint, Error> {
         self.get_attribute(attribute)
-            .map(|attr| attr.encryption_hint)
+            .map(AttributeParameters::get_encryption_hint)
     }
 
-    /// Retrieves the current value of an attribute.
-    pub fn attribute_current_value(&self, attribute: &Attribute) -> Result<u32, Error> {
+    /// Retrieves the ID of an attribute.
+    pub fn get_attribute_id(&self, attribute: &Attribute) -> Result<u32, Error> {
         self.get_attribute(attribute)
-            .map(AttributeParameters::get_current_rotation)
+            .map(AttributeParameters::get_id)
     }
 
-    /// Generates all cross-axes combinations of attribute values.
+    /// Generates all cross-dimension combinations of attributes.
     ///
-    /// - `current_dim`            : dim for which to combine values with other
-    ///   axes
-    /// - `axes`                    : list of axes
-    /// - `attr_values_per_dim`    : map axes with their associated attribute
-    ///   values
-    fn combine_attribute_values(
+    /// - `current_dim`            : dim for which to combine other dim
+    ///   attributes
+    /// - `dimensions`             : list of dimensions
+    /// - `attr_values_per_dim`    : map dimensions with their associated
+    ///   attribute parameters
+    fn combine_attributes(
         current_dim: usize,
-        axes: &[String],
-        attr_values_per_dim: &HashMap<String, Vec<(u32, EncryptionHint, AttributeStatus)>>,
+        dimensions: &[String],
+        attr_params_per_dim: &HashMap<String, Vec<&AttributeParameters>>,
     ) -> Result<Vec<(Vec<u32>, EncryptionHint, AttributeStatus)>, Error> {
-        let current_dim_name = match axes.get(current_dim) {
+        let current_dim_name = match dimensions.get(current_dim) {
             None => {
                 return Ok(vec![(
                     vec![],
@@ -218,24 +198,24 @@ impl Policy {
             Some(dim) => dim,
         };
 
-        let current_dim_values = attr_values_per_dim
+        let current_dim_values = attr_params_per_dim
             .get(current_dim_name)
             .ok_or_else(|| Error::DimensionNotFound(current_dim_name.to_string()))?;
 
         // Recursive call. Above checks ensure no empty list can be returned.
         let other_values =
-            Self::combine_attribute_values(current_dim + 1, axes, attr_values_per_dim)?;
+            Self::combine_attributes(current_dim + 1, dimensions, attr_params_per_dim)?;
 
         let mut combinations = Vec::with_capacity(current_dim_values.len() * other_values.len());
-        for (current_values, is_hybridized, is_readonly) in current_dim_values {
+        for attr in current_dim_values {
             for (other_values, is_other_hybridized, is_other_readonly) in &other_values {
                 let mut combined = Vec::with_capacity(1 + other_values.len());
-                combined.push(*current_values);
+                combined.push(attr.get_id());
                 combined.extend_from_slice(other_values);
                 combinations.push((
                     combined,
-                    *is_hybridized | *is_other_hybridized,
-                    *is_readonly | *is_other_readonly,
+                    attr.get_encryption_hint() | *is_other_hybridized,
+                    attr.get_status() | *is_other_readonly,
                 ));
             }
         }
@@ -248,52 +228,38 @@ impl Policy {
     pub fn generate_all_partitions(
         &self,
     ) -> Result<HashMap<Partition, (EncryptionHint, AttributeStatus)>, Error> {
-        let mut attr_values_per_dim = HashMap::with_capacity(self.dimensions.len());
+        let mut attr_params_per_dim = HashMap::with_capacity(self.dimensions.len());
         for (dim_name, dim) in &self.dimensions {
-            attr_values_per_dim.insert(
-                dim_name.clone(),
-                dim.attributes_properties()
-                    .flat_map(|attr| attr.flatten_properties())
-                    .collect(),
-            );
+            attr_params_per_dim.insert(dim_name.clone(), dim.attributes().collect());
         }
 
         // Combine axes values into partitions.
-        let axes = attr_values_per_dim.keys().cloned().collect::<Vec<_>>();
-        let combinations = Self::combine_attribute_values(0, &axes, &attr_values_per_dim)?;
+        let dimensions = attr_params_per_dim.keys().cloned().collect::<Vec<_>>();
+        let combinations = Self::combine_attributes(0, &dimensions, &attr_params_per_dim)?;
         let mut res = HashMap::with_capacity(combinations.len());
         for (combination, is_hybridized, is_readonly) in combinations {
             res.insert(
-                Partition::from_attribute_values(combination)?,
+                Partition::from_attribute_ids(combination)?,
                 (is_hybridized, is_readonly),
             );
         }
         Ok(res)
     }
 
-    /// Generates an `AccessPolicy` into the list of corresponding current
-    /// partitions.
+    /// Converts an `AccessPolicy` into a list of corresponding coordinates.
     ///
-    /// - `access_policy`               : access policy to convert
-    /// - `follow_hierarchical_axes`    : set to `true` to combine lower dim
-    ///   attributes
+    /// - `access_policy`   : access policy to convert
+    /// - `cascade_rights`  : include lower rights from hierarchical dimensions
     pub fn access_policy_to_partitions(
         &self,
         access_policy: &AccessPolicy,
-        follow_hierarchical_axes: bool,
-        include_old_rotations: bool,
+        cascade_rights: bool,
     ) -> Result<HashSet<Partition>, Error> {
-        let attr_combinations =
-            access_policy.to_attribute_combinations(self, follow_hierarchical_axes)?;
+        let attr_combinations = access_policy.to_attribute_combinations(self, cascade_rights)?;
         let mut res = HashSet::with_capacity(attr_combinations.len());
         for attr_combination in &attr_combinations {
-            for partition in generate_current_attribute_partitions(
-                attr_combination,
-                self,
-                include_old_rotations,
-            )? {
-                let is_unique = res.insert(partition);
-                if !is_unique {
+            for partition in generate_attribute_partitions(attr_combination, self)? {
+                if !res.insert(partition) {
                     return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
                 }
             }
@@ -318,73 +284,42 @@ impl TryFrom<&Policy> for Vec<u8> {
     }
 }
 
-/// Converts a list of attributes into the list of current `Partitions`, with
-/// their associated hybridization hints.
+/// Converts a list of attributes into a list of `Partitions`, with
+/// their associated hybridization hints and attribute status.
 ///
 /// - `attributes`  : list of attributes
 /// - `policy`      : global policy data
-fn generate_current_attribute_partitions(
+fn generate_attribute_partitions(
     attributes: &[Attribute],
     policy: &Policy,
-    include_old_partitions: bool,
 ) -> Result<HashSet<Partition>, Error> {
-    let mut current_attr_value_per_dim = HashMap::<
-        String,
-        Vec<(u32, EncryptionHint, AttributeStatus)>,
-    >::with_capacity(policy.dimensions.len()); // maximum bound
-    for attribute in attributes.iter() {
-        let entry = current_attr_value_per_dim
+    let mut attr_params_per_dim =
+        HashMap::<String, Vec<&AttributeParameters>>::with_capacity(policy.dimensions.len());
+    for attribute in attributes {
+        let entry = attr_params_per_dim
             .entry(attribute.dimension.clone())
             .or_default();
-        let attr_properties = policy.get_attribute(attribute)?;
-        if include_old_partitions {
-            for attr_value in attr_properties.all_rotation_values() {
-                entry.push((
-                    attr_value,
-                    attr_properties.encryption_hint,
-                    attr_properties.write_status,
-                ));
-            }
-        } else {
-            entry.push((
-                attr_properties.get_current_rotation(),
-                attr_properties.encryption_hint,
-                attr_properties.write_status,
-            ));
-        }
+        entry.push(policy.get_attribute(attribute)?);
     }
 
     // When a dimension is not mentioned in the attribute list, all the attribute
     // from this dimension are used.
     for (dim, dim_properties) in &policy.dimensions {
-        if !current_attr_value_per_dim.contains_key(dim) {
+        if !attr_params_per_dim.contains_key(dim) {
             // gather all the latest value for that dim
-            let values = dim_properties
-                .attributes_properties()
-                .map(|attr| {
-                    (
-                        attr.get_current_rotation(),
-                        attr.encryption_hint,
-                        attr.write_status,
-                    )
-                })
-                .collect();
-            current_attr_value_per_dim.insert(dim.clone(), values);
+            let values = dim_properties.attributes().collect();
+            attr_params_per_dim.insert(dim.clone(), values);
         }
     }
 
-    // Combine axes values into partitions.
-    let axes = current_attr_value_per_dim
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
-    let combinations =
-        Policy::combine_attribute_values(0, axes.as_slice(), &current_attr_value_per_dim)?;
-    let mut res = HashSet::with_capacity(combinations.len());
-    for (combination, _, _) in combinations {
-        res.insert(Partition::from_attribute_values(combination)?);
-    }
-    Ok(res)
+    // Combine dimensions attributes into partitions.
+    let dimensions = attr_params_per_dim.keys().cloned().collect::<Vec<_>>();
+    let combinations = Policy::combine_attributes(0, dimensions.as_slice(), &attr_params_per_dim)?;
+
+    combinations
+        .into_iter()
+        .map(|(coordinate, _, _)| Partition::from_attribute_ids(coordinate))
+        .collect::<Result<HashSet<_>, _>>()
 }
 
 #[cfg(test)]
@@ -401,7 +336,7 @@ mod tests {
             let mut dim_attributes: Vec<(Attribute, u32)> = vec![];
             for name in policy.dimensions[dim].get_attributes_name() {
                 let attribute = Attribute::new(dim, name);
-                let value = policy.attribute_current_value(&attribute)?;
+                let value = policy.get_attribute_id(&attribute)?;
                 dim_attributes.push((attribute, value));
             }
             axes_attributes.push(dim_attributes);
@@ -411,80 +346,50 @@ mod tests {
 
     #[test]
     fn test_combine_attribute_values() -> Result<(), Error> {
-        let mut policy = policy()?;
+        let policy = policy()?;
         let axes: Vec<String> = policy.dimensions.keys().cloned().collect();
 
         let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
 
         // this should create the combination of the first attribute
         // with all those of the second dim
-        let partitions_0 = generate_current_attribute_partitions(
-            &[axes_attributes[0][0].0.clone()],
-            &policy,
-            false,
-        )?;
+        let partitions_0 =
+            generate_attribute_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
         assert_eq!(axes_attributes[1].len(), partitions_0.len());
         let att_0_0 = axes_attributes[0][0].1;
         for (_attribute, value) in &axes_attributes[1] {
-            let partition = Partition::from_attribute_values(vec![att_0_0, *value])?;
+            let partition = Partition::from_attribute_ids(vec![att_0_0, *value])?;
             assert!(partitions_0.contains(&partition));
         }
 
         // this should create the single combination of the first attribute
         // of the first dim with that of the second dim
-        let partitions_1 = generate_current_attribute_partitions(
+        let partitions_1 = generate_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_1.len(), 1);
         let att_1_0 = axes_attributes[1][0].1;
-        assert!(partitions_1.contains(&Partition::from_attribute_values(vec![att_0_0, att_1_0])?));
+        assert!(partitions_1.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_0])?));
 
         // this should create the 2 combinations of the first attribute
         // of the first dim with that the wo of the second dim
-        let partitions_2 = generate_current_attribute_partitions(
+        let partitions_2 = generate_attribute_partitions(
             &[
                 axes_attributes[0][0].0.clone(),
                 axes_attributes[1][0].0.clone(),
                 axes_attributes[1][1].0.clone(),
             ],
             &policy,
-            false,
         )?;
         assert_eq!(partitions_2.len(), 2);
         let att_1_0 = axes_attributes[1][0].1;
         let att_1_1 = axes_attributes[1][1].1;
-        assert!(partitions_2.contains(&Partition::from_attribute_values(vec![att_0_0, att_1_0])?,));
-        assert!(partitions_2.contains(&Partition::from_attribute_values(vec![att_0_0, att_1_1])?,));
-
-        // rotation
-        policy.rotate(&axes_attributes[0][0].0)?;
-        let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
-
-        // this should create the single combination of the first attribute
-        // of the first dim with that of the second dim
-        let partitions_3 = generate_current_attribute_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-            ],
-            &policy,
-            false,
-        )?;
-        assert_eq!(partitions_3.len(), 1);
-        let att_1_0 = axes_attributes[1][0].1;
-        let att_0_0_new = axes_attributes[0][0].1;
-        assert!(
-            partitions_3.contains(&Partition::from_attribute_values(vec![
-                att_0_0_new,
-                att_1_0
-            ])?)
-        );
-        assert!(!partitions_3.contains(&Partition::from_attribute_values(vec![att_0_0, att_1_0])?));
+        assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_0])?,));
+        assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_1])?,));
 
         Ok(())
     }
@@ -493,8 +398,8 @@ mod tests {
     fn test_access_policy_to_partition() -> Result<(), Error> {
         //
         // create policy
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let policy = policy()?;
+        //policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
         // create access policy
@@ -504,7 +409,7 @@ mod tests {
 
         //
         // create partitions from access policy
-        let partitions = policy.access_policy_to_partitions(&access_policy, true, false)?;
+        let partitions = policy.access_policy_to_partitions(&access_policy, true)?;
 
         //
         // manually create the partitions
@@ -512,29 +417,28 @@ mod tests {
 
         // add the partitions associated with the HR department: combine with
         // all attributes of the Security Level dim
-        let hr_value = policy.attribute_current_value(&Attribute::new("Department", "HR"))?;
+        let hr_value = policy.get_attribute_id(&Attribute::new("Department", "HR"))?;
         let dim_properties = policy.dimensions.get("Security Level").unwrap();
         for attr_name in dim_properties.get_attributes_name() {
             let attr_value =
-                policy.attribute_current_value(&Attribute::new("Security Level", attr_name))?;
+                policy.get_attribute_id(&Attribute::new("Security Level", attr_name))?;
             let mut partition = vec![hr_value, attr_value];
             partition.sort_unstable();
-            partitions_.insert(Partition::from_attribute_values(partition)?);
+            partitions_.insert(Partition::from_attribute_ids(partition)?);
         }
 
         // add the other attribute combination: FIN && Low Secret
-        let fin_value = policy.attribute_current_value(&Attribute::new("Department", "FIN"))?;
+        let fin_value = policy.get_attribute_id(&Attribute::new("Department", "FIN"))?;
         let conf_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Low Secret"))?;
+            policy.get_attribute_id(&Attribute::new("Security Level", "Low Secret"))?;
         let mut partition = vec![fin_value, conf_value];
         partition.sort_unstable();
-        partitions_.insert(Partition::from_attribute_values(partition)?);
+        partitions_.insert(Partition::from_attribute_ids(partition)?);
         // since this is a hierarchical dim, add the lower values: here only low secret
-        let prot_value =
-            policy.attribute_current_value(&Attribute::new("Security Level", "Protected"))?;
+        let prot_value = policy.get_attribute_id(&Attribute::new("Security Level", "Protected"))?;
         let mut partition = vec![fin_value, prot_value];
         partition.sort_unstable();
-        partitions_.insert(Partition::from_attribute_values(partition)?);
+        partitions_.insert(Partition::from_attribute_ids(partition)?);
 
         assert_eq!(partitions, partitions_);
 
@@ -547,7 +451,7 @@ mod tests {
         )
         .unwrap();
         let partition_4 = policy
-            .access_policy_to_partitions(&policy_attributes_4, true, false)
+            .access_policy_to_partitions(&policy_attributes_4, true)
             .unwrap();
 
         let policy_attributes_5 = AccessPolicy::from_boolean_expression(
@@ -556,7 +460,7 @@ mod tests {
         )
         .unwrap();
         let partition_5 = policy
-            .access_policy_to_partitions(&policy_attributes_5, true, false)
+            .access_policy_to_partitions(&policy_attributes_5, true)
             .unwrap();
         assert_eq!(partition_4.len(), 4);
         assert_eq!(partition_5.len(), 5);

@@ -1,8 +1,10 @@
 mod dictionary;
 pub mod error;
-mod versioned_hashmap;
-mod versioned_vec;
+mod revision_list;
+mod revision_map;
+mod revision_vec;
 
 pub use dictionary::Dict;
-pub use versioned_hashmap::VersionedHashMap;
-pub use versioned_vec::VersionedVec;
+pub use revision_list::{Cursor, Element, RevisionList};
+pub use revision_map::RevisionMap;
+pub use revision_vec::RevisionVec;

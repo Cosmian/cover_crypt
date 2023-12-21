@@ -63,7 +63,7 @@ impl From<PolicyV1> for PolicyV2 {
                     (
                         attr.name,
                         AttributeParameters {
-                            rotation_values: attr_params.values.clone(),
+                            id: *attr_params.values.first().unwrap(),
                             encryption_hint: attr_params.encryption_hint,
                             write_status: AttributeStatus::EncryptDecrypt,
                         },
@@ -112,7 +112,7 @@ impl From<LegacyPolicy> for PolicyV2 {
                     (
                         attr.name,
                         AttributeParameters {
-                            rotation_values: values,
+                            id: *values.first().unwrap(),
                             encryption_hint: EncryptionHint::Classic,
                             write_status: AttributeStatus::EncryptDecrypt,
                         },
