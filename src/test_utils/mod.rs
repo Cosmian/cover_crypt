@@ -177,7 +177,7 @@ mod tests {
         let part = Partition::from(vec![1, 6]);
         usk.subkeys.create_chain_with_single_value(
             part.clone(),
-            msk.subkeys.get_current_revision(&part).unwrap().clone(),
+            msk.subkeys.get_latest(&part).unwrap().clone(),
         );
         assert!(cover_crypt
             .refresh_user_secret_key(&mut usk, &msk, false)

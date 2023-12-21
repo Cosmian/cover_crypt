@@ -92,7 +92,7 @@ where
     }
 
     /// Returns the last revised value for a given key.
-    pub fn get_current_revision<Q>(&self, key: &Q) -> Option<&V>
+    pub fn get_latest<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -101,7 +101,7 @@ where
     }
 
     /// Returns a mutable reference to the last revised value for a given key.
-    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    pub fn get_latest_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -184,9 +184,9 @@ mod tests {
         assert_eq!(map.count_elements(), 6);
 
         // Get
-        assert_eq!(map.get_current_revision("Part1").unwrap(), "Part1V2");
-        assert_eq!(map.get_current_revision("Part2").unwrap(), "Part2V3");
-        assert!(map.get_current_revision("Missing").is_none());
+        assert_eq!(map.get_latest("Part1").unwrap(), "Part1V2");
+        assert_eq!(map.get_latest("Part2").unwrap(), "Part2V3");
+        assert!(map.get_latest("Missing").is_none());
 
         // Iterators
         let vec: Vec<_> = map.get("Part1").unwrap().iter().collect();

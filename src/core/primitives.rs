@@ -218,12 +218,9 @@ pub fn keygen(
     // Use the last key for each partitions in the decryption set
     let mut subkeys = RevisionVec::with_capacity(decryption_set.len());
     decryption_set.iter().try_for_each(|partition| {
-        let subkey = msk
-            .subkeys
-            .get_current_revision(partition)
-            .ok_or(Error::KeyError(
-                "Master secret key and Policy are not in sync.".to_string(),
-            ))?;
+        let subkey = msk.subkeys.get_latest(partition).ok_or(Error::KeyError(
+            "Master secret key and Policy are not in sync.".to_string(),
+        ))?;
         subkeys.create_chain_with_single_value(partition.clone(), subkey.clone());
         Ok::<_, Error>(())
     })?;
@@ -375,7 +372,7 @@ pub fn update(
     let h = R25519PublicKey::from(&msk.s);
     for (partition, &(is_hybridized, write_status)) in partitions_set {
         // check if secret key exist for this partition
-        if let Some(secret_subkey) = msk.subkeys.get_mut(partition) {
+        if let Some(secret_subkey) = msk.subkeys.get_latest_mut(partition) {
             // update the master secret and public subkey if needed
             match (write_status, mpk.subkeys.get_mut(partition)) {
                 (EncryptDecrypt, None) => unreachable!(),
@@ -419,7 +416,7 @@ pub fn rekey(
     for coordinate in coordinates {
         let is_hybridized = EncryptionHint::new(
             msk.subkeys
-                .get_current_revision(&coordinate)
+                .get_latest(&coordinate)
                 .and_then(|(sk_i, _)| sk_i.as_ref())
                 .is_some(),
         );
@@ -544,12 +541,12 @@ mod tests {
         let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
 
         // The admin partition matches a hybridized sub-key.
-        let admin_secret_subkeys = msk.subkeys.get_current_revision(&admin_partition);
+        let admin_secret_subkeys = msk.subkeys.get_latest(&admin_partition);
         assert!(admin_secret_subkeys.is_some());
         assert!(admin_secret_subkeys.unwrap().0.is_some());
 
         // The developer partition matches a classic sub-key.
-        let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
@@ -594,12 +591,12 @@ mod tests {
         refresh(&msk, &mut dev_usk, true)?;
 
         // The dev partition matches a hybridized sub-key.
-        let dev_secret_subkeys = msk.subkeys.get_current_revision(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_some());
 
         // The client partition matches a classic sub-key.
-        let client_secret_subkeys = msk.subkeys.get_current_revision(&client_partition);
+        let client_secret_subkeys = msk.subkeys.get_latest(&client_partition);
         assert!(client_secret_subkeys.is_some());
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
@@ -740,20 +737,18 @@ mod tests {
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_1,
-                old_msk.subkeys.get_current_revision(&partition_1).unwrap(),
+                old_msk.subkeys.get_latest(&partition_1).unwrap(),
             )
         }));
-        assert!(usk.subkeys.flat_iter().any(|x| {
-            x == (
-                &partition_2,
-                msk.subkeys.get_current_revision(&partition_2).unwrap(),
-            )
-        }));
+        assert!(usk
+            .subkeys
+            .flat_iter()
+            .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) }));
         // user key kept the old hybrid key for partition 3
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_3,
-                old_msk.subkeys.get_current_revision(&partition_3).unwrap(),
+                old_msk.subkeys.get_latest(&partition_3).unwrap(),
             )
         }));
 
