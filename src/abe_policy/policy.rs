@@ -63,7 +63,7 @@ impl Policy {
 
         self.dimensions.insert(
             dim.name.clone(),
-            Dimension::new(&dim, &mut self.last_attribute_value),
+            Dimension::new(dim, &mut self.last_attribute_value),
         );
 
         Ok(())
@@ -95,11 +95,9 @@ impl Policy {
         encryption_hint: EncryptionHint,
     ) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => policy_dim.add_attribute(
-                &attr.name,
-                encryption_hint,
-                &mut self.last_attribute_value,
-            ),
+            Some(policy_dim) => {
+                policy_dim.add_attribute(attr.name, encryption_hint, &mut self.last_attribute_value)
+            }
             None => Err(Error::DimensionNotFound(attr.dimension)),
         }
     }
@@ -130,7 +128,7 @@ impl Policy {
     }
 
     /// Changes the name of an attribute.
-    pub fn rename_attribute(&mut self, attr: &Attribute, new_name: &str) -> Result<(), Error> {
+    pub fn rename_attribute(&mut self, attr: &Attribute, new_name: String) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),

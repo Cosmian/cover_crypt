@@ -65,10 +65,10 @@ fn policy() -> Result<Policy, Error> {
 fn bench_policy_editing(c: &mut Criterion) {
     let cover_crypt = Covercrypt::default();
     let new_dep_attr = Attribute::new("Department", "Tech");
-    let new_dep_name = "IT";
+    let new_dep_name = "IT".to_string();
     let remove_dep_attr = Attribute::new("Department", "FIN");
     let old_sl_attr = Attribute::new("Security Level", "Protected");
-    let new_sl_name = "Open";
+    let new_sl_name = "Open".to_string();
     let disable_sl_attr = Attribute::new("Security Level", "Confidential");
 
     let mut group = c.benchmark_group("Edit Policy");
@@ -88,11 +88,13 @@ fn bench_policy_editing(c: &mut Criterion) {
                     .add_attribute(new_dep_attr.clone(), EncryptionHint::Classic)
                     .unwrap();
                 policy
-                    .rename_attribute(&new_dep_attr, new_dep_name)
+                    .rename_attribute(&new_dep_attr, new_dep_name.clone())
                     .unwrap();
                 policy.remove_attribute(&remove_dep_attr).unwrap();
 
-                policy.rename_attribute(&old_sl_attr, new_sl_name).unwrap();
+                policy
+                    .rename_attribute(&old_sl_attr, new_sl_name.clone())
+                    .unwrap();
                 policy.disable_attribute(&disable_sl_attr).unwrap();
 
                 cover_crypt

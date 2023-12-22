@@ -73,17 +73,20 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Try renaming Research to already used name MKG
     assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG".to_string(),)
         .is_err());
 
     // Rename R&D to Research
     assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "Research",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "Research".to_string(),)
         .is_ok());
 
     // Rename ordered dimension
     assert!(policy
-        .rename_attribute(&Attribute::new("Security Level", "Protected"), "Open",)
+        .rename_attribute(
+            &Attribute::new("Security Level", "Protected"),
+            "Open".to_string(),
+        )
         .is_ok());
     let order: Vec<_> = policy
         .dimensions

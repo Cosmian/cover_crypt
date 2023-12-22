@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Debug,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -121,10 +124,10 @@ impl Dimension {
     /// * `dim` - The `DimensionBuilder` to base the dimension on.
     /// * `seed_id` - A mutable reference to a seed ID used for generating
     ///   unique values for attributes.
-    pub fn new(dim: &DimensionBuilder, seed_id: &mut u32) -> Self {
-        let attributes_mapping = dim.attributes_properties.iter().map(|attr| {
+    pub fn new(dim: DimensionBuilder, seed_id: &mut u32) -> Self {
+        let attributes_mapping = dim.attributes_properties.into_iter().map(|attr| {
             (
-                attr.name.clone(),
+                attr.name,
                 AttributeParameters::new(attr.encryption_hint, seed_id),
             )
         });
@@ -182,22 +185,19 @@ impl Dimension {
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,
-        attr_name: &AttributeName,
+        attr_name: AttributeName,
         encryption_hint: EncryptionHint,
         seed_id: &mut u32,
     ) -> Result<(), Error> {
         match self {
             Self::Unordered(attributes) => {
-                if attributes.contains_key(attr_name) {
+                if let Entry::Vacant(entry) = attributes.entry(attr_name) {
+                    entry.insert(AttributeParameters::new(encryption_hint, seed_id));
+                    Ok(())
+                } else {
                     Err(Error::OperationNotPermitted(
                         "Attribute already in dimension".to_string(),
                     ))
-                } else {
-                    attributes.insert(
-                        attr_name.clone(),
-                        AttributeParameters::new(encryption_hint, seed_id),
-                    );
-                    Ok(())
                 }
             }
             Self::Ordered(_) => Err(Error::OperationNotPermitted(
@@ -264,25 +264,25 @@ impl Dimension {
     pub fn rename_attribute(
         &mut self,
         attr_name: &AttributeName,
-        new_name: &str,
+        new_name: String,
     ) -> Result<(), Error> {
         match self {
             Self::Unordered(attributes) => {
-                if attributes.contains_key(new_name) {
+                if attributes.contains_key(&new_name) {
                     return Err(Error::OperationNotPermitted(
                         "New attribute name is already used in the same dimension".to_string(),
                     ));
                 }
                 match attributes.remove(attr_name) {
                     Some(attr_params) => {
-                        attributes.insert(new_name.to_string(), attr_params);
+                        attributes.insert(new_name, attr_params);
                         Ok(())
                     }
                     None => Err(Error::AttributeNotFound(attr_name.to_string())),
                 }
             }
             Self::Ordered(attributes) => attributes
-                .update_key(attr_name, new_name.to_string())
+                .update_key(attr_name, new_name)
                 .map_err(|e| Error::OperationNotPermitted(e.to_string())),
         }
     }
