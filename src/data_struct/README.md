@@ -84,230 +84,229 @@ It is used by both the `RevisionMap` and `RevisionVec`.
 ## Benchmark
 
 ```text
-Edit Policy/edit policy time:   [363.08 µs 363.41 µs 363.75 µs]
-                        change: [-15.765% -15.580% -15.405%] (p = 0.00 < 0.05)
+Edit Policy/edit policy time:   [346.46 µs 346.72 µs 346.98 µs]
+                        change: [-25.395% -25.260% -25.136%] (p = 0.00 < 0.05)
                         Performance has improved.
-Found 123 outliers among 5000 measurements (2.46%)
-  104 (2.08%) high mild
-  19 (0.38%) high severe
+Found 1552 outliers among 5000 measurements (31.04%)
+  675 (13.50%) low mild
+  317 (6.34%) high mild
+  560 (11.20%) high severe
 
 Header encryption/1 partition(s), 1 access
-                        time:   [107.12 µs 107.40 µs 107.69 µs]
-                        change: [+5.5096% +5.8408% +6.1846%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 43 outliers among 5000 measurements (0.86%)
-  32 (0.64%) high mild
-  11 (0.22%) high severe
-Header encryption/2 partition(s), 1 access
-                        time:   [150.34 µs 150.48 µs 150.63 µs]
-                        change: [-0.9637% -0.8428% -0.7319%] (p = 0.00 < 0.05)
+                        time:   [98.350 µs 98.387 µs 98.425 µs]
+                        change: [-0.7784% -0.5652% -0.3640%] (p = 0.00 < 0.05)
                         Change within noise threshold.
-Found 298 outliers among 5000 measurements (5.96%)
-  2 (0.04%) low mild
-  232 (4.64%) high mild
-  64 (1.28%) high severe
-Header encryption/3 partition(s), 1 access
-                        time:   [208.59 µs 208.73 µs 208.86 µs]
-                        change: [-0.0872% +0.1122% +0.2949%] (p = 0.26 > 0.05)
-                        No change in performance detected.
 Found 215 outliers among 5000 measurements (4.30%)
-  8 (0.16%) low mild
-  159 (3.18%) high mild
-  48 (0.96%) high severe
-Header encryption/4 partition(s), 1 access
-                        time:   [257.65 µs 257.93 µs 258.23 µs]
-                        change: [-0.8967% -0.7898% -0.6665%] (p = 0.00 < 0.05)
-                        Change within noise threshold.
-Found 317 outliers among 5000 measurements (6.34%)
-  4 (0.08%) low mild
-  203 (4.06%) high mild
-  110 (2.20%) high severe
-Header encryption/5 partition(s), 1 access
-                        time:   [312.73 µs 313.12 µs 313.52 µs]
-                        change: [-0.5918% -0.4702% -0.3363%] (p = 0.00 < 0.05)
-                        Change within noise threshold.
-Found 407 outliers among 5000 measurements (8.14%)
-  5 (0.10%) low mild
-  236 (4.72%) high mild
-  166 (3.32%) high severe
-
-Header encryption and decryption/ciphertexts with 1 partition(s), usk with 1 partitions
-                        time:   [186.62 µs 186.93 µs 187.24 µs]
-                        change: [+3.6548% +3.8252% +3.9759%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 450 outliers among 5000 measurements (9.00%)
-  6 (0.12%) low mild
-  337 (6.74%) high mild
-  107 (2.14%) high severe
-Header encryption and decryption/ciphertexts with 2 partition(s), usk with 1 partitions
-                        time:   [249.41 µs 249.69 µs 249.97 µs]
-                        change: [-0.6376% -0.4952% -0.3456%] (p = 0.00 < 0.05)
-                        Change within noise threshold.
-Found 56 outliers among 5000 measurements (1.12%)
-  2 (0.04%) low mild
-  40 (0.80%) high mild
+  138 (2.76%) low mild
+  63 (1.26%) high mild
   14 (0.28%) high severe
-Header encryption and decryption/ciphertexts with 3 partition(s), usk with 1 partitions
-                        time:   [321.52 µs 322.05 µs 322.59 µs]
-                        change: [-1.4803% -1.2448% -1.0353%] (p = 0.00 < 0.05)
+Header encryption/2 partition(s), 1 access
+                        time:   [151.39 µs 151.45 µs 151.51 µs]
+                        change: [-0.5608% -0.4164% -0.2837%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 368 outliers among 5000 measurements (7.36%)
+  251 (5.02%) low mild
+  95 (1.90%) high mild
+  22 (0.44%) high severe
+Header encryption/3 partition(s), 1 access
+                        time:   [201.25 µs 201.37 µs 201.50 µs]
+                        change: [-2.2096% -2.0478% -1.8971%] (p = 0.00 < 0.05)
                         Performance has improved.
-Found 104 outliers among 5000 measurements (2.08%)
-  13 (0.26%) low mild
-  42 (0.84%) high mild
-  49 (0.98%) high severe
-Header encryption and decryption/ciphertexts with 4 partition(s), usk with 1 partitions
-                        time:   [420.55 µs 421.77 µs 423.00 µs]
-                        change: [+3.4361% +3.8397% +4.2440%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 47 outliers among 5000 measurements (0.94%)
-  26 (0.52%) high mild
+Found 179 outliers among 5000 measurements (3.58%)
+  2 (0.04%) low mild
+  144 (2.88%) high mild
+  33 (0.66%) high severe
+Header encryption/4 partition(s), 1 access
+                        time:   [253.42 µs 253.56 µs 253.71 µs]
+                        change: [-2.6348% -2.4339% -2.2435%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 127 outliers among 5000 measurements (2.54%)
+  109 (2.18%) high mild
+  18 (0.36%) high severe
+Header encryption/5 partition(s), 1 access
+                        time:   [310.58 µs 310.68 µs 310.79 µs]
+                        change: [-10.531% -10.397% -10.275%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 256 outliers among 5000 measurements (5.12%)
+  85 (1.70%) low mild
+  152 (3.04%) high mild
+  19 (0.38%) high severe
+
+Benchmarking Header encryption and decryption/ciphertexts with 1 partition(s), usk with 1 partitions: Collecting 5000 samples in estimated 5.2264
+Header encryption and decryption/ciphertexts with 1 partition(s), usk with 1 partitions
+                        time:   [174.62 µs 174.69 µs 174.76 µs]
+                        change: [+0.7357% +0.7906% +0.8508%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 84 outliers among 5000 measurements (1.68%)
+  2 (0.04%) low mild
+  61 (1.22%) high mild
   21 (0.42%) high severe
-Header encryption and decryption/ciphertexts with 5 partition(s), usk with 1 partitions
-                        time:   [455.77 µs 456.60 µs 457.43 µs]
-                        change: [-1.4805% -1.2550% -1.0145%] (p = 0.00 < 0.05)
-                        Performance has improved.
-Found 43 outliers among 5000 measurements (0.86%)
-  2 (0.04%) low mild
-  32 (0.64%) high mild
-  9 (0.18%) high severe
-Header encryption and decryption/ciphertexts with 1 partition(s), usk with 2 partitions
-                        time:   [177.51 µs 177.72 µs 177.93 µs]
-                        change: [-1.5408% -1.4154% -1.3025%] (p = 0.00 < 0.05)
-                        Performance has improved.
-Found 381 outliers among 5000 measurements (7.62%)
-  2 (0.04%) low mild
-  241 (4.82%) high mild
-  138 (2.76%) high severe
-Header encryption and decryption/ciphertexts with 2 partition(s), usk with 2 partitions
-                        time:   [304.05 µs 304.71 µs 305.38 µs]
-                        change: [+12.042% +12.421% +12.825%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 65 outliers among 5000 measurements (1.30%)
-  2 (0.04%) low mild
-  38 (0.76%) high mild
-  25 (0.50%) high severe
-Header encryption and decryption/ciphertexts with 3 partition(s), usk with 2 partitions
-                        time:   [404.56 µs 405.63 µs 406.69 µs]
-                        change: [+15.022% +15.485% +15.911%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 23 outliers among 5000 measurements (0.46%)
-  14 (0.28%) high mild
-  9 (0.18%) high severe
-Header encryption and decryption/ciphertexts with 4 partition(s), usk with 2 partitions
-                        time:   [447.38 µs 448.90 µs 450.43 µs]
-                        change: [+2.2630% +2.6910% +3.1121%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 98 outliers among 5000 measurements (1.96%)
-  86 (1.72%) high mild
-  12 (0.24%) high severe
-Header encryption and decryption/ciphertexts with 5 partition(s), usk with 2 partitions
-                        time:   [596.58 µs 598.74 µs 600.91 µs]
-                        change: [+13.733% +14.332% +14.863%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 5 outliers among 5000 measurements (0.10%)
-  4 (0.08%) high mild
+Benchmarking Header encryption and decryption/ciphertexts with 2 partition(s), usk with 1 partitions: Collecting 5000 samples in estimated 6.1381
+Header encryption and decryption/ciphertexts with 2 partition(s), usk with 1 partitions
+                        time:   [243.74 µs 243.95 µs 244.16 µs]
+                        change: [+0.6880% +0.8225% +0.9473%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 39 outliers among 5000 measurements (0.78%)
+  18 (0.36%) low mild
+  20 (0.40%) high mild
   1 (0.02%) high severe
-Header encryption and decryption/ciphertexts with 1 partition(s), usk with 3 partitions
-                        time:   [283.47 µs 283.97 µs 284.51 µs]
-                        change: [+17.345% +17.560% +17.746%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 413 outliers among 5000 measurements (8.26%)
-  1 (0.02%) low severe
-  13 (0.26%) low mild
-  279 (5.58%) high mild
-  120 (2.40%) high severe
-Header encryption and decryption/ciphertexts with 2 partition(s), usk with 3 partitions
-                        time:   [341.43 µs 342.31 µs 343.18 µs]
-                        change: [-0.4332% -0.1053% +0.2405%] (p = 0.54 > 0.05)
-                        No change in performance detected.
-Found 51 outliers among 5000 measurements (1.02%)
-  1 (0.02%) low mild
-  26 (0.52%) high mild
-  24 (0.48%) high severe
-Header encryption and decryption/ciphertexts with 3 partition(s), usk with 3 partitions
-                        time:   [510.60 µs 512.24 µs 513.89 µs]
-                        change: [+14.555% +15.096% +15.620%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 40 outliers among 5000 measurements (0.80%)
-  2 (0.04%) low mild
-  25 (0.50%) high mild
-  13 (0.26%) high severe
-Header encryption and decryption/ciphertexts with 4 partition(s), usk with 3 partitions
-                        time:   [623.58 µs 626.17 µs 628.77 µs]
-                        change: [+1.0322% +1.6030% +2.1662%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 10 outliers among 5000 measurements (0.20%)
+Benchmarking Header encryption and decryption/ciphertexts with 3 partition(s), usk with 1 partitions: Collecting 5000 samples in estimated 6.2358
+Header encryption and decryption/ciphertexts with 3 partition(s), usk with 1 partitions
+                        time:   [312.47 µs 312.84 µs 313.21 µs]
+                        change: [+0.7563% +0.9329% +1.1015%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 5000 measurements (0.24%)
+  3 (0.06%) low mild
   9 (0.18%) high mild
-  1 (0.02%) high severe
-Header encryption and decryption/ciphertexts with 5 partition(s), usk with 3 partitions
-                        time:   [639.44 µs 642.20 µs 644.97 µs]
-                        change: [-0.2293% +0.3589% +0.9264%] (p = 0.23 > 0.05)
-                        No change in performance detected.
-Found 13 outliers among 5000 measurements (0.26%)
-  11 (0.22%) high mild
-  2 (0.04%) high severe
-Header encryption and decryption/ciphertexts with 1 partition(s), usk with 4 partitions
-                        time:   [266.43 µs 266.58 µs 266.73 µs]
-                        change: [+11.370% +11.451% +11.531%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 155 outliers among 5000 measurements (3.10%)
-  2 (0.04%) low mild
-  69 (1.38%) high mild
-  84 (1.68%) high severe
-Header encryption and decryption/ciphertexts with 2 partition(s), usk with 4 partitions
-                        time:   [377.33 µs 378.33 µs 379.32 µs]
-                        change: [+5.5998% +5.9927% +6.4036%] (p = 0.00 < 0.05)
-                        Performance has regressed.
+Benchmarking Header encryption and decryption/ciphertexts with 4 partition(s), usk with 1 partitions: Collecting 5000 samples in estimated 5.6795
+Header encryption and decryption/ciphertexts with 4 partition(s), usk with 1 partitions
+                        time:   [379.10 µs 379.67 µs 380.25 µs]
+                        change: [+0.1993% +0.4121% +0.6339%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 5000 measurements (0.02%)
+  1 (0.02%) high mild
+Benchmarking Header encryption and decryption/ciphertexts with 5 partition(s), usk with 1 partitions: Collecting 5000 samples in estimated 6.6435
+Header encryption and decryption/ciphertexts with 5 partition(s), usk with 1 partitions
+                        time:   [442.68 µs 443.41 µs 444.15 µs]
+                        change: [-2.1034% -1.8470% -1.5882%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 5000 measurements (0.16%)
+  1 (0.02%) low mild
+  7 (0.14%) high mild
+Benchmarking Header encryption and decryption/ciphertexts with 1 partition(s), usk with 2 partitions: Collecting 5000 samples in estimated 5.2588
+Header encryption and decryption/ciphertexts with 1 partition(s), usk with 2 partitions
+                        time:   [175.06 µs 175.12 µs 175.19 µs]
+                        change: [-14.201% -14.151% -14.103%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 442 outliers among 5000 measurements (8.84%)
+  364 (7.28%) low mild
+  64 (1.28%) high mild
+  14 (0.28%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 2 partition(s), usk with 2 partitions: Collecting 5000 samples in estimated 5.1292
+Header encryption and decryption/ciphertexts with 2 partition(s), usk with 2 partitions
+                        time:   [255.61 µs 256.05 µs 256.49 µs]
+                        change: [-11.225% -11.024% -10.826%] (p = 0.00 < 0.05)
+                        Performance has improved.
 Found 3 outliers among 5000 measurements (0.06%)
   3 (0.06%) high mild
-Header encryption and decryption/ciphertexts with 3 partition(s), usk with 4 partitions
-                        time:   [501.50 µs 503.54 µs 505.57 µs]
-                        change: [+5.7474% +6.2765% +6.7995%] (p = 0.00 < 0.05)
+Benchmarking Header encryption and decryption/ciphertexts with 3 partition(s), usk with 2 partitions: Collecting 5000 samples in estimated 5.0856
+Header encryption and decryption/ciphertexts with 3 partition(s), usk with 2 partitions
+                        time:   [338.08 µs 338.92 µs 339.76 µs]
+                        change: [-9.3124% -9.0137% -8.7142%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 5000 measurements (0.12%)
+  5 (0.10%) high mild
+  1 (0.02%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 4 partition(s), usk with 2 partitions: Collecting 5000 samples in estimated 6.3907
+Header encryption and decryption/ciphertexts with 4 partition(s), usk with 2 partitions
+                        time:   [425.62 µs 426.74 µs 427.87 µs]
+                        change: [-6.6440% -6.3037% -5.9372%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 5000 measurements (0.02%)
+  1 (0.02%) high mild
+Benchmarking Header encryption and decryption/ciphertexts with 5 partition(s), usk with 2 partitions: Collecting 5000 samples in estimated 5.0413
+Header encryption and decryption/ciphertexts with 5 partition(s), usk with 2 partitions
+                        time:   [501.61 µs 503.34 µs 505.08 µs]
+                        change: [-6.5008% -6.0734% -5.6270%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 5000 measurements (0.08%)
+  4 (0.08%) high mild
+Benchmarking Header encryption and decryption/ciphertexts with 1 partition(s), usk with 3 partitions: Collecting 5000 samples in estimated 5.2359
+Header encryption and decryption/ciphertexts with 1 partition(s), usk with 3 partitions
+                        time:   [190.48 µs 190.90 µs 191.33 µs]
+                        change: [-6.8449% -6.6297% -6.4037%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 5000 measurements (0.06%)
+  3 (0.06%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 2 partition(s), usk with 3 partitions: Collecting 5000 samples in estimated 5.4179
+Header encryption and decryption/ciphertexts with 2 partition(s), usk with 3 partitions
+                        time:   [270.74 µs 271.38 µs 272.02 µs]
+                        change: [-11.729% -11.406% -11.088%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking Header encryption and decryption/ciphertexts with 3 partition(s), usk with 3 partitions: Collecting 5000 samples in estimated 5.5672
+Header encryption and decryption/ciphertexts with 3 partition(s), usk with 3 partitions
+                        time:   [369.57 µs 370.79 µs 372.02 µs]
+                        change: [-8.4226% -8.0060% -7.5889%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking Header encryption and decryption/ciphertexts with 4 partition(s), usk with 3 partitions: Collecting 5000 samples in estimated 7.0293
+Header encryption and decryption/ciphertexts with 4 partition(s), usk with 3 partitions
+                        time:   [466.25 µs 467.95 µs 469.65 µs]
+                        change: [-6.9419% -6.4231% -5.9092%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking Header encryption and decryption/ciphertexts with 5 partition(s), usk with 3 partitions: Collecting 5000 samples in estimated 5.7422
+Header encryption and decryption/ciphertexts with 5 partition(s), usk with 3 partitions
+                        time:   [572.05 µs 574.71 µs 577.37 µs]
+                        change: [-4.8369% -4.2561% -3.6419%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 5000 measurements (0.10%)
+  5 (0.10%) high mild
+Benchmarking Header encryption and decryption/ciphertexts with 1 partition(s), usk with 4 partitions: Collecting 5000 samples in estimated 5.7158
+Header encryption and decryption/ciphertexts with 1 partition(s), usk with 4 partitions
+                        time:   [203.77 µs 203.91 µs 204.05 µs]
+                        change: [+17.477% +17.567% +17.665%] (p = 0.00 < 0.05)
                         Performance has regressed.
+Found 193 outliers among 5000 measurements (3.86%)
+  4 (0.08%) low severe
+  18 (0.36%) low mild
+  99 (1.98%) high mild
+  72 (1.44%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 2 partition(s), usk with 4 partitions: Collecting 5000 samples in estimated 5.7854
+Header encryption and decryption/ciphertexts with 2 partition(s), usk with 4 partitions
+                        time:   [290.66 µs 291.63 µs 292.61 µs]
+                        change: [+1.1010% +1.5470% +2.0449%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 32 outliers among 5000 measurements (0.64%)
+  22 (0.44%) high mild
+  10 (0.20%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 3 partition(s), usk with 4 partitions: Collecting 5000 samples in estimated 6.0392
+Header encryption and decryption/ciphertexts with 3 partition(s), usk with 4 partitions
+                        time:   [398.65 µs 400.31 µs 401.94 µs]
+                        change: [-1.0342% -0.4658% +0.0952%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+Benchmarking Header encryption and decryption/ciphertexts with 4 partition(s), usk with 4 partitions: Collecting 5000 samples in estimated 5.1925
 Header encryption and decryption/ciphertexts with 4 partition(s), usk with 4 partitions
-                        time:   [601.64 µs 604.36 µs 607.08 µs]
-                        change: [+2.3859% +3.0427% +3.6791%] (p = 0.00 < 0.05)
+                        time:   [518.30 µs 521.03 µs 523.79 µs]
+                        change: [-13.757% -13.117% -12.467%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 5000 measurements (0.06%)
+  2 (0.04%) high mild
+  1 (0.02%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 5 partition(s), usk with 4 partitions: Collecting 5000 samples in estimated 7.2000
+Header encryption and decryption/ciphertexts with 5 partition(s), usk with 4 partitions
+                        time:   [716.16 µs 720.16 µs 724.19 µs]
+                        change: [+12.240% +13.155% +14.062%] (p = 0.00 < 0.05)
                         Performance has regressed.
 Found 1 outliers among 5000 measurements (0.02%)
   1 (0.02%) high mild
-Header encryption and decryption/ciphertexts with 5 partition(s), usk with 4 partitions
-                        time:   [713.88 µs 717.33 µs 720.75 µs]
-                        change: [+0.8508% +1.5361% +2.2386%] (p = 0.00 < 0.05)
-                        Change within noise threshold.
+Benchmarking Header encryption and decryption/ciphertexts with 1 partition(s), usk with 5 partitions: Collecting 5000 samples in estimated 5.9475
 Header encryption and decryption/ciphertexts with 1 partition(s), usk with 5 partitions
-                        time:   [295.77 µs 295.88 µs 295.98 µs]
-                        change: [+41.280% +41.619% +41.945%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 108 outliers among 5000 measurements (2.16%)
-  4 (0.08%) low mild
-  86 (1.72%) high mild
-  18 (0.36%) high severe
+                        time:   [237.56 µs 237.90 µs 238.26 µs]
+                        change: [-11.788% -11.613% -11.448%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 82 outliers among 5000 measurements (1.64%)
+  1 (0.02%) low mild
+  28 (0.56%) high mild
+  53 (1.06%) high severe
+Benchmarking Header encryption and decryption/ciphertexts with 2 partition(s), usk with 5 partitions: Collecting 5000 samples in estimated 5.4984
 Header encryption and decryption/ciphertexts with 2 partition(s), usk with 5 partitions
-                        time:   [449.02 µs 450.37 µs 451.69 µs]
-                        change: [+44.681% +45.349% +46.008%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 4 outliers among 5000 measurements (0.08%)
-  4 (0.08%) high mild
+                        time:   [365.00 µs 366.27 µs 367.53 µs]
+                        change: [-8.4883% -8.0219% -7.5736%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking Header encryption and decryption/ciphertexts with 3 partition(s), usk with 5 partitions: Collecting 5000 samples in estimated 7.3921
 Header encryption and decryption/ciphertexts with 3 partition(s), usk with 5 partitions
-                        time:   [566.05 µs 568.67 µs 571.31 µs]
-                        change: [+22.908% +23.708% +24.514%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 20 outliers among 5000 measurements (0.40%)
-  15 (0.30%) high mild
-  5 (0.10%) high severe
+                        time:   [491.27 µs 493.30 µs 495.33 µs]
+                        change: [-8.4819% -7.8614% -7.2815%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking Header encryption and decryption/ciphertexts with 4 partition(s), usk with 5 partitions: Collecting 5000 samples in estimated 6.2096
 Header encryption and decryption/ciphertexts with 4 partition(s), usk with 5 partitions
-                        time:   [828.21 µs 832.45 µs 836.71 µs]
-                        change: [+37.986% +39.055% +40.164%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 8 outliers among 5000 measurements (0.16%)
-  8 (0.16%) high mild
+                        time:   [620.44 µs 623.86 µs 627.30 µs]
+                        change: [-5.9588% -5.2564% -4.5034%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking Header encryption and decryption/ciphertexts with 5 partition(s), usk with 5 partitions: Collecting 5000 samples in estimated 7.5536
 Header encryption and decryption/ciphertexts with 5 partition(s), usk with 5 partitions
-                        time:   [957.45 µs 962.63 µs 967.79 µs]
-                        change: [+15.806% +16.758% +17.778%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 7 outliers among 5000 measurements (0.14%)
-  5 (0.10%) high mild
-  2 (0.04%) high severe
+                        time:   [758.17 µs 762.63 µs 767.09 µs]
+                        change: [-4.4494% -3.6664% -2.8574%] (p = 0.00 < 0.05)
+                        Performance has improved.
 
 bench header encryption size:
 1 partition(s): 1171 bytes
@@ -320,65 +319,67 @@ bench header encryption size:
 3 usk partition(s): 3664 bytes
 4 usk partition(s): 4853 bytes
 5 usk partition(s): 6042 bytes
-Key serialization/MSK   time:   [4.6007 µs 4.6080 µs 4.6154 µs]
-                        change: [+4.3792% +4.6585% +4.9359%] (p = 0.00 < 0.05)
+Key serialization/MSK   time:   [4.4242 µs 4.4278 µs 4.4314 µs]
+                        change: [+2.3014% +2.4893% +2.6703%] (p = 0.00 < 0.05)
                         Performance has regressed.
-Found 298 outliers among 5000 measurements (5.96%)
-  260 (5.20%) high mild
-  38 (0.76%) high severe
-Key serialization/MPK   time:   [59.024 µs 59.104 µs 59.196 µs]
-                        change: [-0.7746% -0.6062% -0.4336%] (p = 0.00 < 0.05)
+Found 83 outliers among 5000 measurements (1.66%)
+  50 (1.00%) high mild
+  33 (0.66%) high severe
+Key serialization/MPK   time:   [58.964 µs 59.056 µs 59.154 µs]
+                        change: [+0.5632% +0.7261% +0.8992%] (p = 0.00 < 0.05)
                         Change within noise threshold.
-Found 218 outliers among 5000 measurements (4.36%)
-  5 (0.10%) low mild
-  182 (3.64%) high mild
-  31 (0.62%) high severe
+Found 156 outliers among 5000 measurements (3.12%)
+  12 (0.24%) low mild
+  91 (1.82%) high mild
+  53 (1.06%) high severe
 Key serialization/USK 1 partition
-                        time:   [365.62 ns 365.93 ns 366.25 ns]
-                        change: [+0.4169% +0.6597% +0.8988%] (p = 0.00 < 0.05)
-                        Change within noise threshold.
-Found 164 outliers among 5000 measurements (3.28%)
-  119 (2.38%) high mild
-  45 (0.90%) high severe
+                        time:   [372.12 ns 372.27 ns 372.43 ns]
+                        change: [+4.6778% +4.7747% +4.8727%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 243 outliers among 5000 measurements (4.86%)
+  20 (0.40%) low severe
+  60 (1.20%) low mild
+  86 (1.72%) high mild
+  77 (1.54%) high severe
 
 Header serialization/1 partition(s)
-                        time:   [6.8348 µs 6.8388 µs 6.8428 µs]
-                        change: [-1.2088% -0.9808% -0.7565%] (p = 0.00 < 0.05)
+                        time:   [6.6707 µs 6.6743 µs 6.6780 µs]
+                        change: [-0.4660% -0.3933% -0.3223%] (p = 0.00 < 0.05)
                         Change within noise threshold.
-Found 124 outliers among 5000 measurements (2.48%)
-  1 (0.02%) low mild
-  95 (1.90%) high mild
-  28 (0.56%) high severe
+Found 132 outliers among 5000 measurements (2.64%)
+  21 (0.42%) low mild
+  96 (1.92%) high mild
+  15 (0.30%) high severe
 Header serialization/2 partition(s)
-                        time:   [7.0079 µs 7.0143 µs 7.0207 µs]
-                        change: [-1.5500% -1.2934% -1.0512%] (p = 0.00 < 0.05)
-                        Performance has improved.
-Found 230 outliers among 5000 measurements (4.60%)
-  10 (0.20%) low mild
-  184 (3.68%) high mild
-  36 (0.72%) high severe
+                        time:   [6.9437 µs 6.9474 µs 6.9511 µs]
+                        change: [-0.3677% -0.2924% -0.2154%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 107 outliers among 5000 measurements (2.14%)
+  8 (0.16%) low mild
+  88 (1.76%) high mild
+  11 (0.22%) high severe
 Header serialization/3 partition(s)
-                        time:   [7.2900 µs 7.3024 µs 7.3165 µs]
-                        change: [-1.6010% -1.3878% -1.1456%] (p = 0.00 < 0.05)
-                        Performance has improved.
-Found 302 outliers among 5000 measurements (6.04%)
-  10 (0.20%) low mild
-  239 (4.78%) high mild
-  53 (1.06%) high severe
-Header serialization/4 partition(s)
-                        time:   [7.6489 µs 7.6592 µs 7.6709 µs]
-                        change: [+1.6409% +1.8617% +2.0797%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 391 outliers among 5000 measurements (7.82%)
+                        time:   [7.2540 µs 7.2573 µs 7.2606 µs]
+                        change: [-0.2912% -0.0941% +0.0812%] (p = 0.33 > 0.05)
+                        No change in performance detected.
+Found 87 outliers among 5000 measurements (1.74%)
   1 (0.02%) low severe
-  71 (1.42%) low mild
-  276 (5.52%) high mild
-  43 (0.86%) high severe
+  7 (0.14%) low mild
+  59 (1.18%) high mild
+  20 (0.40%) high severe
+Header serialization/4 partition(s)
+                        time:   [7.4640 µs 7.4678 µs 7.4715 µs]
+                        change: [-1.0412% -0.8816% -0.7317%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 104 outliers among 5000 measurements (2.08%)
+  20 (0.40%) low mild
+  81 (1.62%) high mild
+  3 (0.06%) high severe
 Header serialization/5 partition(s)
-                        time:   [7.8092 µs 7.8229 µs 7.8370 µs]
-                        change: [-2.2961% -2.0523% -1.8050%] (p = 0.00 < 0.05)
-                        Performance has improved.
-Found 612 outliers among 5000 measurements (12.24%)
-  70 (1.40%) low mild
-  346 (6.92%) high mild
+                        time:   [7.8154 µs 7.8322 µs 7.8510 µs]
+                        change: [+0.9561% +1.1993% +1.4289%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 85 outliers among 5000 measurements (1.70%)
+  35 (0.70%) high mild
+  50 (1.00%) high severe
 ```
