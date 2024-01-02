@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use super::{Element, RevisionList};
 
-/// A `RevisionVec` is a vector that stores  pairs containing a key
+/// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
 /// associated to an existing key prepends this value to the sequence.
 ///
