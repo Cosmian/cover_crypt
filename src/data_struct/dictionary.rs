@@ -151,6 +151,7 @@ where
     }
 
     /// Returns an iterator over keys and values in insertion order.
+    #[allow(clippy::map_identity)] // unpack &(x, y) to (&x, &y)
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.entries.iter().map(|(k, v)| (k, v))
     }

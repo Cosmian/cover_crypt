@@ -13,7 +13,7 @@ Pros:
 
 - same serialized size
 
-- accessing elements is the almost as fast as an `HashMap` with one additional memory access
+- accessing elements is almost as fast as an `HashMap` with one additional memory access
 
 - updating the key of an element (e.g. renaming an attribute) can be performed in constant time without modifying the order
 
@@ -67,6 +67,8 @@ Pros:
 Cons:
 
 - no direct access to a given coordinate's keys (would be a nice to have but not really needed in practice)
+
+- multiple insertions with the same coordinate will result in multiple entries in the vector thus corrupting the structure
 
 - following linked list pointers can be slower than iterating a regular vector
 

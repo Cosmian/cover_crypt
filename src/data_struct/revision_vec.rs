@@ -81,11 +81,13 @@ impl<K, T> RevisionVec<K, T> {
     }
 
     /// Returns an iterator over each key-chains pair
+    #[allow(clippy::map_identity)] // unpack &(x, y) to (&x, &y)
     pub fn iter(&self) -> impl Iterator<Item = (&K, &RevisionList<T>)> {
         self.chains.iter().map(|(key, chain)| (key, chain))
     }
 
     /// Returns an iterator over each key-chains pair that allow modifying chain
+    #[allow(clippy::map_identity)] // unpack &mut (x, y) to (&x, &mut y)
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut RevisionList<T>)>
     where
         K: Clone,
