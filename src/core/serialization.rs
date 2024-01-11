@@ -15,7 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
-    data_struct::{RevisionList, RevisionMap, RevisionVec},
+    data_struct::{List, RevisionMap, RevisionVec},
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -151,7 +151,7 @@ impl Serializable for MasterSecretKey {
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let chain: Result<RevisionList<_>, Self::Error> = (0..n_keys)
+            let chain: Result<List<_>, Self::Error> = (0..n_keys)
                 .map(|_| {
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
@@ -224,7 +224,7 @@ impl Serializable for UserSecretKey {
             let partition = Partition::from(de.read_vec()?);
             // read all keys forming a chain and inserting them all at once.
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let new_chain: Result<RevisionList<_>, _> = (0..n_keys)
+            let new_chain: Result<List<_>, _> = (0..n_keys)
                 .map(|_| {
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;

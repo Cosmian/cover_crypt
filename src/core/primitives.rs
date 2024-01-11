@@ -25,7 +25,7 @@ use crate::{
         EncryptionHint, Partition,
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
-    data_struct::{Cursor, RevisionMap, RevisionVec},
+    data_struct::{List, RevisionMap, RevisionVec},
     Error,
 };
 
@@ -444,6 +444,62 @@ pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Res
     Ok(())
 }
 
+struct MergeSubkeyIter<M, U, T>
+where
+    M: Iterator<Item = T>,
+    U: Iterator<Item = T>,
+{
+    msk_subkeys: M,
+    usk_subkeys: U,
+    usk_first_subkey: Option<T>,
+    prepend_stage: bool,
+}
+
+impl<M, U, T> MergeSubkeyIter<M, U, T>
+where
+    M: Iterator<Item = T>,
+    U: Iterator<Item = T>,
+{
+    pub fn new(msk_subkeys: M, mut usk_subkeys: U) -> Self {
+        let usk_first_subkey = usk_subkeys.next();
+        Self {
+            msk_subkeys,
+            usk_subkeys,
+            usk_first_subkey,
+            prepend_stage: true,
+        }
+    }
+}
+
+impl<M, U, T> Iterator for MergeSubkeyIter<M, U, T>
+where
+    M: Iterator<Item = T>,
+    U: Iterator<Item = T>,
+    T: PartialEq + Eq,
+{
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let msk_subkey = self.msk_subkeys.next();
+
+        // Add new master subkeys before the existing user subkeys.
+        if self.prepend_stage {
+            if msk_subkey == self.usk_first_subkey {
+                self.prepend_stage = false;
+            }
+            msk_subkey
+        } else {
+            // Keep existing subkeys as long as they are in the master.
+            let usk_subkey = self.usk_subkeys.next();
+            if msk_subkey == usk_subkey {
+                usk_subkey
+            } else {
+                None
+            }
+        }
+    }
+}
+
 /// Refresh a user key from the master secret key and the given decryption set.
 ///
 /// If `keep_old_rights` is set to false, old sub-keys are removed.
@@ -463,32 +519,26 @@ pub fn refresh(
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
 
-    usk.subkeys
-        .retain(|coordinate| msk.subkeys.contains_key(coordinate));
-
-    for (partition, user_chain) in usk.subkeys.iter_mut() {
-        let master_chain = msk.subkeys.get(partition).expect("at least one key");
-        // compare against all master subkeys or the last one to remove old rights
-        let mut master_chain = match keep_old_rights {
-            true => master_chain.iter().take(master_chain.len()).peekable(),
-            false => master_chain.iter().take(1).peekable(),
-        };
-
-        // 1 - add new master subkeys in user key if any
-        let user_first_key = user_chain.front().expect("have one key").clone();
-        let mut cursor = Cursor::new(user_chain);
-        while let Some(new_master_subkey) =
-            master_chain.next_if(|&master_subkey| master_subkey != &user_first_key)
-        {
-            cursor = cursor.prepend(new_master_subkey.clone());
-        }
-
-        // 2 - go through the remaining matching keys between the master and user chain
-        cursor = cursor.skip_while(|user_subkey| Some(user_subkey) == master_chain.next());
-
-        // 3 - old keys in USK not present in the MSK should be removed
-        cursor.cutoff();
-    }
+    usk.subkeys = usk
+        .subkeys
+        .iter()
+        .filter_map(|(coordinate, user_chain)| {
+            msk.subkeys.get(coordinate).map(|msk_chain| {
+                let msk_subkeys = if keep_old_rights {
+                    msk_chain.iter().take(msk_chain.len())
+                } else {
+                    msk_chain.iter().take(1)
+                };
+                let usk_subkeys = user_chain.iter();
+                (
+                    coordinate.clone(),
+                    MergeSubkeyIter::new(msk_subkeys, usk_subkeys)
+                        .cloned()
+                        .collect::<List<_>>(),
+                )
+            })
+        })
+        .collect::<RevisionVec<_, _>>();
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
@@ -740,10 +790,11 @@ mod tests {
                 old_msk.subkeys.get_latest(&partition_1).unwrap(),
             )
         }));
-        assert!(usk
-            .subkeys
-            .flat_iter()
-            .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) }));
+        assert!(
+            usk.subkeys
+                .flat_iter()
+                .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) })
+        );
         // user key kept the old hybrid key for partition 3
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (

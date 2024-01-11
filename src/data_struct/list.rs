@@ -16,12 +16,12 @@ impl<T> Element<T> {
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
-pub struct RevisionList<T> {
+pub struct List<T> {
     pub(crate) length: usize,
     pub(crate) head: Link<T>,
 }
 
-impl<T> RevisionList<T> {
+impl<T> List<T> {
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -60,34 +60,34 @@ impl<T> RevisionList<T> {
     }
 
     /// Keeps the n first elements of the list and returns the removed ones.
-    pub fn keep(&mut self, n: usize) -> RevisionListIter<T> {
+    pub fn keep(&mut self, n: usize) -> ListIter<T> {
         let mut current_element = &mut self.head;
         for _ in 0..n {
             if let Some(element) = current_element {
                 current_element = &mut element.next;
             } else {
-                return RevisionListIter::new(None);
+                return ListIter::new(None);
             }
         }
         self.length = n;
-        RevisionListIter::new(current_element.take())
+        ListIter::new(current_element.take())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        RefRevisionListIter::new(self)
+        RefListIter::new(self)
     }
 }
 
-impl<T> IntoIterator for RevisionList<T> {
-    type IntoIter = RevisionListIter<T>;
+impl<T> IntoIterator for List<T> {
+    type IntoIter = ListIter<T>;
     type Item = T;
 
     fn into_iter(self) -> Self::IntoIter {
-        RevisionListIter::new(self.head)
+        ListIter::new(self.head)
     }
 }
 
-impl<T> FromIterator<T> for RevisionList<T> {
+impl<T> FromIterator<T> for List<T> {
     /// Creates a `RevisionList` from an iterator by inserting elements in the
     /// order of arrival: first item in the iterator will end up at the front.
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
@@ -122,7 +122,7 @@ pub struct Cursor<'a, T> {
 }
 
 impl<'a, T> Cursor<'a, T> {
-    pub fn new(rev_list: &'a mut RevisionList<T>) -> Self {
+    pub fn new(rev_list: &'a mut List<T>) -> Self {
         Self {
             list_length: &mut rev_list.length,
             link: &mut rev_list.head,
@@ -165,19 +165,19 @@ impl<'a, T> Cursor<'a, T> {
     }
 }
 
-pub struct RefRevisionListIter<'a, T> {
+pub struct RefListIter<'a, T> {
     current_element: &'a Link<T>,
 }
 
-impl<'a, T> RefRevisionListIter<'a, T> {
-    pub fn new(rev_list: &'a RevisionList<T>) -> Self {
+impl<'a, T> RefListIter<'a, T> {
+    pub fn new(rev_list: &'a List<T>) -> Self {
         Self {
             current_element: &rev_list.head,
         }
     }
 }
 
-impl<'a, T> Iterator for RefRevisionListIter<'a, T> {
+impl<'a, T> Iterator for RefListIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -187,11 +187,11 @@ impl<'a, T> Iterator for RefRevisionListIter<'a, T> {
     }
 }
 
-pub struct RevisionListIter<T> {
+pub struct ListIter<T> {
     current_element: Link<T>,
 }
 
-impl<T> RevisionListIter<T> {
+impl<T> ListIter<T> {
     pub fn new(start_element: Link<T>) -> Self {
         Self {
             current_element: start_element,
@@ -199,7 +199,7 @@ impl<T> RevisionListIter<T> {
     }
 }
 
-impl<T> Iterator for RevisionListIter<T> {
+impl<T> Iterator for ListIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_revision_list() {
-        let mut revision_list: RevisionList<i32> = RevisionList::new();
+        let mut revision_list: List<i32> = List::new();
         assert!(revision_list.is_empty());
         assert_eq!(revision_list.front(), None);
 
@@ -251,7 +251,7 @@ mod tests {
     fn test_revision_list_from_iterator() {
         // Test creating RevisionList from iterator
         let input_iter = vec![1, 2, 3].into_iter();
-        let revision_list: RevisionList<i32> = input_iter.collect();
+        let revision_list: List<i32> = input_iter.collect();
 
         assert_eq!(revision_list.len(), 3);
 
@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         // Test iterator behavior on an empty list
-        let revision_list: RevisionList<i32> = RevisionList::new();
+        let revision_list: List<i32> = List::new();
         let mut iter = revision_list.iter();
         assert_eq!(iter.next(), None);
         assert!(revision_list.is_empty());
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_revision_list_cursor() {
-        let mut revision_list = RevisionList::new();
+        let mut revision_list = List::new();
         revision_list.push_front(1);
 
         // Add input while value is superior to 1
