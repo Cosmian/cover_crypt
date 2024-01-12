@@ -75,8 +75,8 @@ impl Covercrypt {
         )
     }
 
-    /// Renews the keys associated to the given access policy in the master
-    /// keys.
+    /// Generate new keys associated to the given access policy in the master
+    /// keys. User keys will need to be refreshed after this step.
     ///  - `access_policy`  : describe the keys to renew
     ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
@@ -96,7 +96,8 @@ impl Covercrypt {
         )
     }
 
-    /// Removes old keys from the master keys.
+    /// Removes old keys associated to the given master keys from the master
+    /// keys. This will permanently remove access to old ciphers.
     ///  - `access_policy`  : describe the keys to prune
     ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
@@ -114,7 +115,8 @@ impl Covercrypt {
 
     /// Generates a user secret key.
     ///
-    /// A new user secret key does NOT include to old (i.e. rotated) partitions.
+    /// A new user secret key only has the latest keys corresponding to its
+    /// access policy.
     ///
     /// - `msk`           : master secret key
     /// - `access_policy` : user access policy
