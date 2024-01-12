@@ -1,6 +1,4 @@
-use std::collections::VecDeque;
-
-use super::{Element, List};
+use std::collections::{linked_list, LinkedList, VecDeque};
 
 /// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
@@ -18,7 +16,7 @@ use super::{Element, List};
 /// This guarantees that the entry versions are always ordered.
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
-    chains: Vec<(K, List<T>)>,
+    chains: Vec<(K, LinkedList<T>)>,
 }
 
 impl<K, T> RevisionVec<K, T> {
@@ -56,13 +54,13 @@ impl<K, T> RevisionVec<K, T> {
         // Be aware that inserting a value for a key that is already associated to a
         // chain breaks the CoverCrypt scheme as two chains will exist for the same key.
 
-        let mut new_chain = List::new();
+        let mut new_chain = LinkedList::new();
         new_chain.push_front(val);
         self.chains.push((key, new_chain));
     }
 
     /// Inserts a new chain with a corresponding key.
-    pub fn insert_new_chain(&mut self, key: K, new_chain: List<T>) {
+    pub fn insert_new_chain(&mut self, key: K, new_chain: LinkedList<T>) {
         // Be aware that inserting a new chain for a key that is already associated to a
         // chain breaks the CoverCrypt scheme as two chains will exist for the same key.
 
@@ -82,13 +80,13 @@ impl<K, T> RevisionVec<K, T> {
 
     /// Returns an iterator over each key-chains pair
     #[allow(clippy::map_identity)] // unpack &(x, y) to (&x, &y)
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &List<T>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &LinkedList<T>)> {
         self.chains.iter().map(|(key, chain)| (key, chain))
     }
 
     /// Returns an iterator over each key-chains pair that allow modifying chain
     #[allow(clippy::map_identity)] // unpack &mut (x, y) to (&x, &mut y)
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut List<T>)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut LinkedList<T>)> {
         self.chains.iter_mut().map(|(ref key, chain)| (key, chain))
     }
 
@@ -108,8 +106,8 @@ impl<K, T> RevisionVec<K, T> {
 }
 
 impl<K, T> IntoIterator for RevisionVec<K, T> {
-    type IntoIter = std::vec::IntoIter<(K, List<T>)>;
-    type Item = (K, List<T>);
+    type IntoIter = std::vec::IntoIter<(K, LinkedList<T>)>;
+    type Item = (K, LinkedList<T>);
 
     fn into_iter(self) -> Self::IntoIter {
         self.chains.into_iter()
@@ -118,7 +116,7 @@ impl<K, T> IntoIterator for RevisionVec<K, T> {
 
 /// Breadth-first search iterator for `RevisionVec`.
 pub struct BfsQueue<'a, T> {
-    queue: VecDeque<&'a Element<T>>,
+    queue: VecDeque<linked_list::Iter<'a, T>>,
 }
 
 impl<'a, T> BfsQueue<'a, T> {
@@ -128,7 +126,7 @@ impl<'a, T> BfsQueue<'a, T> {
             queue: revision_vec
                 .chains
                 .iter()
-                .filter_map(|(_, chain)| Some(chain.head.as_ref()?.as_ref()))
+                .map(|(_, chain)| chain.iter())
                 .collect(),
         }
     }
@@ -138,19 +136,21 @@ impl<'a, T> Iterator for BfsQueue<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // get first element in the iterator queue
-        let current_element = self.queue.pop_front()?;
-        if let Some(next_element) = current_element.next.as_ref() {
-            // add next element of this chain at the back of the queue
-            self.queue.push_back(next_element);
+        // get first non-empty iterator in the queue
+        while let Some(mut iterator) = self.queue.pop_front() {
+            if let Some(element) = iterator.next() {
+                // put back the iterator at the end of the queue
+                self.queue.push_back(iterator);
+                return Some(element);
+            }
         }
-        Some(&current_element.data)
+        None
     }
 }
 
-impl<K, T> FromIterator<(K, List<T>)> for RevisionVec<K, T> {
+impl<K, T> FromIterator<(K, LinkedList<T>)> for RevisionVec<K, T> {
     /// Creates a `RevisionVec` from an iterator
-    fn from_iter<I: IntoIterator<Item = (K, List<T>)>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = (K, LinkedList<T>)>>(iter: I) -> Self {
         Self {
             chains: iter.into_iter().collect(),
         }

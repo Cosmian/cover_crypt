@@ -1,6 +1,6 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
@@ -15,7 +15,7 @@ use crate::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
     },
-    data_struct::{List, RevisionMap, RevisionVec},
+    data_struct::{RevisionMap, RevisionVec},
     CleartextHeader, EncryptedHeader, Error,
 };
 
@@ -111,7 +111,7 @@ impl Serializable for MasterSecretKey {
         for (partition, chain) in &self.subkeys.map {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
-            for (sk_i, _) in chain.iter() {
+            for (sk_i, _) in chain {
                 let x = serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
                 length += x;
             }
@@ -127,7 +127,7 @@ impl Serializable for MasterSecretKey {
         for (partition, chain) in &self.subkeys.map {
             n += ser.write_vec(partition)?;
             n += ser.write_leb128_u64(chain.len() as u64)?;
-            for (sk_i, x_i) in chain.iter() {
+            for (sk_i, x_i) in chain {
                 serialize_option!(ser, n, sk_i, value, ser.write_array(value));
                 n += ser.write_array(&x_i.to_bytes())?;
             }
@@ -151,7 +151,7 @@ impl Serializable for MasterSecretKey {
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let chain: Result<List<_>, Self::Error> = (0..n_keys)
+            let chain: Result<LinkedList<_>, Self::Error> = (0..n_keys)
                 .map(|_| {
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;
@@ -188,7 +188,7 @@ impl Serializable for UserSecretKey {
         for (partition, chain) in self.subkeys.iter() {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
-            for (sk_i, _) in chain.iter() {
+            for (sk_i, _) in chain {
                 length += serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
             }
         }
@@ -204,7 +204,7 @@ impl Serializable for UserSecretKey {
             n += ser.write_vec(partition)?;
             // iterate through all subkeys in the chain
             n += ser.write_leb128_u64(chain.len() as u64)?;
-            for (sk_i, x_i) in chain.iter() {
+            for (sk_i, x_i) in chain {
                 serialize_option!(ser, n, sk_i, value, ser.write_array(value));
                 n += ser.write_array(&x_i.to_bytes())?;
             }
@@ -224,7 +224,7 @@ impl Serializable for UserSecretKey {
             let partition = Partition::from(de.read_vec()?);
             // read all keys forming a chain and inserting them all at once.
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let new_chain: Result<List<_>, _> = (0..n_keys)
+            let new_chain: Result<LinkedList<_>, _> = (0..n_keys)
                 .map(|_| {
                     let sk_i = deserialize_option!(de, KyberSecretKey(de.read_array()?));
                     let x_i = de.read_array::<{ R25519PrivateKey::LENGTH }>()?;

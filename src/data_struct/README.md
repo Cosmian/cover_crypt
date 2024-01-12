@@ -74,15 +74,6 @@ Cons:
 
 - serialization requires following each linked list
 
-### List
-
-A `List` is a linked list with only next pointers.
-
-It provided a `Cursor` interface to access and modify the elements while following the next pointers.
-This type of interface is not available in stable Rust `LinkedList`.
-
-It is used by both the `RevisionMap` and `RevisionVec`.
-
 ## Operations
 
 ### Master Secret Key
