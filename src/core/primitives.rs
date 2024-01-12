@@ -1,11 +1,14 @@
 //! Implements the cryptographic primitives of `Covercrypt`, based on
 //! `bib/Covercrypt.pdf`.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet, LinkedList},
+};
 
 use cosmian_crypto_core::{
-    kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey,
-    RandomFixedSizeCBytes, SymmetricKey,
+    kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
+    R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
 };
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
@@ -15,12 +18,17 @@ use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroizing;
 
 use super::{
-    KmacSignature, KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, SYM_KEY_LENGTH,
-    TAG_LENGTH,
+    KmacSignature, KyberPublicKey, KyberSecretKey, PublicSubkey, SecretSubkey, KMAC_KEY_LENGTH,
+    KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, EncryptionHint, Partition},
+    abe_policy::{
+        AttributeStatus,
+        AttributeStatus::{DecryptOnly, EncryptDecrypt},
+        EncryptionHint, Partition,
+    },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
+    data_struct::{RevisionMap, RevisionVec},
     Error,
 };
 
@@ -41,7 +49,8 @@ fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<K
         let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
         kmac.update(&usk.b.to_bytes());
 
-        for (sk_i, x_i) in &usk.subkeys {
+        for (partition, (sk_i, x_i)) in usk.subkeys.borrow().flat_iter() {
+            kmac.update(&partition.0);
             if let Some(sk_i) = sk_i {
                 kmac.update(sk_i);
             }
@@ -67,6 +76,84 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
     Ok(())
 }
 
+/// Returns newly generated public and private Kyber key pair.
+fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, KyberSecretKey) {
+    let (mut sk, mut pk) = (
+        KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
+        KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
+    );
+    indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
+    (pk, sk)
+}
+
+/// Returns a newly generated pair of public and private subkeys with optional
+/// Kyber keys if hybridized.
+fn create_subkey_pair(
+    rng: &mut impl CryptoRngCore,
+    h: &R25519CurvePoint,
+    is_hybridized: EncryptionHint,
+) -> (PublicSubkey, SecretSubkey) {
+    let sk_i = R25519PrivateKey::new(rng);
+    let pk_i = h * &sk_i;
+
+    let (pk_pq, sk_pq) = if is_hybridized.into() {
+        let (pk, sk) = create_kyber_key_pair(rng);
+        (Some(pk), Some(sk))
+    } else {
+        (None, None)
+    };
+    ((pk_pq, pk_i), (sk_pq, sk_i))
+}
+
+/// Update a pair of public and private subkeys of a `ReadWrite` partition.
+fn update_subkey_pair(
+    rng: &mut impl CryptoRngCore,
+    h: &R25519CurvePoint,
+    mpk: &mut PublicSubkey,
+    msk: &mut SecretSubkey,
+    is_hybridized: EncryptionHint,
+) -> Result<(), Error> {
+    let (pk_pq, pk_i) = mpk;
+    let (sk_pq, sk_i) = msk;
+
+    // update public subkey
+    *pk_i = h * &sk_i;
+
+    // create or reuse Kyber keys
+    if is_hybridized.into() {
+        match (&pk_pq, &sk_pq) {
+            (None, _) => {
+                // generate a new Kyber key pair
+                let (pk, sk) = create_kyber_key_pair(rng);
+                pk_pq.replace(pk);
+                sk_pq.replace(sk);
+            }
+            (Some(_), Some(_)) => {} // keep existing key
+            (Some(_), None) => {
+                return Err(Error::KeyError(
+                    "Kyber public key cannot be computed from the secret key.".to_string(),
+                ));
+            }
+        };
+    }
+    Ok(())
+}
+
+/// Update the private subkey of a `ReadOnly` partition
+fn update_master_subkey(
+    rng: &mut impl CryptoRngCore,
+    _h: &R25519CurvePoint,
+    msk: &mut SecretSubkey,
+    is_hybridized: EncryptionHint,
+) {
+    let (sk_pq, _) = msk;
+    // Add Kyber key if needed
+    if is_hybridized.into() && sk_pq.is_none() {
+        let (_, sk) = create_kyber_key_pair(rng);
+        sk_pq.replace(sk);
+    }
+}
+
 /// Generates the master secret key and master public key of the `Covercrypt`
 /// scheme.
 ///
@@ -76,7 +163,7 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
 /// - `partitions`      : set of partition to be used
 pub fn setup(
     rng: &mut impl CryptoRngCore,
-    partitions: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    partitions: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> (MasterSecretKey, MasterPublicKey) {
     let s = R25519PrivateKey::new(rng);
     let s1 = R25519PrivateKey::new(rng);
@@ -85,26 +172,15 @@ pub fn setup(
     let g1 = R25519PublicKey::from(&s1);
     let g2 = R25519PublicKey::from(&s2);
 
-    let mut sub_sk = HashMap::with_capacity(partitions.len());
+    let mut sub_sk = RevisionMap::with_capacity(partitions.len());
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
-    for (partition, &(is_hybridized, _)) in partitions {
-        let sk_i = R25519PrivateKey::new(rng);
-        let pk_i = &h * &sk_i;
-
-        let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
-            let (mut sk, mut pk) = (
-                KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-                KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-            );
-            indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
-            (Some(sk), Some(pk))
-        } else {
-            (None, None)
-        };
-
-        sub_sk.insert(partition.clone(), (sk_pq, sk_i));
-        sub_pk.insert(partition.clone(), (pk_pq, pk_i));
+    for (partition, (is_hybridized, write_status)) in partitions {
+        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+        sub_sk.insert(partition.clone(), secret_subkey);
+        if write_status == EncryptDecrypt {
+            sub_pk.insert(partition, public_subkey);
+        }
     }
 
     let kmac_key = Some(SymmetricKey::<KMAC_KEY_LENGTH>::new(rng));
@@ -139,23 +215,27 @@ pub fn keygen(
     rng: &mut impl CryptoRngCore,
     msk: &MasterSecretKey,
     decryption_set: &HashSet<Partition>,
-) -> UserSecretKey {
+) -> Result<UserSecretKey, Error> {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    let subkeys = decryption_set
-        .iter()
-        .filter_map(|partition| msk.subkeys.get(partition))
-        .cloned()
-        .collect();
+    // Use the last key for each partitions in the decryption set
+    let mut subkeys = RevisionVec::with_capacity(decryption_set.len());
+    decryption_set.iter().try_for_each(|partition| {
+        let subkey = msk.subkeys.get_latest(partition).ok_or(Error::KeyError(
+            "Master secret key and Policy are not in sync.".to_string(),
+        ))?;
+        subkeys.create_chain_with_single_value(partition.clone(), subkey.clone());
+        Ok::<_, Error>(())
+    })?;
 
     let mut usk = UserSecretKey {
         a,
         b,
-        subkeys,
+        subkeys: RefCell::new(subkeys),
         kmac: None,
     };
     usk.kmac = compute_user_key_kmac(msk, &usk);
-    usk
+    Ok(usk)
 }
 
 /// Generates a `Covercrypt` encapsulation of a random symmetric key.
@@ -225,7 +305,9 @@ pub fn decaps(
 ) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
     let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
     for encapsulation_i in &encapsulation.encs {
-        for (sk_j, x_j) in &usk.subkeys {
+        // BFS search user subkeys to first try the most recent rotations of each
+        // partitions.
+        for (sk_j, x_j) in usk.subkeys.borrow().bfs() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
@@ -283,72 +365,85 @@ pub fn update(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    partitions_set: &HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    partitions_set: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
-    let mut new_sub_sk = HashMap::with_capacity(partitions_set.len());
-    let mut new_sub_pk = HashMap::with_capacity(partitions_set.len());
+    // Remove keys from partitions deleted from Policy
+    msk.subkeys.retain(|part| partitions_set.contains_key(part));
+    mpk.subkeys
+        .retain(|part, _| partitions_set.contains_key(part));
+
     let h = R25519PublicKey::from(&msk.s);
-
-    for (partition, &(is_hybridized, write_status)) in partitions_set {
-        if let Some((sk_i, x_i)) = msk.subkeys.get(partition) {
-            // regenerate the public sub-key.
-            let h_i = &h * x_i;
-            // Set the correct hybridization property.
-            let (sk_i, pk_i) = if is_hybridized == EncryptionHint::Hybridized {
-                if sk_i.is_some() {
-                    let pk_i = mpk
-                        .subkeys
-                        .get(partition)
-                        .map(|(pk_i, _)| pk_i)
-                        .unwrap_or(&None);
-                    (sk_i.clone(), pk_i.clone())
-                } else {
-                    let (mut sk_i, mut pk_i) = (
-                        KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-                        KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-                    );
-                    indcpa_keypair(&mut pk_i.0, &mut sk_i.0, None, rng);
-                    (Some(sk_i), Some(pk_i))
+    for (partition, (is_hybridized, write_status)) in partitions_set {
+        // check if secret key exist for this partition
+        if let Some(secret_subkey) = msk.subkeys.get_latest_mut(&partition) {
+            // update the master secret and public subkey if needed
+            match (write_status, mpk.subkeys.get_mut(&partition)) {
+                (EncryptDecrypt, None) => unreachable!(),
+                (EncryptDecrypt, Some(public_subkey)) => {
+                    update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?;
                 }
-            } else {
-                (None, None)
-            };
-
-            if write_status == AttributeStatus::EncryptDecrypt {
-                // Only add non read only partition to the public key
-                if sk_i.is_some() && pk_i.is_none() {
-                    return Err(Error::KeyError(
-                        "Kyber public key cannot be computed from the secret key.".to_string(),
-                    ));
+                (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized),
+                (DecryptOnly, Some(_)) => {
+                    mpk.subkeys.remove(&partition);
+                    update_master_subkey(rng, &h, secret_subkey, is_hybridized);
                 }
-                new_sub_pk.insert(partition.clone(), (pk_i, h_i));
             }
-            new_sub_sk.insert(partition.clone(), (sk_i, x_i.clone()));
         } else {
-            // Create new entry.
-            let x_i = R25519PrivateKey::new(rng);
-            let h_i = &h * &x_i;
-            let (sk_pq, pk_pq) = if is_hybridized == EncryptionHint::Hybridized {
-                let (mut sk_pq, mut pk_pq) = (
-                    KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-                    KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
-                );
-                indcpa_keypair(&mut pk_pq.0, &mut sk_pq.0, None, rng);
-                (Some(sk_pq), Some(pk_pq))
-            } else {
-                (None, None)
-            };
-            new_sub_sk.insert(partition.clone(), (sk_pq, x_i));
-            if write_status == AttributeStatus::EncryptDecrypt {
-                // Only add non read only partition to the public key
-                new_sub_pk.insert(partition.clone(), (pk_pq, h_i));
+            // generate new keys
+            let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+            msk.subkeys.insert(partition.clone(), secret_subkey);
+            if write_status == EncryptDecrypt {
+                mpk.subkeys.insert(partition, public_subkey);
             }
         }
     }
 
-    msk.subkeys = new_sub_sk;
-    mpk.subkeys = new_sub_pk;
+    Ok(())
+}
 
+/// Rekeys the master keys by creating new subkeys for the given coordinates.
+///
+/// # Parameters
+///
+/// - `rng`             : random number generator
+/// - `msk`             : master secret key
+/// - `mpk`             : master public key
+/// - `coordinate`      : set of keys coordinate to renew
+pub fn rekey(
+    rng: &mut impl CryptoRngCore,
+    msk: &mut MasterSecretKey,
+    mpk: &mut MasterPublicKey,
+    coordinates: HashSet<Partition>,
+) -> Result<(), Error> {
+    let h = R25519PublicKey::from(&msk.s);
+    for coordinate in coordinates {
+        let is_hybridized = EncryptionHint::new(
+            msk.subkeys
+                .get_latest(&coordinate)
+                .and_then(|(sk_i, _)| sk_i.as_ref())
+                .is_some(),
+        );
+        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+        msk.subkeys.insert(coordinate.clone(), secret_subkey);
+
+        // update public subkey if partition is not read only
+        if mpk.subkeys.contains_key(&coordinate) {
+            mpk.subkeys.insert(coordinate, public_subkey);
+        }
+    }
+    Ok(())
+}
+
+/// Prunes old subkeys from the master secret key for specified coordinates.
+///
+/// # Parameters
+///
+/// - `msk`             : master secret key
+/// - `coordinates`     : set of subkeys coordinate to prune
+pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Result<(), Error> {
+    for coordinate in coordinates {
+        msk.subkeys.keep(coordinate, 1);
+    }
     Ok(())
 }
 
@@ -363,22 +458,50 @@ pub fn update(
 ///
 /// - `msk`             : master secret key
 /// - `usk`             : user secret key
-/// - `decryption_set`  : set of partitions the user is granted the decryption
-///   right for
 /// - `keep_old_rights` : whether or not to keep old decryption rights
 pub fn refresh(
     msk: &MasterSecretKey,
     usk: &mut UserSecretKey,
-    decryption_set: &HashSet<Partition>,
+    keep_old_rights: bool,
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
-    usk.subkeys.clear();
 
-    for partition in decryption_set {
-        if let Some(x_i) = msk.subkeys.get(partition) {
-            usk.subkeys.push(x_i.clone());
-        }
-    }
+    let new_subkeys = usk
+        .subkeys
+        .take()
+        .into_iter()
+        .filter_map(|(coordinate, user_chain)| {
+            msk.subkeys.get(&coordinate).and_then(|msk_chain| {
+                let mut msk_subkeys = if keep_old_rights {
+                    msk_chain.iter().take(msk_chain.len())
+                } else {
+                    msk_chain.iter().take(1)
+                };
+                let mut usk_subkeys = user_chain.into_iter();
+                let first_usk_subkey = usk_subkeys.next()?;
+
+                let mut new_usk_subkeys = LinkedList::new();
+                // Add new master secret subkeys
+                for msk_subkey in msk_subkeys.by_ref() {
+                    if msk_subkey == &first_usk_subkey {
+                        new_usk_subkeys.push_back(first_usk_subkey);
+                        break;
+                    }
+                    new_usk_subkeys.push_back(msk_subkey.clone());
+                }
+                // Keep old matching subkeys between the master and user subkeys
+                for subkey in usk_subkeys {
+                    if Some(&subkey) != msk_subkeys.next() {
+                        break;
+                    }
+                    new_usk_subkeys.push_back(subkey);
+                }
+                Some((coordinate, new_usk_subkeys))
+            })
+        })
+        .collect::<RevisionVec<_, _>>();
+
+    usk.subkeys.replace(new_subkeys);
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
@@ -428,21 +551,21 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
 
         // The admin partition matches a hybridized sub-key.
-        let admin_secret_subkeys = msk.subkeys.get(&admin_partition);
+        let admin_secret_subkeys = msk.subkeys.get_latest(&admin_partition);
         assert!(admin_secret_subkeys.is_some());
         assert!(admin_secret_subkeys.unwrap().0.is_some());
 
         // The developer partition matches a classic sub-key.
-        let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
         // Generate user secret keys.
-        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0]);
-        let admin_usk = keygen(&mut rng, &msk, &users_set[1]);
+        let mut dev_usk = keygen(&mut rng, &msk, &users_set[0])?;
+        let admin_usk = keygen(&mut rng, &msk, &users_set[1])?;
 
         // Encapsulate key for the admin target set.
         let (sym_key, encapsulation) = encaps(&mut rng, &mpk, &admin_target_set).unwrap();
@@ -477,21 +600,21 @@ mod tests {
         ]);
         let client_target_set = HashSet::from([client_partition.clone()]);
 
-        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
-        refresh(&msk, &mut dev_usk, &HashSet::from([dev_partition.clone()]))?;
+        update(&mut rng, &mut msk, &mut mpk, new_partitions_set)?;
+        refresh(&msk, &mut dev_usk, true)?;
 
         // The dev partition matches a hybridized sub-key.
-        let dev_secret_subkeys = msk.subkeys.get(&dev_partition);
+        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_partition);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_some());
 
         // The client partition matches a classic sub-key.
-        let client_secret_subkeys = msk.subkeys.get(&client_partition);
+        let client_secret_subkeys = msk.subkeys.get_latest(&client_partition);
         assert!(client_secret_subkeys.is_some());
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
         // The developer now has a hybridized key.
-        assert_eq!(dev_usk.subkeys.len(), 1);
+        assert_eq!(dev_usk.subkeys.borrow().count_elements(), 1);
         for key_encapsulation in &encapsulation.encs {
             if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
                 panic!("Wrong hybridization type");
@@ -523,7 +646,7 @@ mod tests {
         );
 
         // Client is able to decapsulate.
-        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]));
+        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]))?;
         let res0 = decaps(&client_usk, &new_encapsulation);
         match res0 {
             Err(err) => panic!("Client should be able to decapsulate: {err:?}"),
@@ -551,7 +674,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition(b"3".to_vec());
@@ -565,7 +688,7 @@ mod tests {
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
-        update(&mut rng, &mut msk, &mut mpk, &new_partitions_set)?;
+        update(&mut rng, &mut msk, &mut mpk, new_partitions_set)?;
         assert!(!msk.subkeys.contains_key(&partition_1));
         assert!(msk.subkeys.contains_key(&partition_2));
         assert!(msk.subkeys.contains_key(&partition_3));
@@ -598,16 +721,15 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, &partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
         // create a user key with access to partition 1 and 2
         let mut usk = keygen(
             &mut rng,
             &msk,
             &HashSet::from([partition_1.clone(), partition_2.clone()]),
-        );
+        )?;
 
-        // now remove partition 1 and add partition 4
-        let partition_4 = Partition(b"4".to_vec());
+        // now remove partition 1 and remove hybrid key from partition 3
         let new_partition_set = HashMap::from([
             (
                 partition_2.clone(),
@@ -617,29 +739,52 @@ mod tests {
                 partition_3.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
-            (
-                partition_4.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
-            ),
         ]);
         //Covercrypt the master keys
 
         let old_msk = MasterSecretKey::deserialize(msk.serialize()?.as_slice())?;
-        update(&mut rng, &mut msk, &mut mpk, &new_partition_set)?;
-        // refresh the user key with partitions 2 and 4
-        refresh(
-            &msk,
-            &mut usk,
-            &HashSet::from([partition_2.clone(), partition_4.clone()]),
+        update(&mut rng, &mut msk, &mut mpk, new_partition_set)?;
+        // refresh the user key
+        refresh(&msk, &mut usk, true)?;
+        // user key kept old access to partition 1
+        assert!(!usk.subkeys.borrow().flat_iter().any(|x| {
+            x == (
+                &partition_1,
+                old_msk.subkeys.get_latest(&partition_1).unwrap(),
+            )
+        }));
+        assert!(usk
+            .subkeys
+            .borrow()
+            .flat_iter()
+            .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) }));
+        // user key kept the old hybrid key for partition 3
+        assert!(!usk.subkeys.borrow().flat_iter().any(|x| {
+            x == (
+                &partition_3,
+                old_msk.subkeys.get_latest(&partition_3).unwrap(),
+            )
+        }));
+
+        // add new key for partition 2
+        rekey(
+            &mut rng,
+            &mut msk,
+            &mut mpk,
+            HashSet::from([partition_2.clone()]),
         )?;
-        assert!(!usk
-            .subkeys
-            .contains(old_msk.subkeys.get(&partition_1).unwrap()));
-        assert!(usk.subkeys.contains(msk.subkeys.get(&partition_2).unwrap()));
-        assert!(!usk
-            .subkeys
-            .contains(old_msk.subkeys.get(&partition_3).unwrap()));
-        assert!(usk.subkeys.contains(msk.subkeys.get(&partition_4).unwrap()));
+        // refresh the user key
+        refresh(&msk, &mut usk, true)?;
+        let usk_subkeys = usk.subkeys.borrow();
+        let usk_subkeys: Vec<_> = usk_subkeys
+            .flat_iter()
+            .filter(|(part, _)| *part == &partition_2)
+            .map(|(_, subkey)| subkey)
+            .collect();
+        let msk_subkeys: Vec<_> = msk.subkeys.get(&partition_2).unwrap().iter().collect();
+        assert_eq!(usk_subkeys.len(), 2);
+        assert_eq!(usk_subkeys, msk_subkeys);
+
         Ok(())
     }
 
@@ -661,16 +806,19 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (msk, _) = setup(&mut rng, &partitions_set);
+        let (msk, _) = setup(&mut rng, partitions_set);
         // create a user key with access to partition 1 and 2
-        let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]));
+        let usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
 
         assert!(verify_user_key_kmac(&msk, &usk).is_ok());
         let bytes = usk.serialize()?;
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
-        usk.subkeys.push((None, R25519PrivateKey::new(&mut rng)));
+        usk.subkeys.borrow_mut().create_chain_with_single_value(
+            Partition(b"3".to_vec()),
+            (None, R25519PrivateKey::new(&mut rng)),
+        );
         // KMAC verify will fail after modifying the user key
         assert!(verify_user_key_kmac(&msk, &usk).is_err());
 

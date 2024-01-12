@@ -65,10 +65,10 @@ fn policy() -> Result<Policy, Error> {
 fn bench_policy_editing(c: &mut Criterion) {
     let cover_crypt = Covercrypt::default();
     let new_dep_attr = Attribute::new("Department", "Tech");
-    let new_dep_name = "IT";
+    let new_dep_name = "IT".to_string();
     let remove_dep_attr = Attribute::new("Department", "FIN");
     let old_sl_attr = Attribute::new("Security Level", "Protected");
-    let new_sl_name = "Open";
+    let new_sl_name = "Open".to_string();
     let disable_sl_attr = Attribute::new("Security Level", "Confidential");
 
     let mut group = c.benchmark_group("Edit Policy");
@@ -88,11 +88,13 @@ fn bench_policy_editing(c: &mut Criterion) {
                     .add_attribute(new_dep_attr.clone(), EncryptionHint::Classic)
                     .unwrap();
                 policy
-                    .rename_attribute(&new_dep_attr, new_dep_name)
+                    .rename_attribute(&new_dep_attr, new_dep_name.clone())
                     .unwrap();
                 policy.remove_attribute(&remove_dep_attr).unwrap();
 
-                policy.rename_attribute(&old_sl_attr, new_sl_name).unwrap();
+                policy
+                    .rename_attribute(&old_sl_attr, new_sl_name.clone())
+                    .unwrap();
                 policy.disable_attribute(&disable_sl_attr).unwrap();
 
                 cover_crypt
@@ -308,57 +310,58 @@ fn bench_header_encryption(c: &mut Criterion) {
 fn bench_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
     let authenticated_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let (user_access_policy, access_policies) = get_access_policies();
+    let (user_access_policies, access_policies) = get_access_policies();
     let cover_crypt = Covercrypt::default();
     let (msk, mpk) = cover_crypt
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
-    let user_decryption_keys: Vec<_> = user_access_policy
-        .iter()
-        .map(|ap| {
-            cover_crypt
-                .generate_user_secret_key(&msk, ap, &policy)
-                .expect("cannot generate user private key")
-        })
-        .collect();
     let mut group = c.benchmark_group("Header encryption and decryption");
-    for (n_partitions_usk, usk) in user_decryption_keys.iter().enumerate() {
+    for (n_user, user_access_policy) in user_access_policies.iter().enumerate() {
         for (n_partition_ct, access_policy) in access_policies.iter().enumerate() {
             group.bench_function(
                 &format!(
                     "ciphertexts with {} partition(s), usk with {} partitions",
                     n_partition_ct + 1,
-                    n_partitions_usk + 1
+                    n_user + 1
                 ),
                 |b| {
-                    b.iter(|| {
-                        let (_, encrypted_header) = EncryptedHeader::generate(
-                            &cover_crypt,
-                            &policy,
-                            &mpk,
-                            access_policy,
-                            None,
-                            Some(&authenticated_data),
-                        )
-                        .unwrap_or_else(|_| {
-                            panic!(
-                                "cannot encrypt header for {} ciphertext partition(s), {} usk \
-                                 partition(s)",
-                                n_partition_ct + 1,
-                                n_partitions_usk
+                    b.iter_batched(
+                        || {
+                            let usk = cover_crypt
+                                .generate_user_secret_key(&msk, user_access_policy, &policy)
+                                .expect("cannot generate user private key");
+                            let (_, encrypted_header) = EncryptedHeader::generate(
+                                &cover_crypt,
+                                &policy,
+                                &mpk,
+                                access_policy,
+                                None,
+                                Some(&authenticated_data),
                             )
-                        });
-                        encrypted_header
-                            .decrypt(&cover_crypt, usk, Some(&authenticated_data))
                             .unwrap_or_else(|_| {
                                 panic!(
-                                    "cannot decrypt header for {} ciphertext partition(s), {} usk \
+                                    "cannot encrypt header for {} ciphertext partition(s), {} usk \
                                      partition(s)",
                                     n_partition_ct + 1,
-                                    n_partitions_usk
+                                    n_user
                                 )
                             });
-                    });
+                            (usk, encrypted_header)
+                        },
+                        |(usk, encrypted_header)| {
+                            encrypted_header
+                                .decrypt(&cover_crypt, &usk, Some(&authenticated_data))
+                                .unwrap_or_else(|_| {
+                                    panic!(
+                                        "cannot decrypt header for {} ciphertext partition(s), {} \
+                                         usk partition(s)",
+                                        n_partition_ct + 1,
+                                        n_user
+                                    )
+                                });
+                        },
+                        BatchSize::SmallInput,
+                    );
                 },
             );
         }

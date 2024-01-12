@@ -7,7 +7,7 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 
 use super::policy;
 use crate::{
-    abe_policy::{AccessPolicy, Attribute, Policy},
+    abe_policy::{AccessPolicy, Policy},
     core::{MasterPublicKey, MasterSecretKey, UserSecretKey},
     Covercrypt, EncryptedHeader, Error,
 };
@@ -155,8 +155,8 @@ impl NonRegressionTestVector {
         //
         // Policy settings
         //
-        let mut policy = policy()?;
-        policy.rotate(&Attribute::new("Department", "FIN"))?;
+        let policy = policy()?;
+        //policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
         // Covercrypt setup

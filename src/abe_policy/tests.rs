@@ -64,38 +64,6 @@ fn check_policy() {
     for properties in &department.attributes_properties {
         assert!(attributes.contains(&Attribute::new("Department", &properties.name)));
     }
-    for attribute in &attributes {
-        assert_eq!(
-            policy.attribute_values(attribute).unwrap()[0],
-            policy.attribute_current_value(attribute).unwrap()
-        );
-    }
-}
-
-#[test]
-fn test_rotate_policy_attributes() -> Result<(), Error> {
-    let mut policy = policy()?;
-    let attributes = policy.attributes();
-    // rotate few attributes
-    policy.rotate(&attributes[0])?;
-    assert_eq!(2, policy.attribute_values(&attributes[0])?.len());
-    policy.rotate(&attributes[2])?;
-    assert_eq!(2, policy.attribute_values(&attributes[2])?.len());
-    for attribute in &attributes {
-        assert_eq!(
-            policy.attribute_values(attribute)?[0],
-            policy.attribute_current_value(attribute)?
-        );
-    }
-
-    policy.clear_old_attribute_values(&attributes[0])?;
-    assert_eq!(1, policy.attribute_values(&attributes[0])?.len());
-
-    assert!(policy
-        .clear_old_attribute_values(&Attribute::new("Department", "Missing"))
-        .is_err());
-
-    Ok(())
 }
 
 #[test]
@@ -105,25 +73,28 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Try renaming Research to already used name MKG
     assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG".to_string(),)
         .is_err());
 
     // Rename R&D to Research
     assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "Research",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "Research".to_string(),)
         .is_ok());
 
     // Rename ordered dimension
     assert!(policy
-        .rename_attribute(&Attribute::new("Security Level", "Protected"), "Open",)
+        .rename_attribute(
+            &Attribute::new("Security Level", "Protected"),
+            "Open".to_string(),
+        )
         .is_ok());
-    let order = policy
+    let order: Vec<_> = policy
         .dimensions
         .get("Security Level")
         .unwrap()
-        .order
-        .clone()
-        .unwrap();
+        .get_attributes_name()
+        .cloned()
+        .collect();
     assert!(order.len() == 3);
     assert!(order.contains(&"Open".to_string()));
     assert!(!order.contains(&"Protected".to_string()));
