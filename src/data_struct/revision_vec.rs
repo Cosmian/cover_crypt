@@ -14,9 +14,17 @@ use std::collections::{linked_list, LinkedList, VecDeque};
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, LinkedList<T>)>,
+}
+
+impl<K, T> Default for RevisionVec<K, T> {
+    fn default() -> Self {
+        Self {
+            chains: Default::default(),
+        }
+    }
 }
 
 impl<K, T> RevisionVec<K, T> {
