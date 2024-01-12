@@ -100,7 +100,7 @@ impl Covercrypt {
     ///  - `access_policy`  : describe the keys to prune
     ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
-    pub fn prune_master_keys(
+    pub fn prune_master_secret_key(
         &self,
         access_policy: &AccessPolicy,
         policy: &Policy,
@@ -141,8 +141,7 @@ impl Covercrypt {
     ///
     /// - `usk`                 : the user key to refresh
     /// - `msk`                 : master secret key
-    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
-    ///   rotation) should be kept
+    /// - `keep_old_rights`     : whether or not to keep old decryption rights
     pub fn refresh_user_secret_key(
         &self,
         usk: &mut UserSecretKey,

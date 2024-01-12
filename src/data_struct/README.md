@@ -73,9 +73,3 @@ Cons:
 - following linked list pointers can be slower than iterating a regular vector
 
 - serialization requires following each linked list
-
-## Operations
-
-### Master Secret Key
-
-### User Secret Key

@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Debug},
     hash::Hash,
     marker::PhantomData,
+    mem::swap,
     usize,
 };
 
@@ -92,7 +93,7 @@ where
     }
 
     /// Updates the key for a given entry while retaining the current order.
-    pub fn update_key(&mut self, old_key: &K, new_key: K) -> Result<(), Error> {
+    pub fn update_key(&mut self, old_key: &K, mut new_key: K) -> Result<(), Error> {
         // Get index from old_key
         let index_entry = *self
             .indices
@@ -107,8 +108,7 @@ where
                 // Remove old key from indices
                 let _ = self.indices.remove(old_key);
                 // Replace old_key with new_key inside entries
-                let replaced_key = std::mem::replace(&mut self.entries[index_entry].0, new_key);
-                assert_eq!(&replaced_key, old_key);
+                swap(&mut self.entries[index_entry].0, &mut new_key);
                 Ok(())
             }
         }

@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(msk.subkeys.count_elements(), 25);
 
         // remove older subkeys for `Department::FIN`
-        cover_crypt.prune_master_keys(&rekey_access_policy, &policy, &mut msk)?;
+        cover_crypt.prune_master_secret_key(&rekey_access_policy, &policy, &mut msk)?;
         assert_eq!(mpk.subkeys.len(), 20);
         // we only keep the last subkeys in the secret key
         assert_eq!(msk.subkeys.count_elements(), 20);

@@ -481,19 +481,22 @@ pub fn refresh(
                 let first_usk_subkey = usk_subkeys.next()?;
 
                 let mut new_usk_subkeys = LinkedList::new();
+                // Add new master secret subkeys
                 for msk_subkey in msk_subkeys.by_ref() {
-                    new_usk_subkeys.push_back(msk_subkey.clone());
                     if msk_subkey == &first_usk_subkey {
+                        new_usk_subkeys.push_back(first_usk_subkey);
                         break;
                     }
+                    new_usk_subkeys.push_back(msk_subkey.clone());
                 }
-                for next_usk_subkey in usk_subkeys {
-                    if Some(&next_usk_subkey) != msk_subkeys.next() {
+                // Keep old matching subkeys between the master and user subkeys
+                for subkey in usk_subkeys {
+                    if Some(&subkey) != msk_subkeys.next() {
                         break;
                     }
-                    new_usk_subkeys.push_back(next_usk_subkey);
+                    new_usk_subkeys.push_back(subkey);
                 }
-                Some((coordinate.clone(), new_usk_subkeys))
+                Some((coordinate, new_usk_subkeys))
             })
         })
         .collect::<RevisionVec<_, _>>();
