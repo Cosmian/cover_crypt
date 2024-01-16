@@ -158,135 +158,115 @@ impl Policy {
             .map(AttributeParameters::get_id)
     }
 
-    /// Generates all cross-dimension combinations of attributes.
-    ///
-    /// - `current_dim`            : dim for which to combine other dim
-    ///   attributes
-    /// - `dimensions`             : list of dimensions
-    /// - `attr_values_per_dim`    : map dimensions with their associated
-    ///   attribute parameters
-    fn combine_attributes(
-        current_dim: usize,
-        dimensions: &[String],
-        attr_params_per_dim: &HashMap<String, Vec<&AttributeParameters>>,
-    ) -> Result<Vec<(Vec<u32>, EncryptionHint, AttributeStatus)>, Error> {
-        let current_dim_name = match dimensions.get(current_dim) {
-            None => {
-                return Ok(vec![(
-                    vec![],
-                    EncryptionHint::Classic,
-                    AttributeStatus::EncryptDecrypt,
-                )]);
-            }
-            Some(dim) => dim,
-        };
-
-        let current_dim_values = attr_params_per_dim
-            .get(current_dim_name)
-            .ok_or_else(|| Error::DimensionNotFound(current_dim_name.to_string()))?;
-
-        // Recursive call. Above checks ensure no empty list can be returned.
-        let other_values =
-            Self::combine_attributes(current_dim + 1, dimensions, attr_params_per_dim)?;
-
-        let mut combinations = Vec::with_capacity(current_dim_values.len() * other_values.len());
-        for attr in current_dim_values {
-            for (other_values, is_other_hybridized, is_other_readonly) in &other_values {
-                let mut combined = Vec::with_capacity(1 + other_values.len());
-                combined.push(attr.get_id());
-                combined.extend_from_slice(other_values);
-                combinations.push((
-                    combined,
-                    attr.get_encryption_hint() | *is_other_hybridized,
-                    attr.get_status() | *is_other_readonly,
-                ));
-            }
-        }
-        Ok(combinations)
-    }
-
-    /// Generates all possible partitions from this `Policy`. Each partition is
-    /// returned with a hint about whether hybridized encryption should be used
-    /// and activation status.
-    pub fn generate_all_partitions(
+    /// Generates all coordinates defined by this policy and return their hybridization and
+    /// activation status.
+    pub fn generate_universal_coordinates(
         &self,
     ) -> Result<HashMap<Partition, (EncryptionHint, AttributeStatus)>, Error> {
-        let mut attr_params_per_dim = HashMap::with_capacity(self.dimensions.len());
-        for (dim_name, dim) in &self.dimensions {
-            attr_params_per_dim.insert(dim_name.clone(), dim.attributes().collect());
-        }
-
-        // Combine axes values into partitions.
-        let dimensions = attr_params_per_dim.keys().cloned().collect::<Vec<_>>();
-        let combinations = Self::combine_attributes(0, &dimensions, &attr_params_per_dim)?;
-        let mut res = HashMap::with_capacity(combinations.len());
-        for (combination, is_hybridized, is_readonly) in combinations {
-            res.insert(
-                Partition::from_attribute_ids(combination)?,
-                (is_hybridized, is_readonly),
-            );
-        }
-        Ok(res)
+        let universe = self.dimensions.iter().collect::<Vec<_>>();
+        combine(universe.as_slice())
+            .into_iter()
+            .map(|(combination, is_hybridized, is_readonly)| {
+                Partition::from_attribute_ids(combination)
+                    .map(|coordinate| (coordinate, (is_hybridized, is_readonly)))
+            })
+            .collect()
     }
 
-    /// Converts an `AccessPolicy` into a list of corresponding coordinates.
+    /// Generates all coordinates defined by the semantic space of the given access policy.
     ///
-    /// - `access_policy`   : access policy to convert
-    /// - `cascade_rights`  : include lower rights from hierarchical dimensions
-    pub fn access_policy_to_partitions(
+    /// The semantic space is define as the smallest subspace of the universe in which the given
+    /// access policy can be expressed. Equivalently, this is the envelop of the points associated
+    /// to each DNF conjunction.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is invalid.
+    pub fn generate_semantic_space_coordinates(
         &self,
-        access_policy: &AccessPolicy,
-        cascade_rights: bool,
+        ap: AccessPolicy,
     ) -> Result<HashSet<Partition>, Error> {
-        let attr_combinations = access_policy.to_attribute_combinations(self, cascade_rights)?;
-        let mut res = HashSet::with_capacity(attr_combinations.len());
-        for attr_combination in &attr_combinations {
-            for partition in generate_attribute_partitions(attr_combination, self)? {
-                if !res.insert(partition) {
-                    return Err(Error::ExistingCombination(format!("{attr_combination:?}")));
-                }
+        let dnf = ap.into_dnf();
+        let mut coordinates = HashSet::new();
+        for conjunction in dnf {
+            let semantic_space = conjunction
+                .into_iter()
+                .map(|attr| {
+                    self.dimensions
+                        .get(&attr.dimension)
+                        .ok_or_else(|| Error::DimensionNotFound(attr.dimension.clone()))
+                        .and_then(|dim| dim.restrict(attr.name))
+                        .map(|dim| (attr.dimension, dim))
+                })
+                .collect::<Result<HashMap<_, _>, Error>>()?;
+            // TODO: Some coordinates may be computed twice (the lower dimensions).
+            for (ids, _, _) in combine(&semantic_space.iter().collect::<Vec<_>>()) {
+                coordinates.insert(Partition::from_attribute_ids(ids)?);
             }
         }
-        Ok(res)
+        Ok(coordinates)
+    }
+
+    /// Returns the coordinates of the points defined by the given access policy.
+    ///
+    /// Each conjunction of the associated DNF defines a unique universal point.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is invalid.
+    pub fn generate_point_coordinates(
+        &self,
+        ap: AccessPolicy,
+    ) -> Result<HashSet<Partition>, Error> {
+        let dnf = ap.into_dnf();
+        let mut coordinates = HashSet::with_capacity(dnf.len());
+        for conjunction in dnf {
+            let coo = Partition::from_attribute_ids(
+                conjunction
+                    .into_iter()
+                    .map(|attr| self.get_attribute(&attr).map(|params| params.id))
+                    .collect::<Result<_, Error>>()?,
+            )?;
+            coordinates.insert(coo);
+        }
+        Ok(coordinates)
     }
 }
 
-/// Converts a list of attributes into a list of `Partitions`, with
-/// their associated hybridization hints and attribute status.
+/// Combines all attributes IDs from the given dimensions using at most one attribute for each
+/// dimensions. Returns the disjunction of the associated hybridization and activation status.
 ///
-/// - `attributes`  : list of attributes
-/// - `policy`      : global policy data
-fn generate_attribute_partitions(
-    attributes: &[Attribute],
-    policy: &Policy,
-) -> Result<HashSet<Partition>, Error> {
-    let mut attr_params_per_dim =
-        HashMap::<String, Vec<&AttributeParameters>>::with_capacity(policy.dimensions.len());
-    for attribute in attributes {
-        let entry = attr_params_per_dim
-            .entry(attribute.dimension.clone())
-            .or_default();
-        entry.push(policy.get_attribute(attribute)?);
-    }
-
-    // When a dimension is not mentioned in the attribute list, all the attribute
-    // from this dimension are used.
-    for (dim, dim_properties) in &policy.dimensions {
-        if !attr_params_per_dim.contains_key(dim) {
-            // gather all the latest value for that dim
-            let values = dim_properties.attributes().collect();
-            attr_params_per_dim.insert(dim.clone(), values);
+/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following combinations will be created:
+/// - D1::A1
+/// - D1::A1 && D2::A2
+/// - D1::A1 && D2::B2
+/// - D2::A2
+/// - D2::B2
+#[allow(dead_code)]
+pub fn combine(
+    dimensions: &[(&String, &Dimension)], // TODO: signature depends on the HashMap iterator type
+) -> Vec<(Vec<u32>, EncryptionHint, AttributeStatus)> {
+    if dimensions.is_empty() {
+        vec![(
+            vec![],
+            EncryptionHint::Classic,
+            AttributeStatus::EncryptDecrypt,
+        )]
+    } else {
+        let (_, current_dimension) = &dimensions[0];
+        let partial_combinations = combine(&dimensions[1..]);
+        let mut res = vec![];
+        for component in current_dimension.attributes() {
+            for (ids, is_hybridized, is_activated) in &partial_combinations {
+                res.push((
+                    [vec![component.get_id()], ids.clone()].concat(),
+                    *is_hybridized | component.get_encryption_hint(),
+                    *is_activated | component.get_status(),
+                ));
+            }
         }
+        [partial_combinations.clone(), res].concat()
     }
-
-    // Combine dimensions attributes into partitions.
-    let dimensions = attr_params_per_dim.keys().cloned().collect::<Vec<_>>();
-    let combinations = Policy::combine_attributes(0, dimensions.as_slice(), &attr_params_per_dim)?;
-
-    combinations
-        .into_iter()
-        .map(|(coordinate, _, _)| Partition::from_attribute_ids(coordinate))
-        .collect::<Result<HashSet<_>, _>>()
 }
 
 #[cfg(test)]
@@ -294,142 +274,167 @@ mod tests {
     use super::*;
     use crate::test_utils::policy;
 
-    fn axes_attributes_from_policy(
-        axes: &[String],
-        policy: &Policy,
-    ) -> Result<Vec<Vec<(Attribute, u32)>>, Error> {
-        let mut axes_attributes: Vec<Vec<(Attribute, u32)>> = vec![];
-        for dim in axes {
-            let mut dim_attributes: Vec<(Attribute, u32)> = vec![];
-            for name in policy.dimensions[dim].get_attributes_name() {
-                let attribute = Attribute::new(dim, name);
-                let value = policy.get_attribute_id(&attribute)?;
-                dim_attributes.push((attribute, value));
-            }
-            axes_attributes.push(dim_attributes);
-        }
-        Ok(axes_attributes)
+    #[test]
+    fn test_combine() {
+        let mut policy = policy().unwrap();
+
+        // There should be `Prod_dim(|dim| + 1)` coordinates.
+        assert_eq!(
+            combine(&policy.dimensions.iter().collect::<Vec<_>>()).len(),
+            policy
+                .dimensions
+                .values()
+                .map(|dim| dim.attributes().count() + 1)
+                .product::<usize>()
+        );
+
+        policy
+            .add_dimension(DimensionBuilder::new(
+                "Country",
+                vec![
+                    ("France", EncryptionHint::Classic),
+                    ("Germany", EncryptionHint::Classic),
+                    ("Spain", EncryptionHint::Classic),
+                ],
+                false,
+            ))
+            .unwrap();
+
+        // There should be `Prod_dim(|dim| + 1)` coordinates.
+        assert_eq!(
+            combine(&policy.dimensions.iter().collect::<Vec<_>>()).len(),
+            policy
+                .dimensions
+                .values()
+                .map(|dim| dim.attributes().count() + 1)
+                .product::<usize>()
+        );
     }
 
     #[test]
-    fn test_combine_attribute_values() -> Result<(), Error> {
-        let policy = policy()?;
-        let axes: Vec<String> = policy.dimensions.keys().cloned().collect();
-
-        let axes_attributes = axes_attributes_from_policy(&axes, &policy)?;
-
-        // this should create the combination of the first attribute
-        // with all those of the second dim
-        let partitions_0 =
-            generate_attribute_partitions(&[axes_attributes[0][0].0.clone()], &policy)?;
-        assert_eq!(axes_attributes[1].len(), partitions_0.len());
-        let att_0_0 = axes_attributes[0][0].1;
-        for (_attribute, value) in &axes_attributes[1] {
-            let partition = Partition::from_attribute_ids(vec![att_0_0, *value])?;
-            assert!(partitions_0.contains(&partition));
-        }
-
-        // this should create the single combination of the first attribute
-        // of the first dim with that of the second dim
-        let partitions_1 = generate_attribute_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-            ],
-            &policy,
-        )?;
-        assert_eq!(partitions_1.len(), 1);
-        let att_1_0 = axes_attributes[1][0].1;
-        assert!(partitions_1.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_0])?));
-
-        // this should create the 2 combinations of the first attribute
-        // of the first dim with that the wo of the second dim
-        let partitions_2 = generate_attribute_partitions(
-            &[
-                axes_attributes[0][0].0.clone(),
-                axes_attributes[1][0].0.clone(),
-                axes_attributes[1][1].0.clone(),
-            ],
-            &policy,
-        )?;
-        assert_eq!(partitions_2.len(), 2);
-        let att_1_0 = axes_attributes[1][0].1;
-        let att_1_1 = axes_attributes[1][1].1;
-        assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_0])?,));
-        assert!(partitions_2.contains(&Partition::from_attribute_ids(vec![att_0_0, att_1_1])?,));
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_access_policy_to_partition() -> Result<(), Error> {
-        //
-        // create policy
+    fn test_generate_semantic_coordinates() -> Result<(), Error> {
         let policy = policy()?;
 
-        //
-        // create access policy
-        let access_policy = AccessPolicy::new("Department", "HR")
-            | (AccessPolicy::new("Department", "FIN")
-                & AccessPolicy::new("Security Level", "Low Secret"));
+        let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";
 
-        //
-        // create partitions from access policy
-        let partitions = policy.access_policy_to_partitions(&access_policy, true)?;
+        let semantic_space_coordinates = policy
+            .generate_semantic_space_coordinates(AccessPolicy::from_boolean_expression(ap)?)?;
 
-        //
-        // manually create the partitions
-        let mut partitions_ = HashSet::new();
+        // Check the number of coordinates is correct.
+        assert_eq!(semantic_space_coordinates.len(), (2 + 1) * (2 + 1));
 
-        // add the partitions associated with the HR department: combine with
-        // all attributes of the Security Level dim
-        let hr_value = policy.get_attribute_id(&Attribute::new("Department", "HR"))?;
-        let dim_properties = policy.dimensions.get("Security Level").unwrap();
-        for attr_name in dim_properties.get_attributes_name() {
-            let attr_value =
-                policy.get_attribute_id(&Attribute::new("Security Level", attr_name))?;
-            let mut partition = vec![hr_value, attr_value];
-            partition.sort_unstable();
-            partitions_.insert(Partition::from_attribute_ids(partition)?);
+        // Check the coordinates are the same as the ones manually generated, i.e.:
+        // - Coordinate()
+        // - Coordinate(HR)
+        // - Coordinate(FIN)
+        // - Coordinate(Protected)
+        // - Coordinate(Low Secret)
+        // - Coordinate(HR, Protected)
+        // - Coordinate(HR, Low Secret)
+        // - Coordinate(FIN, Protected)
+        // - Coordinate(FIN, Low Secret)
+        {
+            let mut coordinates = HashSet::new();
+
+            coordinates.insert(Partition::from_attribute_ids(vec![])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![policy
+                .get_attribute_id(&Attribute {
+                    dimension: "Department".to_string(),
+                    name: "HR".to_string(),
+                })?])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![policy
+                .get_attribute_id(&Attribute {
+                    dimension: "Department".to_string(),
+                    name: "FIN".to_string(),
+                })?])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![policy
+                .get_attribute_id(&Attribute {
+                    dimension: "Security Level".to_string(),
+                    name: "Protected".to_string(),
+                })?])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![policy
+                .get_attribute_id(&Attribute {
+                    dimension: "Security Level".to_string(),
+                    name: "Low Secret".to_string(),
+                })?])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Department".to_string(),
+                    name: "HR".to_string(),
+                })?,
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Security Level".to_string(),
+                    name: "Protected".to_string(),
+                })?,
+            ])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Department".to_string(),
+                    name: "HR".to_string(),
+                })?,
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Security Level".to_string(),
+                    name: "Low Secret".to_string(),
+                })?,
+            ])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Department".to_string(),
+                    name: "FIN".to_string(),
+                })?,
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Security Level".to_string(),
+                    name: "Protected".to_string(),
+                })?,
+            ])?);
+
+            coordinates.insert(Partition::from_attribute_ids(vec![
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Department".to_string(),
+                    name: "FIN".to_string(),
+                })?,
+                policy.get_attribute_id(&Attribute {
+                    dimension: "Security Level".to_string(),
+                    name: "Low Secret".to_string(),
+                })?,
+            ])?);
+            assert_eq!(semantic_space_coordinates, coordinates);
         }
 
-        // add the other attribute combination: FIN && Low Secret
-        let fin_value = policy.get_attribute_id(&Attribute::new("Department", "FIN"))?;
-        let conf_value =
-            policy.get_attribute_id(&Attribute::new("Security Level", "Low Secret"))?;
-        let mut partition = vec![fin_value, conf_value];
-        partition.sort_unstable();
-        partitions_.insert(Partition::from_attribute_ids(partition)?);
-        // since this is a hierarchical dim, add the lower values: here only low secret
-        let prot_value = policy.get_attribute_id(&Attribute::new("Security Level", "Protected"))?;
-        let mut partition = vec![fin_value, prot_value];
-        partition.sort_unstable();
-        partitions_.insert(Partition::from_attribute_ids(partition)?);
+        // Check the number of coordinates generated by some other access policies.
+        {
+            let ap = "(Department::FIN && Security Level::Low Secret) \
+                || (Department::MKG && Security Level::Low Secret)";
 
-        assert_eq!(partitions, partitions_);
+            assert_eq!(
+                policy
+                    .generate_semantic_space_coordinates(AccessPolicy::from_boolean_expression(
+                        ap
+                    )?)?
+                    .len(),
+                // remove (2 + 1) not to count "Security Level::Protected" -> "Security Level::Low Secret" twice
+                2 * (1 + 1) * (2 + 1) - (2 + 1)
+            );
 
-        //
-        // check the number of partitions generated by some access policies
-        //
-        let policy_attributes_4 = AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Security Level::Low Secret) || (Department::MKG && Security \
-             Level::Low Secret)",
-        )
-        .unwrap();
-        let partition_4 = policy
-            .access_policy_to_partitions(&policy_attributes_4, true)
-            .unwrap();
-
-        let policy_attributes_5 = AccessPolicy::from_boolean_expression(
-            "(Department::FIN && Security Level::Low Secret) || (Department::MKG && Security \
-             Level::Medium Secret)",
-        )
-        .unwrap();
-        let partition_5 = policy
-            .access_policy_to_partitions(&policy_attributes_5, true)
-            .unwrap();
-        assert_eq!(partition_4.len(), 4);
-        assert_eq!(partition_5.len(), 5);
+            let ap = "(Department::FIN && Security Level::Low Secret) \
+                || (Department::MKG && Security Level::Medium Secret)";
+            assert_eq!(
+                policy
+                    .generate_semantic_space_coordinates(AccessPolicy::from_boolean_expression(
+                        ap
+                    )?)?
+                    .len(),
+                // remove (2 + 1) not to count "Security Level::Protected" -> "Security Level::Low Secret" twice
+                (1 + 1) * (2 + 1) + (1 + 1) * (3 + 1) - (2 + 1)
+            );
+        }
         Ok(())
     }
 }
