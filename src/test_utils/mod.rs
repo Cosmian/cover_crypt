@@ -76,23 +76,21 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
         // same number of subkeys in public and secret key
-        assert_eq!(mpk.subkeys.len(), 20);
-        assert_eq!(msk.subkeys.count_elements(), 20);
+        assert_eq!(mpk.subkeys.len(), 30);
+        assert_eq!(msk.subkeys.count_elements(), 30);
 
         // rekey all partitions which include `Department::FIN`
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         // public key contains only the last subkeys
-        assert_eq!(mpk.subkeys.len(), 20);
-        // secret key stores the 5 old subkeys
-        // 5 is the size of the security level dimension
-        assert_eq!(msk.subkeys.count_elements(), 25);
+        assert_eq!(mpk.subkeys.len(), 30);
+        // secret key stores the 2 old subkeys
+        assert_eq!(msk.subkeys.count_elements(), 32);
 
         // remove older subkeys for `Department::FIN`
         cover_crypt.prune_master_secret_key(&rekey_access_policy, &policy, &mut msk)?;
-        assert_eq!(mpk.subkeys.len(), 20);
         // we only keep the last subkeys in the secret key
-        assert_eq!(msk.subkeys.count_elements(), 20);
+        assert_eq!(msk.subkeys.count_elements(), 30);
 
         Ok(())
     }
@@ -102,16 +100,16 @@ mod tests {
         let d1 = DimensionBuilder::new(
             "D1",
             vec![
-                ("D1A1", EncryptionHint::Classic),
-                ("D1A2", EncryptionHint::Classic),
+                ("A", EncryptionHint::Classic),
+                ("B", EncryptionHint::Classic),
             ],
             false,
         );
         let d2 = DimensionBuilder::new(
             "D2",
             vec![
-                ("D2A1", EncryptionHint::Classic),
-                ("D2A2", EncryptionHint::Classic),
+                ("A", EncryptionHint::Classic),
+                ("B", EncryptionHint::Classic),
             ],
             false,
         );
@@ -121,19 +119,25 @@ mod tests {
 
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        assert_eq!(msk.subkeys.count_elements(), 2 * 2);
 
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A1"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        assert_eq!(msk.subkeys.count_elements(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
+        // There is one key per coordinate.
+        let mut n_keys = (2 + 1) * (2 + 1);
+        assert_eq!(msk.subkeys.count_elements(), n_keys);
 
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A2"));
+        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "A"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        assert_eq!(msk.subkeys.count_elements(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
+        n_keys += 2;
+        assert_eq!(msk.subkeys.count_elements(), n_keys);
 
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D2", "D2A1"));
+        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "B"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        assert_eq!(msk.subkeys.count_elements(), 8 + 2); // Adding 2 new keys D1A1':D2A1', D1A2':D2A1'
+        n_keys += 2;
+        assert_eq!(msk.subkeys.count_elements(), n_keys);
+
+        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D2", "A"));
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
+        n_keys += 2;
+        assert_eq!(msk.subkeys.count_elements(), n_keys);
 
         Ok(())
     }
@@ -143,21 +147,20 @@ mod tests {
         let policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        let decryption_policy = AccessPolicy::from_boolean_expression(
+
+        let ap = AccessPolicy::from_boolean_expression(
             "Department::MKG && Security Level::High Secret",
         )?;
-        let mut usk = cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+        let mut usk = cover_crypt.generate_user_secret_key(&msk, &ap, &policy)?;
         let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
-        // rekey the MKG department
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "MKG"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        // refresh the user key and preserve access to old partitions
+
+        // Re-key the access policy associated to the user key.
+        cover_crypt.rekey_master_keys(&ap, &policy, &mut msk, &mut mpk)?;
+
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
-        // 4 partitions accessed by the user were rekeyed (MKG Protected, Low Secret,
-        // Medium Secret and High Secret)
         assert_eq!(
             usk.subkeys.borrow().count_elements(),
-            original_usk.subkeys.borrow().count_elements() + 4
+            2 * original_usk.subkeys.borrow().count_elements()
         );
         for x_i in original_usk.subkeys.borrow().flat_iter() {
             assert!(usk.subkeys.borrow().flat_iter().any(|x| x == x_i));
@@ -219,8 +222,7 @@ mod tests {
         for p in &new_partitions_msk {
             assert!(new_partitions_mpk.contains(p));
         }
-        // 5 is the size of the security level dimension
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 5);
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 6);
 
         //
         // Encrypt
@@ -285,7 +287,7 @@ mod tests {
             assert!(new_partitions_mpk.contains(p));
         }
         // 5 is the size of the security level dimension
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len() - 5);
+        assert_eq!(new_partitions_msk.len(), partitions_msk.len() - 6);
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -338,7 +340,7 @@ mod tests {
         let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
         // the disabled partition have been removed from mpk
-        assert_eq!(new_partitions_msk.len() - 5, new_partitions_mpk.len());
+        assert_eq!(new_partitions_msk.len() - 6, new_partitions_mpk.len());
         // msk has not changed
         assert_eq!(new_partitions_msk.len(), partitions_msk.len());
 
@@ -371,8 +373,7 @@ mod tests {
         // Rotating the disabled attribute should only change the msk
         let rekey_ap = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
         cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut mpk)?;
-        // 5 new partitions added to the msk
-        assert_eq!(msk.subkeys.count_elements() - 10, mpk.subkeys.len());
+        assert_eq!(msk.subkeys.count_elements() - 8, mpk.subkeys.len());
 
         Ok(())
     }
@@ -431,9 +432,7 @@ mod tests {
         let (sym_key, encrypted_key) = cover_crypt.encaps(
             &policy,
             &mpk,
-            &AccessPolicy::from_boolean_expression(
-                "Department::R&D && Security Level::Top Secret",
-            )?,
+            AccessPolicy::from_boolean_expression("Department::R&D && Security Level::Top Secret")?,
         )?;
         let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;

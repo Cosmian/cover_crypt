@@ -47,7 +47,7 @@ impl Covercrypt {
     ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         Ok(setup(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            policy.generate_all_partitions()?,
+            policy.generate_universal_coordinates()?,
         ))
     }
 
@@ -71,19 +71,22 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            policy.generate_all_partitions()?,
+            policy.generate_universal_coordinates()?,
         )
     }
 
-    /// Generate new keys associated to the given access policy in the master
-    /// keys. User keys will need to be refreshed after this step.
+    /// Generates new keys for each coordinate in the semantic space of the given access policy and
+    /// update the given master keys.
+    ///
+    /// All user keys need to be refreshed.
+    ///
     ///  - `access_policy`  : describe the keys to renew
     ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
     ///  - `mpk`            : master public key
     pub fn rekey_master_keys(
         &self,
-        access_policy: &AccessPolicy,
+        ap: &AccessPolicy,
         policy: &Policy,
         msk: &mut MasterSecretKey,
         mpk: &mut MasterPublicKey,
@@ -92,12 +95,15 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            policy.access_policy_to_partitions(access_policy, false)?,
+            policy.generate_semantic_space_coordinates(ap.clone())?,
         )
     }
 
-    /// Removes old keys associated to the given master keys from the master
-    /// keys. This will permanently remove access to old ciphers.
+    /// Removes the old subkeys of all coordinates in the semantic space of the given access policy
+    /// from the given master keys. This action is *irreversible*.
+    ///
+    /// All user keys need to be refreshed.
+    ///
     ///  - `access_policy`  : describe the keys to prune
     ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
@@ -109,7 +115,7 @@ impl Covercrypt {
     ) -> Result<(), Error> {
         prune(
             msk,
-            &policy.access_policy_to_partitions(access_policy, false)?,
+            &policy.generate_semantic_space_coordinates(access_policy.clone())?,
         )
     }
 
@@ -130,7 +136,7 @@ impl Covercrypt {
         keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.access_policy_to_partitions(access_policy, true)?,
+            &policy.generate_semantic_space_coordinates(access_policy.clone())?,
         )
     }
 
@@ -164,12 +170,12 @@ impl Covercrypt {
         &self,
         policy: &Policy,
         pk: &MasterPublicKey,
-        access_policy: &AccessPolicy,
+        access_policy: AccessPolicy,
     ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &policy.access_policy_to_partitions(access_policy, false)?,
+            &policy.generate_point_coordinates(access_policy)?,
         )
     }
 
@@ -270,7 +276,7 @@ impl EncryptedHeader {
         authentication_data: Option<&[u8]>,
     ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Self), Error> {
         let (symmetric_key, encapsulation) =
-            cover_crypt.encaps(policy, public_key, encryption_policy)?;
+            cover_crypt.encaps(policy, public_key, encryption_policy.clone())?;
 
         let encrypted_metadata = metadata
             .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))

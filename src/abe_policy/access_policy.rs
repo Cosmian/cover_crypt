@@ -4,10 +4,7 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use crate::{
-    abe_policy::{Attribute, Policy},
-    Error,
-};
+use crate::{abe_policy::Attribute, Error};
 
 /// An `AccessPolicy` is a boolean expression over attributes.
 ///
@@ -17,7 +14,6 @@ pub enum AccessPolicy {
     Attr(Attribute),
     And(Box<AccessPolicy>, Box<AccessPolicy>),
     Or(Box<AccessPolicy>, Box<AccessPolicy>),
-    All, // indicates we want the disjunction of all attributes
 }
 
 impl PartialEq for AccessPolicy {
@@ -28,7 +24,7 @@ impl PartialEq for AccessPolicy {
         if left_to_u32 != right_to_u32 {
             false
         } else {
-            self.attributes() == other.attributes()
+            self.ordered_attributes() == other.ordered_attributes()
         }
     }
 }
@@ -71,7 +67,6 @@ impl AccessPolicy {
             }
             Self::And(l, r) => l.to_u32(attribute_mapping) * r.to_u32(attribute_mapping),
             Self::Or(l, r) => l.to_u32(attribute_mapping) + r.to_u32(attribute_mapping),
-            Self::All => 0,
         }
     }
 
@@ -319,88 +314,42 @@ impl AccessPolicy {
         }
     }
 
-    /// Retrieves all the attributes present in this access policy.
-    ///
-    /// The attributes are sorted. This is useful for comparisons.
+    /// Returns the sorted sequence of attributes used in the access policy.
     #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        let mut attributes = self._attributes();
-        attributes.sort();
+    pub fn ordered_attributes(&self) -> Vec<Attribute> {
+        let mut attributes = self.clone().into_attributes();
+        attributes.sort_unstable();
         attributes
     }
 
-    fn _attributes(&self) -> Vec<Attribute> {
+    /// Returns the sequence of attributes used in the access policy.
+    pub fn into_attributes(self) -> Vec<Attribute> {
         match self {
-            Self::Attr(att) => vec![att.clone()],
-            Self::And(a1, a2) | Self::Or(a1, a2) => {
-                let mut v = Self::_attributes(a1);
-                v.extend(Self::_attributes(a2));
-                v
+            Self::Attr(att) => vec![att],
+            Self::And(lhs, rhs) | Self::Or(lhs, rhs) => {
+                [lhs.into_attributes(), rhs.into_attributes()].concat()
             }
-
-            Self::All => vec![],
         }
     }
 
-    /// Returns the list of attribute combinations that can be built from the
-    /// given access policy. It is an OR expression of AND expressions.
-    ///
-    /// - `policy`                              : global policy
-    /// - `include_lower_attributes_from_dim`   : set to `true` to combine lower
-    ///   attributes
-    /// from dimension with hierarchical order
-    pub fn to_attribute_combinations(
-        &self,
-        policy: &Policy,
-        include_lower_attributes_from_dim: bool,
-    ) -> Result<Vec<Vec<Attribute>>, Error> {
+    /// Converts the access policy into the Disjunctive Normal Form (DNF) of its attributes.
+    #[must_use]
+    pub fn into_dnf(self) -> Vec<Vec<Attribute>> {
         match self {
-            Self::Attr(attr) => {
-                let dim_parameters = policy
-                    .dimensions
-                    .get(&attr.dimension)
-                    .ok_or_else(|| Error::DimensionNotFound(attr.dimension.to_string()))?;
-                let mut res = vec![vec![attr.clone()]];
-                if include_lower_attributes_from_dim && dim_parameters.is_ordered() {
-                    // add attribute values for all attributes below the given one
-                    for name in dim_parameters
-                        .get_attributes_name()
-                        .take_while(|&name| name != &attr.name)
-                    {
-                        res.push(vec![Attribute::new(&attr.dimension, name)]);
-                    }
-                }
-                Ok(res)
-            }
-            Self::And(ap_left, ap_right) => {
-                let combinations_left =
-                    ap_left.to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
-                let combinations_right = ap_right
-                    .to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
+            Self::Attr(attr) => vec![vec![attr]],
+            Self::And(lhs, rhs) => {
+                let combinations_left = lhs.into_dnf();
+                let combinations_right = rhs.into_dnf();
                 let mut res =
                     Vec::with_capacity(combinations_left.len() * combinations_right.len());
                 for value_left in combinations_left {
                     for value_right in &combinations_right {
-                        let mut combined = Vec::with_capacity(value_left.len() + value_right.len());
-                        combined.extend_from_slice(&value_left);
-                        combined.extend_from_slice(value_right);
-                        res.push(combined);
+                        res.push([value_left.as_slice(), value_right.as_slice()].concat());
                     }
                 }
-                Ok(res)
+                res
             }
-            Self::Or(ap_left, ap_right) => {
-                let combinations_left =
-                    ap_left.to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
-                let combinations_right = ap_right
-                    .to_attribute_combinations(policy, include_lower_attributes_from_dim)?;
-                let mut res =
-                    Vec::with_capacity(combinations_left.len() + combinations_right.len());
-                res.extend(combinations_left);
-                res.extend(combinations_right);
-                Ok(res)
-            }
-            Self::All => Ok(vec![vec![]]),
+            Self::Or(lhs, rhs) => [lhs.into_dnf(), rhs.into_dnf()].concat(),
         }
     }
 }
