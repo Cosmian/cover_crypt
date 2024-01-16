@@ -50,7 +50,7 @@ fn main() {
         AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")
             .unwrap();
     let mut usk = cover_crypt
-        .generate_user_secret_key(&msk, &access_policy, &policy)
+        .generate_user_secret_key(&msk, &access_policy, &msk.policy)
         .unwrap();
 
     // Encrypt

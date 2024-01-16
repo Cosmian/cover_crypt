@@ -173,6 +173,26 @@ impl Dimension {
         }
     }
 
+    pub fn restrict(&self, attr_name: AttributeName) -> Result<Self, Error> {
+        let params = self
+            .get_attribute(&attr_name)
+            .ok_or_else(|| Error::AttributeNotFound(attr_name.to_string()))?
+            .clone();
+
+        match self {
+            Self::Ordered(attributes) => {
+                let mut attributes = attributes
+                    .iter()
+                    .take_while(|(name, _)| *name != &attr_name)
+                    .map(|(ref_name, ref_params)| (ref_name.clone(), ref_params.clone()))
+                    .collect::<Dict<AttributeName, AttributeParameters>>();
+                attributes.insert(attr_name, params);
+                Ok(Self::Ordered(attributes))
+            }
+            Self::Unordered(_) => Ok(Self::Unordered(HashMap::from_iter([(attr_name, params)]))),
+        }
+    }
+
     /// Adds a new attribute to the dimension with the provided properties.
     ///
     /// # Arguments
