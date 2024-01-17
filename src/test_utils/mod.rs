@@ -424,8 +424,7 @@ mod tests {
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
         let policy = policy()?;
-        //policy.rotate(&Attribute::new("Department", "FIN"))?;
-        let access_policy = (AccessPolicy::new("Department", "R&D")
+        let access_policy = (AccessPolicy::new("Department", "MKG")
             | AccessPolicy::new("Department", "FIN"))
             & AccessPolicy::new("Security Level", "Top Secret");
         let cover_crypt = Covercrypt::default();
@@ -433,7 +432,7 @@ mod tests {
         let (sym_key, encrypted_key) = cover_crypt.encaps(
             &policy,
             &mpk,
-            AccessPolicy::from_boolean_expression("Department::R&D && Security Level::Top Secret")?,
+            AccessPolicy::from_boolean_expression("Department::MKG && Security Level::Top Secret")?,
         )?;
         let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
