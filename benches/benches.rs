@@ -21,7 +21,7 @@ fn policy() -> Result<Policy, Error> {
             DimensionBuilder::new(
                 "Department",
                 vec![
-                    ("R&D", EncryptionHint::Classic),
+                    ("RD", EncryptionHint::Classic),
                     ("HR", EncryptionHint::Classic),
                     ("MKG", EncryptionHint::Classic),
                     ("FIN", EncryptionHint::Classic),
@@ -46,7 +46,7 @@ fn policy() -> Result<Policy, Error> {
             DimensionBuilder::new(
                 "Department",
                 vec![
-                    ("R&D", EncryptionHint::Hybridized),
+                    ("RD", EncryptionHint::Hybridized),
                     ("HR", EncryptionHint::Hybridized),
                     ("MKG", EncryptionHint::Hybridized),
                     ("FIN", EncryptionHint::Hybridized),
@@ -147,7 +147,7 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         access_policies.push(
             AccessPolicy::from_boolean_expression(
                 "(Department::FIN && Security Level::Protected) || ((Department::HR || \
-                 Department::MKG || Department::R&D) && Security Level::Confidential)",
+                 Department::MKG || Department::RD) && Security Level::Confidential)",
             )
             .unwrap(),
         );
@@ -156,7 +156,7 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         access_policies.push(
             AccessPolicy::from_boolean_expression(
                 "(Department::FIN && Security Level::Protected) || ((Department::HR || \
-                 Department::MKG || Department::R&D) && Security Level::Confidential) || \
+                 Department::MKG || Department::RD) && Security Level::Confidential) || \
                  (Department::HR && Security Level::Top Secret)",
             )
             .unwrap(),
@@ -189,14 +189,14 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         );
         user_access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::R&D && Department::FIN && Department::MKG && Department::HR) && \
+                "(Department::RD && Department::FIN && Department::MKG && Department::HR) && \
                  Security Level::Protected",
             )
             .unwrap(),
         );
         user_access_policies.push(
             AccessPolicy::from_boolean_expression(
-                "(Department::R&D && Department::FIN && Department::MKG && Department::HR && \
+                "(Department::RD && Department::FIN && Department::MKG && Department::HR && \
                  Department::CYBER) && Security Level::Protected",
             )
             .unwrap(),
