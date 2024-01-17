@@ -124,23 +124,23 @@ impl TryFrom<&str> for Attribute {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (dimension, name) = s.trim().split_once("::").ok_or_else(|| {
+        let (dimension, component) = s.split_once("::").ok_or_else(|| {
             Error::InvalidAttribute(format!("at least one separator '::' expected in {s}"))
         })?;
 
-        if name.contains("::") {
+        if component.contains("::") {
             return Err(Error::InvalidAttribute(format!(
                 "separator '::' expected only once in {s}"
             )));
         }
 
-        if dimension.is_empty() || name.is_empty() {
+        if dimension.is_empty() || component.is_empty() {
             return Err(Error::InvalidAttribute(format!(
                 "empty dimension or empty name in {s}"
             )));
         }
 
-        Ok(Self::new(dimension, name))
+        Ok(Self::new(dimension.trim(), component.trim()))
     }
 }
 
