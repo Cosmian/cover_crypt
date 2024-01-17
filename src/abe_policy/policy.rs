@@ -186,7 +186,7 @@ impl Policy {
         &self,
         ap: AccessPolicy,
     ) -> Result<HashSet<Partition>, Error> {
-        let dnf = ap.into_dnf();
+        let dnf = ap.to_dnf();
         let mut coordinates = HashSet::new();
         for conjunction in dnf {
             let semantic_space = conjunction
@@ -218,7 +218,7 @@ impl Policy {
         &self,
         ap: AccessPolicy,
     ) -> Result<HashSet<Partition>, Error> {
-        let dnf = ap.into_dnf();
+        let dnf = ap.to_dnf();
         let mut coordinates = HashSet::with_capacity(dnf.len());
         for conjunction in dnf {
             let coo = Partition::from_attribute_ids(
