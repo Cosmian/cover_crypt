@@ -118,16 +118,13 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // Access policy with 1 partition
     #[allow(unused_mut)]
     let mut access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
+        vec![AccessPolicy::parse("Department::FIN && Security Level::Protected").unwrap()];
 
     #[cfg(feature = "full_bench")]
     {
         // Access policy with 2 partition
         access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::FIN && Security Level::Protected) || (Department::HR && Security \
                  Level::Confidential)",
             )
@@ -136,7 +133,7 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
 
         // Access policy with 3 partition
         access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::FIN && Security Level::Protected) || ((Department::HR || \
                  Department::MKG) && Security Level::Confidential)",
             )
@@ -145,7 +142,7 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
 
         // Access policy with 4 partition
         access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::FIN && Security Level::Protected) || ((Department::HR || \
                  Department::MKG || Department::RD) && Security Level::Confidential)",
             )
@@ -154,7 +151,7 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
 
         // Access policy with 5 partition
         access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::FIN && Security Level::Protected) || ((Department::HR || \
                  Department::MKG || Department::RD) && Security Level::Confidential) || \
                  (Department::HR && Security Level::Top Secret)",
@@ -167,35 +164,32 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     // policies is always "Department::FIN && Security Level::Protected" only.
     #[allow(unused_mut)]
     let mut user_access_policies =
-        vec![
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Protected")
-                .unwrap(),
-        ];
+        vec![AccessPolicy::parse("Department::FIN && Security Level::Protected").unwrap()];
 
     #[cfg(feature = "full_bench")]
     {
         user_access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::FIN && Department::MKG) && Security Level::Protected",
             )
             .unwrap(),
         );
         user_access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::FIN && Department::MKG && Department::HR) && Security \
                  Level::Protected",
             )
             .unwrap(),
         );
         user_access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::RD && Department::FIN && Department::MKG && Department::HR) && \
                  Security Level::Protected",
             )
             .unwrap(),
         );
         user_access_policies.push(
-            AccessPolicy::from_boolean_expression(
+            AccessPolicy::parse(
                 "(Department::RD && Department::FIN && Department::MKG && Department::HR && \
                  Department::CYBER) && Security Level::Protected",
             )

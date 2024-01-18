@@ -80,7 +80,7 @@ impl EncryptionTestVector {
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
             mpk,
-            &AccessPolicy::from_boolean_expression(encryption_policy)?,
+            &AccessPolicy::parse(encryption_policy)?,
             header_metadata,
             authentication_data,
         )?;
@@ -120,10 +120,7 @@ impl UserSecretKeyTestVector {
         Ok(Self {
             key: transcoder.encode(
                 Covercrypt::default()
-                    .generate_user_secret_key(
-                        msk,
-                        &AccessPolicy::from_boolean_expression(access_policy)?,
-                    )?
+                    .generate_user_secret_key(msk, &AccessPolicy::parse(access_policy)?, policy)?
                     .serialize()?,
             ),
             access_policy: access_policy.to_string(),

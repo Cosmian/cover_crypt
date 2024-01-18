@@ -52,14 +52,6 @@ impl AccessPolicy {
         })
     }
 
-    /// Converts a boolean expression into `AccessPolicy`.
-    ///
-    /// See [`parse`](AccessPolicy::parse).
-    #[deprecated(since="14.0.0", note="please use `AccessPolicy::parse` instead")]
-    pub fn from_boolean_expression(boolean_expression: &str) -> Result<Self, Error> {
-        Self::parse(boolean_expression)
-    }
-
     /// Parses the given string into an access policy.
     ///
     /// # Abstract grammar
