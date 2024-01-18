@@ -156,26 +156,26 @@ mod tests {
         // 4 partitions accessed by the user were rekeyed (MKG Protected, Low Secret,
         // Medium Secret and High Secret)
         assert_eq!(
-            usk.subkeys.borrow().count_elements(),
-            original_usk.subkeys.borrow().count_elements() + 4
+            usk.subkeys.count_elements(),
+            original_usk.subkeys.count_elements() + 4
         );
-        for x_i in original_usk.subkeys.borrow().flat_iter() {
-            assert!(usk.subkeys.borrow().flat_iter().any(|x| x == x_i));
+        for x_i in original_usk.subkeys.flat_iter() {
+            assert!(usk.subkeys.flat_iter().any(|x| x == x_i));
         }
         // refresh the user key but do NOT preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, false)?;
         // the user should still have access to the same number of partitions
         assert_eq!(
-            usk.subkeys.borrow().count_elements(),
-            original_usk.subkeys.borrow().count_elements()
+            usk.subkeys.count_elements(),
+            original_usk.subkeys.count_elements()
         );
-        for x_i in original_usk.subkeys.borrow().flat_iter() {
-            assert!(!usk.subkeys.borrow().flat_iter().any(|x| x == x_i));
+        for x_i in original_usk.subkeys.flat_iter() {
+            assert!(!usk.subkeys.flat_iter().any(|x| x == x_i));
         }
 
         // try to modify the user key and refresh
         let part = Partition::from(vec![1, 6]);
-        usk.subkeys.borrow_mut().create_chain_with_single_value(
+        usk.subkeys.create_chain_with_single_value(
             part.clone(),
             msk.subkeys.get_latest(&part).unwrap().clone(),
         );
