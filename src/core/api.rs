@@ -80,7 +80,7 @@ impl Covercrypt {
     ///
     /// All user keys need to be refreshed.
     ///
-    ///  - `access_policy`  : describe the keys to renew
+    ///  - `ap`  : describe the keys to renew
     ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
     ///  - `mpk`            : master public key
