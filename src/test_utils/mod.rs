@@ -424,9 +424,10 @@ mod tests {
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
         let policy = policy()?;
-        let access_policy = (AccessPolicy::new("Department", "MKG")
-            | AccessPolicy::new("Department", "FIN"))
-            & AccessPolicy::new("Security Level", "Top Secret");
+        let access_policy = AccessPolicy::from_boolean_expression(
+            "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        )
+        .unwrap();
         let cover_crypt = Covercrypt::default();
         let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
         let (sym_key, encrypted_key) = cover_crypt.encaps(
