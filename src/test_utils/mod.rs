@@ -3,7 +3,6 @@ use crate::{
     Error,
 };
 
-#[cfg(feature = "serialization")]
 pub mod non_regression;
 
 pub fn policy() -> Result<Policy, Error> {
@@ -41,8 +40,10 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy, Partition},
-        Covercrypt, EncryptedHeader, UserSecretKey,
+        Covercrypt, EncryptedHeader,
     };
+
+    use crate::UserSecretKey;
 
     #[test]
     fn write_policy() {
