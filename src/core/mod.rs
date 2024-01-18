@@ -20,8 +20,6 @@ pub mod macros;
 
 pub mod api;
 pub mod primitives;
-
-#[cfg(feature = "serialization")]
 pub mod serialization;
 
 /// The symmetric key is 32 bytes long to provide 128 bits of post-quantum

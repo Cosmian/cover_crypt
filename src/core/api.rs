@@ -100,8 +100,12 @@ impl Covercrypt {
     /// given access policy and update the given master keys.
     ///
     /// All user keys need to be refreshed.
-    // TODO document error cases.
-    pub fn rekey(
+    ///
+    ///  - `ap`  : describe the keys to renew
+    ///  - `policy`         : global policy
+    ///  - `msk`            : master secret key
+    ///  - `mpk`            : master public key
+    pub fn rekey_master_keys(
         &self,
         ap: &AccessPolicy,
         policy: &Policy,

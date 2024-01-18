@@ -44,6 +44,8 @@ mod tests {
         core::EncryptedHeader,
     };
 
+    use crate::UserSecretKey;
+
     #[test]
     fn write_policy() {
         let _policy = policy().unwrap();
