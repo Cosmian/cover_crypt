@@ -149,9 +149,7 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let ap = AccessPolicy::from_boolean_expression(
-            "Department::MKG && Security Level::High Secret",
-        )?;
+        let ap = AccessPolicy::parse("Department::MKG && Security Level::High Secret")?;
         let mut usk = cover_crypt.generate_user_secret_key(&msk, &ap, &policy)?;
         let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
 
@@ -205,8 +203,7 @@ mod tests {
 
         //
         // User secret key
-        let decryption_policy =
-            AccessPolicy::from_boolean_expression("Security Level::Low Secret")?;
+        let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk =
             cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
 
@@ -227,9 +224,8 @@ mod tests {
 
         //
         // Encrypt
-        let secret_sales_ap = AccessPolicy::from_boolean_expression(
-            "Security Level::Low Secret && Department::Sales",
-        )?;
+        let secret_sales_ap =
+            AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &secret_sales_ap, None, None)?;
 
@@ -263,7 +259,7 @@ mod tests {
 
         //
         // New user secret key
-        let decryption_policy = AccessPolicy::from_boolean_expression(
+        let decryption_policy = AccessPolicy::parse(
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
@@ -271,8 +267,7 @@ mod tests {
 
         //
         // Encrypt
-        let top_secret_ap =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
@@ -296,7 +291,7 @@ mod tests {
 
         // refresh the user key and preserve access to old partitions
         let _new_decryption_policy =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::HR")?;
+            AccessPolicy::parse("Security Level::Top Secret && Department::HR")?;
 
         // refreshing the user key will remove access to removed partitions even if we
         // keep old rotations
@@ -320,7 +315,7 @@ mod tests {
 
         //
         // New user secret key
-        let decryption_policy = AccessPolicy::from_boolean_expression(
+        let decryption_policy = AccessPolicy::parse(
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
@@ -328,8 +323,7 @@ mod tests {
 
         //
         // Encrypt
-        let top_secret_ap =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
@@ -350,8 +344,7 @@ mod tests {
             .is_ok());
 
         // Can not encrypt using deactivated attribute
-        let top_secret_ap =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
 
         assert!(
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)
@@ -388,14 +381,13 @@ mod tests {
         //
         // New user secret key
         let decryption_policy =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+            AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let mut top_secret_fin_usk =
             cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
 
         //
         // Encrypt
-        let top_secret_ap =
-            AccessPolicy::from_boolean_expression("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
@@ -410,9 +402,8 @@ mod tests {
             .is_ok());
 
         // refresh the user key and preserve access to old partitions
-        let _new_decryption_policy = AccessPolicy::from_boolean_expression(
-            "Security Level::Top Secret && Department::Finance",
-        )?;
+        let _new_decryption_policy =
+            AccessPolicy::parse("Security Level::Top Secret && Department::Finance")?;
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -424,7 +415,7 @@ mod tests {
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
         let policy = policy()?;
-        let access_policy = AccessPolicy::from_boolean_expression(
+        let access_policy = AccessPolicy::parse(
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )
         .unwrap();
@@ -433,7 +424,7 @@ mod tests {
         let (sym_key, encrypted_key) = cover_crypt.encaps(
             &policy,
             &mpk,
-            AccessPolicy::from_boolean_expression("Department::MKG && Security Level::Top Secret")?,
+            AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?,
         )?;
         let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
@@ -456,7 +447,7 @@ mod tests {
         // New user secret key
         let _user_key = cover_crypt.generate_user_secret_key(
             &msk,
-            &AccessPolicy::from_boolean_expression("Security Level::Top Secret")?,
+            &AccessPolicy::parse("Security Level::Top Secret")?,
             &policy,
         )?;
 
@@ -468,7 +459,7 @@ mod tests {
         //
         // Declare policy
         let policy = policy()?;
-        let top_secret_ap = AccessPolicy::from_boolean_expression("Security Level::Top Secret")?;
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret")?;
 
         //
         // Setup Covercrypt
@@ -479,9 +470,7 @@ mod tests {
         // New user secret key
         let mut top_secret_fin_usk = cover_crypt.generate_user_secret_key(
             &msk,
-            &AccessPolicy::from_boolean_expression(
-                "Security Level::Top Secret && Department::FIN",
-            )?,
+            &AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?,
             &policy,
         )?;
 
