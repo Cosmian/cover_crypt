@@ -4,3 +4,4 @@
 /*.sh
 /.vscode
 Cargo.lock
+**/.#*
