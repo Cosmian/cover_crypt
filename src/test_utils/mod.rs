@@ -159,7 +159,7 @@ mod tests {
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
         assert_eq!(
             usk.subkeys.count_elements(),
-            original_usk.subkeys.count_elements() + 4
+            2 * original_usk.subkeys.count_elements()
         );
         for x_i in original_usk.subkeys.flat_iter() {
             assert!(usk.subkeys.flat_iter().any(|x| x == x_i));
