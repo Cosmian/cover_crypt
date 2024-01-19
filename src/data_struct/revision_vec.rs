@@ -14,7 +14,7 @@ use std::collections::{linked_list, LinkedList, VecDeque};
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, LinkedList<T>)>,
 }
@@ -111,6 +111,10 @@ impl<K, T> RevisionVec<K, T> {
     pub fn bfs(&self) -> BfsQueue<T> {
         BfsQueue::new(self)
     }
+
+    pub fn into_keys(self) -> impl Iterator<Item = K> {
+        self.chains.into_iter().map(|(k, _)| k)
+    }
 }
 
 impl<K, T> IntoIterator for RevisionVec<K, T> {
@@ -157,10 +161,20 @@ impl<'a, T> Iterator for BfsQueue<'a, T> {
 }
 
 impl<K, T> FromIterator<(K, LinkedList<T>)> for RevisionVec<K, T> {
-    /// Creates a `RevisionVec` from an iterator
     fn from_iter<I: IntoIterator<Item = (K, LinkedList<T>)>>(iter: I) -> Self {
         Self {
             chains: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
+    fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
+        Self {
+            chains: iter
+                .into_iter()
+                .map(|(k, v)| (k, LinkedList::from_iter([v])))
+                .collect(),
         }
     }
 }

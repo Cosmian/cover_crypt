@@ -22,13 +22,25 @@ use std::{
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct RevisionMap<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
     V: Debug,
 {
     pub(crate) map: HashMap<K, LinkedList<V>>,
+}
+
+impl<K, V> Default for RevisionMap<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+    V: Clone + Debug,
+{
+    fn default() -> Self {
+        Self {
+            map: HashMap::default(),
+        }
+    }
 }
 
 impl<K, V> RevisionMap<K, V>
@@ -109,6 +121,7 @@ where
         self.map.get_mut(key).and_then(LinkedList::front_mut)
     }
 
+    /// Returns true if the given key is bound to some value.
     pub fn contains_key(&self, key: &K) -> bool {
         self.map.contains_key(key)
     }
@@ -118,10 +131,14 @@ where
         self.map.keys()
     }
 
+    /// Iterates through all key/value couples in arbitrary order.
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &LinkedList<V>)> {
+        self.map.iter()
+    }
+
     /// Iterates through all revisions of a given key starting with the more
     /// recent one.
     pub fn get<Q>(&self, key: &Q) -> Option<&LinkedList<V>>
-    //impl Iterator<Item = &V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -138,8 +155,8 @@ where
         self.map.remove(key).map(LinkedList::into_iter)
     }
 
-    /// Keeps the n more recent values for a given key and returns the removed
-    /// older values.
+    /// Keeps the n more recent values for a given key and returns an the list
+    /// of removed values if the key was found.
     pub fn keep<Q>(&mut self, key: &Q, n: usize) -> Option<impl Iterator<Item = V>>
     where
         K: Borrow<Q>,

@@ -83,7 +83,6 @@ where
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let entry_index = self.indices.remove(key)?;
 
-        // shift indices over entry_index by one
         self.indices
             .iter_mut()
             .filter(|(_, index)| **index > entry_index)

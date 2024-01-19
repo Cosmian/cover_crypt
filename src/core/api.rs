@@ -1,18 +1,21 @@
 //! Defines the `Covercrypt` API.
 
-use std::{fmt::Debug, sync::Mutex};
+use std::{collections::HashMap, fmt::Debug, sync::Mutex};
 
 use cosmian_crypto_core::{
     reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
     RandomFixedSizeCBytes, SymmetricKey,
 };
 
-use super::primitives::prune;
+use super::{
+    primitives::{mpk_keygen, prune, update_coordinate_keys, usk_keygen},
+    MIN_TRACING_LEVEL,
+};
 use crate::{
-    abe_policy::{AccessPolicy, Policy},
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy},
     core::{
-        primitives::{decaps, encaps, keygen, refresh, rekey, setup, update},
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SYM_KEY_LENGTH,
+        primitives::{decaps, encaps, refresh, rekey, setup},
+        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SEED_LENGTH,
     },
     Error,
 };
@@ -38,140 +41,148 @@ impl PartialEq for Covercrypt {
 }
 
 impl Covercrypt {
-    /// Generates the master authority keys for supplied Policy
+    /// Sets up the Covercrypt scheme.
     ///
-    ///  - `policy` : Policy to use to generate the keys
-    pub fn generate_master_keys(
-        &self,
-        policy: &Policy,
-    ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        Ok(setup(
+    /// Generates a MSK and a MPK with a tracing level of [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
+    /// They only hold keys for the origin coordinate: only broadcast
+    /// encapsulations can be created.
+    pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+        let mut msk = setup(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            policy.generate_universal_coordinates()?,
-        ))
+            MIN_TRACING_LEVEL,
+        )?;
+
+        // Add broadcast coordinate with classic encryption level.
+        //
+        // TODO replace this function by `add_coordinates`,
+        // `remove_coordinates`, `hybridize_coordinates` and
+        // `deprecate_coordinates`.
+        update_coordinate_keys(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &mut msk,
+            HashMap::from_iter([(
+                Coordinate::from_attribute_ids(vec![])?,
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+            )]),
+        )?;
+        let mpk = mpk_keygen(&msk)?;
+
+        Ok((msk, mpk))
     }
 
-    /// Updates the master keys according to this new policy.
+    /// Updates the MSK according to this policy. Returns the new version of the
+    /// MPK.
     ///
-    /// When a coordinate exists in the new policy but not in the master keys,
-    /// a new key pair is added to the master keys for that coordinate.
-    /// When a coordinate exists on the master keys, but not in the new policy,
-    /// it is removed from the master keys.
+    /// Sets the MPK coordinates to the one defined by the policy:
+    /// - removes coordinates from the MSK that don't belong to the new policy
+    /// along with their associated keys;
+    /// - adds the policy coordinates that don't belong yet to the MSK,
+    /// generating new keys.
     ///
-    ///  - `policy` : Policy to use to generate the keys
-    ///  - `msk`    : master secret key
-    ///  - `mpk`    : master public key
+    /// The new MPK holds the latest public keys of each coordinates of the new policy.
     pub fn update_master_keys(
         &self,
         policy: &Policy,
         msk: &mut MasterSecretKey,
-        mpk: &mut MasterPublicKey,
-    ) -> Result<(), Error> {
-        update(
+    ) -> Result<MasterPublicKey, Error> {
+        update_coordinate_keys(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            mpk,
             policy.generate_universal_coordinates()?,
-        )
+        )?;
+        let mpk = mpk_keygen(msk)?;
+        Ok(mpk)
     }
 
-    /// Generates new keys for each coordinate in the semantic space of the given access policy and
-    /// update the given master keys.
+    /// Generates new keys for each coordinate in the semantic space of the
+    /// given access policy and update the given master keys.
     ///
     /// All user keys need to be refreshed.
-    ///
-    ///  - `ap`  : describe the keys to renew
-    ///  - `policy`         : global policy
-    ///  - `msk`            : master secret key
-    ///  - `mpk`            : master public key
-    pub fn rekey_master_keys(
+    // TODO document error cases.
+    pub fn rekey(
         &self,
         ap: &AccessPolicy,
         policy: &Policy,
         msk: &mut MasterSecretKey,
-        mpk: &mut MasterPublicKey,
-    ) -> Result<(), Error> {
+    ) -> Result<MasterPublicKey, Error> {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            mpk,
             policy.generate_semantic_space_coordinates(ap.clone())?,
-        )
+        )?;
+        let mpk = mpk_keygen(msk)?;
+        Ok(mpk)
     }
 
-    /// Removes the old subkeys of all coordinates in the semantic space of the given access policy
-    /// from the given master keys. This action is *irreversible*.
+    /// Removes all but the latest secret of each coordinate in the semantic
+    /// space of the given access policy from the given master keys.
     ///
-    /// All user keys need to be refreshed.
-    ///
-    ///  - `access_policy`  : describe the keys to prune
-    ///  - `policy`         : global policy
-    ///  - `msk`            : master secret key
+    /// This action is *irreversible*, and all user keys need to be refreshed.
+    // TODO document error cases.
     pub fn prune_master_secret_key(
         &self,
         access_policy: &AccessPolicy,
         policy: &Policy,
         msk: &mut MasterSecretKey,
-    ) -> Result<(), Error> {
+    ) -> Result<MasterPublicKey, Error> {
         prune(
             msk,
             &policy.generate_semantic_space_coordinates(access_policy.clone())?,
-        )
+        );
+        let mpk = mpk_keygen(msk)?;
+        Ok(mpk)
     }
 
-    /// Generates a user secret key.
+    /// Generates a USK associated to the given access policy.
     ///
-    /// A new user secret key only has the latest keys corresponding to its
-    /// access policy.
-    ///
-    /// - `msk`           : master secret key
-    /// - `access_policy` : user access policy
-    /// - `policy`        : global policy
+    /// It will be given the latest secret of each coordinate in the semantic
+    /// space of its access policy.
+    // TODO document error cases.
     pub fn generate_user_secret_key(
         &self,
-        msk: &MasterSecretKey,
+        msk: &mut MasterSecretKey,
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
-        keygen(
+        usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.generate_semantic_space_coordinates(access_policy.clone())?,
+            policy.generate_semantic_space_coordinates(access_policy.clone())?,
         )
     }
 
-    /// Refreshes the user key according to the given master key and user
-    /// policy.
+    /// Refreshes the USK relatively to the given MSK and policy.
     ///
-    /// The user key will be granted access to the current coordinates, as
-    /// determined by its access policy. If `preserve_old_coordinates_access`
-    /// is set, the old user access will be preserved.
+    /// The USK will be given the latest secrets of each coordinate in the
+    /// semantic space of its access policy and secrets that have been removed
+    /// from the MSK will be removed. If `keep_old_rights` is set to false, only
+    /// the latest secret of each coordinate is kept instead.
     ///
-    /// - `usk`                 : the user key to refresh
-    /// - `msk`                 : master secret key
-    /// - `keep_old_rights`     : whether or not to keep old decryption rights
-    pub fn refresh_user_secret_key(
+    /// Updates the tracing level to match the one of the MSK if needed.
+    // TODO document error cases.
+    pub fn refresh_usk(
         &self,
         usk: &mut UserSecretKey,
-        msk: &MasterSecretKey,
+        msk: &mut MasterSecretKey,
         keep_old_rights: bool,
     ) -> Result<(), Error> {
-        refresh(msk, usk, keep_old_rights)
+        refresh(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            usk,
+            keep_old_rights,
+        )
     }
 
     /// Generates a random symmetric key to be used with a DEM scheme and
-    /// generates its `Covercrypt` encapsulation for the given policy
-    /// `attributes`.
-    ///
-    /// - `policy`              : global policy
-    /// - `pk`                  : public key
-    /// - `encryption_policy`   : encryption policy used for the encapsulation
+    /// generates its encapsulation for the given access policy.
+    // TODO document error cases.
     pub fn encaps(
         &self,
         policy: &Policy,
         pk: &MasterPublicKey,
         access_policy: AccessPolicy,
-    ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
+    ) -> Result<(SymmetricKey<SEED_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
@@ -179,17 +190,14 @@ impl Covercrypt {
         )
     }
 
-    /// Decapsulates a symmetric key from the given `Covercrypt` encapsulation.
-    /// This returns multiple key candidates. The use of an authenticated DEM
-    /// scheme allows to select valid ones.
-    ///
-    /// - `sk_u`            : user secret key
-    /// - `encapsulation`   : encrypted symmetric key
+    /// Attempts opening the given `Covercrypt` encapsulation. Returns the
+    /// encapsulated key upon success and `None` otherwise.
+    // TODO document error cases.
     pub fn decaps(
         &self,
         usk: &UserSecretKey,
         encapsulation: &Encapsulation,
-    ) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
+    ) -> Result<Option<SymmetricKey<SEED_LENGTH>>, Error> {
         decaps(usk, encapsulation)
     }
 
@@ -200,9 +208,9 @@ impl Covercrypt {
     /// - `symmetric_key`   : AES key
     /// - `plaintext`       : data to be encrypted
     /// - `ad`              : optional associated data
-    pub fn encrypt(
+    pub fn dem_encrypt(
         &self,
-        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        symmetric_key: &SymmetricKey<SEED_LENGTH>,
         plaintext: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
@@ -223,9 +231,9 @@ impl Covercrypt {
     /// - `symmetric_key`   : AES key
     /// - `ciphertext`      : encrypted data
     /// - `ad`              : associated data
-    pub fn decrypt(
+    pub fn dem_decrypt(
         &self,
-        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+        symmetric_key: &SymmetricKey<SEED_LENGTH>,
         ciphertext: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
@@ -274,12 +282,12 @@ impl EncryptedHeader {
         encryption_policy: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
-    ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Self), Error> {
+    ) -> Result<(SymmetricKey<SEED_LENGTH>, Self), Error> {
         let (symmetric_key, encapsulation) =
             cover_crypt.encaps(policy, public_key, encryption_policy.clone())?;
 
         let encrypted_metadata = metadata
-            .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))
+            .map(|bytes| cover_crypt.dem_encrypt(&symmetric_key, bytes, authentication_data))
             .transpose()?;
 
         Ok((
@@ -303,17 +311,22 @@ impl EncryptedHeader {
         cover_crypt: &Covercrypt,
         usk: &UserSecretKey,
         authentication_data: Option<&[u8]>,
-    ) -> Result<CleartextHeader, Error> {
-        let symmetric_key = cover_crypt.decaps(usk, &self.encapsulation)?;
-        let metadata = self
-            .encrypted_metadata
-            .as_ref()
-            .map(|ciphertext| cover_crypt.decrypt(&symmetric_key, ciphertext, authentication_data))
-            .transpose()?;
-        Ok(CleartextHeader {
-            symmetric_key,
-            metadata,
-        })
+    ) -> Result<Option<CleartextHeader>, Error> {
+        if let Some(symmetric_key) = cover_crypt.decaps(usk, &self.encapsulation)? {
+            let metadata = self
+                .encrypted_metadata
+                .as_ref()
+                .map(|ciphertext| {
+                    cover_crypt.dem_decrypt(&symmetric_key, ciphertext, authentication_data)
+                })
+                .transpose()?;
+            Ok(Some(CleartextHeader {
+                symmetric_key,
+                metadata,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -323,6 +336,6 @@ impl EncryptedHeader {
 /// - `metadata`        : additional data symmetrically encrypted in a header
 #[derive(Debug, PartialEq, Eq)]
 pub struct CleartextHeader {
-    pub symmetric_key: SymmetricKey<SYM_KEY_LENGTH>,
+    pub symmetric_key: SymmetricKey<SEED_LENGTH>,
     pub metadata: Option<Vec<u8>>,
 }
