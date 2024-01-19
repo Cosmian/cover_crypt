@@ -32,7 +32,6 @@ impl AccessPolicy {
     /// given as a string.
     fn find_next_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
         let mut count = 0;
-        let mut right_closing_parenthesis = None;
         for (index, c) in boolean_expression.chars().enumerate() {
             match c {
                 '(' => count += 1,
@@ -40,16 +39,12 @@ impl AccessPolicy {
                 _ => {}
             };
             if count < 0 {
-                right_closing_parenthesis = Some(index);
-                break;
+                return Ok(index);
             }
         }
-
-        right_closing_parenthesis.ok_or_else(|| {
-            Error::InvalidBooleanExpression(format!(
-                "Missing closing parenthesis in boolean expression {boolean_expression}"
-            ))
-        })
+        Err(Error::InvalidBooleanExpression(format!(
+            "Missing closing parenthesis in boolean expression {boolean_expression}"
+        )))
     }
 
     /// Parses the given string into an access policy.
@@ -101,16 +96,16 @@ impl AccessPolicy {
     /// - "Department::MKG Department::FIN"
     pub fn parse(mut e: &str) -> Result<Self, Error> {
         let seeker = |c: &char| !"()|&".contains(*c);
-        let mut conj = LinkedList::<Self>::new();
+        let mut q = LinkedList::<Self>::new();
         loop {
             e = e.trim();
             if e.is_empty() {
-                return Ok(Self::conj_queue(Self::Any, conj));
+                return Ok(Self::conjugate(Self::Any, q.into_iter()));
             } else {
                 match &e[..1] {
                     "(" => {
                         let offset = Self::find_next_parenthesis(&e[1..])?;
-                        conj.push_back(Self::parse(&e[1..1 + offset]).map_err(|err| {
+                        q.push_back(Self::parse(&e[1..1 + offset]).map_err(|err| {
                             Error::InvalidBooleanExpression(format!(
                                 "error while parsing '{e}': {err}"
                             ))
@@ -123,10 +118,10 @@ impl AccessPolicy {
                                 "invalid separator in: '{e}'"
                             )));
                         }
-                        let base = conj.pop_front().ok_or_else(|| {
+                        let base = q.pop_front().ok_or_else(|| {
                             Error::InvalidBooleanExpression(format!("leading OR operand in '{e}'"))
                         })?;
-                        let lhs = Self::conj_queue(base, conj);
+                        let lhs = Self::conjugate(base, q.into_iter());
                         return Ok(lhs | Self::parse(&e[2..])?);
                     }
                     "&" => {
@@ -135,7 +130,7 @@ impl AccessPolicy {
                                 "invalid leading separator in: '{e}'"
                             )));
                         }
-                        if conj.is_empty() {
+                        if q.is_empty() {
                             return Err(Error::InvalidBooleanExpression(format!(
                                 "leading AND operand in '{e}'"
                             )));
@@ -149,7 +144,7 @@ impl AccessPolicy {
                     }
                     _ => {
                         let attr: String = e.chars().take_while(seeker).collect();
-                        conj.push_back(Self::Attr(Attribute::try_from(attr.as_str())?));
+                        q.push_back(Self::Attr(Attribute::try_from(attr.as_str())?));
                         e = &e[attr.len()..];
                     }
                 }
@@ -157,8 +152,9 @@ impl AccessPolicy {
         }
     }
 
-    fn conj_queue(first: Self, q: LinkedList<Self>) -> Self {
-        q.into_iter().fold(first, |mut res, operand| {
+    /// Conjugate the access policies from the given iterator.
+    fn conjugate(first: Self, policies: impl Iterator<Item = Self>) -> Self {
+        policies.fold(first, |mut res, operand| {
             res = res & operand;
             res
         })
