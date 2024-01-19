@@ -1,7 +1,6 @@
 //! Implements the core functionalities of `Covercrypt`.
 
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     hash::Hash,
     ops::Deref,
@@ -88,7 +87,7 @@ pub struct MasterSecretKey {
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub(crate) subkeys: RefCell<RevisionVec<Partition, SecretSubkey>>,
+    pub(crate) subkeys: RevisionVec<Partition, SecretSubkey>,
     kmac: Option<KmacSignature>,
 }
 

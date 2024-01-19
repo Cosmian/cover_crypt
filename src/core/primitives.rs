@@ -2,8 +2,8 @@
 //! `bib/Covercrypt.pdf`.
 
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet, LinkedList},
+    mem::take,
 };
 
 use cosmian_crypto_core::{
@@ -49,7 +49,7 @@ fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<K
         let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
         kmac.update(&usk.b.to_bytes());
 
-        for (partition, (sk_i, x_i)) in usk.subkeys.borrow().flat_iter() {
+        for (partition, (sk_i, x_i)) in usk.subkeys.flat_iter() {
             kmac.update(&partition.0);
             if let Some(sk_i) = sk_i {
                 kmac.update(sk_i);
@@ -231,7 +231,7 @@ pub fn keygen(
     let mut usk = UserSecretKey {
         a,
         b,
-        subkeys: RefCell::new(subkeys),
+        subkeys,
         kmac: None,
     };
     usk.kmac = compute_user_key_kmac(msk, &usk);
@@ -307,7 +307,7 @@ pub fn decaps(
     for encapsulation_i in &encapsulation.encs {
         // BFS search user subkeys to first try the most recent rotations of each
         // partitions.
-        for (sk_j, x_j) in usk.subkeys.borrow().bfs() {
+        for (sk_j, x_j) in usk.subkeys.bfs() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
@@ -466,9 +466,10 @@ pub fn refresh(
 ) -> Result<(), Error> {
     verify_user_key_kmac(msk, usk)?;
 
-    let new_subkeys = usk
-        .subkeys
-        .take()
+    // Take ownership of `usk.subkeys`
+    let old_user_subkeys = take(&mut usk.subkeys);
+
+    usk.subkeys = old_user_subkeys
         .into_iter()
         .filter_map(|(coordinate, user_chain)| {
             msk.subkeys.get(&coordinate).and_then(|msk_chain| {
@@ -500,8 +501,6 @@ pub fn refresh(
             })
         })
         .collect::<RevisionVec<_, _>>();
-
-    usk.subkeys.replace(new_subkeys);
 
     // Update user key KMAC
     usk.kmac = compute_user_key_kmac(msk, usk);
@@ -614,7 +613,7 @@ mod tests {
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
         // The developer now has a hybridized key.
-        assert_eq!(dev_usk.subkeys.borrow().count_elements(), 1);
+        assert_eq!(dev_usk.subkeys.count_elements(), 1);
         for key_encapsulation in &encapsulation.encs {
             if let KeyEncapsulation::ClassicEncapsulation(_) = key_encapsulation {
                 panic!("Wrong hybridization type");
@@ -747,7 +746,7 @@ mod tests {
         // refresh the user key
         refresh(&msk, &mut usk, true)?;
         // user key kept old access to partition 1
-        assert!(!usk.subkeys.borrow().flat_iter().any(|x| {
+        assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_1,
                 old_msk.subkeys.get_latest(&partition_1).unwrap(),
@@ -755,11 +754,10 @@ mod tests {
         }));
         assert!(usk
             .subkeys
-            .borrow()
             .flat_iter()
             .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) }));
         // user key kept the old hybrid key for partition 3
-        assert!(!usk.subkeys.borrow().flat_iter().any(|x| {
+        assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
                 &partition_3,
                 old_msk.subkeys.get_latest(&partition_3).unwrap(),
@@ -775,8 +773,8 @@ mod tests {
         )?;
         // refresh the user key
         refresh(&msk, &mut usk, true)?;
-        let usk_subkeys = usk.subkeys.borrow();
-        let usk_subkeys: Vec<_> = usk_subkeys
+        let usk_subkeys: Vec<_> = usk
+            .subkeys
             .flat_iter()
             .filter(|(part, _)| *part == &partition_2)
             .map(|(_, subkey)| subkey)
@@ -808,14 +806,14 @@ mod tests {
         // setup scheme
         let (msk, _) = setup(&mut rng, partitions_set);
         // create a user key with access to partition 1 and 2
-        let usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
+        let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
 
         assert!(verify_user_key_kmac(&msk, &usk).is_ok());
         let bytes = usk.serialize()?;
         let usk_ = UserSecretKey::deserialize(&bytes)?;
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
-        usk.subkeys.borrow_mut().create_chain_with_single_value(
+        usk.subkeys.create_chain_with_single_value(
             Partition(b"3".to_vec()),
             (None, R25519PrivateKey::new(&mut rng)),
         );

@@ -1,9 +1,6 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet, LinkedList},
-};
+use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
@@ -186,9 +183,9 @@ impl Serializable for UserSecretKey {
         let mut length = 2 * R25519PrivateKey::LENGTH
             + self.kmac.as_ref().map_or_else(|| 0, |kmac| kmac.len())
             // subkeys serialization
-            + to_leb128_len(self.subkeys.borrow().len())
-            + self.subkeys.borrow().count_elements() * R25519PrivateKey::LENGTH;
-        for (partition, chain) in self.subkeys.borrow().iter() {
+            + to_leb128_len(self.subkeys.len())
+            + self.subkeys.count_elements() * R25519PrivateKey::LENGTH;
+        for (partition, chain) in self.subkeys.iter() {
             length += to_leb128_len(partition.len()) + partition.len();
             length += to_leb128_len(chain.len());
             for (sk_i, _) in chain {
@@ -201,8 +198,8 @@ impl Serializable for UserSecretKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
-        n += ser.write_leb128_u64(self.subkeys.borrow().len() as u64)?;
-        for (partition, chain) in self.subkeys.borrow().iter() {
+        n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
+        for (partition, chain) in self.subkeys.iter() {
             // write chain partition
             n += ser.write_vec(partition)?;
             // iterate through all subkeys in the chain
@@ -241,7 +238,7 @@ impl Serializable for UserSecretKey {
         Ok(Self {
             a,
             b,
-            subkeys: RefCell::new(subkeys),
+            subkeys,
             kmac,
         })
     }
