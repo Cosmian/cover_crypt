@@ -7,7 +7,7 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 
 use super::policy;
 use crate::{
-    abe_policy::AccessPolicy,
+    abe_policy::{AccessPolicy, Policy},
     core::{MasterPublicKey, MasterSecretKey, UserSecretKey},
     Covercrypt, EncryptedHeader, Error,
 };
@@ -53,10 +53,16 @@ impl EncryptionTestVector {
         let ciphertext = de.finalize();
         let cover_crypt = Covercrypt::default();
 
-        let plaintext_header =
-            encrypted_header.decrypt(&cover_crypt, &user_key, authentication_data)?;
+        let plaintext_header = encrypted_header
+            .decrypt(&cover_crypt, &user_key, authentication_data)?
+            .ok_or_else(|| {
+                Error::OperationNotPermitted(
+                    "insufficient rights to open encapsulation".to_string(),
+                )
+            })?;
+
         assert_eq!(plaintext_header.metadata, header_metadata);
-        let plaintext = cover_crypt.decrypt(
+        let plaintext = cover_crypt.dem_decrypt(
             &plaintext_header.symmetric_key,
             &ciphertext,
             authentication_data,
@@ -68,6 +74,7 @@ impl EncryptionTestVector {
 
     pub fn new(
         mpk: &MasterPublicKey,
+        policy: &Policy,
         encryption_policy: &str,
         plaintext: &str,
         header_metadata: Option<&[u8]>,
@@ -79,6 +86,7 @@ impl EncryptionTestVector {
         let cover_crypt = Covercrypt::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
+            policy,
             mpk,
             &AccessPolicy::parse(encryption_policy)?,
             header_metadata,
@@ -86,7 +94,7 @@ impl EncryptionTestVector {
         )?;
 
         let mut aes_ciphertext =
-            cover_crypt.encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
+            cover_crypt.dem_encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
         let mut encrypted_bytes = encrypted_header.serialize()?;
         encrypted_bytes.append(&mut aes_ciphertext);
         let header_metadata = match header_metadata {
@@ -114,7 +122,11 @@ struct UserSecretKeyTestVector {
 }
 
 impl UserSecretKeyTestVector {
-    pub fn new(msk: &MasterSecretKey, access_policy: &str) -> Result<Self, Error> {
+    pub fn new(
+        msk: &mut MasterSecretKey,
+        policy: &Policy,
+        access_policy: &str,
+    ) -> Result<Self, Error> {
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
         Ok(Self {
@@ -150,13 +162,13 @@ impl NonRegressionTestVector {
         // Policy settings
         //
         let policy = policy()?;
-        //policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
         // Covercrypt setup
         //
         let cover_crypt = Covercrypt::default();
-        let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         //
         // Encryption header metadata
@@ -166,25 +178,29 @@ impl NonRegressionTestVector {
         let reg_vectors = Self {
             public_key: transcoder.encode(mpk.serialize()?),
             master_secret_key: transcoder.encode(msk.serialize()?),
-            policy: policy.to_string(),
+            policy: transcoder.encode(<Vec<u8>>::try_from(&policy).unwrap()),
             //
             // Create user decryption keys
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
+                &policy,
                 "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
             )?,
             medium_secret_mkg_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
+                &policy,
                 "Security Level::Medium Secret && Department::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
+                &policy,
                 "Security Level::Top Secret && Department::FIN",
             )?,
             //
             // Generate ciphertexts
             top_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
+                &policy,
                 "Department::MKG && Security Level::Top Secret",
                 "top_secret_mkg_plaintext",
                 Some(&header_metadata),
@@ -193,6 +209,7 @@ impl NonRegressionTestVector {
 
             low_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
+                &policy,
                 "Department::MKG && Security Level::Low Secret",
                 "low_secret_mkg_plaintext",
                 Some(&header_metadata),
@@ -201,6 +218,7 @@ impl NonRegressionTestVector {
 
             low_secret_fin_test_vector: EncryptionTestVector::new(
                 &mpk,
+                &policy,
                 "Department::FIN && Security Level::Low Secret",
                 "low_secret_fin_plaintext",
                 None,
@@ -261,6 +279,10 @@ mod tests {
             serde_json::to_string(&_reg_vector).unwrap(),
         )
         .unwrap();
+
+        let reg_vector: NonRegressionTestVector =
+            serde_json::from_str(include_str!("../../target/non_regression_vector.json")).unwrap();
+        reg_vector.verify();
 
         Ok(())
     }

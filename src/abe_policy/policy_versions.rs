@@ -15,8 +15,8 @@ pub struct PolicyV2 {
     /// Version number
     pub(crate) version: PolicyVersion,
     /// Last value taken by the attribute.
-    /// TODO: after some mutations, this counter will become very high, which implies the size of
-    /// the coordinate will become huge (d * log_2(id) * 8/7).
+    /// TODO: after some mutations, this counter will become very high, which
+    /// implies the size of the coordinates will become huge (d * log_2(id) * 8/7).
     pub(crate) last_attribute_value: u32,
 
     /// Policy axes: maps axes name to the list of associated attribute names

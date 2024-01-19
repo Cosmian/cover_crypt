@@ -1,106 +1,456 @@
-//! Implements the core functionalities of `Covercrypt`.
-
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, LinkedList},
     hash::Hash,
     ops::Deref,
 };
 
-use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey, SymmetricKey};
-use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
-use zeroize::ZeroizeOnDrop;
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
 
 use crate::{
-    abe_policy::{Coordinate, Policy},
+    abe_policy::Coordinate,
     data_struct::{RevisionMap, RevisionVec},
+    Error,
 };
 
-#[macro_use]
-pub mod macros;
-
+pub mod ae;
 pub mod api;
+mod encrypted_header;
 pub mod primitives;
+#[cfg(feature = "serialization")]
 pub mod serialization;
 
-/// The symmetric key is 32 bytes long to provide 128 bits of post-quantum
-/// security.
-pub const SYM_KEY_LENGTH: usize = 32;
+mod elgamal;
+mod postquantum;
+#[cfg(test)]
+mod tests;
 
-/// The length of the KMAC key.
-pub const KMAC_KEY_LENGTH: usize = 16;
+use elgamal::{EcPoint, Scalar};
+pub use encrypted_header::{CleartextHeader, EncryptedHeader};
 
-/// The length of the KMAC output.
-const KMAC_LENGTH: usize = 32;
-type KmacSignature = [u8; KMAC_LENGTH];
+use self::postquantum::{MlKemAesPke, PkeTrait};
 
-/// Length of the `Covercrypt` tag
+/// The length of the secret encapsulated by Covercrypt.
+///
+/// They are 32 bytes long to enable reaching 128 bits of post-quantum security
+/// when using it with a sensible DEM.
+pub const SEED_LENGTH: usize = 32;
+
+/// The length of the key used to sign user secret keys.
+///
+/// It is only 16-byte long because no post-quantum security is needed for
+/// now. An upgraded signature scheme can still be added later when quantum
+/// computers become available.
+const SIGNING_KEY_LENGTH: usize = 16;
+
+/// The length of the KMAC signature.
+const SIGNATURE_LENGTH: usize = 32;
+
+/// KMAC signature is used to guarantee the integrity of the user secret keys.
+type KmacSignature = [u8; SIGNATURE_LENGTH];
+
+/// Length of the Covercrypt early abort tag. 128 bits are enough since we only want collision
+/// resistance.
 const TAG_LENGTH: usize = 16;
+
+/// Covercrypt early abort tag is used during the decapsulation to verify the
+/// integrity of the result.
 type Tag = [u8; TAG_LENGTH];
 
-/// Kyber public key length
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct KyberPublicKey([u8; KYBER_INDCPA_PUBLICKEYBYTES]);
+/// Number of colluding users needed to escape tracing.
+pub const MIN_TRACING_LEVEL: usize = 1;
 
-impl Deref for KyberPublicKey {
-    type Target = [u8];
+/// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
+/// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CoordinateSecretKey {
+    el: Scalar,
+    pq: Option<postquantum::SecretKey>,
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl CoordinateSecretKey {
+    /// Generates a new random coordinate keypair cryptographically bound to the
+    /// Covercrypt binding point `h`.
+    fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
+        let el = Scalar::new(rng);
+        let pq = if hybridize {
+            let (pq, _) = MlKemAesPke.keygen(rng)?;
+            Some(pq)
+        } else {
+            None
+        };
+        Ok(Self { el, pq })
+    }
+
+    /// Generates the associated coordinate public key.
+    #[must_use]
+    fn public_key(&self, h: &EcPoint) -> CoordinatePublicKey {
+        let el_pk = h * &self.el;
+        let pq_pk = self.pq.as_ref().map(|sk| sk.pk());
+        CoordinatePublicKey {
+            el: el_pk,
+            pq: pq_pk,
+        }
+    }
+
+    /// Returns true if this coordinate keypair is hybridized.
+    fn is_hybridized(&self) -> bool {
+        self.pq.is_some()
+    }
+
+    fn drop_hybridization(&mut self) {
+        self.pq = None;
     }
 }
 
-/// Kyber secret key length
-#[derive(Debug, Clone, PartialEq, Eq, Hash, ZeroizeOnDrop)]
-pub struct KyberSecretKey([u8; KYBER_INDCPA_SECRETKEYBYTES]);
+/// The Covercrypt public keys hold the DH secret public key associated to a coordinate.
+/// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CoordinatePublicKey {
+    el: EcPoint,
+    pq: Option<postquantum::PublicKey>,
+}
 
-impl Deref for KyberSecretKey {
-    type Target = [u8];
+impl CoordinatePublicKey {
+    pub fn is_hybridized(&self) -> bool {
+        self.pq.is_some()
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
+        let is_homogeneous = subkeys
+            .iter()
+            .all(|cpk| cpk.is_hybridized() == subkeys[0].is_hybridized());
+
+        if is_homogeneous {
+            Ok(())
+        } else {
+            Err(Error::OperationNotPermitted(
+                "classic and hybridized access policies cannot be mixed".to_string(),
+            ))
+        }
     }
 }
 
-pub(super) type PublicSubkey = (Option<KyberPublicKey>, R25519PublicKey);
+/// Covercrypt user IDs are used to make user keys unique and traceable.
+///
+/// They are composed of a sequence of `LENGTH` scalars.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+struct UserId(LinkedList<Scalar>);
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct MasterPublicKey {
-    g1: R25519PublicKey,
-    g2: R25519PublicKey,
-    pub(crate) subkeys: HashMap<Coordinate, PublicSubkey>,
-    policy: Policy,
+impl UserId {
+    /// Returns the tracing level of the USK.
+    fn tracing_level(&self) -> usize {
+        self.0.len() - 1
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &Scalar> {
+        self.0.iter()
+    }
 }
 
-pub(super) type SecretSubkey = (Option<KyberSecretKey>, R25519PrivateKey);
+/// Covercrypt tracing secret key.
+///
+/// It allows creating tracing encapsulations. Such encapsulations can only be
+/// opened by a specific USK or combination of USKs (which IDs are known). The
+/// number of tracers in the key defines the tracing level. Any key generated by
+/// a number of users strictly lower than this level can be traced.
+///
+/// For example, if the tracing level is two, any collusion of up to two users
+/// can be traced.
+///
+/// It is composed of:
+/// - a generator
+/// - the tracers;
+/// - the set of known user IDs.
+#[derive(Debug, PartialEq, Eq, Default)]
+struct TracingSecretKey {
+    tracers: LinkedList<elgamal::Keypair>,
+    users: HashSet<UserId>,
+}
 
+impl TracingSecretKey {
+    /// Returns the current tracing level.
+    fn tracing_level(&self) -> usize {
+        self.tracers.len() - 1
+    }
+
+    /// Generates a new tracer. Returns the associated trap.
+    fn increase_tracing(&mut self, rng: &mut impl CryptoRngCore) {
+        self.tracers.push_back(elgamal::Keypair::random(rng));
+    }
+
+    /// Drops the oldest tracer and returns it.
+    fn _decrease_tracing(&mut self) -> Result<elgamal::Keypair, Error> {
+        if self.tracing_level() == MIN_TRACING_LEVEL {
+            Err(Error::OperationNotPermitted(format!(
+                "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
+            )))
+        } else {
+            Ok(self
+                .tracers
+                .pop_front()
+                .expect("previous check ensures the queue is never empty"))
+        }
+    }
+
+    /// Set the level of the tracing keypair to the target level.
+    pub fn _set_tracing_level(
+        &mut self,
+        rng: &mut impl CryptoRngCore,
+        target_level: usize,
+    ) -> Result<(), Error> {
+        if target_level < self.tracing_level() {
+            for _ in target_level..self.tracing_level() {
+                self._decrease_tracing()?;
+            }
+        } else {
+            for _ in self.tracing_level()..target_level {
+                self.increase_tracing(rng);
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns true if the given user ID is known.
+    fn is_known(&self, id: &UserId) -> bool {
+        self.users.contains(id)
+    }
+
+    /// Adds the given user ID to the list of known users.
+    fn add_user(&mut self, id: UserId) {
+        self.users.insert(id);
+    }
+
+    /// Removes the given user ID from the list of known users.
+    ///
+    /// Returns true if the user was in the list.
+    fn del_user(&mut self, id: &UserId) -> bool {
+        self.users.remove(id)
+    }
+
+    /// Generates the associated tracing public key.
+    #[must_use]
+    fn tpk(&self) -> TracingPublicKey {
+        TracingPublicKey(
+            self.tracers
+                .iter()
+                .filter_map(elgamal::Keypair::pk)
+                .cloned()
+                .collect(),
+        )
+    }
+}
+
+/// Covercrypt tracing public key.
+#[derive(Debug, PartialEq, Eq, Default)]
+struct TracingPublicKey(LinkedList<EcPoint>);
+
+impl TracingPublicKey {
+    /// Returns the tracing level tracing of this key.
+    fn tracing_level(&self) -> usize {
+        self.0.len() - 1
+    }
+}
+
+/// The Covercrypt Master Secret Key (MSK).
+///
+/// It is composed of:
+/// - the scalar `s` used to bind tracing and coordinate keys;
+/// - the tracing secret key used to produce challenges to trace user keys;
+/// - the secret keys associated to the universal coordinates;
+/// - an optional key for symmetric USK-signing.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
-    s: R25519PrivateKey,
-    s1: R25519PrivateKey,
-    s2: R25519PrivateKey,
-    pub(crate) subkeys: RevisionMap<Coordinate, SecretSubkey>,
-    kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
-    policy: Policy,
+    s: Scalar,
+    tsk: TracingSecretKey,
+    coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
+    signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
 }
 
+impl MasterSecretKey {
+    /// Returns the binding points.
+    fn binding_point(&self) -> EcPoint {
+        EcPoint::from(&self.s)
+    }
+
+    /// Generates a new ID and adds it to the list of known user IDs.
+    fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
+        if let Some(first_tracer) = self.tsk.tracers.front() {
+            let mut markers = LinkedList::new();
+            // Generate all but the first identifier at random. The first
+            // one is the solution of `(s - linear_comb)/first_tracer`.
+            let mut linear_comb = Scalar::zero();
+            for tracer in self.tsk.tracers.iter().skip(1) {
+                let ai = Scalar::new(rng);
+                linear_comb = &linear_comb + &(&ai * tracer.sk());
+                markers.push_back(ai);
+            }
+            markers.push_front(&(&self.s - &linear_comb) / first_tracer.sk());
+            let id = UserId(markers);
+            self.tsk.add_user(id.clone());
+            Ok(id)
+        } else {
+            Err(Error::KeyError("MSK has no tracer".to_string()))
+        }
+    }
+
+    /// Returns true if the given user ID is valid.
+    fn _validate_user_id(&self, id: &UserId) -> bool {
+        self.s
+            == id
+                .iter()
+                .zip(self.tsk.tracers.iter())
+                .map(|(identifier, tracer)| identifier * tracer.sk())
+                .fold(Scalar::zero(), |mut acc, elt| {
+                    acc = &acc + &elt;
+                    acc
+                })
+    }
+
+    /// If the tracing level of the user ID is not in sync with the one of the
+    /// MSK, generate a new ID with the correct tracing level and replace the
+    /// old ID by the new one in the MSK.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the ID is unknown.
+    fn refresh_id(&mut self, rng: &mut impl CryptoRngCore, id: UserId) -> Result<UserId, Error> {
+        if !self.tsk.is_known(&id) {
+            Err(Error::Tracing("unknown user".to_string()))
+        } else if id.tracing_level() != self.tsk.tracing_level() {
+            let new_id = self.generate_user_id(rng)?;
+            self.tsk.add_user(new_id.clone());
+            self.tsk.del_user(&id);
+            Ok(new_id)
+        } else {
+            // Since the integrity of the USK is checked, there is no need to
+            // validated the ID before returning it. This saves O(tracing-level)
+            // multiplications... but there is actually no way to locally check
+            // the caller actually checked the integrity first.
+            Ok(id)
+        }
+    }
+
+    /// Returns the most recent secret key associated to each given coordinate.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if some coordinate is missing from the MSK.
+    fn get_latest_coordinate_sk<'a>(
+        &'a self,
+        coordinates: impl Iterator<Item = Coordinate> + 'a,
+    ) -> impl Iterator<Item = Result<(Coordinate, CoordinateSecretKey), Error>> + 'a {
+        coordinates.map(|coordinate| {
+            self.coordinate_secrets
+                .get_latest(&coordinate)
+                .ok_or(Error::KeyError(format!(
+                    "MSK has no key for coordinate {coordinate:?}"
+                )))
+                .cloned()
+                .map(|(_, key)| (coordinate, key))
+        })
+    }
+
+    /// Generates a new MPK holding the latest public information of each universal coordinate.
+    pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
+        let h = self.binding_point();
+        Ok(MasterPublicKey {
+            tpk: self.tsk.tpk(),
+            coordinate_keys: self
+                .coordinate_secrets
+                .iter()
+                .filter_map(|(coordinate, secrets)| {
+                    secrets.front().and_then(|(is_activated, s)| {
+                        if *is_activated {
+                            Some((coordinate.clone(), s.public_key(&h)))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect(),
+        })
+    }
+}
+
+/// Covercrypt Public Key (PK).
+///
+/// It is composed of:
+/// - the tracing public key;
+/// - the public keys of the universal coordinates.
 #[derive(Debug, PartialEq, Eq)]
+pub struct MasterPublicKey {
+    tpk: TracingPublicKey,
+    coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
+}
+
+impl MasterPublicKey {
+    /// Returns the tracing level of this MPK.
+    #[inline(always)]
+    pub fn tracing_level(&self) -> usize {
+        self.tpk.tracing_level()
+    }
+
+    /// Generates traps for the given scalar.
+    // TODO: find a better concept.
+    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+        self.tpk.0.iter().map(|gi| gi * r).collect()
+    }
+}
+
+/// Covercrypt User Secret Key (USK).
+///
+/// It is composed of:
+/// - a user ID (pair of scalars);
+/// - the keys of the coordinates derived from the user decryption policy;
+/// - a signature from the MSK that guarantees its integrity.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserSecretKey {
-    a: R25519PrivateKey,
-    b: R25519PrivateKey,
-    pub(crate) subkeys: RevisionVec<Coordinate, SecretSubkey>,
-    kmac: Option<KmacSignature>,
+    id: UserId,
+    coordinate_keys: RevisionVec<Coordinate, CoordinateSecretKey>,
+    msk_signature: Option<KmacSignature>,
 }
 
+/// Encapsulation of a `SEED_LENGTH`-byte seed for a given coordinate.
+///
+/// In case the security level of the associated coordinate was set to
+/// post-quantum secure, the key encapsulation is hybridized. This implies a
+/// significant size overhead.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum KeyEncapsulation {
-    ClassicEncapsulation(Box<[u8; SYM_KEY_LENGTH]>),
-    HybridEncapsulation(Box<[u8; KYBER_INDCPA_BYTES]>),
+enum SeedEncapsulation {
+    Classic([u8; SEED_LENGTH]),
+    Hybridized(<MlKemAesPke as PkeTrait<{ Aes256Gcm::KEY_LENGTH }>>::Ciphertext),
 }
 
+impl Deref for SeedEncapsulation {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            SeedEncapsulation::Classic(ctx) => ctx,
+            SeedEncapsulation::Hybridized(ctx) => ctx,
+        }
+    }
+}
+
+/// Covercrypt encapsulation.
+///
+/// It is created for a subset of universal coordinates. One key encapsulation
+/// is created per associated coordinate.
+///
+/// It is composed of:
+/// - the early abort tag;
+/// - the traps used to select users that can open this encapsulation;
+/// - the coordinate encapsulations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Encapsulation {
-    c1: R25519PublicKey,
-    c2: R25519PublicKey,
     tag: Tag,
-    encs: HashSet<KeyEncapsulation>,
+    traps: Vec<EcPoint>,
+    coordinate_encapsulations: Vec<SeedEncapsulation>,
+}
+
+impl Encapsulation {
+    /// Returns the tracing level of this encapsulation.
+    pub fn tracing_level(&self) -> usize {
+        self.traps.len() - 1
+    }
 }

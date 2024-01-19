@@ -20,6 +20,7 @@ pub enum Error {
     ExistingCombination(String),
     InsufficientAccessPolicy,
     ConversionFailed(String),
+    Tracing(String),
 }
 
 impl Display for Error {
@@ -47,6 +48,7 @@ impl Display for Error {
             ),
             Self::ConversionFailed(err) => write!(f, "Conversion failed: {err}"),
             Self::OperationNotPermitted(err) => write!(f, "Operation not permitted: {err}"),
+            Self::Tracing(err) => write!(f, "tracing error: {err}"),
         }
     }
 }
