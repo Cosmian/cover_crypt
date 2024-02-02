@@ -17,14 +17,6 @@ name = "cosmian_cover_crypt"
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
-# [[bench]]
-# name = "benches"
-# harness = false
-
-[features]
-full_bench = []
-hybridized_bench = []
-
 [dependencies]
 cosmian_crypto_core = { version = "9.2.0", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
 pqc_kyber = { version = "0.4", features = ["std", "hazmat"] }
