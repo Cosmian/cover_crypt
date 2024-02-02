@@ -53,9 +53,9 @@ impl Covercrypt {
 
     /// Updates the master keys according to this new policy.
     ///
-    /// When a partition exists in the new policy but not in the master keys,
-    /// a new key pair is added to the master keys for that partition.
-    /// When a partition exists on the master keys, but not in the new policy,
+    /// When a coordinate exists in the new policy but not in the master keys,
+    /// a new key pair is added to the master keys for that coordinate.
+    /// When a coordinate exists on the master keys, but not in the new policy,
     /// it is removed from the master keys.
     ///
     ///  - `policy` : Policy to use to generate the keys
@@ -143,8 +143,8 @@ impl Covercrypt {
     /// Refreshes the user key according to the given master key and user
     /// policy.
     ///
-    /// The user key will be granted access to the current partitions, as
-    /// determined by its access policy. If `preserve_old_partitions_access`
+    /// The user key will be granted access to the current coordinates, as
+    /// determined by its access policy. If `preserve_old_coordinates_access`
     /// is set, the old user access will be preserved.
     ///
     /// - `usk`                 : the user key to refresh
