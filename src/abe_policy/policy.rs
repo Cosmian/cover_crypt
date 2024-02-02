@@ -6,8 +6,8 @@ use std::{
 };
 
 use super::{
-    AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Dimension, DimensionBuilder,
-    EncryptionHint, Partition, Policy, PolicyVersion,
+    AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Coordinate, Dimension,
+    DimensionBuilder, EncryptionHint, Policy, PolicyVersion,
 };
 use crate::Error;
 
@@ -170,12 +170,12 @@ impl Policy {
     /// activation status.
     pub fn generate_universal_coordinates(
         &self,
-    ) -> Result<HashMap<Partition, (EncryptionHint, AttributeStatus)>, Error> {
+    ) -> Result<HashMap<Coordinate, (EncryptionHint, AttributeStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
             .into_iter()
             .map(|(combination, is_hybridized, is_readonly)| {
-                Partition::from_attribute_ids(combination)
+                Coordinate::from_attribute_ids(combination)
                     .map(|coordinate| (coordinate, (is_hybridized, is_readonly)))
             })
             .collect()
@@ -193,7 +193,7 @@ impl Policy {
     pub fn generate_semantic_space_coordinates(
         &self,
         ap: AccessPolicy,
-    ) -> Result<HashSet<Partition>, Error> {
+    ) -> Result<HashSet<Coordinate>, Error> {
         let dnf = ap.to_dnf();
         let mut coordinates = HashSet::new();
         for conjunction in dnf {
@@ -209,7 +209,7 @@ impl Policy {
                 .collect::<Result<HashMap<_, _>, Error>>()?;
             // TODO: Some coordinates may be computed twice (the lower dimensions).
             for (ids, _, _) in combine(&semantic_space.iter().collect::<Vec<_>>()) {
-                coordinates.insert(Partition::from_attribute_ids(ids)?);
+                coordinates.insert(Coordinate::from_attribute_ids(ids)?);
             }
         }
         Ok(coordinates)
@@ -225,11 +225,11 @@ impl Policy {
     pub fn generate_point_coordinates(
         &self,
         ap: AccessPolicy,
-    ) -> Result<HashSet<Partition>, Error> {
+    ) -> Result<HashSet<Coordinate>, Error> {
         let dnf = ap.to_dnf();
         let mut coordinates = HashSet::with_capacity(dnf.len());
         for conjunction in dnf {
-            let coo = Partition::from_attribute_ids(
+            let coo = Coordinate::from_attribute_ids(
                 conjunction
                     .into_iter()
                     .map(|attr| self.get_attribute(&attr).map(|params| params.id))
@@ -344,33 +344,33 @@ mod tests {
         {
             let mut coordinates = HashSet::new();
 
-            coordinates.insert(Partition::from_attribute_ids(vec![])?);
+            coordinates.insert(Coordinate::from_attribute_ids(vec![])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![policy
+            coordinates.insert(Coordinate::from_attribute_ids(vec![policy
                 .get_attribute_id(&Attribute {
                     dimension: "Department".to_string(),
                     name: "HR".to_string(),
                 })?])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![policy
+            coordinates.insert(Coordinate::from_attribute_ids(vec![policy
                 .get_attribute_id(&Attribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),
                 })?])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![policy
+            coordinates.insert(Coordinate::from_attribute_ids(vec![policy
                 .get_attribute_id(&Attribute {
                     dimension: "Security Level".to_string(),
                     name: "Protected".to_string(),
                 })?])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![policy
+            coordinates.insert(Coordinate::from_attribute_ids(vec![policy
                 .get_attribute_id(&Attribute {
                     dimension: "Security Level".to_string(),
                     name: "Low Secret".to_string(),
                 })?])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![
+            coordinates.insert(Coordinate::from_attribute_ids(vec![
                 policy.get_attribute_id(&Attribute {
                     dimension: "Department".to_string(),
                     name: "HR".to_string(),
@@ -381,7 +381,7 @@ mod tests {
                 })?,
             ])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![
+            coordinates.insert(Coordinate::from_attribute_ids(vec![
                 policy.get_attribute_id(&Attribute {
                     dimension: "Department".to_string(),
                     name: "HR".to_string(),
@@ -392,7 +392,7 @@ mod tests {
                 })?,
             ])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![
+            coordinates.insert(Coordinate::from_attribute_ids(vec![
                 policy.get_attribute_id(&Attribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),
@@ -403,7 +403,7 @@ mod tests {
                 })?,
             ])?);
 
-            coordinates.insert(Partition::from_attribute_ids(vec![
+            coordinates.insert(Coordinate::from_attribute_ids(vec![
                 policy.get_attribute_id(&Attribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),

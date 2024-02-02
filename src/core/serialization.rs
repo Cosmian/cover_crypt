@@ -10,7 +10,7 @@ use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
 use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
-    abe_policy::Partition,
+    abe_policy::Coordinate,
     core::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
@@ -64,8 +64,8 @@ impl Serializable for MasterPublicKey {
             // subkeys serialization
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.len() * R25519PublicKey::LENGTH;
-        for (partition, (pk_i, _)) in &self.subkeys {
-            length += to_leb128_len(partition.len()) + partition.len();
+        for (coordinate, (pk_i, _)) in &self.subkeys {
+            length += to_leb128_len(coordinate.len()) + coordinate.len();
             length += serialize_len_option!(pk_i, _value, KYBER_INDCPA_PUBLICKEYBYTES);
         }
         length
@@ -75,8 +75,8 @@ impl Serializable for MasterPublicKey {
         let mut n = ser.write_array(&self.g1.to_bytes())?;
         n += ser.write_array(&self.g2.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, (pk_i, h_i)) in &self.subkeys {
-            n += ser.write_vec(partition)?;
+        for (coordinate, (pk_i, h_i)) in &self.subkeys {
+            n += ser.write_vec(coordinate)?;
             serialize_option!(ser, n, pk_i, value, ser.write_array(value));
             n += ser.write_array(&h_i.to_bytes())?;
         }
@@ -86,15 +86,14 @@ impl Serializable for MasterPublicKey {
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let g1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
-        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = HashMap::with_capacity(n_partitions);
-        let policy = MasterPublicKey::policy.read(de)?;
-        for _ in 0..n_partitions {
-            let partition = Partition::from(de.read_vec()?);
+        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = HashMap::with_capacity(n_coordinates);
+        for _ in 0..n_coordinates {
+            let coordinate = Coordinate::from(de.read_vec()?);
             let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
             let h_i =
                 R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
-            subkeys.insert(partition, (pk_i, h_i));
+            subkeys.insert(coordinate, (pk_i, h_i));
         }
         Ok(Self { g1, g2, subkeys, policy })
     }
@@ -109,8 +108,8 @@ impl Serializable for MasterSecretKey {
             // subkeys serialization
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.count_elements() * R25519PrivateKey::LENGTH;
-        for (partition, chain) in &self.subkeys.map {
-            length += to_leb128_len(partition.len()) + partition.len();
+        for (coordinate, chain) in &self.subkeys.map {
+            length += to_leb128_len(coordinate.len()) + coordinate.len();
             length += to_leb128_len(chain.len());
             for (sk_i, _) in chain {
                 let x = serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
@@ -125,8 +124,8 @@ impl Serializable for MasterSecretKey {
         n += ser.write_array(&self.s2.to_bytes())?;
         n += ser.write_array(&self.s.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, chain) in &self.subkeys.map {
-            n += ser.write_vec(partition)?;
+        for (coordinate, chain) in &self.subkeys.map {
+            n += ser.write_vec(coordinate)?;
             n += ser.write_leb128_u64(chain.len() as u64)?;
             for (sk_i, x_i) in chain {
                 serialize_option!(ser, n, sk_i, value, ser.write_array(value));
@@ -147,11 +146,10 @@ impl Serializable for MasterSecretKey {
             R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
 
-        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = RevisionMap::with_capacity(n_partitions);
-        let policy = MasterSecretKey::policy.read(de)?;
-        for _ in 0..n_partitions {
-            let partition = Partition::from(de.read_vec()?);
+        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = RevisionMap::with_capacity(n_coordinates);
+        for _ in 0..n_coordinates {
+            let coordinate = Coordinate::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
             let chain: Result<LinkedList<_>, Self::Error> = (0..n_keys)
                 .map(|_| {
@@ -160,7 +158,7 @@ impl Serializable for MasterSecretKey {
                     Ok((sk_i, R25519PrivateKey::try_from_bytes(x_i)?))
                 })
                 .collect();
-            subkeys.map.insert(partition, chain?);
+            subkeys.map.insert(coordinate, chain?);
         }
 
         let kmac_key = match de.read_array::<{ KMAC_KEY_LENGTH }>() {
@@ -188,8 +186,8 @@ impl Serializable for UserSecretKey {
             // subkeys serialization
             + to_leb128_len(self.subkeys.len())
             + self.subkeys.count_elements() * R25519PrivateKey::LENGTH;
-        for (partition, chain) in self.subkeys.iter() {
-            length += to_leb128_len(partition.len()) + partition.len();
+        for (coordinate, chain) in self.subkeys.iter() {
+            length += to_leb128_len(coordinate.len()) + coordinate.len();
             length += to_leb128_len(chain.len());
             for (sk_i, _) in chain {
                 length += serialize_len_option!(sk_i, _value, KYBER_INDCPA_SECRETKEYBYTES);
@@ -202,9 +200,9 @@ impl Serializable for UserSecretKey {
         let mut n = ser.write_array(&self.a.to_bytes())?;
         n += ser.write_array(&self.b.to_bytes())?;
         n += ser.write_leb128_u64(self.subkeys.len() as u64)?;
-        for (partition, chain) in self.subkeys.iter() {
-            // write chain partition
-            n += ser.write_vec(partition)?;
+        for (coordinate, chain) in self.subkeys.iter() {
+            // write chain coordinate
+            n += ser.write_vec(coordinate)?;
             // iterate through all subkeys in the chain
             n += ser.write_leb128_u64(chain.len() as u64)?;
             for (sk_i, x_i) in chain {
@@ -221,10 +219,10 @@ impl Serializable for UserSecretKey {
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let a = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let b = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
-        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut subkeys = RevisionVec::with_capacity(n_partitions);
-        for _ in 0..n_partitions {
-            let partition = Partition::from(de.read_vec()?);
+        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut subkeys = RevisionVec::with_capacity(n_coordinates);
+        for _ in 0..n_coordinates {
+            let coordinate = Coordinate::from(de.read_vec()?);
             // read all keys forming a chain and inserting them all at once.
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
             let new_chain: Result<LinkedList<_>, _> = (0..n_keys)
@@ -234,7 +232,7 @@ impl Serializable for UserSecretKey {
                     Ok::<_, Self::Error>((sk_i, R25519PrivateKey::try_from_bytes(x_i)?))
                 })
                 .collect();
-            subkeys.insert_new_chain(partition, new_chain?);
+            subkeys.insert_new_chain(coordinate, new_chain?);
         }
         let kmac = de.read_array::<{ KMAC_LENGTH }>().ok();
 
@@ -308,9 +306,9 @@ impl Serializable for Encapsulation {
         let c1 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let c2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let tag = de.read_array()?;
-        let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut encs = HashSet::with_capacity(n_partitions);
-        for _ in 0..n_partitions {
+        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
+        let mut encs = HashSet::with_capacity(n_coordinates);
+        for _ in 0..n_coordinates {
             let key_encapsulation = de.read()?;
             encs.insert(key_encapsulation);
         }
@@ -421,23 +419,23 @@ mod tests {
     #[test]
     fn test_serialization() -> Result<(), Error> {
         // Setup
-        let admin_partition = Partition(b"admin".to_vec());
-        let dev_partition = Partition(b"dev".to_vec());
-        let partitions_set = HashMap::from([
+        let admin_coordinate = Coordinate(b"admin".to_vec());
+        let dev_coordinate = Coordinate(b"dev".to_vec());
+        let coordinates_set = HashMap::from([
             (
-                admin_partition.clone(),
+                admin_coordinate.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                dev_partition.clone(),
+                dev_coordinate.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
-        let user_set = HashSet::from([admin_partition.clone(), dev_partition.clone()]);
-        let target_set = HashSet::from([admin_partition, dev_partition]);
+        let user_set = HashSet::from([admin_coordinate.clone(), dev_coordinate.clone()]);
+        let target_set = HashSet::from([admin_coordinate, dev_coordinate]);
         let mut rng = CsRng::from_entropy();
 
-        let (msk, mpk) = setup(&mut rng, partitions_set);
+        let (msk, mpk) = setup(&mut rng, coordinates_set);
 
         // Check Covercrypt `MasterSecretKey` serialization.
         let bytes = msk.serialize()?;

@@ -76,11 +76,10 @@ impl Covercrypt {
     /// Updates the MSK according to this policy. Returns the new version of the
     /// MPK.
     ///
-    /// Sets the MPK coordinates to the one defined by the policy:
-    /// - removes coordinates from the MSK that don't belong to the new policy
-    /// along with their associated keys;
-    /// - adds the policy coordinates that don't belong yet to the MSK,
-    /// generating new keys.
+    /// When a coordinate exists in the new policy but not in the master keys,
+    /// a new key pair is added to the master keys for that coordinate.
+    /// When a coordinate exists on the master keys, but not in the new policy,
+    /// it is removed from the master keys.
     ///
     /// The new MPK holds the latest public keys of each coordinates of the new policy.
     pub fn update_master_keys(
@@ -157,10 +156,9 @@ impl Covercrypt {
 
     /// Refreshes the USK relatively to the given MSK and policy.
     ///
-    /// The USK will be given the latest secrets of each coordinate in the
-    /// semantic space of its access policy and secrets that have been removed
-    /// from the MSK will be removed. If `keep_old_rights` is set to false, only
-    /// the latest secret of each coordinate is kept instead.
+    /// The user key will be granted access to the current coordinates, as
+    /// determined by its access policy. If `preserve_old_coordinates_access`
+    /// is set, the old user access will be preserved.
     ///
     /// Updates the tracing level to match the one of the MSK if needed.
     // TODO document error cases.

@@ -23,8 +23,9 @@ use super::{
 };
 use crate::{
     abe_policy::{
-        AttributeStatus::{self, DecryptOnly, EncryptDecrypt},
-        EncryptionHint, Partition, Policy,
+        AttributeStatus,
+        AttributeStatus::{DecryptOnly, EncryptDecrypt},
+        Coordinate, EncryptionHint,
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
@@ -48,8 +49,8 @@ fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<K
         let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
         kmac.update(&usk.b.to_bytes());
 
-        for (partition, (sk_i, x_i)) in usk.subkeys.flat_iter() {
-            kmac.update(&partition.0);
+        for (coordinate, (sk_i, x_i)) in usk.subkeys.flat_iter() {
+            kmac.update(&coordinate.0);
             if let Some(sk_i) = sk_i {
                 kmac.update(sk_i);
             }
@@ -104,7 +105,7 @@ fn create_subkey_pair(
     ((pk_pq, pk_i), (sk_pq, sk_i))
 }
 
-/// Update a pair of public and private subkeys of a `ReadWrite` partition.
+/// Update a pair of public and private subkeys of a `ReadWrite` coordinate.
 fn update_subkey_pair(
     rng: &mut impl CryptoRngCore,
     h: &R25519CurvePoint,
@@ -138,7 +139,7 @@ fn update_subkey_pair(
     Ok(())
 }
 
-/// Update the private subkey of a `ReadOnly` partition
+/// Update the private subkey of a `ReadOnly` coordinate
 fn update_master_subkey(
     rng: &mut impl CryptoRngCore,
     _h: &R25519CurvePoint,
@@ -159,10 +160,10 @@ fn update_master_subkey(
 /// # Parameters
 ///
 /// - `rng`             : random number generator
-/// - `partitions`      : set of partition to be used
+/// - `coordinates`      : set of coordinate to be used
 pub fn setup(
     rng: &mut impl CryptoRngCore,
-    partitions: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    coordinates: HashMap<Coordinate, (EncryptionHint, AttributeStatus)>,
 ) -> (MasterSecretKey, MasterPublicKey) {
     let s = R25519PrivateKey::new(rng);
     let s1 = R25519PrivateKey::new(rng);
@@ -171,16 +172,16 @@ pub fn setup(
     let g1 = R25519PublicKey::from(&s1);
     let g2 = R25519PublicKey::from(&s2);
 
-    let mut sub_sk = RevisionMap::with_capacity(partitions.len());
-    let mut sub_pk = HashMap::with_capacity(partitions.len());
+    let mut sub_sk = RevisionMap::with_capacity(coordinates.len());
+    let mut sub_pk = HashMap::with_capacity(coordinates.len());
 
     let policy = Policy::new();
 
-    for (partition, (is_hybridized, write_status)) in partitions {
+    for (coordinate, (is_hybridized, write_status)) in coordinates {
         let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
-        sub_sk.insert(partition.clone(), secret_subkey);
+        sub_sk.insert(coordinate.clone(), secret_subkey);
         if write_status == EncryptDecrypt {
-            sub_pk.insert(partition, public_subkey);
+            sub_pk.insert(coordinate, public_subkey);
         }
     }
 
@@ -217,17 +218,17 @@ pub fn setup(
 pub fn keygen(
     rng: &mut impl CryptoRngCore,
     msk: &MasterSecretKey,
-    decryption_set: &HashSet<Partition>,
+    decryption_set: &HashSet<Coordinate>,
 ) -> Result<UserSecretKey, Error> {
     let a = R25519PrivateKey::new(rng);
     let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
-    // Use the last key for each partitions in the decryption set
+    // Use the last key for each coordinates in the decryption set
     let mut subkeys = RevisionVec::with_capacity(decryption_set.len());
-    decryption_set.iter().try_for_each(|partition| {
-        let subkey = msk.subkeys.get_latest(partition).ok_or(Error::KeyError(
+    decryption_set.iter().try_for_each(|coordinate| {
+        let subkey = msk.subkeys.get_latest(coordinate).ok_or(Error::KeyError(
             "Master secret key and Policy are not in sync.".to_string(),
         ))?;
-        subkeys.create_chain_with_single_value(partition.clone(), subkey.clone());
+        subkeys.create_chain_with_single_value(coordinate.clone(), subkey.clone());
         Ok::<_, Error>(())
     })?;
 
@@ -252,7 +253,7 @@ pub fn keygen(
 pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
-    encryption_set: &HashSet<Partition>,
+    encryption_set: &HashSet<Coordinate>,
 ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
     let mut seed = Zeroizing::new([0; SYM_KEY_LENGTH]);
     rng.fill_bytes(&mut *seed);
@@ -261,8 +262,8 @@ pub fn encaps(
     let c1 = &mpk.g1 * &r;
     let c2 = &mpk.g2 * &r;
     let mut encs = HashSet::with_capacity(encryption_set.len());
-    for partition in encryption_set {
-        if let Some((pk_i, h_i)) = mpk.subkeys.get(partition) {
+    for coordinate in encryption_set {
+        if let Some((pk_i, h_i)) = mpk.subkeys.get(coordinate) {
             let mut e_i = [0; SYM_KEY_LENGTH];
             kdf256!(&mut e_i, &(h_i * &r).to_bytes());
             xor_in_place(&mut e_i, &seed);
@@ -276,7 +277,7 @@ pub fn encaps(
                 encs.insert(KeyEncapsulation::ClassicEncapsulation(Box::new(e_i)));
             }
         }
-        // else unknown target partition
+        // else unknown target coordinate
         else {
             return Err(Error::KeyError(
                 "Missing public key for this attribute, it appears that you are trying to encrypt \
@@ -309,7 +310,7 @@ pub fn decaps(
     let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
     for encapsulation_i in &encapsulation.encs {
         // BFS search user subkeys to first try the most recent rotations of each
-        // partitions.
+        // coordinates.
         for (sk_j, x_j) in usk.subkeys.bfs() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
@@ -337,19 +338,19 @@ pub fn decaps(
     Err(Error::InsufficientAccessPolicy)
 }
 
-/// Update the given master keys for the given list of partitions.
+/// Update the given master keys for the given list of coordinates.
 ///
-/// If a partition exists in the keys but not in the list, it will be removed
+/// If a coordinate exists in the keys but not in the list, it will be removed
 /// from the keys.
 ///
-/// If a partition exists in the list, but not in the keys, it will be "added"
-/// to the keys, by adding a new partition key pair as performed in the setup
+/// If a coordinate exists in the list, but not in the keys, it will be "added"
+/// to the keys, by adding a new coordinate key pair as performed in the setup
 /// procedure above.
 ///
-/// If a partition exists in the list and in the keys, hybridization property
+/// If a coordinate exists in the list and in the keys, hybridization property
 /// will be set as given.
 ///
-/// If a partition exists in the list and in the master secret key a new public
+/// If a coordinate exists in the list and in the master secret key a new public
 /// sub-key is derived.
 ///
 /// # Error
@@ -363,40 +364,41 @@ pub fn decaps(
 /// - `rng`             : random number generator
 /// - `msk`             : master secret key
 /// - `mpk`             : master public key
-/// - `partition_set`   : new set of partitions to use after the update
+/// - `coordinate_set`   : new set of coordinates to use after the update
 pub fn update(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    partitions_set: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
+    coordinates_set: HashMap<Coordinate, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
-    // Remove keys from partitions deleted from Policy
-    msk.subkeys.retain(|part| partitions_set.contains_key(part));
+    // Remove keys from coordinates deleted from Policy
+    msk.subkeys
+        .retain(|part| coordinates_set.contains_key(part));
     mpk.subkeys
-        .retain(|part, _| partitions_set.contains_key(part));
+        .retain(|part, _| coordinates_set.contains_key(part));
 
     let h = R25519PublicKey::from(&msk.s);
-    for (partition, (is_hybridized, write_status)) in partitions_set {
-        // check if secret key exist for this partition
-        if let Some(secret_subkey) = msk.subkeys.get_latest_mut(&partition) {
+    for (coordinate, (is_hybridized, write_status)) in coordinates_set {
+        // check if secret key exist for this coordinate
+        if let Some(secret_subkey) = msk.subkeys.get_latest_mut(&coordinate) {
             // update the master secret and public subkey if needed
-            match (write_status, mpk.subkeys.get_mut(&partition)) {
+            match (write_status, mpk.subkeys.get_mut(&coordinate)) {
                 (EncryptDecrypt, None) => unreachable!(),
                 (EncryptDecrypt, Some(public_subkey)) => {
                     update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?;
                 }
                 (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized),
                 (DecryptOnly, Some(_)) => {
-                    mpk.subkeys.remove(&partition);
+                    mpk.subkeys.remove(&coordinate);
                     update_master_subkey(rng, &h, secret_subkey, is_hybridized);
                 }
             }
         } else {
             // generate new keys
             let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
-            msk.subkeys.insert(partition.clone(), secret_subkey);
+            msk.subkeys.insert(coordinate.clone(), secret_subkey);
             if write_status == EncryptDecrypt {
-                mpk.subkeys.insert(partition, public_subkey);
+                mpk.subkeys.insert(coordinate, public_subkey);
             }
         }
     }
@@ -416,7 +418,7 @@ pub fn rekey(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &mut MasterPublicKey,
-    coordinates: HashSet<Partition>,
+    coordinates: HashSet<Coordinate>,
 ) -> Result<(), Error> {
     let h = R25519PublicKey::from(&msk.s);
     for coordinate in coordinates {
@@ -429,7 +431,7 @@ pub fn rekey(
         let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
         msk.subkeys.insert(coordinate.clone(), secret_subkey);
 
-        // update public subkey if partition is not read only
+        // update public subkey if coordinate is not read only
         if mpk.subkeys.contains_key(&coordinate) {
             mpk.subkeys.insert(coordinate, public_subkey);
         }
@@ -443,7 +445,7 @@ pub fn rekey(
 ///
 /// - `msk`             : master secret key
 /// - `coordinates`     : set of subkeys coordinate to prune
-pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Result<(), Error> {
+pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Coordinate>) -> Result<(), Error> {
     for coordinate in coordinates {
         msk.subkeys.keep(coordinate, 1);
     }
@@ -454,7 +456,7 @@ pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Partition>) -> Res
 ///
 /// If `keep_old_rights` is set to false, old sub-keys are removed.
 ///
-/// If a partition exists in the list and in the master secret key, the
+/// If a coordinate exists in the list and in the master secret key, the
 /// associated sub-key is added to the user key.
 ///
 /// # Parameters
@@ -530,38 +532,38 @@ mod tests {
 
     #[test]
     fn test_cover_crypt() -> Result<(), Error> {
-        let admin_partition = Partition(b"admin".to_vec());
-        let dev_partition = Partition(b"dev".to_vec());
-        // partition list
-        let partitions_set = HashMap::from([
+        let admin_coordinate = Coordinate(b"admin".to_vec());
+        let dev_coordinate = Coordinate(b"dev".to_vec());
+        // coordinate list
+        let coordinates_set = HashMap::from([
             (
-                admin_partition.clone(),
+                admin_coordinate.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                dev_partition.clone(),
+                dev_coordinate.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // user list
-        let users_set = [
-            HashSet::from([dev_partition.clone()]),
-            HashSet::from([admin_partition.clone(), dev_partition.clone()]),
+        let users_set = vec![
+            HashSet::from([dev_coordinate.clone()]),
+            HashSet::from([admin_coordinate.clone(), dev_coordinate.clone()]),
         ];
         // target set
-        let admin_target_set = HashSet::from([admin_partition.clone()]);
+        let admin_target_set = HashSet::from([admin_coordinate.clone()]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, coordinates_set);
 
-        // The admin partition matches a hybridized sub-key.
-        let admin_secret_subkeys = msk.subkeys.get_latest(&admin_partition);
+        // The admin coordinate matches a hybridized sub-key.
+        let admin_secret_subkeys = msk.subkeys.get_latest(&admin_coordinate);
         assert!(admin_secret_subkeys.is_some());
         assert!(admin_secret_subkeys.unwrap().0.is_some());
 
-        // The developer partition matches a classic sub-key.
-        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_partition);
+        // The developer coordinate matches a classic sub-key.
+        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_coordinate);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_none());
 
@@ -588,30 +590,30 @@ mod tests {
         let res1 = decaps(&admin_usk, &encapsulation)?;
         assert_eq!(sym_key, res1, "Wrong decapsulation for user 1!");
 
-        // Change partitions
-        let client_partition = Partition(b"client".to_vec());
-        let new_partitions_set = HashMap::from([
+        // Change coordinates
+        let client_coordinate = Coordinate(b"client".to_vec());
+        let new_coordinates_set = HashMap::from([
             (
-                dev_partition.clone(),
+                dev_coordinate.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                client_partition.clone(),
+                client_coordinate.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
-        let client_target_set = HashSet::from([client_partition.clone()]);
+        let client_target_set = HashSet::from([client_coordinate.clone()]);
 
-        update(&mut rng, &mut msk, &mut mpk, new_partitions_set)?;
+        update(&mut rng, &mut msk, &mut mpk, new_coordinates_set)?;
         refresh(&msk, &mut dev_usk, true)?;
 
-        // The dev partition matches a hybridized sub-key.
-        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_partition);
+        // The dev coordinate matches a hybridized sub-key.
+        let dev_secret_subkeys = msk.subkeys.get_latest(&dev_coordinate);
         assert!(dev_secret_subkeys.is_some());
         assert!(dev_secret_subkeys.unwrap().0.is_some());
 
-        // The client partition matches a classic sub-key.
-        let client_secret_subkeys = msk.subkeys.get_latest(&client_partition);
+        // The client coordinate matches a classic sub-key.
+        let client_secret_subkeys = msk.subkeys.get_latest(&client_coordinate);
         assert!(client_secret_subkeys.is_some());
         assert!(client_secret_subkeys.unwrap().0.is_none());
 
@@ -648,7 +650,7 @@ mod tests {
         );
 
         // Client is able to decapsulate.
-        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_partition]))?;
+        let client_usk = keygen(&mut rng, &msk, &HashSet::from([client_coordinate]))?;
         let res0 = decaps(&client_usk, &new_encapsulation);
         match res0 {
             Err(err) => panic!("Client should be able to decapsulate: {err:?}"),
@@ -660,129 +662,131 @@ mod tests {
 
     #[test]
     fn test_master_keys_update() -> Result<(), Error> {
-        let partition_1 = Partition(b"1".to_vec());
-        let partition_2 = Partition(b"2".to_vec());
-        // partition list
-        let partitions_set = HashMap::from([
+        let coordinate_1 = Coordinate(b"1".to_vec());
+        let coordinate_2 = Coordinate(b"2".to_vec());
+        // coordinate list
+        let coordinates_set = HashMap::from([
             (
-                partition_1.clone(),
+                coordinate_1.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
             (
-                partition_2.clone(),
+                coordinate_2.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, coordinates_set);
 
-        // now remove partition 1 and add partition 3
-        let partition_3 = Partition(b"3".to_vec());
-        let new_partitions_set = HashMap::from([
+        // now remove coordinate 1 and add coordinate 3
+        let coordinate_3 = Coordinate(b"3".to_vec());
+        let new_coordinates_set = HashMap::from([
             (
-                partition_2.clone(),
+                coordinate_2.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                partition_3.clone(),
+                coordinate_3.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
-        update(&mut rng, &mut msk, &mut mpk, new_partitions_set)?;
-        assert!(!msk.subkeys.contains_key(&partition_1));
-        assert!(msk.subkeys.contains_key(&partition_2));
-        assert!(msk.subkeys.contains_key(&partition_3));
-        assert!(!mpk.subkeys.contains_key(&partition_1));
-        assert!(mpk.subkeys.contains_key(&partition_2));
-        assert!(mpk.subkeys.contains_key(&partition_3));
+        update(&mut rng, &mut msk, &mut mpk, new_coordinates_set)?;
+        assert!(!msk.subkeys.contains_key(&coordinate_1));
+        assert!(msk.subkeys.contains_key(&coordinate_2));
+        assert!(msk.subkeys.contains_key(&coordinate_3));
+        assert!(!mpk.subkeys.contains_key(&coordinate_1));
+        assert!(mpk.subkeys.contains_key(&coordinate_2));
+        assert!(mpk.subkeys.contains_key(&coordinate_3));
         Ok(())
     }
 
     #[test]
     fn test_user_key_refresh() -> Result<(), Error> {
-        let partition_1 = Partition(b"1".to_vec());
-        let partition_2 = Partition(b"2".to_vec());
-        let partition_3 = Partition(b"3".to_vec());
-        // partition list
-        let partitions_set = HashMap::from([
+        let coordinate_1 = Coordinate(b"1".to_vec());
+        let coordinate_2 = Coordinate(b"2".to_vec());
+        let coordinate_3 = Coordinate(b"3".to_vec());
+        // coordinate list
+        let coordinates_set = HashMap::from([
             (
-                partition_1.clone(),
+                coordinate_1.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                partition_2.clone(),
+                coordinate_2.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                partition_3.clone(),
+                coordinate_3.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
-        // create a user key with access to partition 1 and 2
+        let (mut msk, mut mpk) = setup(&mut rng, coordinates_set);
+        // create a user key with access to coordinate 1 and 2
         let mut usk = keygen(
             &mut rng,
             &msk,
-            &HashSet::from([partition_1.clone(), partition_2.clone()]),
+            &HashSet::from([coordinate_1.clone(), coordinate_2.clone()]),
         )?;
 
-        // now remove partition 1 and remove hybrid key from partition 3
-        let new_partition_set = HashMap::from([
+        // now remove coordinate 1 and remove hybrid key from coordinate 3
+        let new_coordinate_set = HashMap::from([
             (
-                partition_2.clone(),
+                coordinate_2.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                partition_3.clone(),
+                coordinate_3.clone(),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         //Covercrypt the master keys
 
         let old_msk = MasterSecretKey::deserialize(msk.serialize()?.as_slice())?;
-        update(&mut rng, &mut msk, &mut mpk, new_partition_set)?;
+        update(&mut rng, &mut msk, &mut mpk, new_coordinate_set)?;
         // refresh the user key
         refresh(&msk, &mut usk, true)?;
-        // user key kept old access to partition 1
+        // user key kept old access to coordinate 1
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
-                &partition_1,
-                old_msk.subkeys.get_latest(&partition_1).unwrap(),
+                &coordinate_1,
+                old_msk.subkeys.get_latest(&coordinate_1).unwrap(),
             )
         }));
-        assert!(usk
-            .subkeys
-            .flat_iter()
-            .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) }));
-        // user key kept the old hybrid key for partition 3
+        assert!(usk.subkeys.flat_iter().any(|x| {
+            x == (
+                &coordinate_2,
+                msk.subkeys.get_latest(&coordinate_2).unwrap(),
+            )
+        }));
+        // user key kept the old hybrid key for coordinate 3
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (
-                &partition_3,
-                old_msk.subkeys.get_latest(&partition_3).unwrap(),
+                &coordinate_3,
+                old_msk.subkeys.get_latest(&coordinate_3).unwrap(),
             )
         }));
 
-        // add new key for partition 2
+        // add new key for coordinate 2
         rekey(
             &mut rng,
             &mut msk,
             &mut mpk,
-            HashSet::from([partition_2.clone()]),
+            HashSet::from([coordinate_2.clone()]),
         )?;
         // refresh the user key
         refresh(&msk, &mut usk, true)?;
         let usk_subkeys: Vec<_> = usk
             .subkeys
             .flat_iter()
-            .filter(|(part, _)| *part == &partition_2)
+            .filter(|(part, _)| *part == &coordinate_2)
             .map(|(_, subkey)| subkey)
             .collect();
-        let msk_subkeys: Vec<_> = msk.subkeys.get(&partition_2).unwrap().iter().collect();
+        let msk_subkeys: Vec<_> = msk.subkeys.get(&coordinate_2).unwrap().iter().collect();
         assert_eq!(usk_subkeys.len(), 2);
         assert_eq!(usk_subkeys, msk_subkeys);
 
@@ -791,25 +795,25 @@ mod tests {
 
     #[test]
     fn test_user_key_kmac() -> Result<(), Error> {
-        let partition_1 = Partition(b"1".to_vec());
-        let partition_2 = Partition(b"2".to_vec());
-        // partition list
-        let partitions_set = HashMap::from([
+        let coordinate_1 = Coordinate(b"1".to_vec());
+        let coordinate_2 = Coordinate(b"2".to_vec());
+        // coordinate list
+        let coordinates_set = HashMap::from([
             (
-                partition_1.clone(),
+                coordinate_1.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
             (
-                partition_2.clone(),
+                coordinate_2.clone(),
                 (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (msk, _) = setup(&mut rng, partitions_set);
-        // create a user key with access to partition 1 and 2
-        let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
+        let (msk, _) = setup(&mut rng, coordinates_set);
+        // create a user key with access to coordinate 1 and 2
+        let mut usk = keygen(&mut rng, &msk, &HashSet::from([coordinate_1, coordinate_2]))?;
 
         assert!(verify_user_key_kmac(&msk, &usk).is_ok());
         let bytes = usk.serialize()?;
@@ -817,7 +821,7 @@ mod tests {
         assert!(verify_user_key_kmac(&msk, &usk_).is_ok());
 
         usk.subkeys.create_chain_with_single_value(
-            Partition(b"3".to_vec()),
+            Coordinate(b"3".to_vec()),
             (None, R25519PrivateKey::new(&mut rng)),
         );
         // KMAC verify will fail after modifying the user key
