@@ -9,15 +9,15 @@
 
 mod access_policy;
 mod attribute;
+mod coordinates;
 mod dimension;
-mod partitions;
 mod policy;
 mod policy_versions;
 
 pub use access_policy::AccessPolicy;
 pub use attribute::{Attribute, AttributeStatus, Attributes, EncryptionHint};
+pub use coordinates::Coordinate;
 pub use dimension::{AttributeParameters, Dimension, DimensionBuilder};
-pub use partitions::Partition;
 pub use policy_versions::{LegacyPolicy, PolicyV1, PolicyV2 as Policy};
 use serde::{Deserialize, Serialize};
 

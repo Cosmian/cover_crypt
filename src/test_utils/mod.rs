@@ -39,7 +39,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, Attribute, LegacyPolicy, Partition},
+        abe_policy::{AccessPolicy, Attribute, Coordinate, LegacyPolicy},
         Covercrypt, EncryptedHeader,
     };
 
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(mpk.subkeys.len(), 30);
         assert_eq!(msk.subkeys.count_elements(), 30);
 
-        // rekey all partitions which include `Department::FIN`
+        // rekey all coordinates which include `Department::FIN`
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
         cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
         // public key contains only the last subkeys
@@ -164,9 +164,9 @@ mod tests {
         for x_i in original_usk.subkeys.flat_iter() {
             assert!(usk.subkeys.flat_iter().any(|x| x == x_i));
         }
-        // refresh the user key but do NOT preserve access to old partitions
+        // refresh the user key but do NOT preserve access to old coordinates
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, false)?;
-        // the user should still have access to the same number of partitions
+        // the user should still have access to the same number of coordinates
         assert_eq!(
             usk.subkeys.count_elements(),
             original_usk.subkeys.count_elements()
@@ -176,7 +176,7 @@ mod tests {
         }
 
         // try to modify the user key and refresh
-        let part = Partition::from(vec![1, 6]);
+        let part = Coordinate::from(vec![1, 6]);
         usk.subkeys.create_chain_with_single_value(
             part.clone(),
             msk.subkeys.get_latest(&part).unwrap().clone(),
@@ -194,11 +194,11 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
-        let partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(partitions_msk.len(), partitions_mpk.len());
-        for p in &partitions_msk {
-            assert!(partitions_mpk.contains(p));
+        let coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
+        let coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
+        assert_eq!(coordinates_msk.len(), coordinates_mpk.len());
+        for p in &coordinates_msk {
+            assert!(coordinates_mpk.contains(p));
         }
 
         //
@@ -214,13 +214,13 @@ mod tests {
         )?;
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
-        for p in &new_partitions_msk {
-            assert!(new_partitions_mpk.contains(p));
+        let new_coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
+        let new_coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
+        assert_eq!(new_coordinates_msk.len(), new_coordinates_mpk.len());
+        for p in &new_coordinates_msk {
+            assert!(new_coordinates_mpk.contains(p));
         }
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len() + 6);
+        assert_eq!(new_coordinates_msk.len(), coordinates_msk.len() + 6);
 
         //
         // Encrypt
@@ -250,11 +250,11 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
-        let partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(partitions_msk.len(), partitions_mpk.len());
-        for p in &partitions_msk {
-            assert!(partitions_mpk.contains(p));
+        let coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
+        let coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
+        assert_eq!(coordinates_msk.len(), coordinates_mpk.len());
+        for p in &coordinates_msk {
+            assert!(coordinates_mpk.contains(p));
         }
 
         //
@@ -276,24 +276,24 @@ mod tests {
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
-        for p in &new_partitions_msk {
-            assert!(new_partitions_mpk.contains(p));
+        let new_coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
+        let new_coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
+        assert_eq!(new_coordinates_msk.len(), new_coordinates_mpk.len());
+        for p in &new_coordinates_msk {
+            assert!(new_coordinates_mpk.contains(p));
         }
         // 5 is the size of the security level dimension
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len() - 6);
+        assert_eq!(new_coordinates_msk.len(), coordinates_msk.len() - 6);
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
 
-        // refresh the user key and preserve access to old partitions
+        // refresh the user key and preserve access to old coordinates
         let _new_decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::HR")?;
 
-        // refreshing the user key will remove access to removed partitions even if we
+        // refreshing the user key will remove access to removed coordinates even if we
         // keep old rotations
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
         assert!(encrypted_header
@@ -309,9 +309,9 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
 
-        let partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
-        let partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(partitions_msk.len(), partitions_mpk.len());
+        let coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
+        let coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
+        assert_eq!(coordinates_msk.len(), coordinates_mpk.len());
 
         //
         // New user secret key
@@ -332,12 +332,12 @@ mod tests {
 
         // update the master keys
         cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
-        let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
-        // the disabled partition have been removed from mpk
-        assert_eq!(new_partitions_msk.len() - 6, new_partitions_mpk.len());
+        let new_coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
+        let new_coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
+        // the disabled coordinate have been removed from mpk
+        assert_eq!(new_coordinates_msk.len() - 6, new_coordinates_mpk.len());
         // msk has not changed
-        assert_eq!(new_partitions_msk.len(), partitions_msk.len());
+        assert_eq!(new_coordinates_msk.len(), coordinates_msk.len());
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -351,13 +351,13 @@ mod tests {
                 .is_err()
         );
 
-        // refresh the user key and preserve access to old partitions
+        // refresh the user key and preserve access to old coordinates
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
 
-        // refresh the user key and remove access to old partitions should still work
+        // refresh the user key and remove access to old coordinates should still work
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -401,7 +401,7 @@ mod tests {
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
             .is_ok());
 
-        // refresh the user key and preserve access to old partitions
+        // refresh the user key and preserve access to old coordinates
         let _new_decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::Finance")?;
         cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;

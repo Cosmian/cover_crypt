@@ -4,23 +4,23 @@ use cosmian_crypto_core::bytes_ser_de::Serializer;
 
 use crate::Error;
 
-/// Partition associated to a subset. It corresponds to a combination
+/// Coordinate associated to a subset. It corresponds to a combination
 /// of attributes across all dimensions.
 #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone, Hash)]
-pub struct Partition(pub(crate) Vec<u8>);
+pub struct Coordinate(pub(crate) Vec<u8>);
 
-impl Partition {
-    /// Creates a `Partition` from the given list of values.
+impl Coordinate {
+    /// Creates a `Coordinate` from the given list of values.
     pub fn from_attribute_ids(mut attribute_ids: Vec<u32>) -> Result<Self, Error> {
         // guard against overflow of the 1024 bytes buffer below
         if attribute_ids.len() > 200 {
             return Err(Error::InvalidAttribute(
                 "The current implementation does not currently support more than 200 attributes \
-                 for a partition"
+                 for a coordinate"
                     .to_string(),
             ));
         }
-        // the sort operation allows to get the same `Partition` for :
+        // the sort operation allows to get the same `Coordinate` for :
         // `Department::HR && Level::Secret`
         // and
         // `Level::Secret && Department::HR`
@@ -34,7 +34,7 @@ impl Partition {
     }
 }
 
-impl Deref for Partition {
+impl Deref for Coordinate {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -42,13 +42,13 @@ impl Deref for Partition {
     }
 }
 
-impl From<Vec<u8>> for Partition {
+impl From<Vec<u8>> for Coordinate {
     fn from(value: Vec<u8>) -> Self {
         Self(value)
     }
 }
 
-impl From<&[u8]> for Partition {
+impl From<&[u8]> for Coordinate {
     fn from(value: &[u8]) -> Self {
         Self(value.to_vec())
     }
@@ -61,12 +61,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_partitions() -> Result<(), Error> {
+    fn test_coordinates() -> Result<(), Error> {
         let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
-        let partition = Partition::from_attribute_ids(values.clone())?;
-        // values are sorted n Partition
+        let coordinate = Coordinate::from_attribute_ids(values.clone())?;
+        // values are sorted n Coordinate
         values.sort_unstable();
-        let mut de = Deserializer::new(&partition);
+        let mut de = Deserializer::new(&coordinate);
         for v in values {
             let val = de.read_leb128_u64().unwrap() as u32;
             assert_eq!(v, val);
