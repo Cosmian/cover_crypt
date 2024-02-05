@@ -30,7 +30,7 @@ pub enum AccessPolicy {
 impl AccessPolicy {
     /// Finds the corresponding closing parenthesis in the boolean expression
     /// given as a string.
-    fn find_next_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
+    fn find_matching_closing_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
         let mut count = 0;
         for (index, c) in boolean_expression.chars().enumerate() {
             match c {
@@ -104,7 +104,7 @@ impl AccessPolicy {
             } else {
                 match &e[..1] {
                     "(" => {
-                        let offset = Self::find_next_parenthesis(&e[1..])?;
+                        let offset = Self::find_matching_closing_parenthesis(&e[1..])?;
                         q.push_back(Self::parse(&e[1..1 + offset]).map_err(|err| {
                             Error::InvalidBooleanExpression(format!(
                                 "error while parsing '{e}': {err}"
