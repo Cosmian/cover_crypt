@@ -173,6 +173,10 @@ impl Dimension {
         }
     }
 
+    /// Restricts the dimension to the given attribute.
+    ///
+    /// If the dimension is unordered, the resulting dimension only holds this
+    /// attribute. Otherwise it also holds lower attributes.
     pub fn restrict(&self, attr_name: AttributeName) -> Result<Self, Error> {
         let params = self
             .get_attribute(&attr_name)
