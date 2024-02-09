@@ -36,12 +36,16 @@ pub fn policy() -> Result<Policy, Error> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "serialization")]
     use cosmian_crypto_core::bytes_ser_de::Serializable;
+
+    #[cfg(feature = "serialization")]
+    use crate::UserSecretKey;
 
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy, Partition},
-        Covercrypt, EncryptedHeader, UserSecretKey,
+        Covercrypt, EncryptedHeader,
     };
 
     #[test]
@@ -139,6 +143,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serialization")]
     fn test_refresh_user_key() -> Result<(), Error> {
         let policy = policy()?;
         let cover_crypt = Covercrypt::default();

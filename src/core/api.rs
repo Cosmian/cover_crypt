@@ -45,10 +45,10 @@ impl Covercrypt {
         &self,
         policy: &Policy,
     ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        Ok(setup(
+        setup(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             policy.generate_all_partitions()?,
-        ))
+        )
     }
 
     /// Updates the master keys according to this new policy.

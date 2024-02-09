@@ -11,8 +11,11 @@ use cosmian_crypto_core::{
     R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
 };
 use pqc_kyber::{
-    indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
-    KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
+    indcpa::{
+        indcpa_dec, indcpa_enc, indcpa_keypair, KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES,
+        KYBER_INDCPA_SECRETKEYBYTES,
+    },
+    KYBER_SYMBYTES,
 };
 use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroizing;
@@ -77,13 +80,16 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
 }
 
 /// Returns newly generated public and private Kyber key pair.
-fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, KyberSecretKey) {
+fn create_kyber_key_pair(
+    rng: &mut impl CryptoRngCore,
+) -> Result<(KyberPublicKey, KyberSecretKey), Error> {
     let (mut sk, mut pk) = (
         KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
         KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
     );
-    indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
-    (pk, sk)
+    indcpa_keypair(&mut pk.0, &mut sk.0, None, rng)
+        .map_err(|e| Error::KeyError(format!("Unable to generate kyber key pair: {e}")))?;
+    Ok((pk, sk))
 }
 
 /// Returns a newly generated pair of public and private subkeys with optional
@@ -92,17 +98,17 @@ fn create_subkey_pair(
     rng: &mut impl CryptoRngCore,
     h: &R25519CurvePoint,
     is_hybridized: EncryptionHint,
-) -> (PublicSubkey, SecretSubkey) {
+) -> Result<(PublicSubkey, SecretSubkey), Error> {
     let sk_i = R25519PrivateKey::new(rng);
     let pk_i = h * &sk_i;
 
     let (pk_pq, sk_pq) = if is_hybridized.into() {
-        let (pk, sk) = create_kyber_key_pair(rng);
+        let (pk, sk) = create_kyber_key_pair(rng)?;
         (Some(pk), Some(sk))
     } else {
         (None, None)
     };
-    ((pk_pq, pk_i), (sk_pq, sk_i))
+    Ok(((pk_pq, pk_i), (sk_pq, sk_i)))
 }
 
 /// Update a pair of public and private subkeys of a `ReadWrite` partition.
@@ -124,7 +130,7 @@ fn update_subkey_pair(
         match (&pk_pq, &sk_pq) {
             (None, _) => {
                 // generate a new Kyber key pair
-                let (pk, sk) = create_kyber_key_pair(rng);
+                let (pk, sk) = create_kyber_key_pair(rng)?;
                 pk_pq.replace(pk);
                 sk_pq.replace(sk);
             }
@@ -145,13 +151,14 @@ fn update_master_subkey(
     _h: &R25519CurvePoint,
     msk: &mut SecretSubkey,
     is_hybridized: EncryptionHint,
-) {
+) -> Result<(), Error> {
     let (sk_pq, _) = msk;
     // Add Kyber key if needed
     if is_hybridized.into() && sk_pq.is_none() {
-        let (_, sk) = create_kyber_key_pair(rng);
+        let (_, sk) = create_kyber_key_pair(rng)?;
         sk_pq.replace(sk);
     }
+    Ok(())
 }
 
 /// Generates the master secret key and master public key of the `Covercrypt`
@@ -164,7 +171,7 @@ fn update_master_subkey(
 pub fn setup(
     rng: &mut impl CryptoRngCore,
     partitions: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
-) -> (MasterSecretKey, MasterPublicKey) {
+) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
     let s = R25519PrivateKey::new(rng);
     let s1 = R25519PrivateKey::new(rng);
     let s2 = R25519PrivateKey::new(rng);
@@ -176,7 +183,7 @@ pub fn setup(
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
     for (partition, (is_hybridized, write_status)) in partitions {
-        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized)?;
         sub_sk.insert(partition.clone(), secret_subkey);
         if write_status == EncryptDecrypt {
             sub_pk.insert(partition, public_subkey);
@@ -185,7 +192,7 @@ pub fn setup(
 
     let kmac_key = Some(SymmetricKey::<KMAC_KEY_LENGTH>::new(rng));
 
-    (
+    Ok((
         MasterSecretKey {
             s,
             s1,
@@ -198,7 +205,7 @@ pub fn setup(
             g2,
             subkeys: sub_pk,
         },
-    )
+    ))
 }
 
 /// Generates a user secret key for the given decryption set.
@@ -382,15 +389,15 @@ pub fn update(
                 (EncryptDecrypt, Some(public_subkey)) => {
                     update_subkey_pair(rng, &h, public_subkey, secret_subkey, is_hybridized)?;
                 }
-                (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized),
+                (DecryptOnly, None) => update_master_subkey(rng, &h, secret_subkey, is_hybridized)?,
                 (DecryptOnly, Some(_)) => {
                     mpk.subkeys.remove(&partition);
-                    update_master_subkey(rng, &h, secret_subkey, is_hybridized);
+                    update_master_subkey(rng, &h, secret_subkey, is_hybridized)?;
                 }
             }
         } else {
             // generate new keys
-            let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+            let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized)?;
             msk.subkeys.insert(partition.clone(), secret_subkey);
             if write_status == EncryptDecrypt {
                 mpk.subkeys.insert(partition, public_subkey);
@@ -423,7 +430,7 @@ pub fn rekey(
                 .and_then(|(sk_i, _)| sk_i.as_ref())
                 .is_some(),
         );
-        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
+        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized)?;
         msk.subkeys.insert(coordinate.clone(), secret_subkey);
 
         // update public subkey if partition is not read only
@@ -510,16 +517,18 @@ pub fn refresh(
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{
-        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
-    };
+
+    #[cfg(feature = "serialization")]
+    use cosmian_crypto_core::bytes_ser_de::Serializable;
+
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 
     use super::*;
 
     #[test]
     fn test_kyber() {
         let mut rng = CsRng::from_entropy();
-        let keypair = pqc_kyber::keypair(&mut rng);
+        let keypair = pqc_kyber::keypair(&mut rng).unwrap();
         let (ct, ss) = pqc_kyber::encapsulate(&keypair.public, &mut rng).unwrap();
         let res = pqc_kyber::decapsulate(&ct, &keypair.secret).unwrap();
         assert_eq!(ss, res, "Decapsulation failed!");
@@ -550,7 +559,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set)?;
 
         // The admin partition matches a hybridized sub-key.
         let admin_secret_subkeys = msk.subkeys.get_latest(&admin_partition);
@@ -673,7 +682,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set)?;
 
         // now remove partition 1 and add partition 3
         let partition_3 = Partition(b"3".to_vec());
@@ -698,6 +707,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serialization")]
     fn test_user_key_refresh() -> Result<(), Error> {
         let partition_1 = Partition(b"1".to_vec());
         let partition_2 = Partition(b"2".to_vec());
@@ -720,7 +730,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (mut msk, mut mpk) = setup(&mut rng, partitions_set);
+        let (mut msk, mut mpk) = setup(&mut rng, partitions_set)?;
         // create a user key with access to partition 1 and 2
         let mut usk = keygen(
             &mut rng,
@@ -787,6 +797,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serialization")]
     fn test_user_key_kmac() -> Result<(), Error> {
         let partition_1 = Partition(b"1".to_vec());
         let partition_2 = Partition(b"2".to_vec());
@@ -804,7 +815,7 @@ mod tests {
         // secure random number generator
         let mut rng = CsRng::from_entropy();
         // setup scheme
-        let (msk, _) = setup(&mut rng, partitions_set);
+        let (msk, _) = setup(&mut rng, partitions_set)?;
         // create a user key with access to partition 1 and 2
         let mut usk = keygen(&mut rng, &msk, &HashSet::from([partition_1, partition_2]))?;
 

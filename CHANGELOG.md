@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security fix
+
+- Update Kyber dependecy due to a [timing vulnerability](https://github.com/Argyle-Software/kyber/issues/108)
+
 ### Features
 
 - Change `Axis` to `Dimension` with a clear distinction between `Ordered` and `Unordered`.
