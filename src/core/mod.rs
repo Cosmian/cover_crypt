@@ -7,7 +7,9 @@ use std::{
 };
 
 use cosmian_crypto_core::{R25519PrivateKey, R25519PublicKey, SymmetricKey};
-use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
+use pqc_kyber::indcpa::{
+    KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES,
+};
 use zeroize::ZeroizeOnDrop;
 
 use crate::{
