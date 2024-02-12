@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
+    abe_policy::{AccessPolicy, Attribute, Dimension, DimensionBuilder, EncryptionHint, Policy},
     error::Error,
 };
 
@@ -178,4 +180,54 @@ fn test_access_policy_equality() {
     assert_eq!(ap1, ap2);
     assert_eq!(ap2, ap2);
     assert_ne!(ap2, ap3);
+}
+
+#[test]
+fn specification_conversion_round_trip() -> Result<(), Error> {
+    let policy = policy()?;
+
+    let spec: HashMap<String, Vec<String>> = policy.try_into()?;
+
+    let policy_from_spec: Policy = spec.try_into()?;
+
+    assert_eq!(policy_from_spec.dimensions.len(), 2);
+
+    assert!(matches!(
+        policy_from_spec.dimensions.get("Security Level").unwrap(),
+        Dimension::Ordered(_)
+    ));
+    assert!(matches!(
+        policy_from_spec.dimensions.get("Department").unwrap(),
+        Dimension::Unordered(_)
+    ));
+    assert_eq!(
+        policy_from_spec
+            .dimensions
+            .get("Security Level")
+            .unwrap()
+            .attributes()
+            .collect::<Vec<_>>()
+            .len(),
+        3
+    );
+    assert_eq!(
+        policy_from_spec
+            .get_attribute_hybridization_hint(&Attribute::new("Department", "MKG"))
+            .unwrap(),
+        EncryptionHint::Classic
+    );
+    assert_eq!(
+        policy_from_spec
+            .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Protected"))
+            .unwrap(),
+        EncryptionHint::Classic
+    );
+    assert_eq!(
+        policy_from_spec
+            .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Top Secret"))
+            .unwrap(),
+        EncryptionHint::Hybridized
+    );
+
+    Ok(())
 }

@@ -167,6 +167,19 @@ where
     }
 }
 
+impl<K, V> IntoIterator for Dict<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+{
+    type IntoIter = std::vec::IntoIter<(K, V)>;
+    type Item = (K, V);
+
+    /// Returns an iterator over keys and values in insertion order.
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.into_iter()
+    }
+}
+
 impl<K, V> FromIterator<(K, V)> for Dict<K, V>
 where
     K: Hash + PartialEq + Eq + Clone + Debug,

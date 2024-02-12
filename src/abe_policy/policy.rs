@@ -4,11 +4,9 @@ use std::{
     vec,
 };
 
-use serde_json::Value;
-
 use super::{
     AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Dimension, DimensionBuilder,
-    EncryptionHint, LegacyPolicy, Partition, Policy, PolicyV1, PolicyVersion,
+    EncryptionHint, Partition, Policy, PolicyVersion,
 };
 use crate::Error;
 
@@ -18,40 +16,22 @@ impl Display for Policy {
     }
 }
 
-impl Policy {
-    /// Converts the given string into a Policy. Does not fail if the given
-    /// string uses the legacy format.
-    pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
-        let json_policy: Value =
-            serde_json::from_slice(bytes).map_err(Error::DeserializationError)?;
-
-        if let Some(policy_version) = json_policy.get("version") {
-            match serde_json::from_value::<PolicyVersion>(policy_version.clone()) {
-                Ok(PolicyVersion::V1) => Ok(serde_json::from_slice::<PolicyV1>(bytes)
-                    .map_err(Error::DeserializationError)?
-                    .into()),
-                Ok(PolicyVersion::V2) => {
-                    serde_json::from_value::<Self>(json_policy).map_err(Error::DeserializationError)
-                }
-                Err(e) => Err(Error::DeserializationError(e)),
-            }
-        } else {
-            // Legacy Policy
-            Ok(serde_json::from_slice::<LegacyPolicy>(bytes)
-                .map_err(Error::DeserializationError)?
-                .into())
-        }
-    }
-
-    /// Generates a new policy object with the given number of attribute
-    /// creation (revocation + addition) allowed.
-    #[must_use]
-    pub fn new() -> Self {
+impl Default for Policy {
+    fn default() -> Self {
         Self {
             version: PolicyVersion::V2,
             last_attribute_value: 0,
             dimensions: HashMap::new(),
         }
+    }
+}
+
+impl Policy {
+    /// Generates a new policy object with the given number of attribute
+    /// creation (revocation + addition) allowed.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Adds the given dimension to the policy.
@@ -266,22 +246,6 @@ impl Policy {
     }
 }
 
-impl TryFrom<&[u8]> for Policy {
-    type Error = Error;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        Self::parse_and_convert(bytes)
-    }
-}
-
-impl TryFrom<&Policy> for Vec<u8> {
-    type Error = Error;
-
-    fn try_from(policy: &Policy) -> Result<Self, Self::Error> {
-        serde_json::to_vec(policy).map_err(Self::Error::DeserializationError)
-    }
-}
-
 /// Converts a list of attributes into a list of `Partitions`, with
 /// their associated hybridization hints and attribute status.
 ///
@@ -397,7 +361,6 @@ mod tests {
         //
         // create policy
         let policy = policy()?;
-        //policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
         // create access policy
