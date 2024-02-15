@@ -206,8 +206,7 @@ fn specification_conversion_round_trip() -> Result<(), Error> {
             .get("Security Level")
             .unwrap()
             .attributes()
-            .collect::<Vec<_>>()
-            .len(),
+            .count(),
         3
     );
     assert_eq!(

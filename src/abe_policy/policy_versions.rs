@@ -24,14 +24,14 @@ pub struct PolicyV2 {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct PolicyV1AttributeParameters {
-    pub values: Vec<u32>,
-    pub encryption_hint: EncryptionHint,
+    values: Vec<u32>,
+    encryption_hint: EncryptionHint,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct OldPolicyAxisParameters {
-    pub attribute_names: Vec<String>,
-    pub is_hierarchical: bool,
+    attribute_names: Vec<String>,
+    is_hierarchical: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]

@@ -117,7 +117,7 @@ fn update_subkey_pair(
     let (sk_pq, sk_i) = msk;
 
     // update public subkey
-    *pk_i = h * &sk_i;
+    *pk_i = h * sk_i;
 
     // create or reuse Kyber keys
     if is_hybridized.into() {
@@ -541,7 +541,7 @@ mod tests {
             ),
         ]);
         // user list
-        let users_set = vec![
+        let users_set = [
             HashSet::from([dev_partition.clone()]),
             HashSet::from([admin_partition.clone(), dev_partition.clone()]),
         ];

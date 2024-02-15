@@ -69,9 +69,9 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
     ///            "FIN"
     ///        ]
     ///    }
-    /// ````
+    /// ```
     fn try_from(value: HashMap<String, Vec<String>>) -> Result<Self, Self::Error> {
-        let mut policy = Policy::new();
+        let mut policy = Self::new();
 
         for (axis, attributes) in &value {
             // Split the axis into axis name and hierarchy flag
@@ -81,10 +81,7 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
                     let hierarchical = match specs {
                         "<" => true,
                         x => {
-                            return Err(Error::ConversionFailed(format!(
-                                "unknown axis spec {}",
-                                x
-                            )));
+                            return Err(Error::ConversionFailed(format!("unknown axis spec {x}")));
                         }
                     };
                     (name, hierarchical)
@@ -104,8 +101,7 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
                             "+" => EncryptionHint::Hybridized,
                             x => {
                                 return Err(Error::ConversionFailed(format!(
-                                    "unknown attribute spec {}",
-                                    x
+                                    "unknown attribute spec {x}"
                                 )));
                             }
                         };
@@ -140,8 +136,7 @@ impl TryFrom<Policy> for HashMap<String, Vec<String>> {
     type Error = Error;
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        let mut result: HashMap<String, Vec<String>> =
-            HashMap::with_capacity(policy.dimensions.len());
+        let mut result: Self = Self::with_capacity(policy.dimensions.len());
 
         for (dim_name, dimension) in policy.dimensions {
             let (dim_full_name, attributes_list) = match dimension {
@@ -206,8 +201,7 @@ mod tests {
                 .get("Security Level")
                 .unwrap()
                 .attributes()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             3
         );
         assert_eq!(
