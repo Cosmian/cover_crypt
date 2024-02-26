@@ -234,25 +234,21 @@ where
     K: Hash + PartialEq + Eq + Clone + Debug + Deserialize<'de>,
     V: Deserialize<'de>,
 {
-    // The type that our Visitor is going to produce.
     type Value = Dict<K, V>;
 
-    // Format a message stating what data this Visitor expects to receive.
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("a Dict")
     }
 
-    // Deserialize MyMap from an abstract "map" provided by the
-    // Deserializer. The MapAccess input is a callback provided by
-    // the Deserializer to let us see each entry in the map.
+    // Create a `Dict` from an abstract map provided by the Deserializer.
+    // This abstract map should preserve the item's order during the
+    // deserialization.
     fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
     where
         M: MapAccess<'de>,
     {
         let mut map = Dict::with_capacity(access.size_hint().unwrap_or(0));
 
-        // While there are entries remaining in the input, add them
-        // into our map.
         while let Some((key, value)) = access.next_entry()? {
             map.insert(key, value);
         }

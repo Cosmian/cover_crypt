@@ -163,9 +163,48 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        abe_policy::{Attribute, Dimension, EncryptionHint, Policy},
+        abe_policy::{Attribute, Dimension, DimensionBuilder, EncryptionHint, Policy},
         Error,
     };
+
+    #[test]
+    pub fn test_parse_policy_from_bytes() -> Result<(), Error> {
+        let mut policy = Policy::new();
+        policy.add_dimension(DimensionBuilder::new(
+            "Security Level",
+            vec![
+                ("Protected", EncryptionHint::Classic),
+                ("Confidential", EncryptionHint::Classic),
+                ("Top Secret", EncryptionHint::Hybridized),
+            ],
+            true,
+        ))?;
+        policy.add_dimension(DimensionBuilder::new(
+            "Department",
+            vec![
+                ("R&D", EncryptionHint::Classic),
+                ("HR", EncryptionHint::Classic),
+                ("MKG", EncryptionHint::Classic),
+                ("FIN", EncryptionHint::Classic),
+            ],
+            false,
+        ))?;
+        let serialized_policy = <Vec<u8>>::try_from(&policy)?;
+        let parsed_policy = Policy::parse_and_convert(&serialized_policy)?;
+        // check policy size
+        assert_eq!(parsed_policy.attributes().len(), policy.attributes().len());
+
+        // check order
+        let orig_ordered_dim = policy.dimensions.get("Security Level").unwrap();
+        let parsed_ordered_dim = parsed_policy.dimensions.get("Security Level").unwrap();
+        assert_eq!(
+            parsed_ordered_dim.get_attributes_name().collect::<Vec<_>>(),
+            orig_ordered_dim.get_attributes_name().collect::<Vec<_>>(),
+        );
+
+        Ok(())
+    }
+
     #[test]
     pub fn test_create_policy_from_spec() -> Result<(), Error> {
         let json = r#"
