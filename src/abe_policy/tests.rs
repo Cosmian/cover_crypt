@@ -132,11 +132,15 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     // Missing dimension remove
     assert!(policy.remove_attribute(&missing_dimension).is_err());
 
-    // Remove all attributes from an dimension
+    // Remove all attributes from a dimension
     policy.remove_attribute(&new_attr)?;
     policy.remove_attribute(&Attribute::new("Department", "HR"))?;
     policy.remove_attribute(&Attribute::new("Department", "MKG"))?;
-    policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
+
+    // TODO: temporary fix before we allow removing an entire dimension
+    // policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
+    policy.remove_dimension("Department")?;
+
     assert_eq!(policy.dimensions.len(), 1);
 
     // Add new dimension

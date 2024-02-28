@@ -88,7 +88,11 @@ impl Policy {
     pub fn remove_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
             if dim.nb_attributes() == 1 {
-                self.remove_dimension(&attr.dimension)
+                // self.remove_dimension(&attr.dimension)
+                Err(Error::UnsupportedOperator(
+                    "Removing the last attribute of a dimension is currently not supported"
+                        .to_string(),
+                ))
             } else {
                 dim.remove_attribute(&attr.name)
             }
