@@ -38,4 +38,4 @@ zeroize = "1.6.0"
 
 [dev-dependencies]
 base64 = { version = "0.21.0" }
-criterion = { version = "0.4", features = ["html_reports"], default_features = false }
+criterion = { version = "0.5", features = ["html_reports"], default_features = false }
