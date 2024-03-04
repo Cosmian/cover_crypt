@@ -56,14 +56,13 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
     ///
     /// The policy specifications format is as follow:
     /// ```text
-    /// policy: { dimension_list }
-    /// dimension_list: dimension_entry | dimension_entry, dimension_list
-    /// dimension_entry: dimension_name: [ attribute_list ]
-    /// dimension_name: "NAME::dimension_modifier"
-    /// dimension_modifier: "<" | ""        # ordered | unordered dimension
-    /// attribute_list: attribute | attribute, attribute_list
-    /// attribute: "NAME::attribute_modifier"
-    /// attribute_modifier: "+" | ""        # hybridized | classic encryption
+    /// policy: \{ dimension* \}
+    /// dimension: "dimension_name[ hierarchical_modifier ]": \[ attribute* \]
+    /// dimension_name: String
+    /// hierarchical_modifier : "::<"
+    /// attribute: "attribute_name[ hybridized_modifier ]"
+    /// attribute_name: String
+    /// hybridized_modifier: "::+"
     /// ```
     ///
     /// Example:
