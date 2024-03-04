@@ -54,7 +54,19 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
 
     /// Create a policy object from policy specifications
     ///
-    /// The policy specifications must be passed as a mapping object:
+    /// The policy specifications format is as follow:
+    /// ```text
+    /// policy: { dimension_list }
+    /// dimension_list: dimension_entry | dimension_entry, dimension_list
+    /// dimension_entry: dimension_name: [ attribute_list ]
+    /// dimension_name: "NAME::dimension_modifier"
+    /// dimension_modifier: "<" | ""        # ordered | unordered dimension
+    /// attribute_list: attribute | attribute, attribute_list
+    /// attribute: "NAME::attribute_modifier"
+    /// attribute_modifier: "+" | ""        # hybridized | classic encryption
+    /// ```
+    ///
+    /// Example:
     /// ```json
     ///     {
     ///        "Security Level::<": [
@@ -73,21 +85,23 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
     fn try_from(value: HashMap<String, Vec<String>>) -> Result<Self, Self::Error> {
         let mut policy = Self::new();
 
-        for (axis, attributes) in &value {
-            // Split the axis into axis name and hierarchy flag
-            let (axis_name, hierarchical) = match axis.split_once("::") {
+        for (dimension, attributes) in &value {
+            // Split the dimension into name and hierarchy flag
+            let (dim_name, hierarchical) = match dimension.split_once("::") {
                 Some((name, specs)) => {
-                    // If the axis contains the hierarchy flag, parse it
+                    // If the dimension contains the hierarchy flag, parse it
                     let hierarchical = match specs {
                         "<" => true,
                         x => {
-                            return Err(Error::ConversionFailed(format!("unknown axis spec {x}")));
+                            return Err(Error::ConversionFailed(format!(
+                                "invalid specification '{x}' for dimension '{name}'"
+                            )));
                         }
                     };
                     (name, hierarchical)
                 }
-                // If there is no hierarchy flag, assume the axis is non-hierarchical
-                None => (axis.as_str(), false),
+                // If there is no hierarchy flag, assume the dimension is non-hierarchical
+                None => (dimension.as_str(), false),
             };
 
             let mut attributes_properties: Vec<(&str, EncryptionHint)> =
@@ -101,7 +115,8 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
                             "+" => EncryptionHint::Hybridized,
                             x => {
                                 return Err(Error::ConversionFailed(format!(
-                                    "unknown attribute spec {x}"
+                                    "invalid specification '{x}' for attribute \
+                                     '{dim_name}::{name}'"
                                 )));
                             }
                         };
@@ -113,9 +128,9 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
                 attributes_properties.push((att_name, encryption_hint));
             }
 
-            // Add the axis to the policy
+            // Add the dimension to the policy
             policy.add_dimension(DimensionBuilder::new(
-                axis_name,
+                dim_name,
                 attributes_properties,
                 hierarchical,
             ))?;
@@ -124,18 +139,17 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
     }
 }
 
-fn convert_attribute(attribute: (String, AttributeParameters)) -> String {
-    let (name, params) = attribute;
-    match params.get_encryption_hint() {
-        EncryptionHint::Hybridized => name + "::+",
-        EncryptionHint::Classic => name,
-    }
-}
-
 impl TryFrom<Policy> for HashMap<String, Vec<String>> {
     type Error = Error;
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+        fn convert_attribute(attribute: (String, AttributeParameters)) -> String {
+            let (name, params) = attribute;
+            match params.get_encryption_hint() {
+                EncryptionHint::Hybridized => name + "::+",
+                EncryptionHint::Classic => name,
+            }
+        }
         let mut result: Self = Self::with_capacity(policy.dimensions.len());
 
         for (dim_name, dimension) in policy.dimensions {
