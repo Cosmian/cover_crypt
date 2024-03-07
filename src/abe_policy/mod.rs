@@ -1,8 +1,8 @@
 //! This crate defines the `Policy` logic, the basis for Attribute Based
 //! Encryption (ABE).
 //!
-//! A `Policy` is a set of axes. Each dimension is defined by its name and its list
-//! of associated attribute names.
+//! A `Policy` is a set of axes. Each dimension is defined by its name and its
+//! list of associated attribute names.
 //!
 //! An `Attribute` is composed by an dimension name and an attribute name within
 //! this dimension.
@@ -10,6 +10,7 @@
 mod access_policy;
 mod attribute;
 mod dimension;
+mod parser;
 mod partitions;
 mod policy;
 mod policy_versions;
