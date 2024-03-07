@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt::Debug, vec};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Debug,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +9,7 @@ use super::{
     attribute::{AttributeBuilder, EncryptionHint},
     AttributeStatus,
 };
-use crate::Error;
+use crate::{data_struct::Dict, Error};
 
 ///
 /// Creates a dimension by its name and its underlying attribute properties.
@@ -69,9 +72,9 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub rotation_values: Vec<u32>,
-    pub encryption_hint: EncryptionHint,
-    pub write_status: AttributeStatus,
+    pub(super) id: u32,
+    pub(super) encryption_hint: EncryptionHint,
+    pub(super) write_status: AttributeStatus,
 }
 
 impl AttributeParameters {
@@ -80,28 +83,25 @@ impl AttributeParameters {
     pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
         *seed_id += 1;
         Self {
-            rotation_values: vec![*seed_id],
+            id: *seed_id,
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,
         }
     }
 
-    /// Gets the current rotation of the Attribute.
-    pub fn get_current_rotation(&self) -> u32 {
-        self.rotation_values
-            .last()
-            .copied()
-            .expect("Attribute should always have at least one value")
+    #[must_use]
+    pub fn get_id(&self) -> u32 {
+        self.id
     }
 
-    /// Flattens the properties of the `AttributeParameters` into a vector of
-    /// tuples where each tuple contains a rotation value, the associated
-    /// encryption hint, and the `read_only` flag.
-    pub fn flatten_properties(&self) -> Vec<(u32, EncryptionHint, AttributeStatus)> {
-        self.rotation_values
-            .iter()
-            .map(|&value| (value, self.encryption_hint, self.write_status))
-            .collect()
+    #[must_use]
+    pub fn get_encryption_hint(&self) -> EncryptionHint {
+        self.encryption_hint
+    }
+
+    #[must_use]
+    pub fn get_status(&self) -> AttributeStatus {
+        self.write_status
     }
 }
 
@@ -110,9 +110,9 @@ type AttributeName = String;
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 /// A dimension is a space that holds attributes. It can be ordered (an
 /// dimension) or unordered (a set).
-pub struct Dimension {
-    pub order: Option<Vec<AttributeName>>,
-    pub attributes: HashMap<AttributeName, AttributeParameters>,
+pub enum Dimension {
+    Unordered(HashMap<AttributeName, AttributeParameters>),
+    Ordered(Dict<AttributeName, AttributeParameters>),
 }
 
 impl Dimension {
@@ -123,59 +123,53 @@ impl Dimension {
     ///
     /// * `dim` - The `DimensionBuilder` to base the dimension on.
     /// * `seed_id` - A mutable reference to a seed ID used for generating
-    ///   unique IDs for attributes.
-    pub fn new(dim: &DimensionBuilder, seed_id: &mut u32) -> Self {
-        let attributes_mapping = dim
-            .attributes_properties
-            .iter()
-            .map(|attr| {
-                (
-                    attr.name.clone(),
-                    AttributeParameters::new(attr.encryption_hint, seed_id),
-                )
-            })
-            .collect();
+    ///   unique values for attributes.
+    pub fn new(dim: DimensionBuilder, seed_id: &mut u32) -> Self {
+        let attributes_mapping = dim.attributes_properties.into_iter().map(|attr| {
+            (
+                attr.name,
+                AttributeParameters::new(attr.encryption_hint, seed_id),
+            )
+        });
 
         match dim.hierarchical {
-            true => Self {
-                order: Some(
-                    dim.attributes_properties
-                        .iter()
-                        .map(|attr| attr.name.clone())
-                        .collect(),
-                ),
-                attributes: attributes_mapping,
-            },
-            false => Self {
-                order: None,
-                attributes: attributes_mapping,
-            },
+            true => Self::Ordered(attributes_mapping.collect()),
+            false => Self::Unordered(attributes_mapping.collect()),
         }
     }
 
-    /// Rotates the attribute with the given name by incrementing its rotation
-    /// value.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to rotate.
-    /// * `seed_id` - A seed used for generating the new rotation value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the attribute with the specified name is not found.
-    pub fn rotate_attribute(
-        &mut self,
-        attr_name: &AttributeName,
-        seed_id: &mut u32,
-    ) -> Result<(), Error> {
-        match self.attributes.get_mut(attr_name) {
-            Some(attr) => {
-                *seed_id += 1;
-                attr.rotation_values.push(*seed_id);
-                Ok(())
-            }
-            None => Err(Error::AttributeNotFound(attr_name.to_string())),
+    #[must_use]
+    pub fn nb_attributes(&self) -> usize {
+        match self {
+            Self::Unordered(attributes) => attributes.len(),
+            Self::Ordered(attributes) => attributes.len(),
+        }
+    }
+
+    #[must_use]
+    pub fn is_ordered(&self) -> bool {
+        match self {
+            Self::Unordered(_) => false,
+            Self::Ordered(_) => true,
+        }
+    }
+
+    /// Returns an iterator over the attributes name.
+    /// If the dimension is ordered, the names are returned in this order,
+    /// otherwise they are returned in arbitrary order.
+    #[must_use]
+    pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
+        match self {
+            Self::Unordered(attributes) => Box::new(attributes.keys()),
+            Self::Ordered(attributes) => Box::new(attributes.keys()),
+        }
+    }
+
+    #[must_use]
+    pub fn get_attribute(&self, attr_name: &AttributeName) -> Option<&AttributeParameters> {
+        match self {
+            Self::Unordered(attributes) => attributes.get(attr_name),
+            Self::Ordered(attributes) => attributes.get(attr_name),
         }
     }
 
@@ -191,24 +185,24 @@ impl Dimension {
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,
-        attr_name: &AttributeName,
+        attr_name: AttributeName,
         encryption_hint: EncryptionHint,
         seed_id: &mut u32,
     ) -> Result<(), Error> {
-        if self.order.is_some() {
-            Err(Error::OperationNotPermitted(
+        match self {
+            Self::Unordered(attributes) => {
+                if let Entry::Vacant(entry) = attributes.entry(attr_name) {
+                    entry.insert(AttributeParameters::new(encryption_hint, seed_id));
+                    Ok(())
+                } else {
+                    Err(Error::OperationNotPermitted(
+                        "Attribute already in dimension".to_string(),
+                    ))
+                }
+            }
+            Self::Ordered(_) => Err(Error::OperationNotPermitted(
                 "Hierarchical dimension are immutable".to_string(),
-            ))
-        } else if self.attributes.contains_key(attr_name) {
-            Err(Error::OperationNotPermitted(
-                "Attribute already in dimension".to_string(),
-            ))
-        } else {
-            self.attributes.insert(
-                attr_name.clone(),
-                AttributeParameters::new(encryption_hint, seed_id),
-            );
-            Ok(())
+            )),
         }
     }
 
@@ -223,15 +217,14 @@ impl Dimension {
     /// Returns an error if the operation is not permitted or if the attribute
     /// is not found.
     pub fn remove_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        if self.order.is_some() {
-            Err(Error::OperationNotPermitted(
-                "Hierarchical dimension are immutable".to_string(),
-            ))
-        } else {
-            self.attributes
+        match self {
+            Self::Unordered(attributes) => attributes
                 .remove(attr_name)
                 .map(|_| ())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+            Self::Ordered(_) => Err(Error::OperationNotPermitted(
+                "Hierarchical dimension are immutable".to_string(),
+            )),
         }
     }
 
@@ -245,10 +238,16 @@ impl Dimension {
     ///
     /// Returns an error if the attribute is not found.
     pub fn disable_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        self.attributes
-            .get_mut(attr_name)
-            .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
-            .ok_or(Error::AttributeNotFound(attr_name.to_string()))
+        match self {
+            Self::Unordered(attributes) => attributes
+                .get_mut(attr_name)
+                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+            Self::Ordered(attributes) => attributes
+                .get_mut(attr_name)
+                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+        }
     }
 
     /// Renames an attribute with a new name.
@@ -265,66 +264,36 @@ impl Dimension {
     pub fn rename_attribute(
         &mut self,
         attr_name: &AttributeName,
-        new_name: &str,
+        new_name: String,
     ) -> Result<(), Error> {
-        if self.attributes.contains_key(new_name) {
-            return Err(Error::OperationNotPermitted(
-                "New attribute name is already used in the same dimension".to_string(),
-            ));
-        }
-        match self.attributes.remove(attr_name) {
-            Some(attr_params) => {
-                self.attributes.insert(new_name.to_string(), attr_params);
-                if let Some(order) = self.order.as_mut() {
-                    order.iter_mut().for_each(|name| {
-                        if name == attr_name {
-                            *name = new_name.to_string()
-                        }
-                    })
+        match self {
+            Self::Unordered(attributes) => {
+                if attributes.contains_key(&new_name) {
+                    return Err(Error::OperationNotPermitted(
+                        "New attribute name is already used in the same dimension".to_string(),
+                    ));
                 }
-                Ok(())
+                match attributes.remove(attr_name) {
+                    Some(attr_params) => {
+                        attributes.insert(new_name, attr_params);
+                        Ok(())
+                    }
+                    None => Err(Error::AttributeNotFound(attr_name.to_string())),
+                }
             }
-            None => Err(Error::AttributeNotFound(attr_name.to_string())),
+            Self::Ordered(attributes) => attributes
+                .update_key(attr_name, new_name)
+                .map_err(|e| Error::OperationNotPermitted(e.to_string())),
         }
     }
 
-    /// Clears the old rotations of an attribute, keeping only the current ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to clear old rotations for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the attribute is not found.
-    pub fn clear_old_attribute_values(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
-        self.attributes
-            .get_mut(attr_name)
-            .map(|attr| {
-                let current_val = attr.get_current_rotation();
-                attr.rotation_values.retain(|val| val == &current_val);
-            })
-            .ok_or(Error::AttributeNotFound(attr_name.to_string()))
-    }
-
-    /// Returns the list of Attributes of this Policy.
+    /// Returns an iterator over the `AttributesParameters` and parameters.
     /// If the dimension is ordered, the attributes are returned in order.
-    pub fn attributes_properties(&self) -> Vec<(String, EncryptionHint)> {
-        if let Some(ordered_attrs) = &self.order {
-            ordered_attrs
-                .iter()
-                .map(|name| {
-                    (
-                        name.to_string(),
-                        self.attributes.get(name).unwrap().encryption_hint,
-                    )
-                })
-                .collect()
-        } else {
-            self.attributes
-                .iter()
-                .map(|(name, attr_params)| (name.to_string(), attr_params.encryption_hint))
-                .collect()
+    #[must_use]
+    pub fn attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
+        match self {
+            Self::Unordered(attributes) => Box::new(attributes.values()),
+            Self::Ordered(attributes) => Box::new(attributes.values()),
         }
     }
 }

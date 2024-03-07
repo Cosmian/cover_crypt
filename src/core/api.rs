@@ -7,10 +7,11 @@ use cosmian_crypto_core::{
     RandomFixedSizeCBytes, SymmetricKey,
 };
 
+use super::primitives::prune;
 use crate::{
     abe_policy::{AccessPolicy, Policy},
     core::{
-        primitives::{decaps, encaps, keygen, refresh, setup, update},
+        primitives::{decaps, encaps, keygen, refresh, rekey, setup, update},
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SYM_KEY_LENGTH,
     },
     Error,
@@ -46,7 +47,7 @@ impl Covercrypt {
     ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         Ok(setup(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            &policy.generate_all_partitions()?,
+            policy.generate_all_partitions()?,
         ))
     }
 
@@ -70,28 +71,67 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            &policy.generate_all_partitions()?,
+            policy.generate_all_partitions()?,
+        )
+    }
+
+    /// Generate new keys associated to the given access policy in the master
+    /// keys. User keys will need to be refreshed after this step.
+    ///  - `access_policy`  : describe the keys to renew
+    ///  - `policy`         : global policy
+    ///  - `msk`            : master secret key
+    ///  - `mpk`            : master public key
+    pub fn rekey_master_keys(
+        &self,
+        access_policy: &AccessPolicy,
+        policy: &Policy,
+        msk: &mut MasterSecretKey,
+        mpk: &mut MasterPublicKey,
+    ) -> Result<(), Error> {
+        rekey(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            mpk,
+            policy.access_policy_to_partitions(access_policy, false)?,
+        )
+    }
+
+    /// Removes old keys associated to the given master keys from the master
+    /// keys. This will permanently remove access to old ciphers.
+    ///  - `access_policy`  : describe the keys to prune
+    ///  - `policy`         : global policy
+    ///  - `msk`            : master secret key
+    pub fn prune_master_secret_key(
+        &self,
+        access_policy: &AccessPolicy,
+        policy: &Policy,
+        msk: &mut MasterSecretKey,
+    ) -> Result<(), Error> {
+        prune(
+            msk,
+            &policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
     /// Generates a user secret key.
     ///
-    /// A new user secret key does NOT include to old (i.e. rotated) partitions.
+    /// A new user secret key only has the latest keys corresponding to its
+    /// access policy.
     ///
-    /// - `msk`         : master secret key
-    /// - `user_policy` : user access policy
-    /// - `policy`      : global policy
+    /// - `msk`           : master secret key
+    /// - `access_policy` : user access policy
+    /// - `policy`        : global policy
     pub fn generate_user_secret_key(
         &self,
         msk: &MasterSecretKey,
         access_policy: &AccessPolicy,
         policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
-        Ok(keygen(
+        keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.access_policy_to_partitions(access_policy, true, false)?,
-        ))
+            &policy.access_policy_to_partitions(access_policy, true)?,
+        )
     }
 
     /// Refreshes the user key according to the given master key and user
@@ -102,24 +142,15 @@ impl Covercrypt {
     /// is set, the old user access will be preserved.
     ///
     /// - `usk`                 : the user key to refresh
-    /// - `user_policy`         : the access policy of the user key
     /// - `msk`                 : master secret key
-    /// - `policy`              : global policy of the master secret key
-    /// - `keep_old_accesses`   : whether access to old partitions (i.e. before
-    ///   rotation) should be kept
+    /// - `keep_old_rights`     : whether or not to keep old decryption rights
     pub fn refresh_user_secret_key(
         &self,
         usk: &mut UserSecretKey,
-        access_policy: &AccessPolicy,
         msk: &MasterSecretKey,
-        policy: &Policy,
-        keep_old_rotations: bool,
+        keep_old_rights: bool,
     ) -> Result<(), Error> {
-        refresh(
-            msk,
-            usk,
-            &policy.access_policy_to_partitions(access_policy, true, keep_old_rotations)?,
-        )
+        refresh(msk, usk, keep_old_rights)
     }
 
     /// Generates a random symmetric key to be used with a DEM scheme and
@@ -138,7 +169,7 @@ impl Covercrypt {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &policy.access_policy_to_partitions(access_policy, false, false)?,
+            &policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 

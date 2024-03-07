@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [14.0.0] - 2024-03-07
+
+### Features
+
+- Change `Axis` to `Dimension` with a clear distinction between `Ordered` and `Unordered`.
+- Create a `Dictionary` data structure to store and update `Ordered Dimension` efficiently
+- Change the data structure of `MasterSecretKey` and `UserSecretKey` to keep track of subkeys version.
+- Policy does not count the attribute rotations anymore as they are stored in the subkeys.
+- a `UserSecretKey` can now be refreshed without any external `Policy` information.
+- Internalize `Policy` parsing method from the KMS to improve encapsulation.
+
 ## [13.0.0] - 2023-11-06
 
 ### Bug Fixes

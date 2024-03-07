@@ -346,7 +346,8 @@ impl AccessPolicy {
     /// given access policy. It is an OR expression of AND expressions.
     ///
     /// - `policy`                              : global policy
-    /// - `include_lower_attributes_from_dim`   : set to `true` to combine lower attributes
+    /// - `include_lower_attributes_from_dim`   : set to `true` to combine lower
+    ///   attributes
     /// from dimension with hierarchical order
     pub fn to_attribute_combinations(
         &self,
@@ -360,12 +361,13 @@ impl AccessPolicy {
                     .get(&attr.dimension)
                     .ok_or_else(|| Error::DimensionNotFound(attr.dimension.to_string()))?;
                 let mut res = vec![vec![attr.clone()]];
-                if let Some(order) = dim_parameters.order.as_deref() {
-                    if include_lower_attributes_from_dim {
-                        // add attribute values for all attributes below the given one
-                        for name in order.iter().take_while(|&name| name != &attr.name) {
-                            res.push(vec![Attribute::new(&attr.dimension, name)]);
-                        }
+                if include_lower_attributes_from_dim && dim_parameters.is_ordered() {
+                    // add attribute values for all attributes below the given one
+                    for name in dim_parameters
+                        .get_attributes_name()
+                        .take_while(|&name| name != &attr.name)
+                    {
+                        res.push(vec![Attribute::new(&attr.dimension, name)]);
                     }
                 }
                 Ok(res)

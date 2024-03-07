@@ -61,14 +61,10 @@ fn main() {
     assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_ok());
 
     //
-    // Rotate the `Security Level::Top Secret` attribute
-    policy
-        .rotate(&Attribute::from(("Security Level", "Top Secret")))
-        .unwrap();
-
-    // Master keys need to be updated to take into account the policy rotation
+    // Rekey all keys using the `Security Level::Top Secret` attribute
+    let rekey_access_policy = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
     cover_crypt
-        .update_master_keys(&policy, &mut msk, &mut mpk)
+        .rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)
         .unwrap();
 
     // Encrypt with rotated attribute
@@ -82,7 +78,7 @@ fn main() {
 
     // refresh user secret key, do not grant old encryption access
     cover_crypt
-        .refresh_user_secret_key(&mut usk, &access_policy, &msk, &policy, false)
+        .refresh_user_secret_key(&mut usk, &msk, false)
         .unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.

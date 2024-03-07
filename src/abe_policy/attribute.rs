@@ -30,12 +30,19 @@ impl BitOr for EncryptionHint {
 }
 
 impl EncryptionHint {
+    #[must_use]
     pub fn new(is_hybridized: bool) -> Self {
         if is_hybridized {
             Self::Hybridized
         } else {
             Self::Classic
         }
+    }
+}
+
+impl From<EncryptionHint> for bool {
+    fn from(val: EncryptionHint) -> Self {
+        val == EncryptionHint::Hybridized
     }
 }
 

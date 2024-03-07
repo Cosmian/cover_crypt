@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
+    abe_policy::{AccessPolicy, Attribute, Dimension, DimensionBuilder, EncryptionHint, Policy},
     error::Error,
 };
 
@@ -64,38 +66,6 @@ fn check_policy() {
     for properties in &department.attributes_properties {
         assert!(attributes.contains(&Attribute::new("Department", &properties.name)));
     }
-    for attribute in &attributes {
-        assert_eq!(
-            policy.attribute_values(attribute).unwrap()[0],
-            policy.attribute_current_value(attribute).unwrap()
-        );
-    }
-}
-
-#[test]
-fn test_rotate_policy_attributes() -> Result<(), Error> {
-    let mut policy = policy()?;
-    let attributes = policy.attributes();
-    // rotate few attributes
-    policy.rotate(&attributes[0])?;
-    assert_eq!(2, policy.attribute_values(&attributes[0])?.len());
-    policy.rotate(&attributes[2])?;
-    assert_eq!(2, policy.attribute_values(&attributes[2])?.len());
-    for attribute in &attributes {
-        assert_eq!(
-            policy.attribute_values(attribute)?[0],
-            policy.attribute_current_value(attribute)?
-        );
-    }
-
-    policy.clear_old_attribute_values(&attributes[0])?;
-    assert_eq!(1, policy.attribute_values(&attributes[0])?.len());
-
-    assert!(policy
-        .clear_old_attribute_values(&Attribute::new("Department", "Missing"))
-        .is_err());
-
-    Ok(())
 }
 
 #[test]
@@ -105,25 +75,28 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Try renaming Research to already used name MKG
     assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "MKG".to_string(),)
         .is_err());
 
     // Rename R&D to Research
     assert!(policy
-        .rename_attribute(&Attribute::new("Department", "R&D"), "Research",)
+        .rename_attribute(&Attribute::new("Department", "R&D"), "Research".to_string(),)
         .is_ok());
 
     // Rename ordered dimension
     assert!(policy
-        .rename_attribute(&Attribute::new("Security Level", "Protected"), "Open",)
+        .rename_attribute(
+            &Attribute::new("Security Level", "Protected"),
+            "Open".to_string(),
+        )
         .is_ok());
-    let order = policy
+    let order: Vec<_> = policy
         .dimensions
         .get("Security Level")
         .unwrap()
-        .order
-        .clone()
-        .unwrap();
+        .get_attributes_name()
+        .cloned()
+        .collect();
     assert!(order.len() == 3);
     assert!(order.contains(&"Open".to_string()));
     assert!(!order.contains(&"Protected".to_string()));
@@ -159,11 +132,15 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
     // Missing dimension remove
     assert!(policy.remove_attribute(&missing_dimension).is_err());
 
-    // Remove all attributes from an dimension
+    // Remove all attributes from a dimension
     policy.remove_attribute(&new_attr)?;
     policy.remove_attribute(&Attribute::new("Department", "HR"))?;
     policy.remove_attribute(&Attribute::new("Department", "MKG"))?;
-    policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
+
+    // TODO: temporary fix before we allow removing an entire dimension
+    // policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
+    policy.remove_dimension("Department")?;
+
     assert_eq!(policy.dimensions.len(), 1);
 
     // Add new dimension
@@ -207,4 +184,53 @@ fn test_access_policy_equality() {
     assert_eq!(ap1, ap2);
     assert_eq!(ap2, ap2);
     assert_ne!(ap2, ap3);
+}
+
+#[test]
+fn specification_conversion_round_trip() -> Result<(), Error> {
+    let policy = policy()?;
+
+    let spec: HashMap<String, Vec<String>> = policy.try_into()?;
+
+    let policy_from_spec: Policy = spec.try_into()?;
+
+    assert_eq!(policy_from_spec.dimensions.len(), 2);
+
+    assert!(matches!(
+        policy_from_spec.dimensions.get("Security Level").unwrap(),
+        Dimension::Ordered(_)
+    ));
+    assert!(matches!(
+        policy_from_spec.dimensions.get("Department").unwrap(),
+        Dimension::Unordered(_)
+    ));
+    assert_eq!(
+        policy_from_spec
+            .dimensions
+            .get("Security Level")
+            .unwrap()
+            .attributes()
+            .count(),
+        3
+    );
+    assert_eq!(
+        policy_from_spec
+            .get_attribute_hybridization_hint(&Attribute::new("Department", "MKG"))
+            .unwrap(),
+        EncryptionHint::Classic
+    );
+    assert_eq!(
+        policy_from_spec
+            .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Protected"))
+            .unwrap(),
+        EncryptionHint::Classic
+    );
+    assert_eq!(
+        policy_from_spec
+            .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Top Secret"))
+            .unwrap(),
+        EncryptionHint::Hybridized
+    );
+
+    Ok(())
 }
