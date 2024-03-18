@@ -339,3 +339,61 @@ pub struct CleartextHeader {
     pub symmetric_key: SymmetricKey<SEED_LENGTH>,
     pub metadata: Option<Vec<u8>>,
 }
+
+
+pub trait CovercryptKEM {
+    /// Sets up the Covercrypt scheme.
+    ///
+    /// Generates a MSK and a MPK with a tracing level of
+    /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
+    /// They only hold keys for the origin coordinate: only broadcast
+    /// encapsulations can be created.
+    fn setup () ->
+        (MasterSecretKey,MasterPublicKey);
+    /// Generate a user secret key with the given rights.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is not valid.
+    fn keygen (msk : &MasterSecretKey,
+               ap : &str) ->
+        Result<UserSecretKey,Error>;
+    /// Generates an encapsulation for the given access
+    /// policy.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is not valid.
+    fn encaps<const LENGTH : usize> (mpk : &MasterPublicKey,
+                                     ap : &str) ->
+        Result<(SymmetricKey<LENGTH>,Encapsulation), Error>;
+    /// Attempts opening the given encapsulation using the given
+    /// user secret key.
+    ///
+    /// Returns the encapsulated symmetric key if the user key holds
+    /// the correct rights.
+    fn decaps<const LENGTH : usize> (usk : &UserSecretKey,
+                                     enc : Encapsulation) ->
+        Option<SymmetricKey<LENGTH>>;
+
+
+}
+
+pub trait CovercryptPKE<const LENGTH : usize, Dem> {
+    fn encrypt (mpk : &MasterPublicKey,
+                ap : &AccessPolicy,
+                ad : &[u8],
+                ptx : &[u8]) ->
+        Result<Vec<u8>,Error>;
+    
+    fn decrypt (usk : &UserSecretKey,
+                ad : &[u8],
+                ctx : &[u8]) ->
+        Result<Vec<u8>,Error>;
+
+}
+
+// TODO : 1) Implement CCKEM and test it.
+//        2) Implement CCPKE and test it.
+//        remarks : 1) CCPKE contains CCKEM.
+//                  2) Interface opaque to client. Only access to functions.
