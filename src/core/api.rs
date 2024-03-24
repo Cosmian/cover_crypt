@@ -1,6 +1,6 @@
 //! Defines the `Covercrypt` API.
 
-use std::{collections::HashMap, fmt::Debug, sync::Mutex};
+use std::{collections::HashMap, fmt::Debug, sync::{/*self, */Mutex}};
 
 use cosmian_crypto_core::{
     reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
@@ -340,7 +340,6 @@ pub struct CleartextHeader {
     pub metadata: Option<Vec<u8>>,
 }
 
-
 pub trait CovercryptKEM {
     /// Sets up the Covercrypt scheme.
     ///
@@ -348,14 +347,15 @@ pub trait CovercryptKEM {
     /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
     /// They only hold keys for the origin coordinate: only broadcast
     /// encapsulations can be created.
-    fn setup () ->
-        (MasterSecretKey,MasterPublicKey);
+    fn setup (&self) ->
+        Result<(MasterSecretKey,MasterPublicKey),Error>;
     /// Generate a user secret key with the given rights.
     ///
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn keygen (msk : &MasterSecretKey,
+    fn keygen (&self,
+               msk : &mut MasterSecretKey,
                ap : &str) ->
         Result<UserSecretKey,Error>;
     /// Generates an encapsulation for the given access
@@ -364,7 +364,8 @@ pub trait CovercryptKEM {
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encaps<const LENGTH : usize> (mpk : &MasterPublicKey,
+    fn encaps<const LENGTH : usize> (&self,
+                                     mpk : &MasterPublicKey,
                                      ap : &str) ->
         Result<(SymmetricKey<LENGTH>,Encapsulation), Error>;
     /// Attempts opening the given encapsulation using the given
@@ -372,11 +373,85 @@ pub trait CovercryptKEM {
     ///
     /// Returns the encapsulated symmetric key if the user key holds
     /// the correct rights.
-    fn decaps<const LENGTH : usize> (usk : &UserSecretKey,
+    fn decaps<const LENGTH : usize> (&self,
+                                     usk : &UserSecretKey,
                                      enc : Encapsulation) ->
         Option<SymmetricKey<LENGTH>>;
 
 
+}
+
+impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
+    ///
+    /// Generates a MSK and a MPK with a tracing level of
+    /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
+    /// They only hold keys for the origin coordinate: only broadcast
+    /// encapsulations can be created.
+    fn setup (&self) ->
+        Result<(MasterSecretKey,MasterPublicKey),Error> {
+        let mut msk = setup(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            MIN_TRACING_LEVEL,
+        )?;
+    
+        // Add broadcast coordinate with classic encryption level.
+        //
+        // TODO replace this function by `add_coordinates`,
+        // `remove_coordinates`, `hybridize_coordinates` and
+        // `deprecate_coordinates`.
+        update_coordinate_keys(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &mut msk,
+            HashMap::from_iter([(
+                Coordinate::from_attribute_ids(vec![])?,
+                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+            )]),
+        )?;
+        let mpk = mpk_keygen(&msk)?;
+    
+        Ok((msk, mpk))
+    }
+    /// Generate a user secret key with the given rights.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is not valid.
+    fn keygen (&self,
+               msk : &mut MasterSecretKey,
+               ap : &str) -> Result<UserSecretKey,Error> {
+        let policy = &Policy::new();
+        let ap = &AccessPolicy::parse(ap)?;
+        usk_keygen(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            policy.generate_semantic_space_coordinates(ap.clone())?,
+        )
+    }
+    /// Generates an encapsulation for the given access
+    /// policy.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is not valid.
+    fn encaps<const LENGTH : usize> (&self,
+                                     _ : &MasterPublicKey,
+                                     _ : &str) ->
+        Result<(SymmetricKey<LENGTH>,Encapsulation), Error> {
+            Err(Error::OperationNotPermitted(
+                "todo".to_string(),
+            ))
+        }
+    /// Attempts opening the given encapsulation using the given
+    /// user secret key.
+    ///
+    /// Returns the encapsulated symmetric key if the user key holds
+    /// the correct rights.
+    fn decaps<const LENGTH : usize> (&self,
+                                     _ : &UserSecretKey,
+                                     _ : Encapsulation) ->
+        Option<SymmetricKey<LENGTH>> {
+            None
+        }
 }
 
 pub trait CovercryptPKE<const LENGTH : usize, Dem> {
@@ -397,3 +472,5 @@ pub trait CovercryptPKE<const LENGTH : usize, Dem> {
 //        2) Implement CCPKE and test it.
 //        remarks : 1) CCPKE contains CCKEM.
 //                  2) Interface opaque to client. Only access to functions.
+//                  3) Be careful about the mutex.. Has to be shared between the
+//                      traits
