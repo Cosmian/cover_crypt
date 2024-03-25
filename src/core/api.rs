@@ -3,8 +3,8 @@
 use std::{collections::HashMap, fmt::Debug, sync::{/*self, */Mutex}};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
+    reexport::{aead::{Aead, Payload}, rand_core::SeedableRng}, Aes256Gcm, CryptoCoreError, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey
+    
 };
 
 use super::{
@@ -12,10 +12,13 @@ use super::{
     MIN_TRACING_LEVEL,
 };
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy},
+    abe_policy::{
+        AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy
+    },
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SEED_LENGTH,
+        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
+        SEED_LENGTH,
     },
     Error,
 };
@@ -348,7 +351,8 @@ pub trait CovercryptKEM {
     /// They only hold keys for the origin coordinate: only broadcast
     /// encapsulations can be created.
     fn setup (&self) ->
-        Result<(MasterSecretKey,MasterPublicKey),Error>;
+        Result<(MasterSecretKey,MasterPublicKey),Error> ;
+
     /// Generate a user secret key with the given rights.
     ///
     /// # Error
@@ -358,28 +362,31 @@ pub trait CovercryptKEM {
                msk : &mut MasterSecretKey,
                ap : &str) ->
         Result<UserSecretKey,Error>;
+
     /// Generates an encapsulation for the given access
     /// policy.
     ///
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encaps<const LENGTH : usize> (&self,
-                                     mpk : &MasterPublicKey,
-                                     ap : &str) ->
-        Result<(SymmetricKey<LENGTH>,Encapsulation), Error>;
+    fn encaps (&self,
+               mpk : &MasterPublicKey,
+               ap : &str) ->
+        Result<(SymmetricKey<SEED_LENGTH>,Encapsulation), Error>;
+
     /// Attempts opening the given encapsulation using the given
     /// user secret key.
     ///
     /// Returns the encapsulated symmetric key if the user key holds
     /// the correct rights.
-    fn decaps<const LENGTH : usize> (&self,
-                                     usk : &UserSecretKey,
-                                     enc : Encapsulation) ->
-        Option<SymmetricKey<LENGTH>>;
+    fn decaps (&self,
+               usk : &UserSecretKey,
+               enc : Encapsulation) ->
+        Option<SymmetricKey<SEED_LENGTH>>;
 
 
 }
+
 
 impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     ///
@@ -433,40 +440,104 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encaps<const LENGTH : usize> (&self,
-                                     _ : &MasterPublicKey,
-                                     _ : &str) ->
-        Result<(SymmetricKey<LENGTH>,Encapsulation), Error> {
-            Err(Error::OperationNotPermitted(
-                "todo".to_string(),
-            ))
-        }
+    fn encaps (&self,
+               mpk : &MasterPublicKey,
+               ap : &str) ->
+        Result<(SymmetricKey<SEED_LENGTH>,Encapsulation), Error> {
+        let policy = &Policy::new();
+        let ap = &AccessPolicy::parse(ap)?;
+        encaps(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            mpk,
+            &policy.generate_point_coordinates(ap.clone())?,
+        )
+    }
+
     /// Attempts opening the given encapsulation using the given
     /// user secret key.
     ///
     /// Returns the encapsulated symmetric key if the user key holds
     /// the correct rights.
-    fn decaps<const LENGTH : usize> (&self,
-                                     _ : &UserSecretKey,
-                                     _ : Encapsulation) ->
-        Option<SymmetricKey<LENGTH>> {
-            None
+    fn decaps (&self,
+               usk : &UserSecretKey,
+               encapsulation : Encapsulation) ->
+        Option<SymmetricKey<SEED_LENGTH>> {
+            match decaps(usk, &encapsulation) {
+                Err(_) => None,
+                Ok(sk) => Some(sk?)
+            }
         }
 }
 
-pub trait CovercryptPKE<const LENGTH : usize, Dem> {
-    fn encrypt (mpk : &MasterPublicKey,
-                ap : &AccessPolicy,
+pub trait CovercryptPKE<const LENGHT : usize, D : Aead> {
+    fn encrypt (rng : &Mutex<CsRng>,
+                dem : D,
+                //_ : &SymmetricKey<SEED_LENGTH>, // I can pass sk in dem
                 ad : &[u8],
                 ptx : &[u8]) ->
-        Result<Vec<u8>,Error>;
+        Result<Vec<u8>,CryptoCoreError> {
+        let nonce = D::generate_nonce(&mut *rng.lock().expect("can't lock mutex"));
+        let mut ctx = D::encrypt(&dem,&nonce,
+                                          Payload {msg: ptx, aad: ad})?;
+        let mut res = Vec::with_capacity(ptx.len() + nonce.len() + ctx.len());
+        res.extend(nonce);
+        res.append(&mut ctx);
+        Ok(res)
+    }
     
-    fn decrypt (usk : &UserSecretKey,
+    fn decrypt (dem : D,
+                sk : &SymmetricKey<SEED_LENGTH>,
                 ad : &[u8],
                 ctx : &[u8]) ->
         Result<Vec<u8>,Error>;
+    // {
+    //     let nonce_size = D::NonceSize::count(&dem);
+    //     /*dem
+    //     .decrypt(
+    //         &Nonce::try_from_slice(&ctx[..D::NonceSize])?,
+    //         &ctx[D::NonceSize..]
+    //     )
+    //     .map_err(Error::CryptoCoreError);*/
+
+    // }
 
 }
+
+/*impl CovercryptPKE<SEED_LENGTH> for Covercrypt {
+    fn encrypt (&self,
+                sk : &SymmetricKey<SEED_LENGTH>,
+                ad : &[u8],
+                ptx : &[u8]) ->
+        Result<Vec<u8>,Error> {
+        let aes256gcm = Dem::new(sk);
+        let nonce = Nonce::new(&mut *self.rng.lock().
+            expect("could not lock mutex"));
+        let mut ciphertext = aes256gcm.
+            encrypt(&nonce, ptx, Some(&ad))?;
+        let mut res =
+            Vec::with_capacity(ptx.len() +
+                Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);
+        res.extend(nonce.0);
+        res.append(&mut ciphertext);
+        Ok(res)
+    }
+
+    fn decrypt (&self,
+                sk : &SymmetricKey<SEED_LENGTH>,
+                ad : &[u8],
+                ctx : &[u8]) ->
+    Result<Vec<u8>,Error> {
+    let aes256gcm = Aes256Gcm::new(sk);
+    aes256gcm
+        .decrypt(
+            &Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?,
+            &ctx[Aes256Gcm::NONCE_LENGTH..],
+            Some(&ad),
+        )
+        .map_err(Error::CryptoCoreError)
+
+    }
+}*/
 
 // TODO : 1) Implement CCKEM and test it.
 //        2) Implement CCPKE and test it.
