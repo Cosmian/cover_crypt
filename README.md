@@ -13,7 +13,7 @@ policies over these attributes.
 - [Building and testing](#building-and-testing)
 - [Features](#features)
   * [Key generation](#key-generation)
-  * [Policies and partitions](#policies-and-partitions)
+  * [Policies and coordinates](#policies-and-coordinates)
   * [Serialization](#serialization)
   * [Symmetric key encapsulation](#symmetric-key-encapsulation)
   * [Secret key decapsulation](#secret-key-decapsulation)
@@ -103,7 +103,7 @@ The key generations may be long if the policy contains many rights or if there
 are many users. But this is usually run once at setup. Key update and refresh
 stay fast if the changes are small.
 
-### Policies and partitions
+### Policies and coordinates
 
 CoverCrypt is an attribute-based encryption algorithm. This means that an
 encrypted header produced for the attributes `France` and `Top Secret` can only
@@ -118,20 +118,20 @@ objects are defined:
   policy is expressed as a boolean expression of attributes.
 - **user policy**: subset of the policy for which a user key enables
   decryption; a user policy is expressed as a boolean expression of attributes.
-- **partition**: combination of one attribute from each policy axis.
+- **coordinate**: combination of one attribute from each policy axis.
 
 When generating the master keys, the global policy is converted into the set of
-all possible partitions and a keypair is generated for each one of these
-partitions. The master public key holds all the public key of all these
+all possible coordinates and a keypair is generated for each one of these
+coordinates. The master public key holds all the public key of all these
 keypairs and the master secret key holds the secret key of all these keypairs.
 
 When encrypting for a given encryption policy, this policy is converted into a
-set of partitions. Then, one key encapsulation is generated per partition using
+set of coordinates. Then, one key encapsulation is generated per coordinate using
 the corresponding public sub-key in the master public key.
 
 Similarly, when generating a user secret key for a given user policy, this
-policy is converted into the set of corresponding partitions and the user
-receives the secret sub-key associated to each partitions.
+policy is converted into the set of corresponding coordinates and the user
+receives the secret sub-key associated to each coordinates.
 
 **Example**: the following policy is composed of two axes. The `Security` axis
 composed of three attributes and the `Country` axis composed of 4 attributes.
@@ -153,9 +153,9 @@ Policy: {
 ```
 
 The encryption policy `Security::Medium && ( Country::France ||
-Country::Spain)` would be converted into two partitions. The encryption policy
+Country::Spain)` would be converted into two coordinates. The encryption policy
 `Security::High` would be expanded into `Security::High && (Country::France ||
-... || Country::Spain)` then converted into 4 partitions.
+... || Country::Spain)` then converted into 4 coordinates.
 
 ### Serialization
 
@@ -166,17 +166,17 @@ $$3 \cdot L_{sk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\ma
 - public key:
 $$2 \cdot L_{pk} + \texttt{LEB128sizeof}(|\mathcal{P}|) + \sum\limits_{p~\in~\mathcal{P}} \left( \texttt{LEB128sizeof}(\texttt{sizeof}(p)) + \texttt{sizeof}(p) + 1 + L_{pk} + \delta_{p,~h} \cdot L_{pk}^{pq}\right)$$
 - user secret key:
-$$2 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left( 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
+$$2 \cdot L_{sk} + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~coordinates} \left( 1 + L_{sk} + \delta_{p,~h} \cdot L_{sk}^{pq}\right)$$
 - encapsulation:
-$$2 \cdot L_{pk} + T + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~partitions} \left(1 + \delta_{p,~c} \cdot L_{pk} + \delta_{p,~h} \cdot L_c^{pq}\right)$$
+$$2 \cdot L_{pk} + T + \texttt{LEB128sizeof}(n_{p}) + \sum\limits_{p~\in~coordinates} \left(1 + \delta_{p,~c} \cdot L_{pk} + \delta_{p,~h} \cdot L_c^{pq}\right)$$
 - encrypted header (encapsulation and symmetrically encrypted metadata):
 $$\texttt{sizeof}(encapsulation) + \texttt{LEB128sizeof} \left(C_{overhead} + \texttt{sizeof}(metadata)\right) + C_{overhead} + \texttt{sizeof}(metadata)$$
 
 where:
 
-- $|\mathcal{P}|$ is the number of partitions related to the encryption policy
-- $\delta_{p,~c} = 1$ if $p$ is a classic partition, 0 otherwise
-- $\delta_{p,~h} = 1 - \delta_{p,~c}$ (i.e. 1 if $p$ is a hybridized partition,
+- $|\mathcal{P}|$ is the number of coordinates related to the encryption policy
+- $\delta_{p,~c} = 1$ if $p$ is a classic coordinate, 0 otherwise
+- $\delta_{p,~h} = 1 - \delta_{p,~c}$ (i.e. 1 if $p$ is a hybridized coordinate,
   0 otherwise)
 - $\texttt{sizeof}: n \rightarrow$ size of $n$ in bytes
 - $\texttt{LEB128sizeof}: n \rightarrow \left\lceil \frac{8 \cdot \texttt{sizeof}(n)}{7}\right\rceil$
@@ -204,7 +204,7 @@ to store metadata.
 
 Classic implementation sizes:
 
-| Nb. of partitions | Encapsulation size (in bytes) | User decryption key size (in bytes) |
+| Nb. of coordinates | Encapsulation size (in bytes) | User decryption key size (in bytes) |
 |-------------------|-------------------------------|-------------------------------------|
 | 1                 | 130                           | 98                                  |
 | 2                 | 163                           | 131                                 |
@@ -214,7 +214,7 @@ Classic implementation sizes:
 
 Post-quantum implementation sizes:
 
-| Nb. of partitions | Encapsulation size (in bytes) | User decryption key size (in bytes) |
+| Nb. of coordinates | Encapsulation size (in bytes) | User decryption key size (in bytes) |
 |-------------------|-------------------------------|-------------------------------------|
 | 1                 | 1186                          | 1250                                |
 | 2                 | 2275                          | 2435                                |

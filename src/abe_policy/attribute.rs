@@ -67,14 +67,14 @@ impl BitOr for AttributeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Attribute representation used to create a `Dimension` and add it to a
-/// `Policy`.
+/// Attribute representation used to create an attribute and add it to a dimension.
 pub struct AttributeBuilder {
     pub name: String,
     pub encryption_hint: EncryptionHint,
 }
-/// An attribute in a policy group is characterized by the dimension policy name
-/// and its unique name within this dimension.
+
+/// A policy attribute is composed of a dimension name and a component
+/// name.
 #[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
 pub struct Attribute {
@@ -124,23 +124,23 @@ impl TryFrom<&str> for Attribute {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let (dimension, name) = s.trim().split_once("::").ok_or_else(|| {
+        let (dimension, component) = s.split_once("::").ok_or_else(|| {
             Error::InvalidAttribute(format!("at least one separator '::' expected in {s}"))
         })?;
 
-        if name.contains("::") {
+        if component.contains("::") {
             return Err(Error::InvalidAttribute(format!(
                 "separator '::' expected only once in {s}"
             )));
         }
 
-        if dimension.is_empty() || name.is_empty() {
+        if dimension.is_empty() || component.is_empty() {
             return Err(Error::InvalidAttribute(format!(
                 "empty dimension or empty name in {s}"
             )));
         }
 
-        Ok(Self::new(dimension, name))
+        Ok(Self::new(dimension.trim(), component.trim()))
     }
 }
 

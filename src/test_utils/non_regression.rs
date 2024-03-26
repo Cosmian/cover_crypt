@@ -53,10 +53,16 @@ impl EncryptionTestVector {
         let ciphertext = de.finalize();
         let cover_crypt = Covercrypt::default();
 
-        let plaintext_header =
-            encrypted_header.decrypt(&cover_crypt, &user_key, authentication_data)?;
+        let plaintext_header = encrypted_header
+            .decrypt(&cover_crypt, &user_key, authentication_data)?
+            .ok_or_else(|| {
+                Error::OperationNotPermitted(
+                    "insufficient rights to open encapsulation".to_string(),
+                )
+            })?;
+
         assert_eq!(plaintext_header.metadata, header_metadata);
-        let plaintext = cover_crypt.decrypt(
+        let plaintext = cover_crypt.dem_decrypt(
             &plaintext_header.symmetric_key,
             &ciphertext,
             authentication_data,
@@ -82,13 +88,13 @@ impl EncryptionTestVector {
             &cover_crypt,
             policy,
             mpk,
-            &AccessPolicy::from_boolean_expression(encryption_policy)?,
+            &AccessPolicy::parse(encryption_policy)?,
             header_metadata,
             authentication_data,
         )?;
 
         let mut aes_ciphertext =
-            cover_crypt.encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
+            cover_crypt.dem_encrypt(&symmetric_key, plaintext.as_bytes(), authentication_data)?;
         let mut encrypted_bytes = encrypted_header.serialize()?;
         encrypted_bytes.append(&mut aes_ciphertext);
         let header_metadata = match header_metadata {
@@ -116,17 +122,17 @@ struct UserSecretKeyTestVector {
 }
 
 impl UserSecretKeyTestVector {
-    pub fn new(msk: &MasterSecretKey, policy: &Policy, access_policy: &str) -> Result<Self, Error> {
+    pub fn new(
+        msk: &mut MasterSecretKey,
+        policy: &Policy,
+        access_policy: &str,
+    ) -> Result<Self, Error> {
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
         Ok(Self {
             key: transcoder.encode(
                 Covercrypt::default()
-                    .generate_user_secret_key(
-                        msk,
-                        &AccessPolicy::from_boolean_expression(access_policy)?,
-                        policy,
-                    )?
+                    .generate_user_secret_key(msk, &AccessPolicy::parse(access_policy)?, policy)?
                     .serialize()?,
             ),
             access_policy: access_policy.to_string(),
@@ -156,13 +162,13 @@ impl NonRegressionTestVector {
         // Policy settings
         //
         let policy = policy()?;
-        //policy.rotate(&Attribute::new("Department", "FIN"))?;
 
         //
         // Covercrypt setup
         //
         let cover_crypt = Covercrypt::default();
-        let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         //
         // Encryption header metadata
@@ -176,17 +182,17 @@ impl NonRegressionTestVector {
             //
             // Create user decryption keys
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
                 &policy,
                 "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
             )?,
             medium_secret_mkg_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
                 &policy,
                 "Security Level::Medium Secret && Department::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
                 &policy,
                 "Security Level::Top Secret && Department::FIN",
             )?,
@@ -273,6 +279,10 @@ mod tests {
             serde_json::to_string(&_reg_vector).unwrap(),
         )
         .unwrap();
+
+        let reg_vector: NonRegressionTestVector =
+            serde_json::from_str(include_str!("../../target/non_regression_vector.json")).unwrap();
+        reg_vector.verify();
 
         Ok(())
     }
