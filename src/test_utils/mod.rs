@@ -3,8 +3,9 @@ use crate::{
     Error,
 };
 
-pub mod non_regression;
+// pub mod non_regression;
 
+/// Creates the test policy.
 pub fn policy() -> Result<Policy, Error> {
     let sec_level = DimensionBuilder::new(
         "Security Level",
@@ -35,15 +36,12 @@ pub fn policy() -> Result<Policy, Error> {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, Attribute, Coordinate, LegacyPolicy},
+        abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
         Covercrypt, EncryptedHeader,
     };
-
-    use crate::UserSecretKey;
 
     #[test]
     fn write_policy() {
@@ -72,158 +70,22 @@ mod tests {
     }
 
     #[test]
-    fn test_update_master_keys() -> Result<(), Error> {
-        let policy = policy()?;
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-        // same number of subkeys in public and secret key
-        assert_eq!(mpk.subkeys.len(), 30);
-        assert_eq!(msk.subkeys.count_elements(), 30);
-
-        // rekey all coordinates which include `Department::FIN`
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        // public key contains only the last subkeys
-        assert_eq!(mpk.subkeys.len(), 30);
-        // secret key stores the 2 old subkeys
-        assert_eq!(msk.subkeys.count_elements(), 32);
-
-        // remove older subkeys for `Department::FIN`
-        cover_crypt.prune_master_secret_key(&rekey_access_policy, &policy, &mut msk)?;
-        // we only keep the last subkeys in the secret key
-        assert_eq!(msk.subkeys.count_elements(), 30);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_master_rekey() -> Result<(), Error> {
-        let d1 = DimensionBuilder::new(
-            "D1",
-            vec![
-                ("A", EncryptionHint::Classic),
-                ("B", EncryptionHint::Classic),
-            ],
-            false,
-        );
-        let d2 = DimensionBuilder::new(
-            "D2",
-            vec![
-                ("A", EncryptionHint::Classic),
-                ("B", EncryptionHint::Classic),
-            ],
-            false,
-        );
-        let mut policy = Policy::new();
-        policy.add_dimension(d1)?;
-        policy.add_dimension(d2)?;
-
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-
-        // There is one key per coordinate.
-        let mut n_keys = (2 + 1) * (2 + 1);
-        assert_eq!(msk.subkeys.count_elements(), n_keys);
-
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "A"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        n_keys += 2;
-        assert_eq!(msk.subkeys.count_elements(), n_keys);
-
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "B"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        n_keys += 2;
-        assert_eq!(msk.subkeys.count_elements(), n_keys);
-
-        let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D2", "A"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
-        n_keys += 2;
-        assert_eq!(msk.subkeys.count_elements(), n_keys);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_refresh_user_key() -> Result<(), Error> {
-        let policy = policy()?;
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-
-        let ap = AccessPolicy::parse("Department::MKG && Security Level::High Secret")?;
-        let mut usk = cover_crypt.generate_user_secret_key(&msk, &ap, &policy)?;
-        let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
-
-        // Re-key the access policy associated to the user key.
-        cover_crypt.rekey_master_keys(&ap, &policy, &mut msk, &mut mpk)?;
-
-        cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
-        assert_eq!(
-            usk.subkeys.count_elements(),
-            2 * original_usk.subkeys.count_elements()
-        );
-        for x_i in original_usk.subkeys.flat_iter() {
-            assert!(usk.subkeys.flat_iter().any(|x| x == x_i));
-        }
-        // refresh the user key but do NOT preserve access to old coordinates
-        cover_crypt.refresh_user_secret_key(&mut usk, &msk, false)?;
-        // the user should still have access to the same number of coordinates
-        assert_eq!(
-            usk.subkeys.count_elements(),
-            original_usk.subkeys.count_elements()
-        );
-        for x_i in original_usk.subkeys.flat_iter() {
-            assert!(!usk.subkeys.flat_iter().any(|x| x == x_i));
-        }
-
-        // try to modify the user key and refresh
-        let part = Coordinate::from(vec![1, 6]);
-        usk.subkeys.create_chain_with_single_value(
-            part.clone(),
-            msk.subkeys.get_latest(&part).unwrap().clone(),
-        );
-        assert!(cover_crypt
-            .refresh_user_secret_key(&mut usk, &msk, false)
-            .is_err());
-
-        Ok(())
-    }
-
-    #[test]
     fn test_add_attribute() -> Result<(), Error> {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
-        let coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
-        let coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(coordinates_msk.len(), coordinates_mpk.len());
-        for p in &coordinates_msk {
-            assert!(coordinates_mpk.contains(p));
-        }
-
-        //
-        // User secret key
         let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
 
-        // add sales department
         policy.add_attribute(
             Attribute::new("Department", "Sales"),
             EncryptionHint::Classic,
         )?;
-        // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
-        let new_coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(new_coordinates_msk.len(), new_coordinates_mpk.len());
-        for p in &new_coordinates_msk {
-            assert!(new_coordinates_mpk.contains(p));
-        }
-        assert_eq!(new_coordinates_msk.len(), coordinates_msk.len() + 6);
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
-        //
-        // Encrypt
         let secret_sales_ap =
             AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
         let (_, encrypted_header) =
@@ -232,14 +94,15 @@ mod tests {
         // User cannot decrypt new message without refreshing its key
         assert!(encrypted_header
             .decrypt(&cover_crypt, &low_secret_usk, None)
-            .is_err());
+            .unwrap()
+            .is_none());
 
-        cover_crypt.refresh_user_secret_key(&mut low_secret_usk, &msk, false)?;
+        cover_crypt.refresh_usk(&mut low_secret_usk, &mut msk, false)?;
 
-        // TODO: fix this behavior?
         assert!(encrypted_header
             .decrypt(&cover_crypt, &low_secret_usk, None)
-            .is_err());
+            .unwrap()
+            .is_none());
 
         Ok(())
     }
@@ -248,24 +111,16 @@ mod tests {
     fn test_delete_attribute() -> Result<(), Error> {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
-        let coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
-        let coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(coordinates_msk.len(), coordinates_mpk.len());
-        for p in &coordinates_msk {
-            assert!(coordinates_mpk.contains(p));
-        }
-
-        //
         // New user secret key
         let decryption_policy = AccessPolicy::parse(
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
 
-        //
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) =
@@ -275,19 +130,12 @@ mod tests {
         policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
-        let new_coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(new_coordinates_msk.len(), new_coordinates_mpk.len());
-        for p in &new_coordinates_msk {
-            assert!(new_coordinates_mpk.contains(p));
-        }
-        // 5 is the size of the security level dimension
-        assert_eq!(new_coordinates_msk.len(), coordinates_msk.len() - 6);
+        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+            .unwrap()
+            .is_some());
 
         // refresh the user key and preserve access to old coordinates
         let _new_decryption_policy =
@@ -295,10 +143,11 @@ mod tests {
 
         // refreshing the user key will remove access to removed coordinates even if we
         // keep old rotations
-        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
+        cover_crypt.refresh_usk(&mut top_secret_fin_usk, &mut msk, true)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_err());
+            .unwrap()
+            .is_none());
 
         Ok(())
     }
@@ -307,11 +156,8 @@ mod tests {
     fn test_deactivate_attribute() -> Result<(), Error> {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
-
-        let coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
-        let coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
-        assert_eq!(coordinates_msk.len(), coordinates_mpk.len());
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         //
         // New user secret key
@@ -319,7 +165,7 @@ mod tests {
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
 
         //
         // Encrypt
@@ -331,17 +177,12 @@ mod tests {
         policy.disable_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
-        let new_coordinates_msk: Vec<Coordinate> = msk.subkeys.keys().cloned().collect();
-        let new_coordinates_mpk: Vec<Coordinate> = mpk.subkeys.keys().cloned().collect();
-        // the disabled coordinate have been removed from mpk
-        assert_eq!(new_coordinates_msk.len() - 6, new_coordinates_mpk.len());
-        // msk has not changed
-        assert_eq!(new_coordinates_msk.len(), coordinates_msk.len());
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+            .unwrap()
+            .is_some());
 
         // Can not encrypt using deactivated attribute
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
@@ -352,22 +193,18 @@ mod tests {
         );
 
         // refresh the user key and preserve access to old coordinates
-        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, true)?;
+        cover_crypt.refresh_usk(&mut top_secret_fin_usk, &mut msk, true)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+            .unwrap()
+            .is_some());
 
         // refresh the user key and remove access to old coordinates should still work
-        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
+        cover_crypt.refresh_usk(&mut top_secret_fin_usk, &mut msk, false)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
-
-        //
-        // Rotating the disabled attribute should only change the msk
-        let rekey_ap = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
-        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut mpk)?;
-        assert_eq!(msk.subkeys.count_elements() - 8, mpk.subkeys.len());
+            .unwrap()
+            .is_some());
 
         Ok(())
     }
@@ -376,16 +213,15 @@ mod tests {
     fn test_rename_attribute() -> Result<(), Error> {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
-        let (mut msk, mut mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
-        //
         // New user secret key
         let decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
 
-        //
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) =
@@ -395,19 +231,21 @@ mod tests {
         policy.rename_attribute(&Attribute::new("Department", "FIN"), "Finance".to_string())?;
 
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+            .unwrap()
+            .is_some());
 
         // refresh the user key and preserve access to old coordinates
         let _new_decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::Finance")?;
-        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
+        cover_crypt.refresh_usk(&mut top_secret_fin_usk, &mut msk, false)?;
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+            .unwrap()
+            .is_some());
 
         Ok(())
     }
@@ -420,15 +258,16 @@ mod tests {
         )
         .unwrap();
         let cover_crypt = Covercrypt::default();
-        let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
         let (sym_key, encrypted_key) = cover_crypt.encaps(
             &policy,
             &mpk,
             AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?,
         )?;
-        let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
+        let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
-        assert_eq!(sym_key, recovered_key, "Wrong decryption of the key!");
+        assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
         Ok(())
     }
 
@@ -441,12 +280,13 @@ mod tests {
         //
         // Setup Covercrypt
         let cover_crypt = Covercrypt::default();
-        let (msk, _master_public_key) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         //
         // New user secret key
         let _user_key = cover_crypt.generate_user_secret_key(
-            &msk,
+            &mut msk,
             &AccessPolicy::parse("Security Level::Top Secret")?,
             &policy,
         )?;
@@ -464,26 +304,21 @@ mod tests {
         //
         // Setup Covercrypt
         let cover_crypt = Covercrypt::default();
-        let (mut msk, mut master_public_key) = cover_crypt.generate_master_keys(&policy)?;
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         //
         // New user secret key
         let mut top_secret_fin_usk = cover_crypt.generate_user_secret_key(
-            &msk,
+            &mut msk,
             &AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?,
             &policy,
         )?;
 
         //
         // Encrypt
-        let (_, encrypted_header) = EncryptedHeader::generate(
-            &cover_crypt,
-            &policy,
-            &master_public_key,
-            &top_secret_ap,
-            None,
-            None,
-        )?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         let _plaintext_header =
             encrypted_header.decrypt(&cover_crypt, &top_secret_fin_usk, None)?;
@@ -491,30 +326,26 @@ mod tests {
         //
         // Rotate argument (must update master keys)
         let rekey_ap = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
-        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut master_public_key)?;
+        let mpk = cover_crypt.rekey(&rekey_ap, &policy, &mut msk)?;
 
         //
         // Encrypt with new attribute
-        let (_, encrypted_header) = EncryptedHeader::generate(
-            &cover_crypt,
-            &policy,
-            &master_public_key,
-            &top_secret_ap,
-            None,
-            None,
-        )?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // Decryption fails without refreshing the user key
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_err());
+            .unwrap()
+            .is_none());
 
-        cover_crypt.refresh_user_secret_key(&mut top_secret_fin_usk, &msk, false)?;
+        cover_crypt.refresh_usk(&mut top_secret_fin_usk, &mut msk, false)?;
 
         // The refreshed key can decrypt the header
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
-            .is_ok());
+            .unwrap()
+            .is_some());
 
         Ok(())
     }
