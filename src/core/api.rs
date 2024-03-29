@@ -1,9 +1,9 @@
 //! Defines the `Covercrypt` API.
 
-use std::{collections::HashMap, fmt::Debug, sync::{/*self, */Mutex}};
+use std::{collections::HashMap, fmt::Debug, sync::Mutex, usize};
 
 use cosmian_crypto_core::{
-    reexport::{aead::{Aead, Payload}, rand_core::SeedableRng}, Aes256Gcm, CryptoCoreError, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey
+    reexport::{aead::{Aead, KeyInit}, rand_core::SeedableRng}, Aes256Gcm, CryptoCoreError, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey
     
 };
 
@@ -360,6 +360,7 @@ pub trait CovercryptKEM {
     /// Returns an error if the access policy is not valid.
     fn keygen (&self,
                msk : &mut MasterSecretKey,
+               policy : &Policy,
                ap : &str) ->
         Result<UserSecretKey,Error>;
 
@@ -371,6 +372,7 @@ pub trait CovercryptKEM {
     /// Returns an error if the access policy is not valid.
     fn encaps (&self,
                mpk : &MasterPublicKey,
+               policy : &Policy,
                ap : &str) ->
         Result<(SymmetricKey<SEED_LENGTH>,Encapsulation), Error>;
 
@@ -425,8 +427,8 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     /// Returns an error if the access policy is not valid.
     fn keygen (&self,
                msk : &mut MasterSecretKey,
+               policy : &Policy,
                ap : &str) -> Result<UserSecretKey,Error> {
-        let policy = &Policy::new();
         let ap = &AccessPolicy::parse(ap)?;
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -442,9 +444,9 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     /// Returns an error if the access policy is not valid.
     fn encaps (&self,
                mpk : &MasterPublicKey,
+               policy : &Policy,
                ap : &str) ->
         Result<(SymmetricKey<SEED_LENGTH>,Encapsulation), Error> {
-        let policy = &Policy::new();
         let ap = &AccessPolicy::parse(ap)?;
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -469,75 +471,67 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
         }
 }
 
-pub trait CovercryptPKE<const LENGHT : usize, D : Aead> {
+
+pub trait CovercryptPKE<const LENGTH : usize,
+                        A : Aead + KeyInit,
+                        D : Dem<{LENGTH},
+                                {LENGTH},
+                                {LENGTH},
+                                A>> {
+    /// Encrypts the given plaintext using Covercrypt and the given DEM.
+    ///
+    /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
+    /// key with the given authentication data to produce a DEM ciphertext of
+    /// the plaintext.
+    ///
+    /// # Error
+    ///
+    /// Returns an error of the authentication failed.
     fn encrypt (rng : &Mutex<CsRng>,
-                dem : D,
-                //_ : &SymmetricKey<SEED_LENGTH>, // I can pass sk in dem
-                ad : &[u8],
+                symmetric_key : &<D as Instantiable<LENGTH>>::Secret, 
+                auth_data : &[u8],
                 ptx : &[u8]) ->
         Result<Vec<u8>,CryptoCoreError> {
-        let nonce = D::generate_nonce(&mut *rng.lock().expect("can't lock mutex"));
-        let mut ctx = D::encrypt(&dem,&nonce,
-                                          Payload {msg: ptx, aad: ad})?;
-        let mut res = Vec::with_capacity(ptx.len() + nonce.len() + ctx.len());
-        res.extend(nonce);
-        res.append(&mut ctx);
-        Ok(res)
-    }
-    
-    fn decrypt (dem : D,
-                sk : &SymmetricKey<SEED_LENGTH>,
-                ad : &[u8],
-                ctx : &[u8]) ->
-        Result<Vec<u8>,Error>;
-    // {
-    //     let nonce_size = D::NonceSize::count(&dem);
-    //     /*dem
-    //     .decrypt(
-    //         &Nonce::try_from_slice(&ctx[..D::NonceSize])?,
-    //         &ctx[D::NonceSize..]
-    //     )
-    //     .map_err(Error::CryptoCoreError);*/
-
-    // }
-
-}
-
-/*impl CovercryptPKE<SEED_LENGTH> for Covercrypt {
-    fn encrypt (&self,
-                sk : &SymmetricKey<SEED_LENGTH>,
-                ad : &[u8],
-                ptx : &[u8]) ->
-        Result<Vec<u8>,Error> {
-        let aes256gcm = Dem::new(sk);
-        let nonce = Nonce::new(&mut *self.rng.lock().
+        let dem = D::new(symmetric_key);
+        let nonce  = D::Nonce::new(&mut *rng.lock().
             expect("could not lock mutex"));
-        let mut ciphertext = aes256gcm.
-            encrypt(&nonce, ptx, Some(&ad))?;
+        let mut ciphertext = dem.encrypt(&nonce,
+                                                 ptx,
+                                                Some(auth_data))?;
         let mut res =
             Vec::with_capacity(ptx.len() +
-                Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);
-        res.extend(nonce.0);
+                               Aes256Gcm::MAC_LENGTH +
+                               Aes256Gcm::NONCE_LENGTH);
+        res.extend(D::Nonce::to_bytes(&nonce));
         res.append(&mut ciphertext);
         Ok(res)
     }
-
-    fn decrypt (&self,
-                sk : &SymmetricKey<SEED_LENGTH>,
+    /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
+    ///
+    /// Attempts opening the Covercrypt encapsulation. If it succeeds, decrypts
+    /// the ciphertext using the DEM with the encapsulated key and the given
+    /// authentication data. Returns ‘None‘ otherwise.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the access policy is not valid.
+    fn decrypt (sk : &<D as Instantiable<LENGTH>>::Secret, 
                 ad : &[u8],
                 ctx : &[u8]) ->
-    Result<Vec<u8>,Error> {
-    let aes256gcm = Aes256Gcm::new(sk);
-    aes256gcm
+        Result<Vec<u8>,Error> {
+        let dem = D::new(sk);
+        dem
         .decrypt(
-            &Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?,
-            &ctx[Aes256Gcm::NONCE_LENGTH..],
+            &D::Nonce::try_from_slice(&ctx[..D::Nonce::LENGTH])?,
+            &ctx[D::Nonce::LENGTH..],
             Some(&ad),
         )
         .map_err(Error::CryptoCoreError)
 
-    }
-}*/
+        }
+
+}
+
 
 // TODO : 1) Implement CCKEM and test it.
 //        2) Implement CCPKE and test it.
