@@ -472,11 +472,13 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
 }
 
 
-pub trait CovercryptPKE<const LENGTH : usize,
+pub trait CovercryptPKE<const KEY_LENGTH : usize,
+                        const NONCE_LENGTH : usize,
+                        const MAC_LENGTH : usize,
                         A : Aead + KeyInit,
-                        D : Dem<{LENGTH},
-                                {LENGTH},
-                                {LENGTH},
+                        D : Dem<{KEY_LENGTH},
+                                {NONCE_LENGTH},
+                                {MAC_LENGTH},
                                 A>> {
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
@@ -488,7 +490,7 @@ pub trait CovercryptPKE<const LENGTH : usize,
     ///
     /// Returns an error of the authentication failed.
     fn encrypt (rng : &Mutex<CsRng>,
-                symmetric_key : &<D as Instantiable<LENGTH>>::Secret, 
+                symmetric_key : &<D as Instantiable<KEY_LENGTH>>::Secret, 
                 auth_data : &[u8],
                 ptx : &[u8]) ->
         Result<Vec<u8>,CryptoCoreError> {
@@ -500,8 +502,8 @@ pub trait CovercryptPKE<const LENGTH : usize,
                                                 Some(auth_data))?;
         let mut res =
             Vec::with_capacity(ptx.len() +
-                               Aes256Gcm::MAC_LENGTH +
-                               Aes256Gcm::NONCE_LENGTH);
+                               MAC_LENGTH + // MAC_LENGTH not declared in Dem
+                               D::Nonce::LENGTH);
         res.extend(D::Nonce::to_bytes(&nonce));
         res.append(&mut ciphertext);
         Ok(res)
@@ -515,7 +517,7 @@ pub trait CovercryptPKE<const LENGTH : usize,
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn decrypt (sk : &<D as Instantiable<LENGTH>>::Secret, 
+    fn decrypt (sk : &<D as Instantiable<KEY_LENGTH>>::Secret, 
                 ad : &[u8],
                 ctx : &[u8]) ->
         Result<Vec<u8>,Error> {
