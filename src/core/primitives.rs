@@ -4,7 +4,7 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore, FixedSizeCBytes, RandomFixedSizeCBytes, Secret,
+    reexport::rand_core::CryptoRngCore, RandomFixedSizeCBytes, Secret,
     SymmetricKey,
 };
 use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
@@ -140,7 +140,7 @@ pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Coordinate>,
-) -> Result<(SymmetricKey<SEED_LENGTH>, Encapsulation), Error> {
+) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
     let ephemeral_random = elgamal::Scalar::new(rng);
     let session_key = Secret::<SEED_LENGTH>::random(rng);
     let mut coordinate_encapsulations = HashSet::with_capacity(encryption_set.len());
@@ -174,11 +174,11 @@ pub fn encaps(
     }
 
     let traps = mpk.set_traps(&ephemeral_random);
-    let (tag, key) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*session_key, KEY_GEN_INFO)
+    let (tag, seed) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*session_key, KEY_GEN_INFO)
         .map_err(Error::CryptoCoreError)?;
 
     Ok((
-        key,
+        seed,
         Encapsulation {
             tag,
             traps,
@@ -192,7 +192,7 @@ pub fn encaps(
 pub fn decaps(
     usk: &UserSecretKey,
     encapsulation: &Encapsulation,
-) -> Result<Option<SymmetricKey<SEED_LENGTH>>, Error> {
+) -> Result<Option<Secret<SEED_LENGTH>>, Error> {
     let ephemeral_point = usk
         .id
         .iter()
@@ -232,10 +232,10 @@ pub fn decaps(
                 }
             };
 
-            let (tag, key) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*seed, KEY_GEN_INFO)
+            let (tag, seed) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*seed, KEY_GEN_INFO)
                 .map_err(Error::CryptoCoreError)?;
             if tag == encapsulation.tag {
-                return Ok(Some(key));
+                return Ok(Some(seed));
             }
         }
     }

@@ -3,9 +3,9 @@
 use std::{collections::HashMap, fmt::Debug, sync::Mutex};
 
 use cosmian_crypto_core::{
-    reexport::{aead::{generic_array::GenericArray, Aead, AeadInPlace, KeyInit}, rand_core::SeedableRng}, Aes256Gcm, CsRng, Dem, DemInPlace, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey
-    
+    kdf256, reexport::rand_core::SeedableRng, CsRng, Nonce, FixedSizeCBytes, RandomFixedSizeCBytes, Secret 
 };
+
 
 use super::{
     primitives::{mpk_keygen, prune, update_coordinate_keys, usk_keygen},
@@ -42,308 +42,100 @@ impl PartialEq for Covercrypt {
         true
     }
 }
+// /// Encrypted header holding a `Covercrypt` encapsulation of a symmetric key and
+// /// additional data encrypted using the `Covercrypt` DEM with the encapsulated
+// /// key.
+// ///
+// /// *Note*: the DEM ciphertext is also used to select the correct symmetric key
+// /// from the decapsulation.
+// ///
+// /// - `encapsulation`       :   `Covercrypt` encapsulation of a symmetric key
+// /// - `encrypted_metadata`  :   AES-256 GCM encryption of the metadata
+// #[derive(Debug, PartialEq, Eq)]
+//  pub struct EncryptedHeader {
+//      pub encapsulation: Encapsulation,
+//      pub encrypted_metadata: Option<Vec<u8>>,
+//  }
 
-impl Covercrypt {
-    /// Sets up the Covercrypt scheme.
-    ///
-    /// Generates a MSK and a MPK with a tracing level of [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
-    /// They only hold keys for the origin coordinate: only broadcast
-    /// encapsulations can be created.
-    pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        let mut msk = setup(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            MIN_TRACING_LEVEL,
-        )?;
+// impl EncryptedHeader {
+//     /// Generates an encrypted header for a random key and the given metadata.
+//     /// Returns the encrypted header along with the symmetric key
+//     /// encapsulated in this header.
+//     ///
+//     /// - `cover_crypt`         : `Covercrypt` object
+//     /// - `policy`              : global policy
+//     /// - `public_key`          : `Covercrypt` public key
+//     /// - `encryption_policy`   : access policy used for the encapsulation
+//     /// - `header_metadata`     : additional data symmetrically encrypted in the
+//     ///   header
+//     /// - `authentication_data` : authentication data used in the DEM encryption
+//     pub fn generate(
+//         cover_crypt: &Covercrypt,
+//         policy: &Policy,
+//         public_key: &MasterPublicKey,
+//         encryption_policy: &AccessPolicy,
+//         metadata: Option<&[u8]>,
+//         authentication_data: Option<&[u8]>,
+//     ) -> Result<(Secret<SEED_LENGTH>, Self), Error> {
+//         let (seed, encapsulation) =
+//             cover_crypt.encaps(policy, public_key, encryption_policy.clone())?;
 
-        // Add broadcast coordinate with classic encryption level.
-        //
-        // TODO replace this function by `add_coordinates`,
-        // `remove_coordinates`, `hybridize_coordinates` and
-        // `deprecate_coordinates`.
-        update_coordinate_keys(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            &mut msk,
-            HashMap::from_iter([(
-                Coordinate::from_attribute_ids(vec![])?,
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
-            )]),
-        )?;
-        let mpk = mpk_keygen(&msk)?;
+//         let encrypted_metadata = metadata
+//             .map(|bytes| cover_crypt.dem_encrypt(&seed, bytes, authentication_data))
+//             .transpose()?;
 
-        Ok((msk, mpk))
-    }
+//         Ok((
+//             symmetric_key,
+//             Self {
+//                 encapsulation,
+//                 encrypted_metadata,
+//             },
+//         ))
+//     }
 
-    /// Updates the MSK according to this policy. Returns the new version of the
-    /// MPK.
-    ///
-    /// Sets the MPK coordinates to the one defined by the policy:
-    /// - removes coordinates from the MSK that don't belong to the new policy
-    /// along with their associated keys;
-    /// - adds the policy coordinates that don't belong yet to the MSK,
-    /// generating new keys.
-    ///
-    /// The new MPK holds the latest public keys of each coordinates of the new policy.
-    pub fn update_master_keys(
-        &self,
-        policy: &Policy,
-        msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> {
-        update_coordinate_keys(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            policy.generate_universal_coordinates()?,
-        )?;
-        let mpk = mpk_keygen(msk)?;
-        Ok(mpk)
-    }
+//     /// Decrypts the header with the given user secret key.
+//     ///
+//     /// The nonce used is extracted from the encapsulation tag.
+//     ///
+//     /// - `cover_crypt`         : `Covercrypt` object
+//     /// - `usk`                 : `Covercrypt` user secret key
+//     /// - `authentication_data` : authentication data used in the DEM encryption
+//     pub fn decrypt(
+//         &self,
+//         cover_crypt: &Covercrypt,
+//         usk: &UserSecretKey,
+//         authentication_data: Option<&[u8]>,
+//     ) -> Result<Option<CleartextHeader>, Error> {
+//         if let Some(symmetric_key) = cover_crypt.decaps(usk, &self.encapsulation)? {
+//             let metadata = self
+//                 .encrypted_metadata
+//                 .as_ref()
+//                 .map(|ciphertext| {
+//                     cover_crypt.dem_decrypt(&symmetric_key, ciphertext, authentication_data)
+//                 })
+//                 .transpose()?;
+//             Ok(Some(CleartextHeader {
+//                 symmetric_key,
+//                 metadata,
+//             }))
+//         } else {
+//             Ok(None)
+//         }
+//     }
+// }
 
-    /// Generates new keys for each coordinate in the semantic space of the
-    /// given access policy and update the given master keys.
-    ///
-    /// All user keys need to be refreshed.
-    // TODO document error cases.
-    pub fn rekey(
-        &self,
-        ap: &AccessPolicy,
-        policy: &Policy,
-        msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> {
-        rekey(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            policy.generate_semantic_space_coordinates(ap.clone())?,
-        )?;
-        let mpk = mpk_keygen(msk)?;
-        Ok(mpk)
-    }
+// /// Structure containing all data encrypted in an `EncryptedHeader`.
+// ///
+// /// - `symmetric_key`   : DEM key
+// /// - `metadata`        : additional data symmetrically encrypted in a header
+// #[derive(Debug, PartialEq, Eq)]
+// pub struct CleartextHeader {
+//     pub symmetric_key: SymmetricKey<SEED_LENGTH>,
+//     pub metadata: Option<Vec<u8>>,
+// }
 
-    /// Removes all but the latest secret of each coordinate in the semantic
-    /// space of the given access policy from the given master keys.
-    ///
-    /// This action is *irreversible*, and all user keys need to be refreshed.
-    // TODO document error cases.
-    pub fn prune_master_secret_key(
-        &self,
-        access_policy: &AccessPolicy,
-        policy: &Policy,
-        msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> {
-        prune(
-            msk,
-            &policy.generate_semantic_space_coordinates(access_policy.clone())?,
-        );
-        let mpk = mpk_keygen(msk)?;
-        Ok(mpk)
-    }
 
-    /// Generates a USK associated to the given access policy.
-    ///
-    /// It will be given the latest secret of each coordinate in the semantic
-    /// space of its access policy.
-    // TODO document error cases.
-    pub fn generate_user_secret_key(
-        &self,
-        msk: &mut MasterSecretKey,
-        access_policy: &AccessPolicy,
-        policy: &Policy,
-    ) -> Result<UserSecretKey, Error> {
-        usk_keygen(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            policy.generate_semantic_space_coordinates(access_policy.clone())?,
-        )
-    }
-
-    /// Refreshes the USK relatively to the given MSK and policy.
-    ///
-    /// The USK will be given the latest secrets of each coordinate in the
-    /// semantic space of its access policy and secrets that have been removed
-    /// from the MSK will be removed. If `keep_old_rights` is set to false, only
-    /// the latest secret of each coordinate is kept instead.
-    ///
-    /// Updates the tracing level to match the one of the MSK if needed.
-    // TODO document error cases.
-    pub fn refresh_usk(
-        &self,
-        usk: &mut UserSecretKey,
-        msk: &mut MasterSecretKey,
-        keep_old_rights: bool,
-    ) -> Result<(), Error> {
-        refresh(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            usk,
-            keep_old_rights,
-        )
-    }
-
-    /// Generates a random symmetric key to be used with a DEM scheme and
-    /// generates its encapsulation for the given access policy.
-    // TODO document error cases.
-    pub fn encaps(
-        &self,
-        policy: &Policy,
-        pk: &MasterPublicKey,
-        access_policy: AccessPolicy,
-    ) -> Result<(SymmetricKey<SEED_LENGTH>, Encapsulation), Error> {
-        encaps(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            pk,
-            &policy.generate_point_coordinates(access_policy)?,
-        )
-    }
-
-    /// Attempts opening the given `Covercrypt` encapsulation. Returns the
-    /// encapsulated key upon success and `None` otherwise.
-    // TODO document error cases.
-    pub fn decaps(
-        &self,
-        usk: &UserSecretKey,
-        encapsulation: &Encapsulation,
-    ) -> Result<Option<SymmetricKey<SEED_LENGTH>>, Error> {
-        decaps(usk, encapsulation)
-    }
-
-    /// Encrypts the given plaintext using the given symmetric key.
-    ///
-    /// The encryption scheme used is AES-256 GCM.
-    ///
-    /// - `symmetric_key`   : AES key
-    /// - `plaintext`       : data to be encrypted
-    /// - `ad`              : optional associated data
-    pub fn dem_encrypt(
-        &self,
-        symmetric_key: &SymmetricKey<SEED_LENGTH>,
-        plaintext: &[u8],
-        ad: Option<&[u8]>,
-    ) -> Result<Vec<u8>, Error> {
-        let aes256gcm = Aes256Gcm::new(symmetric_key);
-        let nonce = Nonce::new(&mut *self.rng.lock().expect("could not lock mutex"));
-        let mut ciphertext = aes256gcm.encrypt(&nonce, plaintext, ad)?;
-        let mut res =
-            Vec::with_capacity(plaintext.len() + Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH);
-        res.extend(nonce.0);
-        res.append(&mut ciphertext);
-        Ok(res)
-    }
-
-    /// Decrypts the given ciphertext using the given symmetric key.
-    ///
-    /// The encryption scheme used is AES-256 GCM.
-    ///
-    /// - `symmetric_key`   : AES key
-    /// - `ciphertext`      : encrypted data
-    /// - `ad`              : associated data
-    pub fn dem_decrypt(
-        &self,
-        symmetric_key: &SymmetricKey<SEED_LENGTH>,
-        ciphertext: &[u8],
-        ad: Option<&[u8]>,
-    ) -> Result<Vec<u8>, Error> {
-        let aes256gcm = Aes256Gcm::new(symmetric_key);
-        aes256gcm
-            .decrypt(
-                &Nonce::try_from_slice(&ciphertext[..Aes256Gcm::NONCE_LENGTH])?,
-                &ciphertext[Aes256Gcm::NONCE_LENGTH..],
-                ad,
-            )
-            .map_err(Error::CryptoCoreError)
-    }
-}
-
-/// Encrypted header holding a `Covercrypt` encapsulation of a symmetric key and
-/// additional data encrypted using the `Covercrypt` DEM with the encapsulated
-/// key.
-///
-/// *Note*: the DEM ciphertext is also used to select the correct symmetric key
-/// from the decapsulation.
-///
-/// - `encapsulation`       :   `Covercrypt` encapsulation of a symmetric key
-/// - `encrypted_metadata`  :   AES-256 GCM encryption of the metadata
-#[derive(Debug, PartialEq, Eq)]
-pub struct EncryptedHeader {
-    pub encapsulation: Encapsulation,
-    pub encrypted_metadata: Option<Vec<u8>>,
-}
-
-impl EncryptedHeader {
-    /// Generates an encrypted header for a random key and the given metadata.
-    /// Returns the encrypted header along with the symmetric key
-    /// encapsulated in this header.
-    ///
-    /// - `cover_crypt`         : `Covercrypt` object
-    /// - `policy`              : global policy
-    /// - `public_key`          : `Covercrypt` public key
-    /// - `encryption_policy`   : access policy used for the encapsulation
-    /// - `header_metadata`     : additional data symmetrically encrypted in the
-    ///   header
-    /// - `authentication_data` : authentication data used in the DEM encryption
-    pub fn generate(
-        cover_crypt: &Covercrypt,
-        policy: &Policy,
-        public_key: &MasterPublicKey,
-        encryption_policy: &AccessPolicy,
-        metadata: Option<&[u8]>,
-        authentication_data: Option<&[u8]>,
-    ) -> Result<(SymmetricKey<SEED_LENGTH>, Self), Error> {
-        let (symmetric_key, encapsulation) =
-            cover_crypt.encaps(policy, public_key, encryption_policy.clone())?;
-
-        let encrypted_metadata = metadata
-            .map(|bytes| cover_crypt.dem_encrypt(&symmetric_key, bytes, authentication_data))
-            .transpose()?;
-
-        Ok((
-            symmetric_key,
-            Self {
-                encapsulation,
-                encrypted_metadata,
-            },
-        ))
-    }
-
-    /// Decrypts the header with the given user secret key.
-    ///
-    /// The nonce used is extracted from the encapsulation tag.
-    ///
-    /// - `cover_crypt`         : `Covercrypt` object
-    /// - `usk`                 : `Covercrypt` user secret key
-    /// - `authentication_data` : authentication data used in the DEM encryption
-    pub fn decrypt(
-        &self,
-        cover_crypt: &Covercrypt,
-        usk: &UserSecretKey,
-        authentication_data: Option<&[u8]>,
-    ) -> Result<Option<CleartextHeader>, Error> {
-        if let Some(symmetric_key) = cover_crypt.decaps(usk, &self.encapsulation)? {
-            let metadata = self
-                .encrypted_metadata
-                .as_ref()
-                .map(|ciphertext| {
-                    cover_crypt.dem_decrypt(&symmetric_key, ciphertext, authentication_data)
-                })
-                .transpose()?;
-            Ok(Some(CleartextHeader {
-                symmetric_key,
-                metadata,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-/// Structure containing all data encrypted in an `EncryptedHeader`.
-///
-/// - `symmetric_key`   : DEM key
-/// - `metadata`        : additional data symmetrically encrypted in a header
-#[derive(Debug, PartialEq, Eq)]
-pub struct CleartextHeader {
-    pub symmetric_key: SymmetricKey<SEED_LENGTH>,
-    pub metadata: Option<Vec<u8>>,
-}
-
-pub trait CovercryptKEM<const LENGTH : usize> {
+pub trait CovercryptKEM {
     /// Sets up the Covercrypt scheme.
     ///
     /// Generates a MSK and a MPK with a tracing level of
@@ -442,7 +234,7 @@ pub trait CovercryptKEM<const LENGTH : usize> {
                mpk : &MasterPublicKey,
                policy : &Policy,
                ap : &str) ->
-        Result<(SymmetricKey<LENGTH>,Encapsulation), Error>;
+        Result<(Secret<SEED_LENGTH>,Encapsulation), Error>;// todo : symmetric_key or seed?
 
     /// Attempts opening the given encapsulation using the given
     /// user secret key.
@@ -452,13 +244,13 @@ pub trait CovercryptKEM<const LENGTH : usize> {
     fn decaps (&self,
                usk : &UserSecretKey,
                enc : Encapsulation) ->
-        Option<SymmetricKey<LENGTH>>;
+        Option<Secret<SEED_LENGTH>>;
 
 
 }
 
 
-impl CovercryptKEM<SEED_LENGTH> for Covercrypt {/// Sets up the Covercrypt scheme.
+impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     ///
     /// Generates a MSK and a MPK with a tracing level of
     /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
@@ -617,11 +409,11 @@ impl CovercryptKEM<SEED_LENGTH> for Covercrypt {/// Sets up the Covercrypt schem
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encaps<> (&self,
+    fn encaps (&self,
                  mpk : &MasterPublicKey,
                  policy : &Policy,
                  ap : &str) ->
-        Result<(SymmetricKey<SEED_LENGTH>,Encapsulation), Error> {
+        Result<(Secret<SEED_LENGTH>,Encapsulation), Error> {
         let ap = &AccessPolicy::parse(ap)?;
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -637,7 +429,7 @@ impl CovercryptKEM<SEED_LENGTH> for Covercrypt {/// Sets up the Covercrypt schem
     fn decaps<> (&self,
                usk : &UserSecretKey,
                encapsulation : Encapsulation) ->
-        Option<SymmetricKey<SEED_LENGTH>> {
+        Option<Secret<SEED_LENGTH>> {
             match decaps(usk, &encapsulation) {
                 Err(_) => None,
                 Ok(sk) => Some(sk?)
@@ -647,7 +439,7 @@ impl CovercryptKEM<SEED_LENGTH> for Covercrypt {/// Sets up the Covercrypt schem
 
 
 
-pub trait CovercryptPKE<Aead> {
+pub trait CovercryptPKE<Aead, const KEY_LENGTH : usize, const NONCE_LENGTH :usize, const MAC_LENGTH : usize> {
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
     /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
@@ -661,9 +453,9 @@ pub trait CovercryptPKE<Aead> {
                mpk: &MasterPublicKey,
                policy : &Policy,
                ap: &str,
-               ad: &[u8],
+               ad: Option<&[u8]>,
                plaintext: &[u8]
-    ) -> Result<Vec<u8>, Error>;
+    ) -> Result<(Encapsulation,Vec<u8>), Error>;
     
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
     ///
@@ -681,9 +473,39 @@ pub trait CovercryptPKE<Aead> {
             ) -> Result<Option<Vec<u8>>, Error>;
 }
 
+/// Authenticated Encryption trait
+pub trait AE<const KEY_LENGTH : usize,
+             const NONCE_LENGTH : usize,
+             const MAC_LENGTH : usize> {
+    fn encrypt (key : &Secret<KEY_LENGTH>,
+                ptx : &[u8],
+                ad : Option<&[u8]>,
+                nonce : &Nonce<NONCE_LENGTH>
+                ) -> Result<Vec<u8>,Error>;
+    
+    fn decrypt (key : &Secret<KEY_LENGTH>,
+                ctx : &[u8]) -> Result<Vec<u8>,Error>;
+}
 
+// impl AE<{Self::KEY_LENGTH},{Self::NONCE_LENGTH},{Self::MAC_LENGTH}> for Aes256Gcm {
+//     fn encrypt(key : &Secret<{Self::KEY_LENGTH}>,
+//                ptx : &[u8],
+//                nonce : &Nonce<{Self::NONCE_LENGTH}>
+//             ) -> Result<Vec<u8>,Error> {
+//         Self::encrypt(key, ptx, nonce)
+//     }
 
-impl<D : Dem<{SEED_LENGTH},{SEED_LENGTH},{SEED_LENGTH},A>, A : Aead + KeyInit> CovercryptPKE<D> for Covercrypt {
+//     fn decrypt (key : &Secret<{Self::KEY_LENGTH}>,
+//                     ctx : &[u8]) -> Result<Vec<u8>,Error> {
+//         Self::decrypt(key, ctx)
+//     }
+// }
+
+impl<const KEY_LENGTH : usize,
+    const NONCE_LENGTH : usize,
+    const MAC_LENGTH : usize,
+    E : AE<KEY_LENGTH, NONCE_LENGTH,MAC_LENGTH>>
+    CovercryptPKE<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for Covercrypt {
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
     /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
@@ -698,23 +520,23 @@ impl<D : Dem<{SEED_LENGTH},{SEED_LENGTH},{SEED_LENGTH},A>, A : Aead + KeyInit> C
                mpk: &MasterPublicKey,
                policy : &Policy,
                ap: &str,
-               ad: &[u8],
+               ad: Option<&[u8]>,
                plaintext: &[u8]
-            ) -> Result<Vec<u8>, Error> {
-        let (sym_key, enc) = CovercryptKEM::encaps(self, mpk, policy, ap)?;
-        let nonce: &Nonce<{self::SEED_LENGTH}> = &self::Nonce::<{self::SEED_LENGTH}>::new(&mut *self.rng.lock().
+            ) -> Result<(Encapsulation,Vec<u8>), Error> {
+        let (seed, enc) = CovercryptKEM::encaps(self, mpk, policy, ap)?;
+        let nonce = &self::Nonce::new(&mut *self.rng.lock().
                                            expect("could not lock mutex"));
-        let dem = D::new(sym_key);
-        let ciphertext = dem.encrypt(nonce, plaintext,Some(ad))?;
+        let mut sym_key = Secret::<KEY_LENGTH>::default();
+        kdf256!(&mut sym_key,&seed);
+        let mut ciphertext = E::encrypt(&sym_key, plaintext,ad,nonce)?;
         let mut res = Vec::with_capacity(plaintext.len() +
-                               D::MAC_LENGTH +
-                               D::NONCE_LENGTH);
-        res.extend(D::Nonce::to_bytes(&nonce));
+                               MAC_LENGTH +
+                               NONCE_LENGTH);
+        res.extend(&Nonce::<NONCE_LENGTH>::to_bytes(nonce));
         res.append(&mut ciphertext);
-        Ok(res)
+        Ok((enc,res))
     }
 
-    
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
     ///
     /// Attempts opening the Covercrypt encapsulation. If it succeeds, decrypts
@@ -725,89 +547,11 @@ impl<D : Dem<{SEED_LENGTH},{SEED_LENGTH},{SEED_LENGTH},A>, A : Aead + KeyInit> C
     ///
     /// Returns an error if the access policy is not valid.
     fn decrypt(&self,
-               usk: &UserSecretKey,
-               ad: &[u8],
-               ciphertext: &[u8]
+               _: &UserSecretKey,
+               _: &[u8],
+               _: &[u8]
             ) -> Result<Option<Vec<u8>>, Error> {
         Ok(None)
     }
 
 }
-/*
-pub trait CovercryptDEM<const KEY_LENGTH : usize,
-                        const NONCE_LENGTH : usize,
-                        const MAC_LENGTH : usize,
-                        A : Aead + KeyInit,
-                        D : Dem<{KEY_LENGTH},{NONCE_LENGTH},{MAC_LENGTH},A>> {
-    /// Encrypts the given plaintext using the given symmetric key.
-    ///
-    /// The encryption scheme is a DEM of choice.
-    ///
-    /// - `symmetric_key`   : DEM key
-    /// - `plaintext`       : data to be encrypted
-    /// - `ad`              : optional associated data
-    fn encrypt (rng : &Mutex<CsRng>,
-                symmetric_key : &<D as Instantiable<KEY_LENGTH>>::Secret,
-                plaintext : &[u8], 
-                ass_data : Option<&[u8]>) ->
-        Result<Vec<u8>,CryptoCoreError> {
-        let dem = D::new(symmetric_key);
-        let nonce = D::Nonce::new(&mut *rng.lock().
-            expect("could not lock mutex"));
-        let mut ciphertext = dem.encrypt(&nonce,
-                                                  plaintext,
-                                                ass_data)?;
-        let mut res =
-            Vec::with_capacity(plaintext.len() +
-                               MAC_LENGTH + // MAC_LENGTH not declared in Dem
-                               NONCE_LENGTH);
-        res.extend(D::Nonce::to_bytes(&nonce));
-        res.append(&mut ciphertext);
-        Ok(res)
-    }
-    /// Decrypts the given ciphertext using the given symmetric key.
-    ///
-    /// The encryption scheme used is generic DEM.
-    ///
-    /// - `symmetric_key`   : DEM key
-    /// - `ciphertext`      : encrypted data
-    /// - `ad`              : associated data
-    fn decrypt (sk : &<D as Instantiable<KEY_LENGTH>>::Secret,
-                cyphertext : &[u8],
-                ass_data : Option<&[u8]>,) ->
-        Result<Vec<u8>,Error> {
-        let dem = D::new(sk);
-        dem
-        .decrypt(
-            &D::Nonce::try_from_slice(&cyphertext[..NONCE_LENGTH])?,
-            &cyphertext[NONCE_LENGTH..],
-            ass_data
-        )
-        .map_err(Error::CryptoCoreError)
-
-        }
-
-}*/
-
-/*impl CovercryptDEM<{Aes256Gcm::KEY_LENGTH},
-                   {Aes256Gcm::NONCE_LENGTH},
-                   {Aes256Gcm::MAC_LENGTH},
-                   Aes256Gcm> for Covercrypt{}*/
-
-// impl CovercryptDEM<{Aes256Gcm::KEY_LENGTH},
-//                    {Aes256Gcm::NONCE_LENGTH},
-//                    {Aes256Gcm::MAC_LENGTH},
-//                    Aes256Gcm,
-//                    dyn Dem<{Aes256Gcm::KEY_LENGTH},{Aes256Gcm::NONCE_LENGTH},{Aes256Gcm::MAC_LENGTH},Aes256Gcm>> for Covercrypt {}
-
-
-
-
-
-
-// TODO : 1) Implement CCKEM and test it.
-//        2) Implement CCPKE and test it.
-//        remarks : 1) CCPKE contains CCKEM.
-//                  2) Interface opaque to client. Only access to functions.
-//                  3) Be careful about the mutex.. Has to be shared between the
-//                      traits
