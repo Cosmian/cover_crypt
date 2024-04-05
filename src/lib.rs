@@ -33,6 +33,6 @@ pub mod test_utils;
 pub use error::Error;
 
 pub use self::core::{
-    api::{Covercrypt},
+    api,
     Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
 };
