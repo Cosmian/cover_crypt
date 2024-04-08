@@ -2,7 +2,7 @@
 
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
-    Covercrypt, EncryptedHeader,
+    api::{Covercrypt, CovercryptKEM}, //api::EncryptedHeader,
 };
 
 fn main() {
@@ -42,8 +42,8 @@ fn main() {
 
     // Setup Covercrypt and generate master keys
     let cover_crypt = Covercrypt::default();
-    let (mut msk, _) = cover_crypt.setup().unwrap();
-    let mpk = cover_crypt.update_master_keys(&policy, &mut msk).unwrap();
+    let (mut msk, _) = CovercryptKEM::setup(&cover_crypt).unwrap();
+    let mpk = CovercryptKEM::update_master_keys(&cover_crypt, &policy, &mut msk).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).
