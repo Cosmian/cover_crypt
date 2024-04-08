@@ -39,8 +39,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
-        Covercrypt, EncryptedHeader,
+        abe_policy::{AccessPolicy, Attribute, LegacyPolicy}, api::Covercrypt, Covercrypt
     };
 
     #[test]

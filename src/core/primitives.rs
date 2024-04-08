@@ -4,8 +4,7 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore, RandomFixedSizeCBytes, Secret,
-    SymmetricKey,
+    reexport::rand_core::CryptoRngCore, RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroize;

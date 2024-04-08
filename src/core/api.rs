@@ -3,22 +3,19 @@
 use std::{collections::HashMap, fmt::Debug, sync::Mutex};
 
 use cosmian_crypto_core::{
-    kdf256, reexport::rand_core::SeedableRng, CsRng, Nonce, FixedSizeCBytes, RandomFixedSizeCBytes, Secret 
+    kdf256, reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable,
+    Nonce, RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
-
 
 use super::{
     primitives::{mpk_keygen, prune, update_coordinate_keys, usk_keygen},
     MIN_TRACING_LEVEL,
 };
 use crate::{
-    abe_policy::{
-        AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy
-    },
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy},
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
-        SEED_LENGTH,
+        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SEED_LENGTH,
     },
     Error,
 };
@@ -134,7 +131,6 @@ impl PartialEq for Covercrypt {
 //     pub metadata: Option<Vec<u8>>,
 // }
 
-
 pub trait CovercryptKEM {
     /// Sets up the Covercrypt scheme.
     ///
@@ -142,8 +138,7 @@ pub trait CovercryptKEM {
     /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
     /// They only hold keys for the origin coordinate: only broadcast
     /// encapsulations can be created.
-    fn setup (&self) ->
-        Result<(MasterSecretKey,MasterPublicKey),Error> ;
+    fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error>;
 
     /// Updates the MSK according to this policy. Returns the new version of the
     /// MPK.
@@ -171,7 +166,7 @@ pub trait CovercryptKEM {
         ap: &AccessPolicy,
         policy: &Policy,
         msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> ;
+    ) -> Result<MasterPublicKey, Error>;
 
     /// Removes all but the latest secret of each coordinate in the semantic
     /// space of the given access policy from the given master keys.
@@ -218,11 +213,12 @@ pub trait CovercryptKEM {
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn keygen (&self,
-               msk : &mut MasterSecretKey,
-               policy : &Policy,
-               ap : &str) ->
-        Result<UserSecretKey,Error>;
+    fn keygen(
+        &self,
+        msk: &mut MasterSecretKey,
+        policy: &Policy,
+        ap: &str,
+    ) -> Result<UserSecretKey, Error>;
 
     /// Generates an encapsulation for the given access
     /// policy.
@@ -230,39 +226,34 @@ pub trait CovercryptKEM {
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encaps (&self,
-               mpk : &MasterPublicKey,
-               policy : &Policy,
-               ap : &str) ->
-        Result<(Secret<SEED_LENGTH>,Encapsulation), Error>;// todo : symmetric_key or seed?
+    fn encaps(
+        &self,
+        mpk: &MasterPublicKey,
+        policy: &Policy,
+        ap: &str,
+    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>; // todo : symmetric_key or seed?
 
     /// Attempts opening the given encapsulation using the given
     /// user secret key.
     ///
     /// Returns the encapsulated symmetric key if the user key holds
     /// the correct rights.
-    fn decaps (&self,
-               usk : &UserSecretKey,
-               enc : Encapsulation) ->
-        Option<Secret<SEED_LENGTH>>;
-
-
+    fn decaps(&self, usk: &UserSecretKey, enc: Encapsulation) -> Option<Secret<SEED_LENGTH>>;
 }
 
-
-impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
+impl CovercryptKEM for Covercrypt {
+    /// Sets up the Covercrypt scheme.
     ///
     /// Generates a MSK and a MPK with a tracing level of
     /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
     /// They only hold keys for the origin coordinate: only broadcast
     /// encapsulations can be created.
-    fn setup (&self) ->
-        Result<(MasterSecretKey,MasterPublicKey),Error> {
+    fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         let mut msk = setup(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             MIN_TRACING_LEVEL,
         )?;
-    
+
         // Add broadcast coordinate with classic encryption level.
         //
         // TODO replace this function by `add_coordinates`,
@@ -277,10 +268,9 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
             )]),
         )?;
         let mpk = mpk_keygen(&msk)?;
-    
+
         Ok((msk, mpk))
     }
-
 
     /// Updates the MSK according to this policy. Returns the new version of the
     /// MPK.
@@ -305,7 +295,6 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
         let mpk = mpk_keygen(msk)?;
         Ok(mpk)
     }
-
 
     /// Generates new keys for each coordinate in the semantic space of the
     /// given access policy and update the given master keys.
@@ -392,10 +381,12 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn keygen (&self,
-               msk : &mut MasterSecretKey,
-               policy : &Policy,
-               ap : &str) -> Result<UserSecretKey,Error> {
+    fn keygen(
+        &self,
+        msk: &mut MasterSecretKey,
+        policy: &Policy,
+        ap: &str,
+    ) -> Result<UserSecretKey, Error> {
         let ap = &AccessPolicy::parse(ap)?;
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -409,11 +400,12 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encaps (&self,
-                 mpk : &MasterPublicKey,
-                 policy : &Policy,
-                 ap : &str) ->
-        Result<(Secret<SEED_LENGTH>,Encapsulation), Error> {
+    fn encaps(
+        &self,
+        mpk: &MasterPublicKey,
+        policy: &Policy,
+        ap: &str,
+    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
         let ap = &AccessPolicy::parse(ap)?;
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -426,20 +418,25 @@ impl CovercryptKEM for Covercrypt {/// Sets up the Covercrypt scheme.
     ///
     /// Returns the encapsulated symmetric key if the user key holds
     /// the correct rights.
-    fn decaps<> (&self,
-               usk : &UserSecretKey,
-               encapsulation : Encapsulation) ->
-        Option<Secret<SEED_LENGTH>> {
-            match decaps(usk, &encapsulation) {
-                Err(_) => None,
-                Ok(sk) => Some(sk?)
-            }
+    fn decaps(
+        &self,
+        usk: &UserSecretKey,
+        encapsulation: Encapsulation,
+    ) -> Option<Secret<SEED_LENGTH>> {
+        match decaps(usk, &encapsulation) {
+            Err(_) => None,
+            Ok(sk) => Some(sk?),
         }
+    }
 }
 
-
-
-pub trait CovercryptPKE<Aead, const KEY_LENGTH : usize, const NONCE_LENGTH :usize, const MAC_LENGTH : usize> {
+pub trait CovercryptPKE<
+    Aead,
+    const KEY_LENGTH: usize,
+    const NONCE_LENGTH: usize,
+    const MAC_LENGTH: usize,
+>
+{
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
     /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
@@ -449,14 +446,15 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH : usize, const NONCE_LENGTH :usiz
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn encrypt(&self,
-               mpk: &MasterPublicKey,
-               policy : &Policy,
-               ap: &str,
-               ad: Option<&[u8]>,
-               plaintext: &[u8]
-    ) -> Result<(Encapsulation,Vec<u8>), Error>;
-    
+    fn encrypt(
+        &self,
+        mpk: &MasterPublicKey,
+        policy: &Policy,
+        ap: &str,
+        ad: Option<&[u8]>,
+        plaintext: &[u8],
+    ) -> Result<(Encapsulation, Vec<u8>), Error>;
+
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
     ///
     /// Attempts opening the Covercrypt encapsulation. If it succeeds, decrypts
@@ -466,46 +464,63 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH : usize, const NONCE_LENGTH :usiz
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn decrypt(&self,
-               usk: &UserSecretKey,
-               ad: &[u8],
-               ciphertext: &[u8]
-            ) -> Result<Option<Vec<u8>>, Error>;
+    fn decrypt(
+        &self,
+        usk: &UserSecretKey,
+        ad: Option<&[u8]>,
+        cyphertext: &[u8],
+        enc: &Encapsulation,
+    ) -> Result<Option<Vec<u8>>, Error>;
 }
 
 /// Authenticated Encryption trait
-pub trait AE<const KEY_LENGTH : usize,
-             const NONCE_LENGTH : usize,
-             const MAC_LENGTH : usize> {
-    fn encrypt (key : &Secret<KEY_LENGTH>,
-                ptx : &[u8],
-                ad : Option<&[u8]>,
-                nonce : &Nonce<NONCE_LENGTH>
-                ) -> Result<Vec<u8>,Error>;
-    
-    fn decrypt (key : &Secret<KEY_LENGTH>,
-                ctx : &[u8]) -> Result<Vec<u8>,Error>;
+pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGTH: usize> {
+    fn encrypt(
+        key: &Secret<KEY_LENGTH>,
+        ptx: &[u8],
+        ad: Option<&[u8]>,
+        nonce: &Nonce<NONCE_LENGTH>,
+    ) -> Result<Vec<u8>, Error>;
+
+    fn decrypt(
+        key: &Secret<KEY_LENGTH>,
+        ad: Option<&[u8]>,
+        nonce: &Nonce<NONCE_LENGTH>,
+        ctx: &[u8],
+    ) -> Result<Vec<u8>, Error>;
 }
 
-// impl AE<{Self::KEY_LENGTH},{Self::NONCE_LENGTH},{Self::MAC_LENGTH}> for Aes256Gcm {
-//     fn encrypt(key : &Secret<{Self::KEY_LENGTH}>,
-//                ptx : &[u8],
-//                nonce : &Nonce<{Self::NONCE_LENGTH}>
-//             ) -> Result<Vec<u8>,Error> {
-//         Self::encrypt(key, ptx, nonce)
-//     }
+impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for Aes256Gcm {
+    fn encrypt(
+        key: &Secret<{ Self::KEY_LENGTH }>,
+        ptx: &[u8],
+        ad: Option<&[u8]>,
+        nonce: &Nonce<{ Self::NONCE_LENGTH }>,
+    ) -> Result<Vec<u8>, Error> {
+        let sym_key = SymmetricKey::try_from_slice(key)?;
+        let aes = Aes256Gcm::new(&sym_key);
+        aes.encrypt(nonce, ptx, ad).map_err(Error::CryptoCoreError)
+    }
 
-//     fn decrypt (key : &Secret<{Self::KEY_LENGTH}>,
-//                     ctx : &[u8]) -> Result<Vec<u8>,Error> {
-//         Self::decrypt(key, ctx)
-//     }
-// }
+    fn decrypt(
+        key: &Secret<{ Self::KEY_LENGTH }>,
+        ad: Option<&[u8]>,
+        nonce: &Nonce<{ Self::NONCE_LENGTH }>,
+        ctx: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        let sym_key = SymmetricKey::try_from_slice(key)?;
+        let aes = Aes256Gcm::new(&sym_key);
+        aes.decrypt(nonce, ctx, ad).map_err(Error::CryptoCoreError)
+    }
+}
 
-impl<const KEY_LENGTH : usize,
-    const NONCE_LENGTH : usize,
-    const MAC_LENGTH : usize,
-    E : AE<KEY_LENGTH, NONCE_LENGTH,MAC_LENGTH>>
-    CovercryptPKE<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for Covercrypt {
+impl<
+        const KEY_LENGTH: usize,
+        const NONCE_LENGTH: usize,
+        const MAC_LENGTH: usize,
+        E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
+    > CovercryptPKE<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for Covercrypt
+{
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
     /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
@@ -516,25 +531,23 @@ impl<const KEY_LENGTH : usize,
     ///
     /// Returns an error if the access policy is not valid.
 
-    fn encrypt(&self,
-               mpk: &MasterPublicKey,
-               policy : &Policy,
-               ap: &str,
-               ad: Option<&[u8]>,
-               plaintext: &[u8]
-            ) -> Result<(Encapsulation,Vec<u8>), Error> {
+    fn encrypt(
+        &self,
+        mpk: &MasterPublicKey,
+        policy: &Policy,
+        ap: &str,
+        ad: Option<&[u8]>,
+        plaintext: &[u8],
+    ) -> Result<(Encapsulation, Vec<u8>), Error> {
         let (seed, enc) = CovercryptKEM::encaps(self, mpk, policy, ap)?;
-        let nonce = &self::Nonce::new(&mut *self.rng.lock().
-                                           expect("could not lock mutex"));
+        let nonce = &self::Nonce::new(&mut *self.rng.lock().expect("could not lock mutex"));
         let mut sym_key = Secret::<KEY_LENGTH>::default();
-        kdf256!(&mut sym_key,&seed);
-        let mut ciphertext = E::encrypt(&sym_key, plaintext,ad,nonce)?;
-        let mut res = Vec::with_capacity(plaintext.len() +
-                               MAC_LENGTH +
-                               NONCE_LENGTH);
+        kdf256!(&mut sym_key, &seed);
+        let mut ciphertext = E::encrypt(&sym_key, plaintext, ad, nonce)?;
+        let mut res = Vec::with_capacity(plaintext.len() + MAC_LENGTH + NONCE_LENGTH);
         res.extend(&Nonce::<NONCE_LENGTH>::to_bytes(nonce));
         res.append(&mut ciphertext);
-        Ok((enc,res))
+        Ok((enc, res))
     }
 
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
@@ -546,12 +559,22 @@ impl<const KEY_LENGTH : usize,
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-    fn decrypt(&self,
-               _: &UserSecretKey,
-               _: &[u8],
-               _: &[u8]
-            ) -> Result<Option<Vec<u8>>, Error> {
-        Ok(None)
+    fn decrypt(
+        &self,
+        usk: &UserSecretKey,
+        ad: Option<&[u8]>,
+        cyphertext: &[u8],
+        enc: &Encapsulation,
+    ) -> Result<Option<Vec<u8>>, Error> {
+        let seed = CovercryptKEM::decaps(self, usk, enc.clone());
+        seed.map(|seed| {
+            let nonce = &Nonce::<NONCE_LENGTH>::try_from_slice(&cyphertext[..NONCE_LENGTH])?;
+            let mut sym_key = Secret::<KEY_LENGTH>::default();
+            kdf256!(&mut sym_key, &seed);
+            let plaintext = E::decrypt(&sym_key, ad, nonce, &cyphertext[NONCE_LENGTH..])?;
+            Ok(plaintext)
+        })
+        .transpose()
     }
-
 }
+
