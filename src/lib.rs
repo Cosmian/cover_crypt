@@ -32,7 +32,4 @@ pub mod data_struct;
 pub mod test_utils;
 pub use error::Error;
 
-pub use self::core::{
-    api,
-    Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
-};
+pub use self::core::{api, Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey};
