@@ -567,7 +567,7 @@ impl<E> Serializable for EncryptedHeader<E> {
         Ok(Self {
             encapsulation,
             encrypted_metadata,
-            phantom : PhantomData
+            phantom: PhantomData,
         })
     }
 }
