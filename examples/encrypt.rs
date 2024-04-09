@@ -4,7 +4,6 @@ use cosmian_cover_crypt::{
     test_utils::policy,
     MasterPublicKey, MasterSecretKey,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::Aes256Gcm;
 
 /// Generates a new USK and encrypted header and prints them.
@@ -15,6 +14,7 @@ fn generate_new(
     mpk: &MasterPublicKey,
 ) {
     let access_policy = "Department::FIN && Security Level::Top Secret";
+    let access_police_parsed = &AccessPolicy::parse(access_policy)?;
 
     let (_, _header) =
         EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy, None, None)
@@ -34,7 +34,7 @@ fn generate_new(
         println!(
             "USK = {}",
             transcoder.encode(
-                cc.generate_user_secret_key(_msk, &access_policy, policy)
+                cc.generate_user_secret_key(_msk, access_policy, policy)
                     .unwrap()
                     .serialize()
                     .unwrap()
@@ -49,8 +49,7 @@ fn generate_new(
 
 fn main() {
     let policy = policy().expect("cannot generate policy");
-    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret")
-        .expect("cannot parse given access policy");
+    let ap = "Department::FIN && Security Level::Top Secret";
 
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
@@ -62,7 +61,7 @@ fn main() {
 
     // Encrypt header, use loop to increase its wight in the flame graph.
     for _ in 0..1000 {
-        EncryptedHeader::<Aes256Gcm>::generate(&cc, &policy, &mpk, &ap, None, None)
+        EncryptedHeader::<Aes256Gcm>::generate(&cc, &policy, &mpk, ap, None, None)
             .expect("cannot encrypt header");
     }
 }

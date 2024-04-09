@@ -8,7 +8,7 @@ fn main() {
         engine::{GeneralPurpose, GeneralPurposeConfig},
         Engine,
     };
-    use cosmian_cover_crypt::{Covercrypt, EncryptedHeader, UserSecretKey};
+    use cosmian_cover_crypt::api::{Covercrypt, EncryptedHeader, UserSecretKey};
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
