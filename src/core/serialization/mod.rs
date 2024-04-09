@@ -20,7 +20,7 @@ use crate::{
         SEED_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
-    CleartextHeader, EncryptedHeader, Error,
+    Error,
 };
 
 impl Serializable for TracingPublicKey {
