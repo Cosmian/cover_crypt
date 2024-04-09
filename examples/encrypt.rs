@@ -4,6 +4,7 @@ use cosmian_cover_crypt::{
     test_utils::policy,
     MasterPublicKey, MasterSecretKey,
 };
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::Aes256Gcm;
 
 /// Generates a new USK and encrypted header and prints them.
@@ -13,8 +14,7 @@ fn generate_new(
     _msk: &mut MasterSecretKey,
     mpk: &MasterPublicKey,
 ) {
-    let access_policy =
-        "Department::FIN && Security Level::Top Secret";
+    let access_policy = "Department::FIN && Security Level::Top Secret";
 
     let (_, _header) =
         EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy, None, None)
