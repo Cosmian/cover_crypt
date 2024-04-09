@@ -85,7 +85,7 @@ fn main() {
         &cover_crypt,
         &policy,
         &mpk,
-        &"Security Level::Top Secret",
+        "Security Level::Top Secret",
         None,
         None,
     )
