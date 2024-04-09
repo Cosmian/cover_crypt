@@ -533,7 +533,7 @@ impl Serializable for Encapsulation {
     }
 }
 
-impl Serializable for EncryptedHeader {
+impl<E> Serializable for EncryptedHeader<E> {
     type Error = Error;
 
     fn length(&self) -> usize {
