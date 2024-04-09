@@ -3,10 +3,8 @@
 use std::{collections::HashMap, fmt::Debug, marker::PhantomData, sync::Mutex};
 
 use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng,
-    kdf256,
-    Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, Secret,
-    SymmetricKey,
+    kdf256, reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable,
+    Nonce, RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use super::{
