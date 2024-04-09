@@ -14,9 +14,10 @@ fn generate_new(
     mpk: &MasterPublicKey,
 ) {
     let access_policy = "Department::FIN && Security Level::Top Secret";
+    let access_policy_parsed = &AccessPolicy::parse(access_policy).expect("cannot parse policy!");
 
     let (_, _header) =
-        EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy, None, None)
+        EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy_parsed, None, None)
             .expect("cannot encrypt header");
 
     #[cfg(feature = "serialization")]
