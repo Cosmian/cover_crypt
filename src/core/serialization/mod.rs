@@ -23,6 +23,10 @@ use crate::{
     Error,
 };
 
+use crate::api::EncryptedHeader;
+
+use crate::api::CleartextHeader;
+
 impl Serializable for TracingPublicKey {
     type Error = Error;
 
