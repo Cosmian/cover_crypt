@@ -17,7 +17,7 @@ fn generate_new(
     let access_policy_parsed = &AccessPolicy::parse(access_policy).expect("cannot parse policy!");
 
     let (_, _header) =
-        EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy_parsed, None, None)
+        EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy, None, None)
             .expect("cannot encrypt header");
 
     #[cfg(feature = "serialization")]
