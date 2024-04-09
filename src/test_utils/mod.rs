@@ -93,7 +93,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &secret_sales_ap,
+            secret_sales_ap,
             None,
             None,
         )?;
@@ -134,7 +134,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &top_secret_ap,
+            top_secret_ap,
             None,
             None,
         )?;
@@ -187,7 +187,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &top_secret_ap,
+            top_secret_ap,
             None,
             None,
         )?;
@@ -210,7 +210,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &top_secret_ap,
+            top_secret_ap,
             None,
             None
         )
@@ -252,7 +252,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &top_secret_ap,
+            top_secret_ap,
             None,
             None,
         )?;
@@ -288,21 +288,15 @@ mod tests {
         )
         .unwrap();
         let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = CovercryptKEM::setup(&cover_crypt)?;
-        let mpk = CovercryptKEM::update_master_keys(&cover_crypt, &policy, &mut msk)?;
-        let (sym_key, encrypted_key) = CovercryptKEM::encaps(
-            &cover_crypt,
+        let (mut msk, _) = cover_crypt.setup()?;
+        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let (sym_key, encrypted_key) = cover_crypt.encaps(
             &mpk,
             &policy,
             "Department::MKG && Security Level::Top Secret",
         )?;
-        let usk = CovercryptKEM::generate_user_secret_key(
-            &cover_crypt,
-            &mut msk,
-            &access_policy,
-            &policy,
-        )?;
-        let recovered_key = CovercryptKEM::decaps(&cover_crypt, &usk, encrypted_key);
+        let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
+        let recovered_key = cover_crypt.decaps(&usk, encrypted_key);
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
         Ok(())
     }
@@ -357,7 +351,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &top_secret_ap,
+            top_secret_ap,
             None,
             None,
         )?;
@@ -376,7 +370,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            &top_secret_ap,
+            top_secret_ap,
             None,
             None,
         )?;

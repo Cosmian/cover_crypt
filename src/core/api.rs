@@ -100,7 +100,7 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
 pub struct EncryptedHeader<E> {
     pub encapsulation: Encapsulation,
     pub encrypted_metadata: Option<Vec<u8>>,
-    phantom: PhantomData<E>,
+    pub phantom: PhantomData<E>,
 }
 
 pub trait EncryptedHeaderEnc<
