@@ -3,7 +3,7 @@
 use cosmian_cover_crypt::api::EncryptedHeaderEnc;
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
-    api::{Covercrypt, CovercryptKEM, EncryptedHeader}, //api::EncryptedHeader,
+    api::{Covercrypt, CovercryptKEM, EncryptedHeader},
 };
 use cosmian_crypto_core::Aes256Gcm;
 
@@ -60,7 +60,7 @@ fn main() {
         &cover_crypt,
         &policy,
         &mpk,
-        &access_policy,
+        access_policy,
         None,
         None,
     )
@@ -81,7 +81,7 @@ fn main() {
         &cover_crypt,
         &policy,
         &mpk,
-        &access_policy,
+        access_policy,
         None,
         None,
     )
