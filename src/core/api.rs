@@ -1,10 +1,12 @@
 //! Defines the `Covercrypt` API.
 
-use std::{collections::HashMap, fmt::Debug, sync::Mutex};
+use std::{collections::HashMap, fmt::Debug, marker::PhantomData, sync::Mutex};
 
 use cosmian_crypto_core::{
-    kdf256, reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable,
-    Nonce, RandomFixedSizeCBytes, Secret, SymmetricKey,
+    reexport::rand_core::SeedableRng,
+    kdf256,
+    Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, Secret,
+    SymmetricKey,
 };
 
 use super::{
@@ -49,11 +51,7 @@ pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGT
         rng: &Mutex<CsRng>,
     ) -> Result<Vec<u8>, Error>;
 
-    fn decrypt(
-        key: &Secret<KEY_LENGTH>,
-        ad: Option<&[u8]>,
-        ctx: &[u8]
-    ) -> Result<Vec<u8>, Error>;
+    fn decrypt(key: &Secret<KEY_LENGTH>, ad: Option<&[u8]>, ctx: &[u8]) -> Result<Vec<u8>, Error>;
 }
 
 impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for Aes256Gcm {
@@ -101,9 +99,10 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
 /// - `encapsulation`       :   `Covercrypt` encapsulation of a symmetric key
 /// - `encrypted_metadata`  :   AES-256 GCM encryption of the metadata
 #[derive(Debug, PartialEq, Eq)]
-pub struct EncryptedHeader {
+pub struct EncryptedHeader<E> {
     pub encapsulation: Encapsulation,
     pub encrypted_metadata: Option<Vec<u8>>,
+    phantom: PhantomData<E>,
 }
 
 pub trait EncryptedHeaderEnc<
@@ -120,7 +119,7 @@ pub trait EncryptedHeaderEnc<
         encryption_policy: &str,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
-    ) -> Result<(SymmetricKey<SEED_LENGTH>, EncryptedHeader), Error>;
+    ) -> Result<(SymmetricKey<SEED_LENGTH>, EncryptedHeader<Aead>), Error>;
 
     fn decrypt(
         &self,
@@ -135,7 +134,7 @@ impl<
         const NONCE_LENGTH: usize,
         const MAC_LENGTH: usize,
         E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
-    > EncryptedHeaderEnc<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for EncryptedHeader
+    > EncryptedHeaderEnc<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for EncryptedHeader<E>
 {
     /// Generates an encrypted header for a random key and the given metadata.
     /// Returns the encrypted header along with the symmetric key
@@ -170,6 +169,7 @@ impl<
             Self {
                 encapsulation,
                 encrypted_metadata,
+                phantom: PhantomData,
             },
         ))
     }
