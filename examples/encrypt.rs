@@ -1,9 +1,10 @@
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Policy},
-    api::{Covercrypt, EncryptedHeader},
+    api::{Covercrypt, CovercryptKEM, EncryptedHeader, EncryptedHeaderEnc},
     test_utils::policy,
     MasterPublicKey, MasterSecretKey,
 };
+use cosmian_crypto_core::Aes256Gcm;
 
 /// Generates a new USK and encrypted header and prints them.
 fn generate_new(
@@ -13,10 +14,11 @@ fn generate_new(
     mpk: &MasterPublicKey,
 ) {
     let access_policy =
-        AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
+        "Department::FIN && Security Level::Top Secret";
 
-    let (_, _header) = EncryptedHeader::generate(cc, policy, mpk, &access_policy, None, None)
-        .expect("cannot encrypt header");
+    let (_, _header) =
+        EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy, None, None)
+            .expect("cannot encrypt header");
 
     #[cfg(feature = "serialization")]
     {
@@ -60,7 +62,7 @@ fn main() {
 
     // Encrypt header, use loop to increase its wight in the flame graph.
     for _ in 0..1000 {
-        EncryptedHeader::generate(&cc, &policy, &mpk, &ap, None, None)
+        EncryptedHeader::<Aes256Gcm>::generate(&cc, &policy, &mpk, &ap, None, None)
             .expect("cannot encrypt header");
     }
 }
