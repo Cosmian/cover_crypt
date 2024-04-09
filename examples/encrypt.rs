@@ -14,7 +14,6 @@ fn generate_new(
     mpk: &MasterPublicKey,
 ) {
     let access_policy = "Department::FIN && Security Level::Top Secret";
-    let access_police_parsed = &AccessPolicy::parse(access_policy)?;
 
     let (_, _header) =
         EncryptedHeader::<Aes256Gcm>::generate(cc, policy, mpk, access_policy, None, None)
@@ -34,7 +33,7 @@ fn generate_new(
         println!(
             "USK = {}",
             transcoder.encode(
-                cc.generate_user_secret_key(_msk, access_policy, policy)
+                cc.generate_user_secret_key(_msk, &access_policy, policy)
                     .unwrap()
                     .serialize()
                     .unwrap()
