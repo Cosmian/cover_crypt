@@ -23,8 +23,7 @@ fn main() {
         EncryptedHeader::<Aes256Gcm>::deserialize(&transcoder.decode(HEADER.as_bytes()).unwrap())
             .unwrap();
     for _ in 0..1000 {
-        encrypted_header
-            .decrypt(&cc, &usk, None)
+        EncryptedHeader::<Aes256Gcm>::decrypt(&encrypted_header, &cc, &usk, None)
             .expect("cannot decrypt hybrid header");
     }
 }
