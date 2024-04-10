@@ -140,8 +140,8 @@ pub fn encaps(
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Coordinate>,
 ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
+    let seed = Secret::<SEED_LENGTH>::random(rng);
     let ephemeral_random = elgamal::Scalar::new(rng);
-    let session_key = Secret::<SEED_LENGTH>::random(rng);
     let mut coordinate_encapsulations = HashSet::with_capacity(encryption_set.len());
     for coordinate in encryption_set {
         match mpk.coordinate_keys.get(coordinate) {
@@ -149,21 +149,22 @@ pub fn encaps(
                 postquantum_pk,
                 elgamal_pk,
             }) => {
-                let mut elgamal_ctx =
-                    elgamal::mask::<SEED_LENGTH>(&ephemeral_random, elgamal_pk, &session_key);
+                let mut elgamal_ctx = [0; SEED_LENGTH];
+                elgamal::mask::<SEED_LENGTH>(
+                    &mut elgamal_ctx,
+                    &ephemeral_random,
+                    elgamal_pk,
+                    &seed,
+                );
                 let postquantum_ctx = postquantum::encrypt(rng, postquantum_pk, &elgamal_ctx)?;
-                // Zeroize the ElGamal ciphertext as it may not be secure in the
-                // post-quantum world.
-                //
-                // TODO: stack copying needs to be avoided when returning from `elgamal::encrypt`.
-                elgamal_ctx.zeroize();
+                elgamal_ctx.zeroize(); // ElGamal ciphertext is not secure in a post-quantum world
                 coordinate_encapsulations.insert(SeedEncapsulation::Hybridized(postquantum_ctx));
             }
             Some(CoordinatePublicKey::Classic { elgamal_pk }) => {
-                let ctx = elgamal::mask(&ephemeral_random, elgamal_pk, &session_key);
-                coordinate_encapsulations.insert(SeedEncapsulation::Classic(ctx));
+                let mut elgamal_ctx = [0; SEED_LENGTH];
+                elgamal::mask(&mut elgamal_ctx, &ephemeral_random, elgamal_pk, &seed);
+                coordinate_encapsulations.insert(SeedEncapsulation::Classic(elgamal_ctx));
             }
-
             None => {
                 return Err(Error::KeyError(format!(
                     "no public key for coordinate '{coordinate:#?}'"
@@ -173,11 +174,11 @@ pub fn encaps(
     }
 
     let traps = mpk.set_traps(&ephemeral_random);
-    let (tag, seed) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*session_key, KEY_GEN_INFO)
+    let (tag, key) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*seed, KEY_GEN_INFO)
         .map_err(Error::CryptoCoreError)?;
 
     Ok((
-        seed,
+        key,
         Encapsulation {
             tag,
             traps,
@@ -203,9 +204,7 @@ pub fn decaps(
         });
 
     for enc in &encapsulation.coordinate_encapsulations {
-        // Iterate over the coordinate keys of the USK in a chronological
-        // fashion until the encapsulation is opened or the coordinate keys are
-        // exhausted.
+        // The breadth-first search tries all coordinate subkeys in a chronological order.
         for key in usk.coordinate_keys.bfs() {
             let seed: Secret<SEED_LENGTH> = match (key, enc) {
                 (

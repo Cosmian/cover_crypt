@@ -175,8 +175,7 @@ pub fn encrypt(
         )));
     }
     let mut ctx = Ciphertext::default();
-    let mut coin = Secret::<KYBER_SYMBYTES>::default();
-    rng.fill_bytes(&mut coin);
+    let coin = Secret::<KYBER_SYMBYTES>::random(rng);
     indcpa_enc(&mut ctx, ptx, postquantum_pk, &coin);
     Ok(ctx)
 }

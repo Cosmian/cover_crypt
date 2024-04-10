@@ -100,15 +100,15 @@ impl Serializable for Keypair {
 
     fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
         let sk = de.read::<Scalar>()?;
-        let is_deprecated = de.read_leb128_u64()?;
-        if 1 == is_deprecated {
+        let option_flag = de.read_leb128_u64()?;
+        if 1 == option_flag {
             Ok(Self(sk, None))
-        } else if 0 == is_deprecated {
+        } else if 0 == option_flag {
             let pk = de.read::<EcPoint>()?;
             Ok(Self(sk, Some(pk)))
         } else {
             Err(Error::ConversionFailed(format!(
-                "invalid option encoding {is_deprecated}"
+                "invalid option encoding {option_flag}"
             )))
         }
     }
@@ -116,14 +116,13 @@ impl Serializable for Keypair {
 
 /// One-Time Pad (OTP) encryption of the given plaintext.
 fn otp_encrypt<const LENGTH: usize>(
+    ctx: &mut [u8; LENGTH],
     key: &SymmetricKey<LENGTH>,
     ptx: &Secret<LENGTH>,
-) -> [u8; LENGTH] {
-    let mut ctx = [0; LENGTH];
+) {
     for pos in 0..LENGTH {
         ctx[pos] = key[pos] ^ ptx[pos];
     }
-    ctx
 }
 
 /// One-Time Pad (OTP) decryption of the given ciphertext.
@@ -151,15 +150,16 @@ fn otp_decrypt<const LENGTH: usize>(
 /// The security relies on the fact that the same ElGammal keypair is never used
 /// on different input bytes.
 pub fn mask<const LENGTH: usize>(
+    ctx: &mut [u8; LENGTH],
     ephemeral_sk: &Scalar,
     recipient_pk: &EcPoint,
     ptx: &Secret<LENGTH>,
-) -> [u8; LENGTH] {
+) {
     let mut shared_secret = recipient_pk * ephemeral_sk;
     let mut key = SymmetricKey::<LENGTH>::default();
     kdf256!(&mut key, &shared_secret.to_bytes());
     shared_secret.zeroize();
-    otp_encrypt(&key, ptx)
+    otp_encrypt(ctx, &key, ptx)
 }
 
 /// Unmasks the given bytes using the key derived from the ElGamal shared secret.
@@ -201,7 +201,9 @@ mod tests {
         let ptx = Secret::<PTX_LENGTH>::random(&mut rng);
         let ephemeral_keypair = keygen(&mut rng);
         let recipient_keypair = keygen(&mut rng);
-        let ctx = mask(
+        let mut ctx = [0; PTX_LENGTH];
+        mask(
+            &mut ctx,
             ephemeral_keypair.sk(),
             recipient_keypair.pk().unwrap(),
             &ptx,
