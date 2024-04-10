@@ -573,7 +573,6 @@ impl<
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
-
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
@@ -588,6 +587,7 @@ impl<
         let res = E::encrypt(&sym_key, plaintext, ad, &self.rng)?;
         Ok((enc, res))
     }
+
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
     ///
     /// Attempts opening the Covercrypt encapsulation. If it succeeds, decrypts
