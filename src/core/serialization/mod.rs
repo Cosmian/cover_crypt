@@ -4,14 +4,14 @@ use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
-    FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey,
+    FixedSizeCBytes, SymmetricKey,
 };
 
 use super::{
     elgamal::{EcPoint, Scalar},
     postquantum::{self, PublicKey},
     CoordinateKeypair, CoordinatePublicKey, CoordinateSecretKey, TracingPublicKey,
-    TracingSecretKey, UserId, KMAC_KEY_LENGTH, KMAC_SIG_LENGTH, TAG_LENGTH,
+    TracingSecretKey, UserId, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::Coordinate,
@@ -282,11 +282,11 @@ impl Serializable for MasterSecretKey {
 
         println!("HEY");
 
-        let signing_key = if de.value().len() < KMAC_KEY_LENGTH {
+        let signing_key = if de.value().len() < SIGNING_KEY_LENGTH {
             None
         } else {
             Some(SymmetricKey::try_from_bytes(
-                de.read_array::<KMAC_KEY_LENGTH>()?,
+                de.read_array::<SIGNING_KEY_LENGTH>()?,
             )?)
         };
 
@@ -429,10 +429,10 @@ impl Serializable for UserSecretKey {
                 .collect::<Result<_, _>>()?;
             coordinate_keys.insert_new_chain(coordinate, new_chain);
         }
-        let msk_signature = if de.value().len() < KMAC_SIG_LENGTH {
+        let msk_signature = if de.value().len() < SIGNATURE_LENGTH {
             None
         } else {
-            Some(de.read_array::<KMAC_SIG_LENGTH>()?)
+            Some(de.read_array::<SIGNATURE_LENGTH>()?)
         };
         Ok(Self {
             id,
@@ -587,7 +587,7 @@ impl Serializable for CleartextHeader {
 
     /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
+        let mut n = ser.write_array(&self.symmetric_key)?;
         match &self.metadata {
             Some(bytes) => n += ser.write_vec(bytes)?,
             None => n += ser.write_vec(&[])?,
