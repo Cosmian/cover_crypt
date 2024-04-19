@@ -9,24 +9,18 @@ use cosmian_crypto_core::{
 
 use super::{
     elgamal::{EcPoint, Scalar},
-    postquantum::{self, PublicKey},
-    CoordinateKeypair, CoordinatePublicKey, CoordinateSecretKey, TracingPublicKey,
-    TracingSecretKey, UserId, KMAC_KEY_LENGTH, KMAC_SIG_LENGTH, TAG_LENGTH,
+    CoordinatePublicKey, CoordinateSecretKey, TracingPublicKey, TracingSecretKey, UserId,
+    SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::Coordinate,
     core::{
-        Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey,
-        SEED_LENGTH,
+        CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
+        SeedEncapsulation, UserSecretKey, SEED_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
-
-use crate::api::CleartextHeader;
-use crate::api::EncryptedHeader;
-use crate::api::AE;
-use core::marker::PhantomData;
 
 impl Serializable for TracingPublicKey {
     type Error = Error;
@@ -58,49 +52,36 @@ impl Serializable for CoordinatePublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        match self {
-            CoordinatePublicKey::Hybridized { .. } => {
-                1 + SEED_LENGTH + postquantum::PublicKey::LENGTH
-            }
-            CoordinatePublicKey::Classic { .. } => 1 + SEED_LENGTH,
-        }
+        1 + self.el.length()
+            + self
+                .pq
+                .as_ref()
+                .map(Serializable::length)
+                .unwrap_or_default()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        match self {
-            CoordinatePublicKey::Hybridized {
-                postquantum_pk,
-                elgamal_pk,
-            } => {
-                let mut n = ser.write_leb128_u64(1)?;
-                n += ser.write_array(postquantum_pk)?;
-                n += ser.write_array(&elgamal_pk.to_bytes())?;
-                Ok(n)
-            }
-            CoordinatePublicKey::Classic { elgamal_pk } => {
-                let mut n = ser.write_leb128_u64(0)?;
-                n += ser.write_array(&elgamal_pk.to_bytes())?;
-                Ok(n)
-            }
+        let mut n = ser.write_leb128_u64(self.is_hybridized().into())?;
+        n += ser.write_array(&self.el.to_bytes())?;
+        if let Some(k) = &self.pq {
+            n += ser.write(k)?;
         }
+        Ok(n)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read_leb128_u64()?;
-        if 1 == is_hybridized {
-            Ok(Self::Hybridized {
-                postquantum_pk: de.read::<PublicKey>()?,
-                elgamal_pk: de.read::<EcPoint>()?,
-            })
+        let el = de.read()?;
+        let pq = if 1 == is_hybridized {
+            Some(de.read()?)
         } else if 0 == is_hybridized {
-            Ok(Self::Classic {
-                elgamal_pk: de.read::<EcPoint>()?,
-            })
+            None
         } else {
-            Err(Error::ConversionFailed(format!(
+            return Err(Error::ConversionFailed(format!(
                 "invalid hybridization flag {is_hybridized}"
-            )))
-        }
+            )));
+        };
+        Ok(Self { el, pq })
     }
 }
 
@@ -108,8 +89,7 @@ impl Serializable for MasterPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.h.length()
-            + self.tpk.length()
+        self.tpk.length()
             + to_leb128_len(self.coordinate_keys.len())
             + self
                 .coordinate_keys
@@ -119,8 +99,7 @@ impl Serializable for MasterPublicKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.h.to_bytes())?;
-        n += ser.write(&self.tpk)?;
+        let mut n = ser.write(&self.tpk)?;
         n += ser.write_leb128_u64(self.coordinate_keys.len() as u64)?;
         for (coordinate, pk) in &self.coordinate_keys {
             n += ser.write(coordinate)?;
@@ -130,7 +109,6 @@ impl Serializable for MasterPublicKey {
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let h = de.read::<EcPoint>()?;
         let tpk = de.read::<TracingPublicKey>()?;
         let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut coordinate_keys = HashMap::with_capacity(n_coordinates);
@@ -140,7 +118,6 @@ impl Serializable for MasterPublicKey {
             coordinate_keys.insert(coordinate, pk);
         }
         Ok(Self {
-            h,
             tpk,
             coordinate_keys,
         })
@@ -186,66 +163,20 @@ impl Serializable for TracingSecretKey {
     }
 }
 
-impl Serializable for CoordinateKeypair {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        self.elgamal_keypair.length()
-            + 1
-            + self
-                .postquantum_keypair
-                .as_ref()
-                .map(Serializable::length)
-                .unwrap_or_default()
-    }
-
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write(&self.elgamal_keypair)?;
-        if let Some(keypair) = &self.postquantum_keypair {
-            n += ser.write_leb128_u64(1)?;
-            n += ser.write(keypair)?;
-        } else {
-            n += ser.write_leb128_u64(0)?;
-        }
-        Ok(n)
-    }
-
-    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let elgamal_keypair = de.read()?;
-        let is_hybridized = de.read_leb128_u64()?;
-        if 1 == is_hybridized {
-            let postquantum_keypair = de.read()?;
-            Ok(Self {
-                elgamal_keypair,
-                postquantum_keypair: Some(postquantum_keypair),
-            })
-        } else if 0 == is_hybridized {
-            Ok(Self {
-                elgamal_keypair,
-                postquantum_keypair: None,
-            })
-        } else {
-            Err(Error::ConversionFailed(format!(
-                "invalid hybridization flag {is_hybridized}"
-            )))
-        }
-    }
-}
-
 impl Serializable for MasterSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
         self.s.length()
             + self.tsk.length()
-            + to_leb128_len(self.coordinate_keypairs.len())
+            + to_leb128_len(self.coordinate_secrets.len())
             + self
-                .coordinate_keypairs
+                .coordinate_secrets
                 .iter()
                 .map(|(coordinate, chain)| {
                     coordinate.length()
                         + to_leb128_len(chain.len())
-                        + chain.iter().map(Serializable::length).sum::<usize>()
+                        + chain.iter().map(|(_, k)| 1 + k.length()).sum::<usize>()
                 })
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
@@ -254,11 +185,12 @@ impl Serializable for MasterSecretKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write(&self.s)?;
         n += ser.write(&self.tsk)?;
-        n += ser.write_leb128_u64(self.coordinate_keypairs.len() as u64)?;
-        for (coordinate, chain) in &self.coordinate_keypairs.map {
+        n += ser.write_leb128_u64(self.coordinate_secrets.len() as u64)?;
+        for (coordinate, chain) in &self.coordinate_secrets.map {
             n += ser.write(coordinate)?;
             n += ser.write_leb128_u64(to_leb128_len(chain.len()) as u64)?;
-            for sk in chain {
+            for (is_activated, sk) in chain {
+                n += ser.write_leb128_u64((*is_activated).into())?;
                 n += ser.write(sk)?;
             }
         }
@@ -272,35 +204,32 @@ impl Serializable for MasterSecretKey {
         let s = Scalar::try_from_bytes(de.read_array::<{ Scalar::LENGTH }>()?)?;
         let tsk = de.read::<TracingSecretKey>()?;
         let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
-        println!("n_coordinates: {n_coordinates}");
         let mut coordinate_keypairs = RevisionMap::with_capacity(n_coordinates);
-        for i in 0..n_coordinates {
-            println!("reading coordinate {i}");
+        for _ in 0..n_coordinates {
             let coordinate = de.read()?;
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            println!("n_keys {n_keys}");
             let chain = (0..n_keys)
-                .map(|_| de.read::<CoordinateKeypair>())
+                .map(|_| -> Result<_, Error> {
+                    let is_activated = de.read_leb128_u64()? == 1;
+                    let sk = de.read::<CoordinateSecretKey>()?;
+                    Ok((is_activated, sk))
+                })
                 .collect::<Result<LinkedList<_>, _>>()?;
             coordinate_keypairs.map.insert(coordinate, chain);
         }
 
-        println!("HEY");
-
-        let signing_key = if de.value().len() < KMAC_KEY_LENGTH {
+        let signing_key = if de.value().len() < SIGNING_KEY_LENGTH {
             None
         } else {
             Some(SymmetricKey::try_from_bytes(
-                de.read_array::<KMAC_KEY_LENGTH>()?,
+                de.read_array::<SIGNING_KEY_LENGTH>()?,
             )?)
         };
-
-        println!("OH");
 
         Ok(Self {
             s,
             tsk,
-            coordinate_keypairs,
+            coordinate_secrets: coordinate_keypairs,
             signing_key,
         })
     }
@@ -336,52 +265,36 @@ impl Serializable for CoordinateSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        1 + match self {
-            CoordinateSecretKey::Hybridized {
-                postquantum_sk,
-                elgamal_sk,
-            } => elgamal_sk.length() + postquantum_sk.length(),
-            CoordinateSecretKey::Classic { elgamal_sk } => elgamal_sk.length(),
-        }
+        1 + self.el.length()
+            + self
+                .pq
+                .as_ref()
+                .map(Serializable::length)
+                .unwrap_or_default()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        match self {
-            CoordinateSecretKey::Hybridized {
-                postquantum_sk,
-                elgamal_sk,
-            } => {
-                let mut n = ser.write_leb128_u64(1)?;
-                n += ser.write(elgamal_sk)?;
-                n += ser.write(postquantum_sk)?;
-                Ok(n)
-            }
-            CoordinateSecretKey::Classic { elgamal_sk } => {
-                let mut n = ser.write_leb128_u64(0)?;
-                n += ser.write(elgamal_sk)?;
-                Ok(n)
-            }
+        let mut n = ser.write_leb128_u64(self.is_hybridized().into())?;
+        n += ser.write(&self.el)?;
+        if let Some(k) = &self.pq {
+            n += ser.write(k)?;
         }
+        Ok(n)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read_leb128_u64()?;
-        if 1 == is_hybridized {
-            let elgamal_sk = de.read()?;
-            let postquantum_sk = de.read()?;
-            Ok(Self::Hybridized {
-                postquantum_sk,
-                elgamal_sk,
-            })
+        let el = de.read()?;
+        let pq = if 1 == is_hybridized {
+            Some(de.read()?)
         } else if 0 == is_hybridized {
-            Ok(Self::Classic {
-                elgamal_sk: de.read()?,
-            })
+            None
         } else {
-            Err(Error::ConversionFailed(format!(
+            return Err(Error::ConversionFailed(format!(
                 "invalid hybridization flag {is_hybridized}"
-            )))
-        }
+            )));
+        };
+        Ok(Self { el, pq })
     }
 }
 
@@ -434,10 +347,10 @@ impl Serializable for UserSecretKey {
                 .collect::<Result<_, _>>()?;
             coordinate_keys.insert_new_chain(coordinate, new_chain);
         }
-        let msk_signature = if de.value().len() < KMAC_SIG_LENGTH {
+        let msk_signature = if de.value().len() < SIGNATURE_LENGTH {
             None
         } else {
-            Some(de.read_array::<KMAC_SIG_LENGTH>()?)
+            Some(de.read_array::<SIGNATURE_LENGTH>()?)
         };
         Ok(Self {
             id,
@@ -453,7 +366,7 @@ impl Serializable for SeedEncapsulation {
     fn length(&self) -> usize {
         1 + match self {
             Self::Classic(enc) => enc.len(),
-            Self::Hybridized(enc) => enc.length(),
+            Self::Hybridized(enc) => to_leb128_len(enc.len()) + enc.len(),
         }
     }
 
@@ -466,7 +379,7 @@ impl Serializable for SeedEncapsulation {
             }
             Self::Hybridized(enc) => {
                 n += ser.write_leb128_u64(1)?;
-                n += ser.write(enc)?;
+                n += ser.write_vec(enc)?;
             }
         }
         Ok(n)
@@ -475,7 +388,7 @@ impl Serializable for SeedEncapsulation {
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read_leb128_u64()?;
         if is_hybridized == 1 {
-            de.read::<postquantum::Ciphertext>().map(Self::Hybridized)
+            de.read_vec().map(Self::Hybridized).map_err(Error::from)
         } else {
             de.read_array::<SEED_LENGTH>()
                 .map(Self::Classic)
@@ -521,10 +434,10 @@ impl Serializable for Encapsulation {
             traps.push(trap);
         }
         let n_encapsulations = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut coordinate_encapsulations = HashSet::with_capacity(n_encapsulations);
+        let mut coordinate_encapsulations = Vec::with_capacity(n_encapsulations);
         for _ in 0..n_encapsulations {
             let enc = de.read::<SeedEncapsulation>()?;
-            coordinate_encapsulations.insert(enc);
+            coordinate_encapsulations.push(enc);
         }
         Ok(Self {
             tag,
@@ -534,13 +447,7 @@ impl Serializable for Encapsulation {
     }
 }
 
-impl<
-        E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
-        const KEY_LENGTH: usize,
-        const NONCE_LENGTH: usize,
-        const MAC_LENGTH: usize,
-    > Serializable for EncryptedHeader<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>
-{
+impl Serializable for EncryptedHeader {
     type Error = Error;
 
     fn length(&self) -> usize {
@@ -574,7 +481,6 @@ impl<
         Ok(Self {
             encapsulation,
             encrypted_metadata,
-            phantom: PhantomData,
         })
     }
 }
@@ -630,33 +536,11 @@ mod tests {
     use crate::{
         abe_policy::{AttributeStatus, EncryptionHint},
         core::{
-            primitives::{encaps, mpk_keygen, setup, update_coordinate_keys, usk_keygen},
+            postquantum::{MlKemAesPke, PkeTrait},
+            primitives::{encaps, setup, update_coordinate_keys, usk_keygen},
             MIN_TRACING_LEVEL,
         },
     };
-
-    #[test]
-    fn test_coordinate_keypair() {
-        let mut rng = CsRng::from_entropy();
-        let s = Scalar::new(&mut rng);
-        let h = EcPoint::from(&s);
-
-        {
-            let ckp = CoordinateKeypair::random(&mut rng, &h, true);
-            let bytes = ckp.serialize().unwrap();
-            assert_eq!(bytes.len(), ckp.length());
-            let ckp_ = CoordinateKeypair::deserialize(&bytes).unwrap();
-            assert_eq!(ckp, ckp_);
-        }
-
-        {
-            let ckp = CoordinateKeypair::random(&mut rng, &h, false);
-            let bytes = ckp.serialize().unwrap();
-            assert_eq!(bytes.len(), ckp.length());
-            let ckp_ = CoordinateKeypair::deserialize(&bytes).unwrap();
-            assert_eq!(ckp, ckp_);
-        }
-    }
 
     #[test]
     fn test_coordinate_pk() {
@@ -664,7 +548,10 @@ mod tests {
 
         {
             let elgamal_pk = EcPoint::from(&Scalar::new(&mut rng));
-            let cpk = CoordinatePublicKey::Classic { elgamal_pk };
+            let cpk = CoordinatePublicKey {
+                el: elgamal_pk,
+                pq: None,
+            };
             let bytes = cpk.serialize().unwrap();
             assert_eq!(bytes.len(), cpk.length());
             let cpk_ = CoordinatePublicKey::deserialize(&bytes).unwrap();
@@ -673,10 +560,10 @@ mod tests {
 
         {
             let elgamal_pk = EcPoint::from(&Scalar::new(&mut rng));
-            let postquantum_pk = postquantum::keygen(&mut rng).1;
-            let cpk = CoordinatePublicKey::Hybridized {
-                postquantum_pk,
-                elgamal_pk,
+            let (_, postquantum_pk) = MlKemAesPke.keygen(&mut rng).unwrap();
+            let cpk = CoordinatePublicKey {
+                pq: Some(postquantum_pk),
+                el: elgamal_pk,
             };
 
             let bytes = cpk.serialize().unwrap();
@@ -720,7 +607,7 @@ mod tests {
             ),
             (
                 coordinate_3.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
 
@@ -730,7 +617,7 @@ mod tests {
 
         let mut msk = setup(&mut rng, MIN_TRACING_LEVEL + 2).unwrap();
         update_coordinate_keys(&mut rng, &mut msk, universe).unwrap();
-        let mpk = mpk_keygen(&msk).unwrap();
+        let mpk = msk.mpk().unwrap();
 
         // Check Covercrypt `MasterSecretKey` serialization.
         {

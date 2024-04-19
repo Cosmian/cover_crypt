@@ -11,10 +11,16 @@ use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
 use super::{
+<<<<<<< HEAD
     elgamal,
     postquantum::{MlKemAesPke, PkeTrait},
     CoordinatePublicKey, CoordinateSecretKey, KmacSignature, TracingSecretKey, MIN_TRACING_LEVEL,
     SEED_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+=======
+    elgamal, postquantum, CoordinateKeypair, CoordinatePublicKey, CoordinateSecretKey,
+    KmacSignature, TracingSecretKey, MIN_TRACING_LEVEL, SEED_LENGTH, SIGNATURE_LENGTH,
+    SIGNING_KEY_LENGTH, TAG_LENGTH,
+>>>>>>> 692de32 (fix: neats)
 };
 use crate::{
     abe_policy::{AttributeStatus, Coordinate, EncryptionHint},
@@ -76,8 +82,22 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
     Ok(MasterSecretKey {
         s,
         tsk,
+<<<<<<< HEAD
         coordinate_secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
+=======
+        coordinate_keypairs: RevisionMap::new(),
+        signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
+    })
+}
+
+/// Generates a new MPK holding the latest public information of each universal coordinate.
+pub fn mpk_keygen(msk: &MasterSecretKey) -> Result<MasterPublicKey, Error> {
+    Ok(MasterPublicKey {
+        h: msk.binding_point(),
+        tpk: msk.tsk.tpk(),
+        coordinate_keys: msk.get_latest_coordinate_pk().collect(),
+>>>>>>> 692de32 (fix: neats)
     })
 }
 
