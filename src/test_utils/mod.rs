@@ -44,6 +44,7 @@ mod tests {
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
         api::{Covercrypt, CovercryptKEM, EncryptedHeader, EncryptedHeaderEnc},
     };
+    type EncryptionHeaderAes256 = EncryptedHeader<Aes256Gcm>;
 
     #[test]
     fn write_policy() {
@@ -89,7 +90,7 @@ mod tests {
         let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         let secret_sales_ap = "Security Level::Low Secret && Department::Sales";
-        let (_, encrypted_header) = EncryptedHeader::<Aes256Gcm>::generate(
+        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -130,7 +131,7 @@ mod tests {
 
         // Encrypt
         let top_secret_ap = "Security Level::Top Secret && Department::FIN";
-        let (_, encrypted_header) = EncryptedHeader::<Aes256Gcm>::generate(
+        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -183,7 +184,7 @@ mod tests {
         //
         // Encrypt
         let top_secret_ap = "Security Level::Top Secret && Department::FIN";
-        let (_, encrypted_header) = EncryptedHeader::<Aes256Gcm>::generate(
+        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -206,7 +207,7 @@ mod tests {
         // Can not encrypt using deactivated attribute
         let top_secret_ap = "Security Level::Top Secret && Department::FIN";
 
-        assert!(EncryptedHeader::<Aes256Gcm>::generate(
+        assert!(EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -248,7 +249,7 @@ mod tests {
 
         // Encrypt
         let top_secret_ap = "Security Level::Top Secret && Department::FIN";
-        let (_, encrypted_header) = EncryptedHeader::<Aes256Gcm>::generate(
+        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -296,7 +297,7 @@ mod tests {
             "Department::MKG && Security Level::Top Secret",
         )?;
         let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
-        let recovered_key = cover_crypt.decaps(&usk, encrypted_key);
+        let recovered_key = cover_crypt.decaps(&usk, encrypted_key)?;
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
         Ok(())
     }
@@ -347,7 +348,7 @@ mod tests {
 
         //
         // Encrypt
-        let (_, encrypted_header) = EncryptedHeader::<Aes256Gcm>::generate(
+        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -366,7 +367,7 @@ mod tests {
 
         //
         // Encrypt with new attribute
-        let (_, encrypted_header) = EncryptedHeader::<Aes256Gcm>::generate(
+        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
