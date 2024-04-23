@@ -1,11 +1,9 @@
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Policy},
-    api::{Covercrypt, EncryptedHeaderEnc},
+    api::{Covercrypt, EncryptionHeaderAes256},
     test_utils::policy,
     MasterPublicKey, MasterSecretKey,
 };
-use cosmian_crypto_core::Aes256Gcm;
-type EncryptionHeaderAes256 = cosmian_cover_crypt::api::EncryptedHeader<Aes256Gcm>;
 
 /// Generates a new USK and encrypted header and prints them.
 fn generate_new(

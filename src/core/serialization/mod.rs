@@ -25,6 +25,7 @@ use crate::{
 
 use crate::api::CleartextHeader;
 use crate::api::EncryptedHeader;
+use crate::api::AE;
 use core::marker::PhantomData;
 
 impl Serializable for TracingPublicKey {
@@ -533,7 +534,13 @@ impl Serializable for Encapsulation {
     }
 }
 
-impl<E> Serializable for EncryptedHeader<E> {
+impl<
+        E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
+        const KEY_LENGTH: usize,
+        const NONCE_LENGTH: usize,
+        const MAC_LENGTH: usize,
+    > Serializable for EncryptedHeader<E, { KEY_LENGTH }, { NONCE_LENGTH }, { MAC_LENGTH }>
+{
     type Error = Error;
 
     fn length(&self) -> usize {
