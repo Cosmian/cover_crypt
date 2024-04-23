@@ -5,9 +5,7 @@ use std::{collections::HashMap, marker::PhantomData, str::FromStr, sync::Mutex};
 use cosmian_crypto_core::{
     bytes_ser_de::Serializable,
     kdf256,
-    reexport::{
-        rand_core::{CryptoRngCore, SeedableRng},
-    },
+    reexport::rand_core::{CryptoRngCore, SeedableRng},
     Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, Secret,
     SymmetricKey,
 };
