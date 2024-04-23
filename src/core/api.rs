@@ -200,6 +200,9 @@ impl Covercrypt {
 
 /// Authenticated Encryption trait
 pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGTH: usize> {
+    const KEY_LENGTH: usize;
+    const NONCE_LENGTH: usize;
+    const MAC_LENGTH: usize;
     fn encrypt(
         key: &SymmetricKey<KEY_LENGTH>,
         ptx: &[u8],
@@ -211,6 +214,9 @@ pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGT
 }
 
 impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for Aes256Gcm {
+    const KEY_LENGTH: usize = Aes256Gcm::KEY_LENGTH;
+    const MAC_LENGTH: usize = Aes256Gcm::MAC_LENGTH;
+    const NONCE_LENGTH: usize = Aes256Gcm::NONCE_LENGTH;
     fn encrypt(
         key: &SymmetricKey<{ Self::KEY_LENGTH }>,
         ptx: &[u8],
@@ -251,34 +257,15 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
 /// metadata encrypted under the scheme `E` using a key derived from the
 /// encapsulated seed.
 #[derive(Debug, PartialEq, Eq)]
-pub struct EncryptedHeader<E> {
-    pub encapsulation: Encapsulation,
-    pub encrypted_metadata: Option<Vec<u8>>,
-    pub phantom: PhantomData<E>,
-}
-
-pub trait EncryptedHeaderEnc<
-    Aead,
+pub struct EncryptedHeader<
+    E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
     const KEY_LENGTH: usize,
     const NONCE_LENGTH: usize,
     const MAC_LENGTH: usize,
->
-{
-    fn generate(
-        cover_crypt: &Covercrypt,
-        policy: &Policy,
-        public_key: &MasterPublicKey,
-        encryption_policy: &str,
-        metadata: Option<&[u8]>,
-        authentication_data: Option<&[u8]>,
-    ) -> Result<(Secret<SEED_LENGTH>, EncryptedHeader<Aead>), Error>;
-
-    fn decrypt(
-        &self,
-        cover_crypt: &Covercrypt,
-        usk: &UserSecretKey,
-        authentication_data: Option<&[u8]>,
-    ) -> Result<Option<CleartextHeader>, Error>;
+> {
+    pub encapsulation: Encapsulation,
+    pub encrypted_metadata: Option<Vec<u8>>,
+    pub phantom: PhantomData<(E, usize, usize, usize)>,
 }
 
 impl<
@@ -286,7 +273,7 @@ impl<
         const NONCE_LENGTH: usize,
         const MAC_LENGTH: usize,
         E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
-    > EncryptedHeaderEnc<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for EncryptedHeader<E>
+    > EncryptedHeader<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>
 {
     /// Generates an encrypted header for a random seed and the given metadata.
     /// Returns the encrypted header along with the encapsulated seed.
@@ -298,7 +285,7 @@ impl<
     /// - `header_metadata`     : additional data symmetrically encrypted in the
     ///   header
     /// - `authentication_data` : authentication data used in the DEM encryption
-    fn generate(
+    pub fn generate(
         cover_crypt: &Covercrypt,
         policy: &Policy,
         public_key: &MasterPublicKey,
@@ -337,7 +324,7 @@ impl<
     /// - `cover_crypt`         : `Covercrypt` object
     /// - `usk`                 : `Covercrypt` user secret key
     /// - `authentication_data` : authentication data used in the DEM encryption
-    fn decrypt(
+    pub fn decrypt(
         &self,
         cover_crypt: &Covercrypt,
         usk: &UserSecretKey,
@@ -536,4 +523,21 @@ impl<
         })
         .transpose()
     }
+}
+
+pub type EncryptionHeaderAes256 = EncryptedHeader<
+    Aes256Gcm,
+    { Aes256Gcm::KEY_LENGTH },
+    { Aes256Gcm::NONCE_LENGTH },
+    { Aes256Gcm::MAC_LENGTH },
+>;
+
+pub trait CovercryptPkeAes256:
+    CovercryptPKE<
+    Aes256Gcm,
+    { Aes256Gcm::KEY_LENGTH },
+    { Aes256Gcm::NONCE_LENGTH },
+    { Aes256Gcm::MAC_LENGTH },
+>
+{
 }

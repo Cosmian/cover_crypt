@@ -37,14 +37,11 @@ pub fn policy() -> Result<Policy, Error> {
 #[cfg(test)]
 mod tests {
 
-    use cosmian_crypto_core::Aes256Gcm;
-
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
-        api::{Covercrypt, CovercryptKEM, EncryptedHeader, EncryptedHeaderEnc},
+        api::{Covercrypt, CovercryptKEM, EncryptionHeaderAes256},
     };
-    type EncryptionHeaderAes256 = EncryptedHeader<Aes256Gcm>;
 
     #[test]
     fn write_policy() {

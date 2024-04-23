@@ -2,10 +2,8 @@
 
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
-    api::{Covercrypt, EncryptedHeaderEnc},
+    api::{Covercrypt, EncryptionHeaderAes256},
 };
-use cosmian_crypto_core::Aes256Gcm;
-type EncryptionHeaderAes256 = cosmian_cover_crypt::api::EncryptedHeader<Aes256Gcm>;
 
 fn main() {
     // The first attribute axis will be a security level.
