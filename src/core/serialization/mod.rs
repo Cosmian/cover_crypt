@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
-    FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey,
+    FixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use super::{
@@ -592,7 +592,7 @@ impl Serializable for CleartextHeader {
 
     /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(self.symmetric_key.as_bytes())?;
+        let mut n = ser.write_array(self.seed.as_bytes())?;
         match &self.metadata {
             Some(bytes) => n += ser.write_vec(bytes)?,
             None => n += ser.write_vec(&[])?,
@@ -602,17 +602,14 @@ impl Serializable for CleartextHeader {
 
     /// Tries to deserialize the cleartext header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let symmetric_key = SymmetricKey::try_from_bytes(de.read_array::<SEED_LENGTH>()?)?;
+        let seed = Secret::from_unprotected_bytes(&mut de.read_array::<SEED_LENGTH>()?);
         let metadata = de.read_vec()?;
         let metadata = if metadata.is_empty() {
             None
         } else {
             Some(metadata)
         };
-        Ok(Self {
-            symmetric_key,
-            metadata,
-        })
+        Ok(Self { seed, metadata })
     }
 }
 
