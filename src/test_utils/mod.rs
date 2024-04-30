@@ -40,7 +40,7 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
-        api::{Covercrypt, CovercryptKEM, EncryptionHeaderAes256},
+        api::{Covercrypt, CovercryptKEM, EncryptedHeaderAes256},
     };
 
     #[test]
@@ -88,11 +88,11 @@ mod tests {
 
         let secret_sales_ap =
             AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
-        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            secret_sales_ap,
+            &secret_sales_ap,
             None,
             None,
         )?;
@@ -129,11 +129,11 @@ mod tests {
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
-        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap,
+            &top_secret_ap,
             None,
             None,
         )?;
@@ -182,11 +182,11 @@ mod tests {
         //
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
-        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap,
+            &top_secret_ap,
             None,
             None,
         )?;
@@ -205,11 +205,11 @@ mod tests {
         // Can not encrypt using deactivated attribute
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
 
-        assert!(EncryptionHeaderAes256::generate(
+        assert!(EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap,
+            &top_secret_ap,
             None,
             None
         )
@@ -247,11 +247,11 @@ mod tests {
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
-        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap,
+            &top_secret_ap,
             None,
             None,
         )?;
@@ -290,7 +290,7 @@ mod tests {
         let (mut msk, _) = cover_crypt.setup()?;
         let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
         let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
-        let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &policy, ap)?;
+        let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &policy, &ap)?;
         let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
@@ -343,11 +343,11 @@ mod tests {
 
         //
         // Encrypt
-        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap.clone(),
+            &top_secret_ap.clone(),
             None,
             None,
         )?;
@@ -362,11 +362,11 @@ mod tests {
 
         //
         // Encrypt with new attribute
-        let (_, encrypted_header) = EncryptionHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap.clone(),
+            &top_secret_ap.clone(),
             None,
             None,
         )?;

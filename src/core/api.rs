@@ -108,7 +108,7 @@ impl Covercrypt {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(ap.clone())?,
+            policy.generate_semantic_space_coordinates(ap)?,
         )?;
         mpk_keygen(msk)
     }
@@ -126,7 +126,7 @@ impl Covercrypt {
     ) -> Result<MasterPublicKey, Error> {
         prune(
             msk,
-            &policy.generate_semantic_space_coordinates(access_policy.clone())?,
+            &policy.generate_semantic_space_coordinates(access_policy)?,
         );
         mpk_keygen(msk)
     }
@@ -145,7 +145,7 @@ impl Covercrypt {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(access_policy.clone())?,
+            policy.generate_semantic_space_coordinates(access_policy)?,
         )
     }
 
@@ -187,7 +187,7 @@ impl Covercrypt {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(ap)?,
+            policy.generate_semantic_space_coordinates(&ap)?,
         )
     }
 }
@@ -286,7 +286,7 @@ impl<
         cover_crypt: &Covercrypt,
         policy: &Policy,
         public_key: &MasterPublicKey,
-        encryption_policy: AccessPolicy,
+        encryption_policy: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(Secret<SEED_LENGTH>, Self), Error> {
@@ -372,7 +372,7 @@ pub trait CovercryptKEM {
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>;
 
     /// Attempts opening the given encapsulation using the given
@@ -392,7 +392,7 @@ impl CovercryptKEM for Covercrypt {
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -429,7 +429,7 @@ pub trait CovercryptPKE<
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
         ad: Option<&[u8]>,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error>;
@@ -463,7 +463,7 @@ impl<
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
         ad: Option<&[u8]>,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
@@ -504,7 +504,7 @@ impl<
     }
 }
 
-pub type EncryptionHeaderAes256 = EncryptedHeader<
+pub type EncryptedHeaderAes256 = EncryptedHeader<
     Aes256Gcm,
     { Aes256Gcm::KEY_LENGTH },
     { Aes256Gcm::NONCE_LENGTH },
