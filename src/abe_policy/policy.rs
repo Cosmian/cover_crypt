@@ -192,7 +192,7 @@ impl Policy {
     /// Returns an error if the access policy is invalid.
     pub fn generate_semantic_space_coordinates(
         &self,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<HashSet<Coordinate>, Error> {
         let dnf = ap.to_dnf();
         let mut coordinates = HashSet::new();
@@ -224,7 +224,7 @@ impl Policy {
     /// Returns an error if the access policy is invalid.
     pub fn generate_point_coordinates(
         &self,
-        ap: AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<HashSet<Coordinate>, Error> {
         let dnf = ap.to_dnf();
         let mut coordinates = HashSet::with_capacity(dnf.len());
@@ -326,7 +326,7 @@ mod tests {
         let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";
 
         let semantic_space_coordinates =
-            policy.generate_semantic_space_coordinates(AccessPolicy::parse(ap)?)?;
+            policy.generate_semantic_space_coordinates(&AccessPolicy::parse(ap)?)?;
 
         // Check the number of coordinates is correct.
         assert_eq!(semantic_space_coordinates.len(), (2 + 1) * (2 + 1));
@@ -423,7 +423,7 @@ mod tests {
 
             assert_eq!(
                 policy
-                    .generate_semantic_space_coordinates(AccessPolicy::parse(ap)?)?
+                    .generate_semantic_space_coordinates(&AccessPolicy::parse(ap)?)?
                     .len(),
                 // remove (2 + 1) not to count "Security Level::Protected" -> "Security Level::Low Secret" twice
                 2 * (1 + 1) * (2 + 1) - (2 + 1)
@@ -433,7 +433,7 @@ mod tests {
                 || (Department::MKG && Security Level::Medium Secret)";
             assert_eq!(
                 policy
-                    .generate_semantic_space_coordinates(AccessPolicy::parse(ap)?)?
+                    .generate_semantic_space_coordinates(&AccessPolicy::parse(ap)?)?
                     .len(),
                 // remove (2 + 1) not to count "Security Level::Protected" -> "Security Level::Low Secret" twice
                 (1 + 1) * (2 + 1) + (1 + 1) * (3 + 1) - (2 + 1)

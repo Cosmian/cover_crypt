@@ -178,6 +178,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unnecessary_to_owned)]
     use std::collections::HashSet;
 
     use super::*;

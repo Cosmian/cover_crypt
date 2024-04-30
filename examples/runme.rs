@@ -1,6 +1,14 @@
+<<<<<<< HEAD
 use crate::{
     abe_policy::{DimensionBuilder, EncryptionHint, Policy},
     Error,
+=======
+//! This is the demo given in `README.md` and `lib.rs`
+
+use cosmian_cover_crypt::{
+    abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
+    api::{Covercrypt, EncryptedHeaderAes256},
+>>>>>>> a901c33 (fix examples and clippy warning)
 };
 
 // pub mod non_regression;
@@ -53,48 +61,63 @@ pub fn policy() -> Result<Policy, Error> {
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) =
-        EncryptionHeaderAes256::generate(&cover_crypt, &policy, &mpk, access_policy, None, None)
-            .unwrap();
+    let (_, encrypted_header) = EncryptedHeaderAes256::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy.clone(),
+        None,
+        None,
+    )
+    .unwrap();
 
     // The user is able to decrypt the encrypted header.
-    assert!(EncryptionHeaderAes256::decrypt(&encrypted_header, &cover_crypt, &usk, None).is_ok());
+    assert!(encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .unwrap()
+        .is_some());
 
     //
-    // Rekey all keys using the `Security Level::Top Secret` attribute
-    let rekey_access_policy = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
+    // Rekey the user access policy.
     let mpk = cover_crypt
-        .rekey(&rekey_access_policy, &policy, &mut msk)
+        .rekey(&access_policy, &policy, &mut msk)
         .unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
     let (_, new_encrypted_header) =
-        EncryptionHeaderAes256::generate(&cover_crypt, &policy, &mpk, enc_policy, None, None)
+        EncryptedHeaderAes256::generate(&cover_crypt, &policy, &mpk, &enc_policy, None, None)
             .unwrap();
 
     // user cannot decrypt the newly encrypted header
-    assert!(
-        EncryptionHeaderAes256::decrypt(&new_encrypted_header, &cover_crypt, &usk, None)
-            .expect("must not fail")
-            .is_none()
-    );
+    assert!(new_encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .unwrap()
+        .is_none());
 
     // refresh user secret key, do not grant old encryption access
     cover_crypt.refresh_usk(&mut usk, &mut msk, false).unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
-    assert!(
-        EncryptionHeaderAes256::decrypt(&new_encrypted_header, &cover_crypt, &usk, None).is_ok()
-    );
+    assert!(new_encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .unwrap()
+        .is_some());
 
     // But it cannot decrypt old ciphertexts
+<<<<<<< HEAD
     assert!(
         EncryptionHeaderAes256::decrypt(&encrypted_header, &cover_crypt, &usk, None)
             .expect("must not fail")
             .is_none()
     );
 >>>>>>> 94eee8d (implementing theo's comments)
+=======
+    assert!(encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .unwrap()
+        .is_none());
+>>>>>>> a901c33 (fix examples and clippy warning)
 }
 
 #[cfg(test)]
