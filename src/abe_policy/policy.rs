@@ -45,7 +45,7 @@ impl Policy {
     /// Adds the given dimension to the policy.
     /// /!\ Invalidates all previous keys and ciphers.
     pub fn add_dimension(&mut self, dim: DimensionBuilder) -> Result<(), Error> {
-        if self.dimensions.get(&dim.name).is_some() {
+        if self.dimensions.contains_key(&dim.name) {
             return Err(Error::ExistingPolicy(dim.name));
         }
 
