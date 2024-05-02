@@ -1,6 +1,3 @@
-// TODO: there seems to be a bug in the `clippy` suggestion/lint, check it out later.
-#![allow(clippy::needless_lifetimes)]
-
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     hash::Hash,
@@ -19,7 +16,6 @@ pub mod macros;
 
 pub mod api;
 pub mod primitives;
-
 #[cfg(feature = "serialization")]
 pub mod serialization;
 
@@ -30,26 +26,27 @@ mod tests;
 
 use elgamal::{EcPoint, Scalar};
 
-/// The length of the keys encapsulated by Covercrypt.
+/// The length of the secret encapsulated by Covercrypt.
 ///
 /// They are 32 bytes long to enable reaching 128 bits of post-quantum security
 /// when using it with a sensible DEM.
 pub const SEED_LENGTH: usize = 32;
 
-/// The length of the KMAC key used to sign user secret keys.
+/// The length of the key used to sign user secret keys.
 ///
 /// It is only 16-byte long because no post-quantum security is needed for
 /// now. An upgraded signature scheme can still be added later when quantum
 /// computers become available.
-const KMAC_KEY_LENGTH: usize = 16;
+const SIGNING_KEY_LENGTH: usize = 16;
 
 /// The length of the KMAC signature.
-const KMAC_SIG_LENGTH: usize = 32;
+const SIGNATURE_LENGTH: usize = 32;
 
 /// KMAC signature is used to guarantee the integrity of the user secret keys.
-type KmacSignature = [u8; KMAC_SIG_LENGTH];
+type KmacSignature = [u8; SIGNATURE_LENGTH];
 
-/// Length of the Covercrypt early abort tag
+/// Length of the Covercrypt early abort tag. 128 bits are enough since we only want collision
+/// resistance.
 const TAG_LENGTH: usize = 16;
 
 /// Covercrypt early abort tag is used during the decapsulation to verify the
@@ -62,19 +59,6 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 /// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum CoordinatePublicKey {
-    Hybridized {
-        postquantum_pk: postquantum::PublicKey,
-        elgamal_pk: EcPoint,
-    },
-    Classic {
-        elgamal_pk: EcPoint,
-    },
-}
-
-/// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
-/// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
-#[derive(Clone, Debug, PartialEq, Eq)]
 enum CoordinateSecretKey {
     Hybridized {
         postquantum_sk: postquantum::SecretKey,
@@ -82,6 +66,19 @@ enum CoordinateSecretKey {
     },
     Classic {
         elgamal_sk: Scalar,
+    },
+}
+
+/// The Covercrypt public keys hold the DH secret public key associated to a coordinate.
+/// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CoordinatePublicKey {
+    Hybridized {
+        postquantum_pk: postquantum::PublicKey,
+        elgamal_pk: EcPoint,
+    },
+    Classic {
+        elgamal_pk: EcPoint,
     },
 }
 
@@ -322,7 +319,7 @@ pub struct MasterSecretKey {
     s: Scalar,
     tsk: TracingSecretKey,
     coordinate_keypairs: RevisionMap<Coordinate, CoordinateKeypair>,
-    signing_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
+    signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
 }
 
 impl MasterSecretKey {
@@ -410,9 +407,9 @@ impl MasterSecretKey {
     }
 
     /// Returns the most recent public key associated to each coordinate.
-    fn get_latest_coordinate_pk<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (Coordinate, CoordinatePublicKey)> + 'a {
+    fn get_latest_coordinate_pk(
+        &self,
+    ) -> impl Iterator<Item = (Coordinate, CoordinatePublicKey)> + '_ {
         self.coordinate_keypairs
             .iter()
             .filter_map(|(coordinate, keypairs)| {

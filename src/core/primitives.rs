@@ -11,8 +11,8 @@ use zeroize::Zeroize;
 
 use super::{
     elgamal, postquantum, CoordinateKeypair, CoordinatePublicKey, CoordinateSecretKey,
-    KmacSignature, TracingSecretKey, KMAC_KEY_LENGTH, KMAC_SIG_LENGTH, MIN_TRACING_LEVEL,
-    SEED_LENGTH, TAG_LENGTH,
+    KmacSignature, TracingSecretKey, MIN_TRACING_LEVEL, SEED_LENGTH, SIGNATURE_LENGTH,
+    SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::{AttributeStatus, Coordinate, EncryptionHint},
@@ -51,7 +51,7 @@ fn sign_usk(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature>
                 }
             }
         }
-        let mut res = [0; KMAC_SIG_LENGTH];
+        let mut res = [0; SIGNATURE_LENGTH];
         kmac.into_xof().squeeze(&mut res);
         Some(res)
     } else {
@@ -87,7 +87,7 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
         s,
         tsk,
         coordinate_keypairs: RevisionMap::new(),
-        signing_key: Some(SymmetricKey::<KMAC_KEY_LENGTH>::new(rng)),
+        signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
     })
 }
 
