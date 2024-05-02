@@ -255,7 +255,7 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
             ));
         }
         let nonce = Nonce::try_from_slice(&ctx[..Self::NONCE_LENGTH])?;
-        let aes = Self::new(&key);
+        let aes = Self::new(key);
         aes.decrypt(&nonce, &ctx[Self::NONCE_LENGTH..], ad)
             .map_err(Error::CryptoCoreError)
     }
