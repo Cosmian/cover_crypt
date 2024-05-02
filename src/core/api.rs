@@ -1,6 +1,6 @@
 //! Defines the `Covercrypt` API.
 
-use std::{collections::HashMap, marker::PhantomData, str::FromStr, sync::Mutex};
+use std::{collections::HashMap, marker::PhantomData, sync::Mutex};
 
 use cosmian_crypto_core::{
     bytes_ser_de::Serializable,
@@ -189,11 +189,11 @@ impl Covercrypt {
         policy: &Policy,
         ap: &str,
     ) -> Result<UserSecretKey, Error> {
-        let ap = &AccessPolicy::parse(ap)?;
+        let ap = AccessPolicy::parse(ap)?;
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(ap.clone())?,
+            policy.generate_semantic_space_coordinates(ap)?,
         )
     }
 }
@@ -203,6 +203,7 @@ pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGT
     const KEY_LENGTH: usize;
     const NONCE_LENGTH: usize;
     const MAC_LENGTH: usize;
+    /// Encrypts the given plaintext `ptx` using the given `key` and the associated data `ad`.
     fn encrypt(
         key: &SymmetricKey<KEY_LENGTH>,
         ptx: &[u8],
@@ -210,7 +211,16 @@ pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGT
         rng: &mut impl CryptoRngCore,
     ) -> Result<Vec<u8>, Error>;
 
-    fn decrypt(key: &Secret<KEY_LENGTH>, ctx: &[u8], ad: Option<&[u8]>) -> Result<Vec<u8>, Error>;
+    /// Decrypts the given ciphertext `ctx` using the given `key` and associated data `ad`.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the integrity of the ciphertext could not be verified.
+    fn decrypt(
+        key: &SymmetricKey<KEY_LENGTH>,
+        ctx: &[u8],
+        ad: Option<&[u8]>,
+    ) -> Result<Vec<u8>, Error>;
 }
 
 impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for Aes256Gcm {
@@ -223,19 +233,19 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
         ad: Option<&[u8]>,
         rng: &mut impl CryptoRngCore,
     ) -> Result<Vec<u8>, Error> {
-        let nonce = &self::Nonce::<{ Self::NONCE_LENGTH }>::new(&mut *rng);
+        let nonce = self::Nonce::<{ Self::NONCE_LENGTH }>::new(&mut *rng);
         let aes = Self::new(key);
         let mut ciphertext = aes
-            .encrypt(nonce, ptx, ad)
+            .encrypt(&nonce, ptx, ad)
             .map_err(Error::CryptoCoreError)?;
-        let mut res = Vec::with_capacity(ptx.len() + Self::MAC_LENGTH + Self::NONCE_LENGTH);
-        res.extend(&Nonce::to_bytes(nonce));
+        let mut res = Vec::with_capacity(ciphertext.len() + Self::NONCE_LENGTH);
+        res.extend(nonce.to_bytes());
         res.append(&mut ciphertext);
         Ok(res)
     }
 
     fn decrypt(
-        key: &Secret<{ Self::KEY_LENGTH }>,
+        key: &SymmetricKey<{ Self::KEY_LENGTH }>,
         ctx: &[u8],
         ad: Option<&[u8]>,
     ) -> Result<Vec<u8>, Error> {
@@ -244,11 +254,9 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
                 cosmian_crypto_core::CryptoCoreError::DecryptionError,
             ));
         }
-        let sym_key = SymmetricKey::try_from_slice(key)?;
-        let nonce =
-            &Nonce::<{ Self::NONCE_LENGTH }>::try_from_slice(&ctx[..{ Self::NONCE_LENGTH }])?;
-        let aes = Self::new(&sym_key);
-        aes.decrypt(nonce, &ctx[{ Self::NONCE_LENGTH }..], ad)
+        let nonce = Nonce::try_from_slice(&ctx[..Self::NONCE_LENGTH])?;
+        let aes = Self::new(&key);
+        aes.decrypt(&nonce, &ctx[Self::NONCE_LENGTH..], ad)
             .map_err(Error::CryptoCoreError)
     }
 }
@@ -265,7 +273,7 @@ pub struct EncryptedHeader<
 > {
     pub encapsulation: Encapsulation,
     pub encrypted_metadata: Option<Vec<u8>>,
-    pub phantom: PhantomData<(E, usize, usize, usize)>,
+    pub phantom: PhantomData<E>,
 }
 
 impl<
@@ -289,7 +297,7 @@ impl<
         cover_crypt: &Covercrypt,
         policy: &Policy,
         public_key: &MasterPublicKey,
-        encryption_policy: &str,
+        encryption_policy: AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(Secret<SEED_LENGTH>, Self), Error> {
@@ -330,13 +338,13 @@ impl<
         usk: &UserSecretKey,
         authentication_data: Option<&[u8]>,
     ) -> Result<Option<CleartextHeader>, Error> {
-        CovercryptKEM::decaps(cover_crypt, usk, self.encapsulation.clone()).map(|seed| {
+        CovercryptKEM::decaps(cover_crypt, usk, &self.encapsulation).map(|seed| {
             if let Some(mut seed) = seed {
                 let metadata = self
                     .encrypted_metadata
                     .as_ref()
                     .map(|ctx| {
-                        let mut key = Secret::<KEY_LENGTH>::default();
+                        let mut key = SymmetricKey::<KEY_LENGTH>::default();
                         kdf256!(&mut key, &seed, &[0u8]);
                         E::decrypt(&key, ctx, authentication_data)
                     })
@@ -371,8 +379,8 @@ pub trait CovercryptKEM {
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: &str,
-    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>; // todo : symmetric_key or seed?
+        ap: AccessPolicy,
+    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>;
 
     /// Attempts opening the given encapsulation using the given
     /// user secret key.
@@ -382,41 +390,30 @@ pub trait CovercryptKEM {
     fn decaps(
         &self,
         usk: &UserSecretKey,
-        enc: Encapsulation,
+        enc: &Encapsulation,
     ) -> Result<Option<Secret<SEED_LENGTH>>, Error>;
 }
 
 impl CovercryptKEM for Covercrypt {
-    /// Generates an encapsulation for the given access
-    /// policy.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
     fn encaps(
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: &str,
+        ap: AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
-        let ap = &AccessPolicy::parse(ap)?;
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
-            &policy.generate_point_coordinates(ap.clone())?,
+            &policy.generate_point_coordinates(ap)?,
         )
     }
-    /// Attempts opening the given encapsulation using the given
-    /// user secret key.
-    ///
-    /// Returns the encapsulated symmetric key if the user key holds
-    /// the correct rights.
+
     fn decaps(
         &self,
         usk: &UserSecretKey,
-        encapsulation: Encapsulation,
+        encapsulation: &Encapsulation,
     ) -> Result<Option<Secret<SEED_LENGTH>>, Error> {
-        decaps(usk, &encapsulation)
+        decaps(usk, encapsulation)
     }
 }
 
@@ -429,9 +426,8 @@ pub trait CovercryptPKE<
 {
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
-    /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
-    /// key with the given authentication data to produce a DEM ciphertext of
-    /// the plaintext.
+    /// Creates a Covercrypt encapsulation of a 256-bit seed, and use it with
+    /// the given authentication data to encrypt the plaintext.
     ///
     /// # Error
     ///
@@ -440,7 +436,7 @@ pub trait CovercryptPKE<
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: &str,
+        ap: AccessPolicy,
         ad: Option<&[u8]>,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error>;
@@ -458,7 +454,7 @@ pub trait CovercryptPKE<
         &self,
         usk: &UserSecretKey,
         ad: Option<&[u8]>,
-        cyphertext: &[u8],
+        ciphertext: &[u8],
         enc: &Encapsulation,
     ) -> Result<Option<Vec<u8>>, Error>;
 }
@@ -470,44 +466,24 @@ impl<
         E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
     > CovercryptPKE<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for Covercrypt
 {
-    /// Encrypts the given plaintext using Covercrypt and the given DEM.
-    ///
-    /// Creates a Covercrypt encapsulation of a LENGTH-byte key, and use this
-    /// key with the given authentication data to produce a DEM ciphertext of
-    /// the plaintext.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
-        ap: &str,
+        ap: AccessPolicy,
         ad: Option<&[u8]>,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
-        let (seed, enc) = CovercryptKEM::encaps(self, mpk, policy, ap)?;
+        let (mut seed, enc) = CovercryptKEM::encaps(self, mpk, policy, ap)?;
         if seed.length() < KEY_LENGTH {
-            return Err(Error::KeyError(
-                String::from_str("SEED_LENGTH >= KEY_LENGTH").unwrap(),
-            ));
+            kdf256!(&mut seed, &seed)
         }
-        let sym_key = SymmetricKey::<KEY_LENGTH>::try_from_slice(&seed[..KEY_LENGTH])?;
+        let sym_key = SymmetricKey::try_from_slice(&seed[..KEY_LENGTH])?;
         let mut rng = self.rng.lock().expect("poisoned lock");
         let res = E::encrypt(&sym_key, plaintext, ad, &mut *rng)?;
         Ok((enc, res))
     }
 
-    /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
-    ///
-    /// Attempts opening the Covercrypt encapsulation. If it succeeds, decrypts
-    /// the ciphertext using the DEM with the encapsulated key and the given
-    /// authentication data. Returns ‘None‘ otherwise.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
     fn decrypt(
         &self,
         usk: &UserSecretKey,
@@ -515,9 +491,9 @@ impl<
         ciphertext: &[u8],
         enc: &Encapsulation,
     ) -> Result<Option<Vec<u8>>, Error> {
-        let seed = CovercryptKEM::decaps(self, usk, enc.clone())?;
+        let seed = CovercryptKEM::decaps(self, usk, enc)?;
         seed.map(|seed| {
-            let mut sym_key = Secret::<KEY_LENGTH>::default();
+            let mut sym_key = SymmetricKey::<KEY_LENGTH>::default();
             kdf256!(&mut sym_key, &seed);
             E::decrypt(&sym_key, ciphertext, ad)
         })

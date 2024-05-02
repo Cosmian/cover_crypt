@@ -12,11 +12,12 @@ fn generate_new(
     _msk: &mut MasterSecretKey,
     mpk: &MasterPublicKey,
 ) {
-    let access_policy = "Department::FIN && Security Level::Top Secret";
-    let access_policy_parsed = &AccessPolicy::parse(access_policy).expect("cannot parse policy!");
+    let access_policy =
+        AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
-    let (_, _header) = EncryptionHeaderAes256::generate(cc, policy, mpk, access_policy, None, None)
-        .expect("cannot encrypt header");
+    let (_, _header) =
+        EncryptionHeaderAes256::generate(cc, policy, mpk, access_policy.clone(), None, None)
+            .expect("cannot encrypt header");
 
     #[cfg(feature = "serialization")]
     {
@@ -32,7 +33,7 @@ fn generate_new(
         println!(
             "USK = {}",
             transcoder.encode(
-                cc.generate_user_secret_key(_msk, access_policy_parsed, policy)
+                cc.generate_user_secret_key(_msk, &access_policy, policy)
                     .unwrap()
                     .serialize()
                     .unwrap()
@@ -47,7 +48,7 @@ fn generate_new(
 
 fn main() {
     let policy = policy().expect("cannot generate policy");
-    let ap = "Department::FIN && Security Level::Top Secret";
+    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
@@ -59,7 +60,7 @@ fn main() {
 
     // Encrypt header, use loop to increase its wight in the flame graph.
     for _ in 0..1000 {
-        EncryptionHeaderAes256::generate(&cc, &policy, &mpk, ap, None, None)
+        EncryptionHeaderAes256::generate(&cc, &policy, &mpk, ap.clone(), None, None)
             .expect("cannot encrypt header");
     }
 }

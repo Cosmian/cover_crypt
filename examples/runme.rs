@@ -47,10 +47,10 @@ fn main() {
 
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).
-    let access_policy = "Security Level::Top Secret && Department::FIN";
-    let access_policy_parsed = AccessPolicy::parse(access_policy).unwrap();
+    let access_policy =
+        AccessPolicy::parse("Security Level::Top Secret && Department::FIN").unwrap();
     let mut usk = cover_crypt
-        .generate_user_secret_key(&mut msk, &access_policy_parsed, &policy)
+        .generate_user_secret_key(&mut msk, &access_policy, &policy)
         .unwrap();
 
     // Encrypt
@@ -68,16 +68,11 @@ fn main() {
         .rekey(&rekey_access_policy, &policy, &mut msk)
         .unwrap();
 
+    let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
-    let (_, new_encrypted_header) = EncryptionHeaderAes256::generate(
-        &cover_crypt,
-        &policy,
-        &mpk,
-        "Security Level::Top Secret",
-        None,
-        None,
-    )
-    .unwrap();
+    let (_, new_encrypted_header) =
+        EncryptionHeaderAes256::generate(&cover_crypt, &policy, &mpk, enc_policy, None, None)
+            .unwrap();
 
     // user cannot decrypt the newly encrypted header
     assert!(

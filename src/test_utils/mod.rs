@@ -49,8 +49,8 @@ mod tests {
         std::fs::write("target/policy.json", serde_json::to_vec(&_policy).unwrap()).unwrap();
     }
 
-    // Read policy from a file. Assert `LegacyPolicy` is convertible into a
-    // `Policy`.
+    /// Read policy from a file. Assert `LegacyPolicy` is convertible into a
+    /// `Policy`.
     #[test]
     fn read_policy() {
         // Can read a `Policy` V2
@@ -86,7 +86,8 @@ mod tests {
         )?;
         let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
-        let secret_sales_ap = "Security Level::Low Secret && Department::Sales";
+        let secret_sales_ap =
+            AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
         let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
@@ -127,7 +128,7 @@ mod tests {
             cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
 
         // Encrypt
-        let top_secret_ap = "Security Level::Top Secret && Department::FIN";
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
@@ -180,7 +181,7 @@ mod tests {
 
         //
         // Encrypt
-        let top_secret_ap = "Security Level::Top Secret && Department::FIN";
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
@@ -202,7 +203,7 @@ mod tests {
             .is_some());
 
         // Can not encrypt using deactivated attribute
-        let top_secret_ap = "Security Level::Top Secret && Department::FIN";
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
 
         assert!(EncryptionHeaderAes256::generate(
             &cover_crypt,
@@ -245,7 +246,7 @@ mod tests {
             cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
 
         // Encrypt
-        let top_secret_ap = "Security Level::Top Secret && Department::FIN";
+        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let (_, encrypted_header) = EncryptionHeaderAes256::generate(
             &cover_crypt,
             &policy,
@@ -288,13 +289,10 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
         let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
-        let (sym_key, encrypted_key) = cover_crypt.encaps(
-            &mpk,
-            &policy,
-            "Department::MKG && Security Level::Top Secret",
-        )?;
+        let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
+        let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &policy, ap)?;
         let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
-        let recovered_key = cover_crypt.decaps(&usk, encrypted_key)?;
+        let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
         Ok(())
     }
@@ -327,7 +325,7 @@ mod tests {
         //
         // Declare policy
         let policy = policy()?;
-        let top_secret_ap = "Security Level::Top Secret";
+        let top_secret_ap = &AccessPolicy::parse("Security Level::Top Secret")?;
 
         //
         // Setup Covercrypt
@@ -349,7 +347,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap,
+            top_secret_ap.clone(),
             None,
             None,
         )?;
@@ -368,7 +366,7 @@ mod tests {
             &cover_crypt,
             &policy,
             &mpk,
-            top_secret_ap,
+            top_secret_ap.clone(),
             None,
             None,
         )?;
