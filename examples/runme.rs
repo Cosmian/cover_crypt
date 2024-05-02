@@ -29,9 +29,72 @@ pub fn policy() -> Result<Policy, Error> {
         false,
     );
     let mut policy = Policy::new();
+<<<<<<< HEAD
     policy.add_dimension(sec_level)?;
     policy.add_dimension(department)?;
     Ok(policy)
+=======
+
+    // Add the two generated axes to the policy
+    policy.add_dimension(sec_level).unwrap();
+    policy.add_dimension(department).unwrap();
+
+    // Setup Covercrypt and generate master keys
+    let cover_crypt = Covercrypt::default();
+    let (mut msk, _) = cover_crypt.setup().unwrap();
+    let mpk = cover_crypt.update_master_keys(&policy, &mut msk).unwrap();
+
+    // The user has a security clearance `Security Level::Top Secret`,
+    // and belongs to the finance department (`Department::FIN`).
+    let access_policy =
+        AccessPolicy::parse("Security Level::Top Secret && Department::FIN").unwrap();
+    let mut usk = cover_crypt
+        .generate_user_secret_key(&mut msk, &access_policy, &policy)
+        .unwrap();
+
+    // Encrypt
+    let (_, encrypted_header) =
+        EncryptionHeaderAes256::generate(&cover_crypt, &policy, &mpk, access_policy, None, None)
+            .unwrap();
+
+    // The user is able to decrypt the encrypted header.
+    assert!(EncryptionHeaderAes256::decrypt(&encrypted_header, &cover_crypt, &usk, None).is_ok());
+
+    //
+    // Rekey all keys using the `Security Level::Top Secret` attribute
+    let rekey_access_policy = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
+    let mpk = cover_crypt
+        .rekey(&rekey_access_policy, &policy, &mut msk)
+        .unwrap();
+
+    let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
+    // Encrypt with rotated attribute
+    let (_, new_encrypted_header) =
+        EncryptionHeaderAes256::generate(&cover_crypt, &policy, &mpk, enc_policy, None, None)
+            .unwrap();
+
+    // user cannot decrypt the newly encrypted header
+    assert!(
+        EncryptionHeaderAes256::decrypt(&new_encrypted_header, &cover_crypt, &usk, None)
+            .expect("must not fail")
+            .is_none()
+    );
+
+    // refresh user secret key, do not grant old encryption access
+    cover_crypt.refresh_usk(&mut usk, &mut msk, false).unwrap();
+
+    // The user with refreshed key is able to decrypt the newly encrypted header.
+    assert!(
+        EncryptionHeaderAes256::decrypt(&new_encrypted_header, &cover_crypt, &usk, None).is_ok()
+    );
+
+    // But it cannot decrypt old ciphertexts
+    assert!(
+        EncryptionHeaderAes256::decrypt(&encrypted_header, &cover_crypt, &usk, None)
+            .expect("must not fail")
+            .is_none()
+    );
+>>>>>>> 94eee8d (implementing theo's comments)
 }
 
 #[cfg(test)]

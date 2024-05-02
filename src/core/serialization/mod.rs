@@ -539,7 +539,7 @@ impl<
         const KEY_LENGTH: usize,
         const NONCE_LENGTH: usize,
         const MAC_LENGTH: usize,
-    > Serializable for EncryptedHeader<E, { KEY_LENGTH }, { NONCE_LENGTH }, { MAC_LENGTH }>
+    > Serializable for EncryptedHeader<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>
 {
     type Error = Error;
 
@@ -599,7 +599,7 @@ impl Serializable for CleartextHeader {
 
     /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.seed[..{ SEED_LENGTH }])?;
+        let mut n = ser.write_array(&self.seed[..SEED_LENGTH])?;
         match &self.metadata {
             Some(bytes) => n += ser.write_vec(bytes)?,
             None => n += ser.write_vec(&[])?,
