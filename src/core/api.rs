@@ -327,27 +327,28 @@ impl<
         usk: &UserSecretKey,
         authentication_data: Option<&[u8]>,
     ) -> Result<Option<CleartextHeader>, Error> {
-        let seed = cover_crypt.decaps(usk, &self.encapsulation)?;
-        seed.map(|seed| {
-            let metadata = self
-                .encrypted_metadata
-                .as_ref()
-                .map(|ctx| {
-                    let mut key = SymmetricKey::<KEY_LENGTH>::default();
-                    kdf256!(&mut key, &seed, &[0u8]);
-                    E::decrypt(&key, ctx, authentication_data)
+        cover_crypt
+            .decaps(usk, &self.encapsulation)?
+            .map(|seed| {
+                let metadata = self
+                    .encrypted_metadata
+                    .as_ref()
+                    .map(|ctx| {
+                        let mut key = SymmetricKey::<KEY_LENGTH>::default();
+                        kdf256!(&mut key, &seed, &[0u8]);
+                        E::decrypt(&key, ctx, authentication_data)
+                    })
+                    .transpose()?;
+
+                let mut new_seed = Secret::<SEED_LENGTH>::default();
+                kdf256!(&mut new_seed, &seed, &[1u8]);
+
+                Ok(CleartextHeader {
+                    seed: new_seed,
+                    metadata,
                 })
-                .transpose()?;
-
-            let mut new_seed = Secret::<SEED_LENGTH>::default();
-            kdf256!(&mut new_seed, &seed, &[1u8]);
-
-            Ok(CleartextHeader {
-                seed: new_seed,
-                metadata,
             })
-        })
-        .transpose()
+            .transpose()
     }
 }
 
