@@ -171,25 +171,6 @@ impl Covercrypt {
             keep_old_rights,
         )
     }
-
-    /// Generate a user secret key with the given rights.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
-    pub fn keygen(
-        &self,
-        msk: &mut MasterSecretKey,
-        policy: &Policy,
-        ap: &str,
-    ) -> Result<UserSecretKey, Error> {
-        let ap = AccessPolicy::parse(ap)?;
-        usk_keygen(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            policy.generate_semantic_space_coordinates(&ap)?,
-        )
-    }
 }
 
 /// Authenticated Encryption trait
