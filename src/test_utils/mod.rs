@@ -40,7 +40,7 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
-        api::{Covercrypt, CovercryptKEM, EncryptedHeaderAes256},
+        api::{Covercrypt, CovercryptKEM, EncryptedHeader},
     };
 
     #[test]
@@ -88,14 +88,8 @@ mod tests {
 
         let secret_sales_ap =
             AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
-        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
-            &cover_crypt,
-            &policy,
-            &mpk,
-            &secret_sales_ap,
-            None,
-            None,
-        )?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &secret_sales_ap, None, None)?;
 
         // User cannot decrypt new message without refreshing its key
         assert!(encrypted_header
@@ -129,14 +123,8 @@ mod tests {
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
-        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
-            &cover_crypt,
-            &policy,
-            &mpk,
-            &top_secret_ap,
-            None,
-            None,
-        )?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
         policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
@@ -182,14 +170,8 @@ mod tests {
         //
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
-        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
-            &cover_crypt,
-            &policy,
-            &mpk,
-            &top_secret_ap,
-            None,
-            None,
-        )?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
         policy.disable_attribute(&Attribute::new("Department", "FIN"))?;
@@ -205,15 +187,10 @@ mod tests {
         // Can not encrypt using deactivated attribute
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
 
-        assert!(EncryptedHeaderAes256::generate(
-            &cover_crypt,
-            &policy,
-            &mpk,
-            &top_secret_ap,
-            None,
-            None
-        )
-        .is_err());
+        assert!(
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)
+                .is_err()
+        );
 
         // refresh the user key and preserve access to old coordinates
         cover_crypt.refresh_usk(&mut top_secret_fin_usk, &mut msk, true)?;
@@ -247,14 +224,8 @@ mod tests {
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
-        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
-            &cover_crypt,
-            &policy,
-            &mpk,
-            &top_secret_ap,
-            None,
-            None,
-        )?;
+        let (_, encrypted_header) =
+            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
         policy.rename_attribute(&Attribute::new("Department", "FIN"), "Finance".to_string())?;
@@ -343,7 +314,7 @@ mod tests {
 
         //
         // Encrypt
-        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
             &policy,
             &mpk,
@@ -362,7 +333,7 @@ mod tests {
 
         //
         // Encrypt with new attribute
-        let (_, encrypted_header) = EncryptedHeaderAes256::generate(
+        let (_, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
             &policy,
             &mpk,

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex};
 
 use cosmian_crypto_core::{
     kdf256,
@@ -174,52 +174,34 @@ impl Covercrypt {
 }
 
 /// Authenticated Encryption trait
-pub trait AE<const KEY_LENGTH: usize, const NONCE_LENGTH: usize, const MAC_LENGTH: usize> {
-    const KEY_LENGTH: usize;
-    const NONCE_LENGTH: usize;
-    const MAC_LENGTH: usize;
-
-    /// Encrypts the given plaintext `ptx` using the given `key` and the associated data `ad`.
+pub trait AE<const KEY_LENGTH: usize> {
+    /// Encrypts the given plaintext `ptx` using the given `key`.
     fn encrypt(
         key: &SymmetricKey<KEY_LENGTH>,
         ptx: &[u8],
-        ad: Option<&[u8]>,
         rng: &mut impl CryptoRngCore,
     ) -> Result<Vec<u8>, Error>;
 
-    /// Decrypts the given ciphertext `ctx` using the given `key` and associated data `ad`.
+    /// Decrypts the given ciphertext `ctx` using the given `key`.
     ///
     /// # Error
     ///
     /// Returns an error if the integrity of the ciphertext could not be verified.
-    fn decrypt(
-        key: &SymmetricKey<KEY_LENGTH>,
-        ctx: &[u8],
-        ad: Option<&[u8]>,
-    ) -> Result<Vec<u8>, Error>;
+    fn decrypt(key: &SymmetricKey<KEY_LENGTH>, ctx: &[u8]) -> Result<Vec<u8>, Error>;
 }
 
-impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for Aes256Gcm {
-    const KEY_LENGTH: usize = Aes256Gcm::KEY_LENGTH;
-    const MAC_LENGTH: usize = Aes256Gcm::MAC_LENGTH;
-    const NONCE_LENGTH: usize = Aes256Gcm::NONCE_LENGTH;
-
+impl AE<{ Self::KEY_LENGTH }> for Aes256Gcm {
     fn encrypt(
         key: &SymmetricKey<{ Self::KEY_LENGTH }>,
         ptx: &[u8],
-        ad: Option<&[u8]>,
         rng: &mut impl CryptoRngCore,
     ) -> Result<Vec<u8>, Error> {
         let nonce = Nonce::<{ Self::NONCE_LENGTH }>::new(&mut *rng);
-        let ciphertext = Self::new(key).encrypt(&nonce, ptx, ad)?;
+        let ciphertext = Self::new(key).encrypt(&nonce, ptx, None)?;
         Ok([nonce.as_bytes(), &ciphertext].concat())
     }
 
-    fn decrypt(
-        key: &SymmetricKey<{ Self::KEY_LENGTH }>,
-        ctx: &[u8],
-        ad: Option<&[u8]>,
-    ) -> Result<Vec<u8>, Error> {
+    fn decrypt(key: &SymmetricKey<{ Self::KEY_LENGTH }>, ctx: &[u8]) -> Result<Vec<u8>, Error> {
         if ctx.len() < Self::NONCE_LENGTH {
             return Err(Error::CryptoCoreError(
                 cosmian_crypto_core::CryptoCoreError::DecryptionError,
@@ -227,32 +209,20 @@ impl AE<{ Self::KEY_LENGTH }, { Self::NONCE_LENGTH }, { Self::MAC_LENGTH }> for 
         }
         let nonce = Nonce::try_from_slice(&ctx[..Self::NONCE_LENGTH])?;
         Self::new(key)
-            .decrypt(&nonce, &ctx[Self::NONCE_LENGTH..], ad)
+            .decrypt(&nonce, &ctx[Self::NONCE_LENGTH..], None)
             .map_err(Error::CryptoCoreError)
     }
 }
 
-/// Encrypted header holding a `Covercrypt` encapsulation of a `SEED_LENGTH`-byte seed, and metadata
-/// encrypted under the scheme `E` using a key derived from the encapsulated seed.
+/// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte seed, and metadata
+/// encrypted under the scheme AES256Gcm using a key derived from the encapsulated seed.
 #[derive(Debug, PartialEq, Eq)]
-pub struct EncryptedHeader<
-    E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
-    const KEY_LENGTH: usize,
-    const NONCE_LENGTH: usize,
-    const MAC_LENGTH: usize,
-> {
+pub struct EncryptedHeader {
     pub encapsulation: Encapsulation,
     pub encrypted_metadata: Option<Vec<u8>>,
-    pub phantom: PhantomData<E>,
 }
 
-impl<
-        const KEY_LENGTH: usize,
-        const NONCE_LENGTH: usize,
-        const MAC_LENGTH: usize,
-        E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
-    > EncryptedHeader<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>
-{
+impl EncryptedHeader {
     /// Generates an encrypted header for a random seed and the given metadata.
     /// Returns the encrypted header along with the encapsulated seed.
     ///
@@ -275,10 +245,12 @@ impl<
 
         let encrypted_metadata = metadata
             .map(|bytes| {
-                let mut key = SymmetricKey::<KEY_LENGTH>::default();
+                let mut key = SymmetricKey::<{ Aes256Gcm::KEY_LENGTH }>::default();
                 kdf256!(&mut key, &seed, &[0u8]);
                 let mut rng = cover_crypt.rng.lock().expect("poisoned lock");
-                E::encrypt(&key, bytes, authentication_data, &mut *rng)
+                let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *rng);
+                let aes = Aes256Gcm::new(&key);
+                aes.encrypt(&nonce, bytes, authentication_data)
             })
             .transpose()?;
 
@@ -292,11 +264,9 @@ impl<
             Self {
                 encapsulation,
                 encrypted_metadata,
-                phantom: PhantomData,
             },
         ))
     }
-
 
     /// Decrypts the header with the given user secret key.
     ///
@@ -316,9 +286,12 @@ impl<
                     .encrypted_metadata
                     .as_ref()
                     .map(|ctx| {
-                        let mut key = SymmetricKey::<KEY_LENGTH>::default();
+                        let mut key = SymmetricKey::<{ Aes256Gcm::KEY_LENGTH }>::default();
                         kdf256!(&mut key, &seed, &[0u8]);
-                        E::decrypt(&key, ctx, authentication_data)
+                        let mut rng = cover_crypt.rng.lock().expect("poisoned lock");
+                        let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *rng);
+                        let aes = Aes256Gcm::new(&key);
+                        aes.decrypt(&nonce, ctx, authentication_data)
                     })
                     .transpose()?;
 
@@ -393,13 +366,7 @@ impl CovercryptKEM for Covercrypt {
     }
 }
 
-pub trait CovercryptPKE<
-    Aead,
-    const KEY_LENGTH: usize,
-    const NONCE_LENGTH: usize,
-    const MAC_LENGTH: usize,
->
-{
+pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
     /// Creates a Covercrypt encapsulation of a 256-bit seed, and use it with
@@ -413,7 +380,6 @@ pub trait CovercryptPKE<
         mpk: &MasterPublicKey,
         policy: &Policy,
         ap: &AccessPolicy,
-        ad: Option<&[u8]>,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error>;
 
@@ -429,30 +395,22 @@ pub trait CovercryptPKE<
     fn decrypt(
         &self,
         usk: &UserSecretKey,
-        ad: Option<&[u8]>,
         ciphertext: &[u8],
         enc: &Encapsulation,
     ) -> Result<Option<Vec<u8>>, Error>;
 }
 
-impl<
-        const KEY_LENGTH: usize,
-        const NONCE_LENGTH: usize,
-        const MAC_LENGTH: usize,
-        E: AE<KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH>,
-    > CovercryptPKE<E, KEY_LENGTH, NONCE_LENGTH, MAC_LENGTH> for Covercrypt
-{
+impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> for Covercrypt {
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
         policy: &Policy,
         ap: &AccessPolicy,
-        ad: Option<&[u8]>,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
         if SEED_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
-                "inssufficient entropy to generate a {}-byte key from a {}-byte seed",
+                "insufficient entropy to generate a {}-byte key from a {}-byte seed",
                 KEY_LENGTH, SEED_LENGTH
             )));
         }
@@ -460,20 +418,19 @@ impl<
         let mut sym_key = SymmetricKey::default();
         kdf256!(&mut sym_key, &seed);
         let mut rng = self.rng.lock().expect("poisoned lock");
-        let res = E::encrypt(&sym_key, plaintext, ad, &mut *rng)?;
+        let res = E::encrypt(&sym_key, plaintext, &mut *rng)?;
         Ok((enc, res))
     }
 
     fn decrypt(
         &self,
         usk: &UserSecretKey,
-        ad: Option<&[u8]>,
         ciphertext: &[u8],
         enc: &Encapsulation,
     ) -> Result<Option<Vec<u8>>, Error> {
         if SEED_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
-                "inssufficient entropy to generate a {}-byte key from a {}-byte seed",
+                "insufficient entropy to generate a {}-byte key from a {}-byte seed",
                 KEY_LENGTH, SEED_LENGTH
             )));
         }
@@ -481,25 +438,8 @@ impl<
         seed.map(|seed| {
             let mut sym_key = SymmetricKey::<KEY_LENGTH>::default();
             kdf256!(&mut sym_key, &seed);
-            E::decrypt(&sym_key, ciphertext, ad)
+            E::decrypt(&sym_key, ciphertext)
         })
         .transpose()
     }
-}
-
-pub type EncryptedHeaderAes256 = EncryptedHeader<
-    Aes256Gcm,
-    { Aes256Gcm::KEY_LENGTH },
-    { Aes256Gcm::NONCE_LENGTH },
-    { Aes256Gcm::MAC_LENGTH },
->;
-
-pub trait CovercryptPkeAes256:
-    CovercryptPKE<
-    Aes256Gcm,
-    { Aes256Gcm::KEY_LENGTH },
-    { Aes256Gcm::NONCE_LENGTH },
-    { Aes256Gcm::MAC_LENGTH },
->
-{
 }

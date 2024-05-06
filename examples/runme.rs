@@ -2,7 +2,7 @@
 
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
-    api::{Covercrypt, EncryptedHeaderAes256},
+    api::{Covercrypt, EncryptedHeader},
 };
 
 fn main() {
@@ -54,7 +54,7 @@ fn main() {
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) = EncryptedHeaderAes256::generate(
+    let (_, encrypted_header) = EncryptedHeader::generate(
         &cover_crypt,
         &policy,
         &mpk,
@@ -79,8 +79,7 @@ fn main() {
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
     let (_, new_encrypted_header) =
-        EncryptedHeaderAes256::generate(&cover_crypt, &policy, &mpk, &enc_policy, None, None)
-            .unwrap();
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &enc_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
     assert!(new_encrypted_header

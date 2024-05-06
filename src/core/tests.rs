@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AttributeStatus, Coordinate, EncryptionHint},
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
+    api::{Covercrypt, CovercryptPKE},
     core::primitives::{decaps, encaps, mpk_keygen, refresh, rekey, update_coordinate_keys},
+    test_utils::policy,
 };
 
 use super::{
@@ -244,4 +246,33 @@ fn test_integrity_check() {
     let mut new_forged_usk = old_forged_usk.clone();
     assert!(refresh(&mut rng, &mut msk, &mut new_forged_usk, true).is_err());
     assert_eq!(new_forged_usk, old_forged_usk);
+}
+
+#[test]
+fn test_pke() {
+    let policy = policy().expect("cannot generate policy");
+    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
+
+    let cc = Covercrypt::default();
+    let (mut msk, _) = cc.setup().expect("cannot generate master keys");
+    let mpk = cc
+        .update_master_keys(&policy, &mut msk)
+        .expect("cannot update master keys");
+    let ptx = "testing encryption/decryption".as_bytes();
+
+    let (enc, ctx) = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::encrypt(
+        &cc, &mpk, &policy, &ap, ptx,
+    )
+    .expect("cannot encrypt!");
+    let usk = cc
+        .generate_user_secret_key(&mut msk, &ap, &policy)
+        .expect("cannot generate usk");
+    let ptx1 = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(
+        &cc,
+        &usk,
+        ctx.as_slice(),
+        &enc,
+    )
+    .expect("cannot decrypt the ciphertext");
+    assert_eq!(ptx, ptx1.unwrap());
 }
