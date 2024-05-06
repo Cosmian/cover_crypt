@@ -1,6 +1,6 @@
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Policy},
-    api::{Covercrypt, EncryptedHeaderAes256},
+    api::{Covercrypt, EncryptedHeader},
     test_utils::policy,
     MasterPublicKey, MasterSecretKey,
 };
@@ -15,7 +15,7 @@ fn generate_new(
     let access_policy =
         AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
-    let (_, _header) = EncryptedHeaderAes256::generate(cc, policy, mpk, &access_policy, None, None)
+    let (_, _header) = EncryptedHeader::generate(cc, policy, mpk, &access_policy, None, None)
         .expect("cannot encrypt header");
 
     #[cfg(feature = "serialization")]
@@ -59,7 +59,7 @@ fn main() {
 
     // Encrypt header, use loop to increase its wight in the flame graph.
     for _ in 0..100 {
-        EncryptedHeaderAes256::generate(&cc, &policy, &mpk, &ap, None, None)
+        EncryptedHeader::generate(&cc, &policy, &mpk, &ap, None, None)
             .expect("cannot encrypt header");
     }
 }
