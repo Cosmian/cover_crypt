@@ -1,6 +1,7 @@
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Policy},
-    api::{Covercrypt, EncryptedHeader},
+    api::Covercrypt,
+    core::EncryptedHeader,
     test_utils::policy,
     MasterPublicKey, MasterSecretKey,
 };
