@@ -381,6 +381,7 @@ impl<
         ))
     }
 
+
     /// Decrypts the header with the given user secret key.
     ///
     /// - `cover_crypt`         : `Covercrypt` object
