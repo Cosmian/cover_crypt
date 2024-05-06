@@ -1,8 +1,8 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
 use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Attribute, DimensionBuilder, EncryptionHint, Policy},
-    Covercrypt, EncryptedHeader,
+    abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
+    api::{Covercrypt, EncryptedHeader},
 };
 
 fn main() {
@@ -54,27 +54,38 @@ fn main() {
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy, None, None).unwrap();
+    let (_, encrypted_header) = EncryptedHeader::generate(
+        &cover_crypt,
+        &policy,
+        &mpk,
+        &access_policy.clone(),
+        None,
+        None,
+    )
+    .unwrap();
 
     // The user is able to decrypt the encrypted header.
-    assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_ok());
+    assert!(encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .unwrap()
+        .is_some());
 
     //
-    // Rekey all keys using the `Security Level::Top Secret` attribute
-    let rekey_access_policy = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
+    // Rekey the user access policy.
     let mpk = cover_crypt
-        .rekey(&rekey_access_policy, &policy, &mut msk)
+        .rekey(&access_policy, &policy, &mut msk)
         .unwrap();
 
+    let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
     let (_, new_encrypted_header) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &access_policy, None, None).unwrap();
+        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &enc_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
     assert!(new_encrypted_header
         .decrypt(&cover_crypt, &usk, None)
-        .is_err());
+        .unwrap()
+        .is_none());
 
     // refresh user secret key, do not grant old encryption access
     cover_crypt.refresh_usk(&mut usk, &mut msk, false).unwrap();
@@ -82,8 +93,12 @@ fn main() {
     // The user with refreshed key is able to decrypt the newly encrypted header.
     assert!(new_encrypted_header
         .decrypt(&cover_crypt, &usk, None)
-        .is_ok());
+        .unwrap()
+        .is_some());
 
     // But it cannot decrypt old ciphertexts
-    assert!(encrypted_header.decrypt(&cover_crypt, &usk, None).is_err());
+    assert!(encrypted_header
+        .decrypt(&cover_crypt, &usk, None)
+        .unwrap()
+        .is_none());
 }

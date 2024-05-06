@@ -1,6 +1,6 @@
 //! Defines useful macros.
 
-pub use cosmian_crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
+pub use cosmian_crypto_core::{RandomFixedSizeCBytes, Secret};
 pub use tiny_keccak::{Hasher, Shake, Xof};
 
 /// Hashes and extends the given bytes into a tag of size `TAG_LENGTH` and a
@@ -21,10 +21,10 @@ macro_rules! eakem_hash {
                 <$crate::core::macros::Shake as $crate::core::macros::Hasher>::update(&mut hasher, $bytes);
             )*
             let mut tag = [0; $TAG_LENGTH];
-            let mut key = $crate::core::macros::SymmetricKey::try_from_bytes([0; $KEY_LENGTH])?;
+            let mut seed = $crate::core::macros::Secret::<$KEY_LENGTH>::default();
             <$crate::core::macros::Shake as $crate::core::macros::Xof>::squeeze(&mut hasher, &mut tag);
-            <$crate::core::macros::Shake as $crate::core::macros::Hasher>::finalize(hasher, &mut key);
-            Ok((tag, key))
+            <$crate::core::macros::Shake as $crate::core::macros::Hasher>::finalize(hasher, &mut seed);
+            Ok((tag, seed))
         }
     };
 }

@@ -1,7 +1,8 @@
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, Policy},
+    api::{Covercrypt, EncryptedHeader},
     test_utils::policy,
-    Covercrypt, EncryptedHeader, MasterPublicKey, MasterSecretKey,
+    MasterPublicKey, MasterSecretKey,
 };
 
 /// Generates a new USK and encrypted header and prints them.
@@ -46,8 +47,7 @@ fn generate_new(
 
 fn main() {
     let policy = policy().expect("cannot generate policy");
-    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret")
-        .expect("cannot parse given access policy");
+    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
@@ -58,7 +58,7 @@ fn main() {
     generate_new(&cc, &policy, &mut msk, &mpk);
 
     // Encrypt header, use loop to increase its wight in the flame graph.
-    for _ in 0..1000 {
+    for _ in 0..100 {
         EncryptedHeader::generate(&cc, &policy, &mpk, &ap, None, None)
             .expect("cannot encrypt header");
     }

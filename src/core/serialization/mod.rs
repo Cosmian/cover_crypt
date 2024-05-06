@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
     bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
-    FixedSizeCBytes, SymmetricKey,
+    FixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use super::{
@@ -20,8 +20,11 @@ use crate::{
         SEED_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
-    CleartextHeader, EncryptedHeader, Error,
+    Error,
 };
+
+use crate::api::CleartextHeader;
+use crate::api::EncryptedHeader;
 
 impl Serializable for TracingPublicKey {
     type Error = Error;
@@ -587,7 +590,7 @@ impl Serializable for CleartextHeader {
 
     /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.symmetric_key)?;
+        let mut n = ser.write_array(&self.seed[..SEED_LENGTH])?;
         match &self.metadata {
             Some(bytes) => n += ser.write_vec(bytes)?,
             None => n += ser.write_vec(&[])?,
@@ -597,17 +600,14 @@ impl Serializable for CleartextHeader {
 
     /// Tries to deserialize the cleartext header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let symmetric_key = SymmetricKey::try_from_bytes(de.read_array::<SEED_LENGTH>()?)?;
+        let seed = Secret::from_unprotected_bytes(&mut de.read_array::<SEED_LENGTH>()?);
         let metadata = de.read_vec()?;
         let metadata = if metadata.is_empty() {
             None
         } else {
             Some(metadata)
         };
-        Ok(Self {
-            symmetric_key,
-            metadata,
-        })
+        Ok(Self { seed, metadata })
     }
 }
 

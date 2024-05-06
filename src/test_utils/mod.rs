@@ -40,7 +40,7 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
-        Covercrypt, EncryptedHeader,
+        api::{Covercrypt, CovercryptKEM, EncryptedHeader},
     };
 
     #[test]
@@ -260,11 +260,8 @@ mod tests {
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
         let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
-        let (sym_key, encrypted_key) = cover_crypt.encaps(
-            &policy,
-            &mpk,
-            AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?,
-        )?;
+        let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
+        let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &policy, &ap)?;
         let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
@@ -299,7 +296,7 @@ mod tests {
         //
         // Declare policy
         let policy = policy()?;
-        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret")?;
+        let top_secret_ap = &AccessPolicy::parse("Security Level::Top Secret")?;
 
         //
         // Setup Covercrypt
@@ -317,8 +314,14 @@ mod tests {
 
         //
         // Encrypt
-        let (_, encrypted_header) =
-            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
+        let (_, encrypted_header) = EncryptedHeader::generate(
+            &cover_crypt,
+            &policy,
+            &mpk,
+            &top_secret_ap.clone(),
+            None,
+            None,
+        )?;
 
         let _plaintext_header =
             encrypted_header.decrypt(&cover_crypt, &top_secret_fin_usk, None)?;
@@ -330,8 +333,14 @@ mod tests {
 
         //
         // Encrypt with new attribute
-        let (_, encrypted_header) =
-            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &top_secret_ap, None, None)?;
+        let (_, encrypted_header) = EncryptedHeader::generate(
+            &cover_crypt,
+            &policy,
+            &mpk,
+            &top_secret_ap.clone(),
+            None,
+            None,
+        )?;
 
         // Decryption fails without refreshing the user key
         assert!(encrypted_header
