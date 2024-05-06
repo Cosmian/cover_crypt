@@ -13,8 +13,9 @@ use crate::{
 
 #[macro_use]
 pub mod macros;
-
+pub mod ae;
 pub mod api;
+mod encrypted_header;
 pub mod primitives;
 #[cfg(feature = "serialization")]
 pub mod serialization;
@@ -25,6 +26,7 @@ mod postquantum;
 mod tests;
 
 use elgamal::{EcPoint, Scalar};
+pub use encrypted_header::{CleartextHeader, EncryptedHeader};
 
 /// The length of the secret encapsulated by Covercrypt.
 ///

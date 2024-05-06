@@ -2,7 +2,8 @@
 
 use cosmian_cover_crypt::{
     abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
-    api::{Covercrypt, EncryptedHeader},
+    api::Covercrypt,
+    core::EncryptedHeader,
 };
 
 fn main() {

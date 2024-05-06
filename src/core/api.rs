@@ -1,13 +1,12 @@
-use std::{collections::HashMap, sync::Mutex};
-
-use cosmian_crypto_core::{
-    kdf256,
-    reexport::rand_core::{CryptoRngCore, SeedableRng},
-    Aes256Gcm, CsRng, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, Secret,
-    SymmetricKey,
+use std::{
+    collections::HashMap,
+    sync::{Mutex, MutexGuard},
 };
 
+use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
+
 use super::{
+    ae::AE,
     primitives::{mpk_keygen, prune, update_coordinate_keys, usk_keygen},
     MIN_TRACING_LEVEL,
 };
@@ -40,6 +39,9 @@ impl PartialEq for Covercrypt {
 }
 
 impl Covercrypt {
+    pub fn rng(&self) -> MutexGuard<CsRng> {
+        self.rng.lock().expect("poisoned mutex")
+    }
     /// Sets up the Covercrypt scheme.
     ///
     /// Generates a MSK and a MPK with a tracing level of
@@ -171,150 +173,6 @@ impl Covercrypt {
             keep_old_rights,
         )
     }
-}
-
-/// Authenticated Encryption trait
-pub trait AE<const KEY_LENGTH: usize> {
-    /// Encrypts the given plaintext `ptx` using the given `key`.
-    fn encrypt(
-        key: &SymmetricKey<KEY_LENGTH>,
-        ptx: &[u8],
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<Vec<u8>, Error>;
-
-    /// Decrypts the given ciphertext `ctx` using the given `key`.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the integrity of the ciphertext could not be verified.
-    fn decrypt(key: &SymmetricKey<KEY_LENGTH>, ctx: &[u8]) -> Result<Vec<u8>, Error>;
-}
-
-impl AE<{ Self::KEY_LENGTH }> for Aes256Gcm {
-    fn encrypt(
-        key: &SymmetricKey<{ Self::KEY_LENGTH }>,
-        ptx: &[u8],
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<Vec<u8>, Error> {
-        let nonce = Nonce::<{ Self::NONCE_LENGTH }>::new(&mut *rng);
-        let ciphertext = Self::new(key).encrypt(&nonce, ptx, None)?;
-        Ok([nonce.as_bytes(), &ciphertext].concat())
-    }
-
-    fn decrypt(key: &SymmetricKey<{ Self::KEY_LENGTH }>, ctx: &[u8]) -> Result<Vec<u8>, Error> {
-        if ctx.len() < Self::NONCE_LENGTH {
-            return Err(Error::CryptoCoreError(
-                cosmian_crypto_core::CryptoCoreError::DecryptionError,
-            ));
-        }
-        let nonce = Nonce::try_from_slice(&ctx[..Self::NONCE_LENGTH])?;
-        Self::new(key)
-            .decrypt(&nonce, &ctx[Self::NONCE_LENGTH..], None)
-            .map_err(Error::CryptoCoreError)
-    }
-}
-
-/// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte seed, and metadata
-/// encrypted under the scheme AES256Gcm using a key derived from the encapsulated seed.
-#[derive(Debug, PartialEq, Eq)]
-pub struct EncryptedHeader {
-    pub encapsulation: Encapsulation,
-    pub encrypted_metadata: Option<Vec<u8>>,
-}
-
-impl EncryptedHeader {
-    /// Generates an encrypted header for a random seed and the given metadata.
-    /// Returns the encrypted header along with the encapsulated seed.
-    ///
-    /// - `cover_crypt`         : `Covercrypt` object
-    /// - `policy`              : global policy
-    /// - `public_key`          : `Covercrypt` public key
-    /// - `encryption_policy`   : access policy used for the encapsulation
-    /// - `header_metadata`     : additional data symmetrically encrypted in the
-    ///   header
-    /// - `authentication_data` : authentication data used in the DEM encryption
-    pub fn generate(
-        cover_crypt: &Covercrypt,
-        policy: &Policy,
-        public_key: &MasterPublicKey,
-        encryption_policy: &AccessPolicy,
-        metadata: Option<&[u8]>,
-        authentication_data: Option<&[u8]>,
-    ) -> Result<(Secret<SEED_LENGTH>, Self), Error> {
-        let (seed, encapsulation) = cover_crypt.encaps(public_key, policy, encryption_policy)?;
-
-        let encrypted_metadata = metadata
-            .map(|bytes| {
-                let mut key = SymmetricKey::<{ Aes256Gcm::KEY_LENGTH }>::default();
-                kdf256!(&mut key, &seed, &[0u8]);
-                let mut rng = cover_crypt.rng.lock().expect("poisoned lock");
-                let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *rng);
-                let aes = Aes256Gcm::new(&key);
-                aes.encrypt(&nonce, bytes, authentication_data)
-            })
-            .transpose()?;
-
-        // Generating a new seed adding a variant component 1, to prevent reusing
-        // seed used for the metadata encryption.
-        let mut new_seed = Secret::<SEED_LENGTH>::default();
-        kdf256!(&mut new_seed, &seed, &[1u8]);
-
-        Ok((
-            new_seed,
-            Self {
-                encapsulation,
-                encrypted_metadata,
-            },
-        ))
-    }
-
-    /// Decrypts the header with the given user secret key.
-    ///
-    /// - `cover_crypt`         : `Covercrypt` object
-    /// - `usk`                 : `Covercrypt` user secret key
-    /// - `authentication_data` : authentication data used in the DEM encryption
-    pub fn decrypt(
-        &self,
-        cover_crypt: &Covercrypt,
-        usk: &UserSecretKey,
-        authentication_data: Option<&[u8]>,
-    ) -> Result<Option<CleartextHeader>, Error> {
-        cover_crypt
-            .decaps(usk, &self.encapsulation)?
-            .map(|seed| {
-                let metadata = self
-                    .encrypted_metadata
-                    .as_ref()
-                    .map(|ctx| {
-                        let mut key = SymmetricKey::<{ Aes256Gcm::KEY_LENGTH }>::default();
-                        kdf256!(&mut key, &seed, &[0u8]);
-                        let mut rng = cover_crypt.rng.lock().expect("poisoned lock");
-                        let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *rng);
-                        let aes = Aes256Gcm::new(&key);
-                        aes.decrypt(&nonce, ctx, authentication_data)
-                    })
-                    .transpose()?;
-
-                let mut new_seed = Secret::<SEED_LENGTH>::default();
-                kdf256!(&mut new_seed, &seed, &[1u8]);
-
-                Ok(CleartextHeader {
-                    seed: new_seed,
-                    metadata,
-                })
-            })
-            .transpose()
-    }
-}
-
-/// Structure containing all data encrypted in an `EncryptedHeader`.
-///
-/// - `symmetric_key`   : DEM key
-/// - `metadata`        : additional data symmetrically encrypted in a header
-#[derive(Debug, PartialEq, Eq)]
-pub struct CleartextHeader {
-    pub seed: Secret<SEED_LENGTH>,
-    pub metadata: Option<Vec<u8>>,
 }
 
 pub trait CovercryptKEM {

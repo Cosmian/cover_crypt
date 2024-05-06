@@ -16,15 +16,12 @@ use super::{
 use crate::{
     abe_policy::Coordinate,
     core::{
-        Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey,
-        SEED_LENGTH,
+        CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
+        SeedEncapsulation, UserSecretKey, SEED_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
-
-use crate::api::CleartextHeader;
-use crate::api::EncryptedHeader;
 
 impl Serializable for TracingPublicKey {
     type Error = Error;
