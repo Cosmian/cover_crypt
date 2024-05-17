@@ -93,19 +93,17 @@ impl CoordinatePublicKey {
     }
 
     pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
-        subkeys.iter().map(|cpk| cpk.is_hybridized()).try_fold(
-            subkeys[0].is_hybridized(),
-            |acc, b| -> Result<bool, Error> {
-                if b != acc {
-                    Err(Error::OperationNotPermitted(
-                        "classic and hybridized access policies cannot be mixed".to_string(),
-                    ))
-                } else {
-                    Ok(acc)
-                }
-            },
-        )?;
-        Ok(())
+        let is_homogeneous = subkeys
+            .iter()
+            .all(|cpk| cpk.is_hybridized() == subkeys[0].is_hybridized());
+
+        if is_homogeneous {
+            Ok(())
+        } else {
+            Err(Error::OperationNotPermitted(
+                "classic and hybridized access policies cannot be mixed".to_string(),
+            ))
+        }
     }
 }
 
