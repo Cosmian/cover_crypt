@@ -708,7 +708,7 @@ mod tests {
             ),
             (
                 coordinate_3.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
             ),
         ]);
 

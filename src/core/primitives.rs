@@ -140,38 +140,51 @@ pub fn encaps(
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Coordinate>,
 ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
+    let subkeys = encryption_set
+        .iter()
+        .map(|coordinate| {
+            mpk.coordinate_keys.get(coordinate).ok_or_else(|| {
+                Error::KeyError(format!("no public key for coordinate '{coordinate:#?}'"))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    CoordinatePublicKey::assert_homogeneity(&subkeys)?;
+
     let seed = Secret::<SEED_LENGTH>::random(rng);
     let ephemeral_random = elgamal::Scalar::new(rng);
-    let mut coordinate_encapsulations = HashSet::with_capacity(encryption_set.len());
-    for coordinate in encryption_set {
-        match mpk.coordinate_keys.get(coordinate) {
-            Some(CoordinatePublicKey::Hybridized {
-                postquantum_pk,
-                elgamal_pk,
-            }) => {
-                let mut elgamal_ctx = [0; SEED_LENGTH];
-                elgamal::mask::<SEED_LENGTH>(
-                    &mut elgamal_ctx,
-                    &ephemeral_random,
-                    elgamal_pk,
-                    &seed,
-                );
-                let postquantum_ctx = postquantum::encrypt(rng, postquantum_pk, &elgamal_ctx)?;
-                elgamal_ctx.zeroize(); // ElGamal ciphertext is not secure in a post-quantum world
-                coordinate_encapsulations.insert(SeedEncapsulation::Hybridized(postquantum_ctx));
-            }
-            Some(CoordinatePublicKey::Classic { elgamal_pk }) => {
-                let mut elgamal_ctx = [0; SEED_LENGTH];
-                elgamal::mask(&mut elgamal_ctx, &ephemeral_random, elgamal_pk, &seed);
-                coordinate_encapsulations.insert(SeedEncapsulation::Classic(elgamal_ctx));
-            }
-            None => {
-                return Err(Error::KeyError(format!(
-                    "no public key for coordinate '{coordinate:#?}'"
-                )));
-            }
+
+    let encaps_classical = |pk| {
+        let mut elgamal_ctx = [0; SEED_LENGTH];
+        elgamal::mask(&mut elgamal_ctx, &ephemeral_random, pk, &seed);
+        elgamal_ctx
+    };
+
+    let mut encaps_hybridized =
+        |postquantum_pk, elgamal_pk| -> Result<postquantum::Ciphertext, Error> {
+            let mut elgamal_ctx = [0; SEED_LENGTH];
+            elgamal::mask::<SEED_LENGTH>(&mut elgamal_ctx, &ephemeral_random, elgamal_pk, &seed);
+            let postquantum_ctx = postquantum::encrypt(rng, postquantum_pk, &elgamal_ctx)?;
+            elgamal_ctx.zeroize(); // ElGamal ciphertext is not secure in a post-quantum world
+            Ok(postquantum_ctx)
         };
-    }
+
+    let coordinate_encapsulations = subkeys
+        .into_iter()
+        .map(|subkey| -> Result<SeedEncapsulation, _> {
+            match subkey {
+                CoordinatePublicKey::Classic { elgamal_pk } => {
+                    Ok(SeedEncapsulation::Classic(encaps_classical(elgamal_pk)))
+                }
+                CoordinatePublicKey::Hybridized {
+                    postquantum_pk,
+                    elgamal_pk,
+                } => {
+                    encaps_hybridized(postquantum_pk, elgamal_pk).map(SeedEncapsulation::Hybridized)
+                }
+            }
+        })
+        .collect::<Result<HashSet<_>, Error>>()?;
 
     let traps = mpk.set_traps(&ephemeral_random);
     let (tag, key) = eakem_hash!(TAG_LENGTH, SEED_LENGTH, &*seed, KEY_GEN_INFO)

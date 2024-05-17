@@ -84,6 +84,31 @@ enum CoordinatePublicKey {
     },
 }
 
+impl CoordinatePublicKey {
+    pub fn is_hybridized(&self) -> bool {
+        match self {
+            Self::Hybridized { .. } => true,
+            Self::Classic { .. } => false,
+        }
+    }
+
+    pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
+        subkeys.iter().map(|cpk| cpk.is_hybridized()).try_fold(
+            subkeys[0].is_hybridized(),
+            |acc, b| -> Result<bool, Error> {
+                if b != acc {
+                    Err(Error::OperationNotPermitted(
+                        "classic and hybridized access policies cannot be mixed".to_string(),
+                    ))
+                } else {
+                    Ok(acc)
+                }
+            },
+        )?;
+        Ok(())
+    }
+}
+
 /// ElGamal keypair optionally hybridized with a post-quantum KEM associated to
 /// a coordinate.
 #[derive(Debug, Clone, PartialEq, Eq)]
