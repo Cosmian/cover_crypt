@@ -163,7 +163,7 @@ pub fn encaps(
     let mut encaps_hybridized =
         |postquantum_pk, elgamal_pk| -> Result<postquantum::Ciphertext, Error> {
             let mut elgamal_ctx = [0; SEED_LENGTH];
-            elgamal::mask::<SEED_LENGTH>(&mut elgamal_ctx, &ephemeral_random, elgamal_pk, &seed);
+            elgamal::mask(&mut elgamal_ctx, &ephemeral_random, elgamal_pk, &seed);
             let postquantum_ctx = postquantum::encrypt(rng, postquantum_pk, &elgamal_ctx)?;
             elgamal_ctx.zeroize(); // ElGamal ciphertext is not secure in a post-quantum world
             Ok(postquantum_ctx)
