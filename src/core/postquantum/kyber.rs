@@ -7,12 +7,12 @@ use std::ops::{Deref, DerefMut};
 
 use crate::Error;
 use cosmian_crypto_core::{bytes_ser_de::Serializable, reexport::rand_core::CryptoRngCore, Secret};
-use pqc_kyber::{
-    KYBER_CIPHERTEXTBYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES,
-    KYBER_PUBLICKEYBYTES, KYBER_SECRETKEYBYTES, KYBER_SSBYTES,
-};
+use pqc_kyber::{KYBER_CIPHERTEXTBYTES, KYBER_PUBLICKEYBYTES, KYBER_SECRETKEYBYTES, KYBER_SSBYTES};
 
 use super::KemTrait;
+
+const KYBER_INDCPA_PUBLICKEYBYTES: usize = KYBER_PUBLICKEYBYTES;
+const KYBER_INDCPA_SECRETKEYBYTES: usize = 1152;
 
 /// Kyber public key length
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -205,7 +205,7 @@ impl KemTrait for Kyber {
         &self,
         rng: &mut impl CryptoRngCore,
     ) -> Result<(Self::SecretKey, Self::PublicKey), Self::Error> {
-        let mut keypair = pqc_kyber::keypair(rng);
+        let mut keypair = pqc_kyber::keypair(rng)?;
         Ok((
             SecretKey::from(&mut keypair.secret),
             PublicKey::from(keypair.public),
