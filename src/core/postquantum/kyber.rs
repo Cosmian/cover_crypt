@@ -8,16 +8,18 @@ use std::ops::{Deref, DerefMut};
 use crate::Error;
 use cosmian_crypto_core::{bytes_ser_de::Serializable, reexport::rand_core::CryptoRngCore, Secret};
 use pqc_kyber::{
-    indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
-    KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
+    KYBER_CIPHERTEXTBYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES,
+    KYBER_PUBLICKEYBYTES, KYBER_SECRETKEYBYTES, KYBER_SSBYTES,
 };
+
+use super::KemTrait;
 
 /// Kyber public key length
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PublicKey(Box<[u8; Self::LENGTH]>);
 
 impl PublicKey {
-    pub const LENGTH: usize = KYBER_INDCPA_PUBLICKEYBYTES;
+    pub const LENGTH: usize = KYBER_PUBLICKEYBYTES;
 }
 
 impl Deref for PublicKey {
@@ -31,6 +33,12 @@ impl Deref for PublicKey {
 impl DerefMut for PublicKey {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut *self.0
+    }
+}
+
+impl From<[u8; Self::LENGTH]> for PublicKey {
+    fn from(bytes: [u8; Self::LENGTH]) -> Self {
+        Self(Box::new(bytes))
     }
 }
 
@@ -61,7 +69,15 @@ impl Serializable for PublicKey {
 pub struct SecretKey(Secret<{ Self::LENGTH }>);
 
 impl SecretKey {
-    pub const LENGTH: usize = KYBER_INDCPA_SECRETKEYBYTES;
+    pub const LENGTH: usize = KYBER_SECRETKEYBYTES;
+
+    pub fn pk(&self) -> PublicKey {
+        const PK_START: usize = KYBER_INDCPA_SECRETKEYBYTES;
+        const PK_STOP: usize = PK_START + KYBER_INDCPA_PUBLICKEYBYTES;
+        let mut pk = [0; KYBER_PUBLICKEYBYTES];
+        pk.copy_from_slice(&self[PK_START..PK_STOP]);
+        PublicKey::from(pk)
+    }
 }
 
 impl Deref for SecretKey {
@@ -75,6 +91,12 @@ impl Deref for SecretKey {
 impl DerefMut for SecretKey {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl From<&mut [u8; Self::LENGTH]> for SecretKey {
+    fn from(bytes: &mut [u8; Self::LENGTH]) -> Self {
+        Self(Secret::from_unprotected_bytes(bytes))
     }
 }
 
@@ -102,6 +124,10 @@ impl Serializable for SecretKey {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ciphertext(Box<[u8; Self::LENGTH]>);
 
+impl Ciphertext {
+    pub const LENGTH: usize = KYBER_CIPHERTEXTBYTES;
+}
+
 impl Deref for Ciphertext {
     type Target = [u8];
 
@@ -122,8 +148,20 @@ impl Default for Ciphertext {
     }
 }
 
-impl Ciphertext {
-    pub const LENGTH: usize = KYBER_INDCPA_BYTES;
+impl From<[u8; Self::LENGTH]> for Ciphertext {
+    fn from(bytes: [u8; Self::LENGTH]) -> Self {
+        Self(Box::new(bytes))
+    }
+}
+
+impl TryFrom<&[u8]> for Ciphertext {
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let bytes = <[u8; Self::LENGTH]>::try_from(bytes)
+            .map_err(|e| Error::ConversionFailed(e.to_string()))?;
+        Ok(Self::from(bytes))
+    }
 }
 
 impl Serializable for Ciphertext {
@@ -147,68 +185,51 @@ impl Serializable for Ciphertext {
     }
 }
 
-/// Generates a new Kyber key pair.
-pub fn keygen(rng: &mut impl CryptoRngCore) -> (SecretKey, PublicKey) {
-    let (mut sk, mut pk) = (
-        SecretKey(Secret::new()),
-        PublicKey(Box::new([0; PublicKey::LENGTH])),
-    );
-    indcpa_keypair(&mut pk, &mut sk, None, rng);
-    (sk, pk)
-}
+pub type SharedSecret = Secret<KYBER_SSBYTES>;
 
-/// Encrypts the given secret using a post-quantum secure PKE.
-///
-/// # Security
-///
-/// The current implementation uses IND-CPA-Kyber 768, but plan for generalizing
-/// it is on the way. It provides TODO bits of post-quantum security.
-pub fn encrypt(
-    rng: &mut impl CryptoRngCore,
-    postquantum_pk: &PublicKey,
-    ptx: &[u8],
-) -> Result<Ciphertext, Error> {
-    if KYBER_SYMBYTES != ptx.len() {
-        return Err(Error::OperationNotPermitted(format!(
-            "Kyber plaintext needs to be {KYBER_SYMBYTES} bytes: {} given",
-            ptx.len()
-        )));
+#[derive(Debug, Default)]
+pub struct Kyber;
+
+impl KemTrait for Kyber {
+    type Error = Error;
+
+    type Encapsulation = Ciphertext;
+
+    type SecretKey = SecretKey;
+
+    type PublicKey = PublicKey;
+
+    type SharedSecret = SharedSecret;
+
+    fn keygen(
+        &self,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<(Self::SecretKey, Self::PublicKey), Self::Error> {
+        let mut keypair = pqc_kyber::keypair(rng);
+        Ok((
+            SecretKey::from(&mut keypair.secret),
+            PublicKey::from(keypair.public),
+        ))
     }
-    let mut ctx = Ciphertext::default();
-    let coin = Secret::<KYBER_SYMBYTES>::random(rng);
-    indcpa_enc(&mut ctx, ptx, postquantum_pk, &coin);
-    Ok(ctx)
-}
 
-/// Decrypts the given secret using a post-quantum secure PKE.
-///
-/// # Security
-///
-/// The current implementation uses IND-CPA-Kyber 768, but plan for generalizing
-/// it is on the way. It provides TODO bits of post-quantum security.
-pub fn decrypt(postquantum_sk: &SecretKey, ctx: &Ciphertext) -> Secret<KYBER_SYMBYTES> {
-    let mut secret = Secret::<KYBER_SYMBYTES>::default();
-    indcpa_dec(&mut secret, ctx, postquantum_sk);
-    secret
-}
+    fn encaps(
+        &self,
+        rng: &mut impl CryptoRngCore,
+        pk: &Self::PublicKey,
+    ) -> Result<(Self::SharedSecret, Self::Encapsulation), Self::Error> {
+        let (enc, mut secret) = pqc_kyber::encapsulate(pk, rng)?;
+        Ok((
+            Secret::from_unprotected_bytes(&mut secret),
+            Ciphertext::from(enc),
+        ))
+    }
 
-#[cfg(test)]
-mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng, Secret};
-
-    use super::{decrypt, encrypt, keygen, KYBER_SYMBYTES};
-
-    #[test]
-    fn test_kyber() {
-        let mut rng = CsRng::from_entropy();
-        let ptx = Secret::<KYBER_SYMBYTES>::random(&mut rng);
-        let keypair = keygen(&mut rng);
-        let ctx = encrypt(&mut rng, &keypair.1, &ptx)
-            .expect("failed encryption with keypair {keypair:#?} and plaintext {ptx:#?}");
-        let res = decrypt(&keypair.0, &ctx);
-        assert_eq!(
-            ptx, res,
-            "wrong decryption with keypair {keypair:#?} and plaintext {ptx:#?}"
-        )
+    fn decaps(
+        &self,
+        sk: &Self::SecretKey,
+        encapsulation: &Self::Encapsulation,
+    ) -> Result<Self::SharedSecret, Self::Error> {
+        let mut secret = pqc_kyber::decapsulate(encapsulation, sk)?;
+        Ok(Secret::from_unprotected_bytes(&mut secret))
     }
 }

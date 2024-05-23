@@ -31,12 +31,6 @@ use crate::Error;
 pub struct Keypair(Scalar, Option<EcPoint>);
 
 impl Keypair {
-    /// Creates a new keypair.
-    #[inline(always)]
-    pub fn new(sk: Scalar, pk: EcPoint) -> Self {
-        Self(sk, Some(pk))
-    }
-
     /// Returns a new random keypair.
     #[must_use]
     pub fn random(rng: &mut impl CryptoRngCore) -> Self {
@@ -56,18 +50,6 @@ impl Keypair {
     #[inline(always)]
     pub fn pk(&self) -> Option<&EcPoint> {
         self.1.as_ref()
-    }
-
-    /// Deprecate this keypair.
-    #[inline(always)]
-    pub fn deprecate(&mut self) {
-        self.1 = None
-    }
-
-    /// Returns true if the given secret key is contained in this keypair.
-    #[inline(always)]
-    pub fn contains(&self, sk: &Scalar) -> bool {
-        &self.0 == sk
     }
 }
 
@@ -178,29 +160,20 @@ pub fn unmask<const LENGTH: usize>(
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_core::{
-        bytes_ser_de::Serializable,
-        reexport::rand_core::{CryptoRngCore, SeedableRng},
-        CsRng, Secret,
+        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng, Secret,
     };
 
-    use super::{mask, unmask, EcPoint, Keypair, Scalar};
+    use super::{mask, unmask, Keypair};
 
     /// Arbitrary plaintext length.
     const PTX_LENGTH: usize = 108;
-
-    /// Generates a random keypair.
-    pub fn keygen(rng: &mut impl CryptoRngCore) -> Keypair {
-        let sk = Scalar::new(rng);
-        let pk = EcPoint::from(&sk);
-        Keypair::new(sk, pk)
-    }
 
     #[test]
     fn test_elgamal_pke() {
         let mut rng = CsRng::from_entropy();
         let ptx = Secret::<PTX_LENGTH>::random(&mut rng);
-        let ephemeral_keypair = keygen(&mut rng);
-        let recipient_keypair = keygen(&mut rng);
+        let ephemeral_keypair = Keypair::random(&mut rng);
+        let recipient_keypair = Keypair::random(&mut rng);
         let mut ctx = [0; PTX_LENGTH];
         mask(
             &mut ctx,

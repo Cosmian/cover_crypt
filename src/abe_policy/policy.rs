@@ -250,7 +250,6 @@ impl Policy {
 /// - D1::A1 && D2::B2
 /// - D2::A2
 /// - D2::B2
-#[allow(dead_code)]
 pub fn combine(
     dimensions: &[(&String, &Dimension)], // TODO: signature depends on the HashMap iterator type
 ) -> Vec<(Vec<u32>, EncryptionHint, AttributeStatus)> {

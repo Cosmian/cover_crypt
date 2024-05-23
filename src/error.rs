@@ -3,9 +3,11 @@
 use core::{fmt::Display, num::TryFromIntError};
 
 use cosmian_crypto_core::CryptoCoreError;
+use pqc_kyber::KyberError;
 
 #[derive(Debug)]
 pub enum Error {
+    KyberError(KyberError),
     CryptoCoreError(CryptoCoreError),
     KeyError(String),
     AttributeNotFound(String),
@@ -26,7 +28,8 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CryptoCoreError(err) => write!(f, "{err}"),
+            Self::KyberError(err) => write!(f, "Kyber error: {err}"),
+            Self::CryptoCoreError(err) => write!(f, "CryptoCore error{err}"),
             Self::KeyError(err) => write!(f, "{err}"),
             Self::AttributeNotFound(err) => write!(f, "attribute not found: {err}"),
             Self::UnsupportedOperator(err) => write!(f, "unsupported operator {err}"),
@@ -62,6 +65,12 @@ impl From<TryFromIntError> for Error {
 impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         Self::CryptoCoreError(e)
+    }
+}
+
+impl From<KyberError> for Error {
+    fn from(e: KyberError) -> Self {
+        Self::KyberError(e)
     }
 }
 
