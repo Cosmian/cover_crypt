@@ -7,12 +7,11 @@ use std::ops::{Deref, DerefMut};
 
 use crate::Error;
 use cosmian_crypto_core::{bytes_ser_de::Serializable, reexport::rand_core::CryptoRngCore, Secret};
-use pqc_kyber::{KYBER_CIPHERTEXTBYTES, KYBER_PUBLICKEYBYTES, KYBER_SECRETKEYBYTES, KYBER_SSBYTES};
+use pqc_kyber::{
+    public, KYBER_CIPHERTEXTBYTES, KYBER_PUBLICKEYBYTES, KYBER_SECRETKEYBYTES, KYBER_SSBYTES,
+};
 
 use super::KemTrait;
-
-const KYBER_INDCPA_PUBLICKEYBYTES: usize = KYBER_PUBLICKEYBYTES;
-const KYBER_INDCPA_SECRETKEYBYTES: usize = 1152;
 
 /// Kyber public key length
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -72,11 +71,7 @@ impl SecretKey {
     pub const LENGTH: usize = KYBER_SECRETKEYBYTES;
 
     pub fn pk(&self) -> PublicKey {
-        const PK_START: usize = KYBER_INDCPA_SECRETKEYBYTES;
-        const PK_STOP: usize = PK_START + KYBER_INDCPA_PUBLICKEYBYTES;
-        let mut pk = [0; KYBER_PUBLICKEYBYTES];
-        pk.copy_from_slice(&self[PK_START..PK_STOP]);
-        PublicKey::from(pk)
+        public(self).into()
     }
 }
 
