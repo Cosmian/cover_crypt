@@ -12,8 +12,6 @@ use crate::{
     Error,
 };
 
-#[macro_use]
-pub mod macros;
 pub mod ae;
 pub mod api;
 mod encrypted_header;
