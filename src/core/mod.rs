@@ -1,9 +1,10 @@
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     hash::Hash,
+    ops::Deref,
 };
 
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
 
 use crate::{
     abe_policy::Coordinate,
@@ -27,6 +28,8 @@ mod tests;
 
 use elgamal::{EcPoint, Scalar};
 pub use encrypted_header::{CleartextHeader, EncryptedHeader};
+
+use self::postquantum::{MlKemAesPke, PkeTrait};
 
 /// The length of the secret encapsulated by Covercrypt.
 ///
@@ -61,35 +64,57 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 /// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum CoordinateSecretKey {
-    Hybridized {
-        postquantum_sk: postquantum::SecretKey,
-        elgamal_sk: Scalar,
-    },
-    Classic {
-        elgamal_sk: Scalar,
-    },
+struct CoordinateSecretKey {
+    el: Scalar,
+    pq: Option<postquantum::SecretKey>,
+}
+
+impl CoordinateSecretKey {
+    /// Generates a new random coordinate keypair cryptographically bound to the
+    /// Covercrypt binding point `h`.
+    fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
+        let el = Scalar::new(rng);
+        let pq = if hybridize {
+            let (pq, _) = MlKemAesPke.keygen(rng)?;
+            Some(pq)
+        } else {
+            None
+        };
+        Ok(Self { el, pq })
+    }
+
+    /// Generates the associated coordinate public key.
+    #[must_use]
+    fn public_key(&self, h: &EcPoint) -> CoordinatePublicKey {
+        let el_pk = h * &self.el;
+        let pq_pk = self.pq.as_ref().map(|sk| sk.pk());
+        CoordinatePublicKey {
+            el: el_pk,
+            pq: pq_pk,
+        }
+    }
+
+    /// Returns true if this coordinate keypair is hybridized.
+    fn is_hybridized(&self) -> bool {
+        self.pq.is_some()
+    }
+
+    fn drop_hybridization(&mut self) {
+        self.pq = None;
+    }
 }
 
 /// The Covercrypt public keys hold the DH secret public key associated to a coordinate.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum CoordinatePublicKey {
-    Hybridized {
-        postquantum_pk: postquantum::PublicKey,
-        elgamal_pk: EcPoint,
-    },
-    Classic {
-        elgamal_pk: EcPoint,
-    },
+struct CoordinatePublicKey {
+    el: EcPoint,
+    pq: Option<postquantum::PublicKey>,
 }
 
 impl CoordinatePublicKey {
     pub fn is_hybridized(&self) -> bool {
-        match self {
-            Self::Hybridized { .. } => true,
-            Self::Classic { .. } => false,
-        }
+        self.pq.is_some()
     }
 
     pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
@@ -104,110 +129,6 @@ impl CoordinatePublicKey {
                 "classic and hybridized access policies cannot be mixed".to_string(),
             ))
         }
-    }
-}
-
-/// ElGamal keypair optionally hybridized with a post-quantum KEM associated to
-/// a coordinate.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CoordinateKeypair {
-    elgamal_keypair: elgamal::Keypair,
-    postquantum_keypair: Option<postquantum::Keypair>,
-}
-
-impl CoordinateKeypair {
-    /// Generates a new random coordinate keypair cryptographically bound to the
-    /// Covercrypt binding point `h`.
-    #[must_use]
-    fn random(rng: &mut impl CryptoRngCore, h: &EcPoint, hybridize: bool) -> Self {
-        let elgamal_sk = Scalar::new(rng);
-        let elgamal_pk = h * &elgamal_sk;
-        let elgamal_keypair = elgamal::Keypair::new(elgamal_sk, elgamal_pk);
-        let postquantum_keypair = if hybridize {
-            Some(postquantum::Keypair::random(rng))
-        } else {
-            None
-        };
-        CoordinateKeypair {
-            elgamal_keypair,
-            postquantum_keypair,
-        }
-    }
-
-    /// Returns a copy of the public key.
-    #[must_use]
-    fn public_key(&self) -> Option<CoordinatePublicKey> {
-        match (
-            self.elgamal_keypair.pk().cloned(),
-            &self.postquantum_keypair,
-        ) {
-            (Some(elgamal_pk), None) => Some(CoordinatePublicKey::Classic { elgamal_pk }),
-            (Some(elgamal_pk), Some(postquantum_keypair)) => {
-                let postquantum_pk = postquantum_keypair.pk().clone();
-                Some(CoordinatePublicKey::Hybridized {
-                    elgamal_pk,
-                    postquantum_pk,
-                })
-            }
-            (None, _) => None,
-        }
-    }
-
-    /// Returns a copy of the secret key.
-    #[must_use]
-    fn secret_key(&self) -> CoordinateSecretKey {
-        let elgamal_sk = self.elgamal_keypair.sk().clone();
-        if let Some(keypair) = &self.postquantum_keypair {
-            let postquantum_sk = keypair.sk().clone();
-            CoordinateSecretKey::Hybridized {
-                elgamal_sk,
-                postquantum_sk,
-            }
-        } else {
-            CoordinateSecretKey::Classic { elgamal_sk }
-        }
-    }
-
-    /// Returns true if the given coordinate secret key is contained in this keypair.
-    fn contains(&self, coordinate_sk: &CoordinateSecretKey) -> bool {
-        match (coordinate_sk, &self.postquantum_keypair) {
-            (CoordinateSecretKey::Classic { elgamal_sk }, None) => {
-                self.elgamal_keypair.contains(elgamal_sk)
-            }
-            (
-                CoordinateSecretKey::Hybridized {
-                    postquantum_sk,
-                    elgamal_sk,
-                },
-                Some(postquantum_keypair),
-            ) => {
-                self.elgamal_keypair.contains(elgamal_sk)
-                    && postquantum_keypair.contains(postquantum_sk)
-            }
-            (CoordinateSecretKey::Hybridized { .. }, None)
-            | (CoordinateSecretKey::Classic { .. }, Some(_)) => false,
-        }
-    }
-
-    /// Returns true if this coordinate keypair is hybridized.
-    fn is_hybridized(&self) -> bool {
-        self.postquantum_keypair.is_some()
-    }
-
-    /// Drop the ElGamal public key of this coordinate keypair.
-    ///
-    /// Future MPK will be generated without any key for this coordinate, thus
-    /// disabling encryption for this coordinate.
-    fn drop_encryption_key(&mut self) {
-        self.elgamal_keypair.deprecate();
-    }
-
-    /// Drop the post-quantum part of this coordinate keypair.
-    ///
-    /// Future MPK will be generated without post-quantum key, thus disabling
-    /// hybridized encryption.
-    fn drop_hybridization(&mut self) {
-        self.postquantum_keypair = None;
     }
 }
 
@@ -343,7 +264,7 @@ impl TracingPublicKey {
 pub struct MasterSecretKey {
     s: Scalar,
     tsk: TracingSecretKey,
-    coordinate_keypairs: RevisionMap<Coordinate, CoordinateKeypair>,
+    coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
 }
 
@@ -421,27 +342,35 @@ impl MasterSecretKey {
         coordinates: impl Iterator<Item = Coordinate> + 'a,
     ) -> impl Iterator<Item = Result<(Coordinate, CoordinateSecretKey), Error>> + 'a {
         coordinates.map(|coordinate| {
-            self.coordinate_keypairs
+            self.coordinate_secrets
                 .get_latest(&coordinate)
                 .ok_or(Error::KeyError(format!(
                     "MSK has no key for coordinate {coordinate:?}"
                 )))
-                .map(CoordinateKeypair::secret_key)
-                .map(|key| (coordinate, key))
+                .cloned()
+                .map(|(_, key)| (coordinate, key))
         })
     }
 
-    /// Returns the most recent public key associated to each coordinate.
-    fn get_latest_coordinate_pk(
-        &self,
-    ) -> impl Iterator<Item = (Coordinate, CoordinatePublicKey)> + '_ {
-        self.coordinate_keypairs
-            .iter()
-            .filter_map(|(coordinate, keypairs)| {
-                let pk: Option<CoordinatePublicKey> =
-                    keypairs.front().and_then(|keypair| keypair.public_key());
-                pk.map(|pk| (coordinate.clone(), pk))
-            })
+    /// Generates a new MPK holding the latest public information of each universal coordinate.
+    pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
+        Ok(MasterPublicKey {
+            h: self.binding_point(),
+            tpk: self.tsk.tpk(),
+            coordinate_keys: self
+                .coordinate_secrets
+                .iter()
+                .filter_map(|(coordinate, secrets)| {
+                    secrets.front().and_then(|(is_activated, s)| {
+                        if *is_activated {
+                            Some((coordinate.clone(), s.public_key(&self.binding_point())))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect(),
+        })
     }
 }
 
@@ -493,7 +422,18 @@ pub struct UserSecretKey {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum SeedEncapsulation {
     Classic([u8; SEED_LENGTH]),
-    Hybridized(postquantum::Ciphertext),
+    Hybridized(<MlKemAesPke as PkeTrait<{ Aes256Gcm::KEY_LENGTH }>>::Ciphertext),
+}
+
+impl Deref for SeedEncapsulation {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            SeedEncapsulation::Classic(ctx) => ctx,
+            SeedEncapsulation::Hybridized(ctx) => ctx,
+        }
+    }
 }
 
 /// Covercrypt encapsulation.
@@ -509,7 +449,7 @@ enum SeedEncapsulation {
 pub struct Encapsulation {
     tag: Tag,
     traps: Vec<EcPoint>,
-    coordinate_encapsulations: HashSet<SeedEncapsulation>,
+    coordinate_encapsulations: Vec<SeedEncapsulation>,
 }
 
 impl Encapsulation {
