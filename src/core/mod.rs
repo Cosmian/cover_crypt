@@ -211,7 +211,7 @@ impl TracingSecretKey {
     }
 
     /// Returns true if the given user ID is known.
-    fn knows(&self, id: &UserId) -> bool {
+    fn is_known(&self, id: &UserId) -> bool {
         self.users.contains(id)
     }
 
@@ -314,7 +314,7 @@ impl MasterSecretKey {
     ///
     /// Returns an error if the ID is unknown.
     fn refresh_id(&mut self, rng: &mut impl CryptoRngCore, id: UserId) -> Result<UserId, Error> {
-        if !self.tsk.knows(&id) {
+        if !self.tsk.is_known(&id) {
             Err(Error::Tracing("unknown user".to_string()))
         } else if id.tracing_level() != self.tsk.tracing_level() {
             let new_id = self.generate_user_id(rng)?;
@@ -352,8 +352,8 @@ impl MasterSecretKey {
 
     /// Generates a new MPK holding the latest public information of each universal coordinate.
     pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
+        let h = self.binding_point();
         Ok(MasterPublicKey {
-            h: self.binding_point(),
             tpk: self.tsk.tpk(),
             coordinate_keys: self
                 .coordinate_secrets
@@ -361,7 +361,7 @@ impl MasterSecretKey {
                 .filter_map(|(coordinate, secrets)| {
                     secrets.front().and_then(|(is_activated, s)| {
                         if *is_activated {
-                            Some((coordinate.clone(), s.public_key(&self.binding_point())))
+                            Some((coordinate.clone(), s.public_key(&h)))
                         } else {
                             None
                         }
@@ -375,12 +375,10 @@ impl MasterSecretKey {
 /// Covercrypt Public Key (PK).
 ///
 /// It is composed of:
-/// - the binding point `h`;
 /// - the tracing public key;
 /// - the public keys of the universal coordinates.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
-    h: EcPoint,
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
 }

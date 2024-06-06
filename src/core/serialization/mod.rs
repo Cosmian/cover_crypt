@@ -89,8 +89,7 @@ impl Serializable for MasterPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.h.length()
-            + self.tpk.length()
+        self.tpk.length()
             + to_leb128_len(self.coordinate_keys.len())
             + self
                 .coordinate_keys
@@ -100,8 +99,7 @@ impl Serializable for MasterPublicKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.h.to_bytes())?;
-        n += ser.write(&self.tpk)?;
+        let mut n = ser.write(&self.tpk)?;
         n += ser.write_leb128_u64(self.coordinate_keys.len() as u64)?;
         for (coordinate, pk) in &self.coordinate_keys {
             n += ser.write(coordinate)?;
@@ -111,7 +109,6 @@ impl Serializable for MasterPublicKey {
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let h = de.read::<EcPoint>()?;
         let tpk = de.read::<TracingPublicKey>()?;
         let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut coordinate_keys = HashMap::with_capacity(n_coordinates);
@@ -121,7 +118,6 @@ impl Serializable for MasterPublicKey {
             coordinate_keys.insert(coordinate, pk);
         }
         Ok(Self {
-            h,
             tpk,
             coordinate_keys,
         })
