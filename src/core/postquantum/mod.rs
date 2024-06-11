@@ -1,77 +1,94 @@
 mod kyber;
+mod traits;
 
-use cosmian_crypto_core::{bytes_ser_de::Serializable, reexport::rand_core::CryptoRngCore};
-pub use kyber::{decrypt, encrypt, keygen, Ciphertext, PublicKey, SecretKey};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
+pub use kyber::{PublicKey, SecretKey};
+pub use traits::{KemTrait, PkeTrait};
 
 use crate::Error;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Keypair(SecretKey, PublicKey);
+use super::ae::AE;
 
-impl Keypair {
-    /// Returns a new random keypair.
-    #[must_use]
-    pub fn random(rng: &mut impl CryptoRngCore) -> Self {
-        let (sk, pk) = keygen(rng);
-        Self(sk, pk)
-    }
+#[derive(Debug, Default)]
+pub struct MlKemAesPke;
 
-    /// Returns a reference on the secret key.
-    #[must_use]
-    pub fn sk(&self) -> &SecretKey {
-        &self.0
-    }
-
-    /// Returns a reference on the public key.
-    #[must_use]
-    pub fn pk(&self) -> &PublicKey {
-        &self.1
-    }
-
-    /// Returns true if the given secret key is contained in this keypair.
-    pub fn contains(&self, sk: &SecretKey) -> bool {
-        &self.0 == sk
-    }
-}
-
-impl Serializable for Keypair {
+impl PkeTrait<{ Aes256Gcm::KEY_LENGTH }> for MlKemAesPke {
+    type Kem = kyber::Kyber;
+    type Ae = Aes256Gcm;
+    type Ciphertext = Vec<u8>;
     type Error = Error;
 
-    fn length(&self) -> usize {
-        self.0.length() + self.1.length()
-    }
-
-    fn write(
+    fn keygen(
         &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        let mut n = ser.write(&self.0)?;
-        n += ser.write(&self.1)?;
-        Ok(n)
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<
+        (
+            <Self::Kem as KemTrait>::SecretKey,
+            <Self::Kem as KemTrait>::PublicKey,
+        ),
+        Self::Error,
+    > {
+        kyber::Kyber.keygen(rng)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let sk = de.read()?;
-        let pk = de.read()?;
-        Ok(Self(sk, pk))
+    fn encrypt(
+        &self,
+        rng: &mut impl CryptoRngCore,
+        pk: &<Self::Kem as KemTrait>::PublicKey,
+        ptx: &[u8],
+    ) -> Result<Self::Ciphertext, Self::Error> {
+        let (secret, enc) = kyber::Kyber.encaps(rng, pk)?;
+        let key = SymmetricKey::derive(&secret, &enc)?;
+        let ctx = Aes256Gcm::encrypt(rng, &key, ptx)?;
+        Ok([&*enc, &ctx].concat())
+    }
+
+    fn decrypt(
+        &self,
+        sk: &<Self::Kem as KemTrait>::SecretKey,
+        ctx: &Self::Ciphertext,
+    ) -> Result<zeroize::Zeroizing<Vec<u8>>, Error> {
+        // A ciphertext contains at least a Kyber encapsulation, an AES MAC and a nonce.
+        const EXPECTED_LENGTH: usize =
+            kyber::Ciphertext::LENGTH + Aes256Gcm::MAC_LENGTH + Aes256Gcm::NONCE_LENGTH;
+
+        if ctx.len() < EXPECTED_LENGTH {
+            return Err(Error::ConversionFailed(format!(
+                "ML-KEM/AES PKE ciphertext size too small: {} (should be at least {})",
+                ctx.len(),
+                EXPECTED_LENGTH
+            )));
+        }
+
+        let encapsulation = kyber::Ciphertext::try_from(&ctx[..kyber::Ciphertext::LENGTH])?;
+        let aes_ctx = &ctx[kyber::Ciphertext::LENGTH..];
+        let secret = kyber::Kyber.decaps(sk, &encapsulation)?;
+        let key = SymmetricKey::derive(&secret, &encapsulation)?;
+        Aes256Gcm::decrypt(&key, aes_ctx)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{
-        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
-    };
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 
-    use super::Keypair;
+    use super::{MlKemAesPke, PkeTrait};
 
     #[test]
-    fn test_postquantum_keypair_serialization() {
+    fn test_encrypt_decrypt() {
         let mut rng = CsRng::from_entropy();
-        let keypair = Keypair::random(&mut rng);
-        let bytes = keypair.serialize().unwrap();
-        assert_eq!(bytes.len(), keypair.length());
-        let keypair_ = Keypair::deserialize(&bytes).unwrap();
-        assert_eq!(keypair, keypair_);
+        let pke = MlKemAesPke;
+        let ptx = b"a secret text";
+        let (sk, pk) = pke.keygen(&mut rng).unwrap();
+        let ctx = pke.encrypt(&mut rng, &pk, ptx).unwrap();
+        let res = pke.decrypt(&sk, &ctx).unwrap();
+        assert_eq!(ptx, &**res);
+    }
+
+    #[test]
+    fn test_pk_from_sk() {
+        let mut rng = CsRng::from_entropy();
+        let (sk, pk) = MlKemAesPke.keygen(&mut rng).unwrap();
+        assert_eq!(pk, sk.pk());
     }
 }

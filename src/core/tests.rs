@@ -4,8 +4,8 @@ use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
-    api::{Covercrypt, CovercryptPKE},
-    core::primitives::{decaps, encaps, mpk_keygen, refresh, rekey, update_coordinate_keys},
+    api::{Covercrypt, CovercryptKEM, CovercryptPKE},
+    core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
     test_utils::policy,
 };
 
@@ -39,7 +39,7 @@ fn test_encapsulation() {
         ]),
     )
     .unwrap();
-    let mpk = mpk_keygen(&msk).unwrap();
+    let mpk = msk.mpk().unwrap();
 
     let (key, enc) = encaps(
         &mut rng,
@@ -80,9 +80,9 @@ fn test_update() {
     let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
     assert_eq!(msk.tsk.users.len(), 0);
     assert_eq!(msk.tsk.tracing_level(), MIN_TRACING_LEVEL);
-    assert_eq!(msk.coordinate_keypairs.len(), 0);
+    assert_eq!(msk.coordinate_secrets.len(), 0);
 
-    let mpk = mpk_keygen(&msk).unwrap();
+    let mpk = msk.mpk().unwrap();
     assert_eq!(mpk.tpk.tracing_level(), MIN_TRACING_LEVEL);
     assert_eq!(mpk.coordinate_keys.len(), 0);
 
@@ -97,9 +97,9 @@ fn test_update() {
         })
         .collect::<HashMap<_, _>>();
     update_coordinate_keys(&mut rng, &mut msk, coordinates.clone()).unwrap();
-    assert_eq!(msk.coordinate_keypairs.len(), 30);
+    assert_eq!(msk.coordinate_secrets.len(), 30);
 
-    let mpk = mpk_keygen(&msk).unwrap();
+    let mpk = msk.mpk().unwrap();
     assert_eq!(mpk.coordinate_keys.len(), 30);
 
     // Deprecate half coordinates.
@@ -115,15 +115,15 @@ fn test_update() {
             }
         });
     update_coordinate_keys(&mut rng, &mut msk, coordinates.clone()).unwrap();
-    assert_eq!(msk.coordinate_keypairs.len(), 30);
-    let mpk = mpk_keygen(&msk).unwrap();
+    assert_eq!(msk.coordinate_secrets.len(), 30);
+    let mpk = msk.mpk().unwrap();
     assert_eq!(mpk.coordinate_keys.len(), 15);
 
     // Keep only 10 coordinates.
     let coordinates = coordinates.into_iter().take(10).collect::<HashMap<_, _>>();
     update_coordinate_keys(&mut rng, &mut msk, coordinates).unwrap();
-    assert_eq!(msk.coordinate_keypairs.len(), 10);
-    let mpk = mpk_keygen(&msk).unwrap();
+    assert_eq!(msk.coordinate_secrets.len(), 10);
+    let mpk = msk.mpk().unwrap();
     assert_eq!(mpk.coordinate_keys.len(), 5);
 }
 
@@ -155,7 +155,7 @@ fn test_rekey() {
         ]),
     )
     .unwrap();
-    let mpk = mpk_keygen(&msk).unwrap();
+    let mpk = msk.mpk().unwrap();
     let mut usk_1 = usk_keygen(&mut rng, &mut msk, subspace_1.clone()).unwrap();
     let mut usk_2 = usk_keygen(&mut rng, &mut msk, subspace_2.clone()).unwrap();
 
@@ -173,7 +173,7 @@ fn test_rekey() {
 
     // Re-key all space coordinates.
     rekey(&mut rng, &mut msk, universe).unwrap();
-    let mpk = mpk_keygen(&msk).unwrap();
+    let mpk = msk.mpk().unwrap();
 
     let (new_key_1, new_enc_1) = encaps(&mut rng, &mpk, &subspace_1).unwrap();
     let (new_key_2, new_enc_2) = encaps(&mut rng, &mpk, &subspace_2).unwrap();
@@ -249,7 +249,24 @@ fn test_integrity_check() {
 }
 
 #[test]
-fn test_pke() {
+fn test_covercrypt_kem() {
+    let policy = policy().expect("cannot generate policy");
+    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _) = cc.setup().expect("cannot generate master keys");
+    let mpk = cc
+        .update_master_keys(&policy, &mut msk)
+        .expect("cannot update master keys");
+    let usk = cc
+        .generate_user_secret_key(&mut msk, &ap, &policy)
+        .expect("cannot generate usk");
+    let (secret, enc) = cc.encaps(&mpk, &policy, &ap).unwrap();
+    let res = cc.decaps(&usk, &enc).unwrap();
+    assert_eq!(secret, res.unwrap());
+}
+
+#[test]
+fn test_covercrypt_pke() {
     let policy = policy().expect("cannot generate policy");
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
@@ -274,5 +291,5 @@ fn test_pke() {
         &enc,
     )
     .expect("cannot decrypt the ciphertext");
-    assert_eq!(ptx, ptx1.unwrap());
+    assert_eq!(ptx, &*ptx1.unwrap());
 }

@@ -4,10 +4,11 @@ use std::{
 };
 
 use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
+use zeroize::Zeroizing;
 
 use super::{
     ae::AE,
-    primitives::{mpk_keygen, prune, update_coordinate_keys, usk_keygen},
+    primitives::{prune, update_coordinate_keys, usk_keygen},
     MIN_TRACING_LEVEL,
 };
 use crate::{
@@ -67,7 +68,7 @@ impl Covercrypt {
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             )]),
         )?;
-        let mpk = mpk_keygen(&msk)?;
+        let mpk = msk.mpk()?;
 
         Ok((msk, mpk))
     }
@@ -92,8 +93,7 @@ impl Covercrypt {
             msk,
             policy.generate_universal_coordinates()?,
         )?;
-        let mpk = mpk_keygen(msk)?;
-        Ok(mpk)
+        msk.mpk()
     }
 
     /// Generates new keys for each coordinate in the semantic space of the
@@ -112,7 +112,7 @@ impl Covercrypt {
             msk,
             policy.generate_semantic_space_coordinates(ap)?,
         )?;
-        mpk_keygen(msk)
+        msk.mpk()
     }
 
     /// Removes all but the latest secret of each coordinate in the semantic
@@ -130,7 +130,7 @@ impl Covercrypt {
             msk,
             &policy.generate_semantic_space_coordinates(access_policy)?,
         );
-        mpk_keygen(msk)
+        msk.mpk()
     }
 
     /// Generates a USK associated to the given access policy.
@@ -255,7 +255,7 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
         usk: &UserSecretKey,
         ciphertext: &[u8],
         enc: &Encapsulation,
-    ) -> Result<Option<Vec<u8>>, Error>;
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Error>;
 }
 
 impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> for Covercrypt {
@@ -276,7 +276,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         let mut sym_key = SymmetricKey::default();
         kdf256!(&mut sym_key, &seed);
         let mut rng = self.rng.lock().expect("poisoned lock");
-        let res = E::encrypt(&sym_key, plaintext, &mut *rng)?;
+        let res = E::encrypt(&mut *rng, &sym_key, plaintext)?;
         Ok((enc, res))
     }
 
@@ -285,7 +285,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         usk: &UserSecretKey,
         ciphertext: &[u8],
         enc: &Encapsulation,
-    ) -> Result<Option<Vec<u8>>, Error> {
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
         if SEED_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
                 "insufficient entropy to generate a {}-byte key from a {}-byte seed",
