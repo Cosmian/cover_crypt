@@ -31,8 +31,8 @@ required-features = ["serialization"]
 serialization = []
 
 [dependencies]
-cosmian_crypto_core = { git="https://github.com/Cosmian/crypto_core.git", branch="develop", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
-pqc_kyber = { version = "0.4", features = ["std", "hazmat"] }
+cosmian_crypto_core = { version="9.4", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
+pqc_kyber = { version = "0.7", features = ["std", "kyber768"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 tiny-keccak = { version = "2.0.2", features = ["shake", "kmac"] }
