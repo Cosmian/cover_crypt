@@ -29,12 +29,7 @@ mod error;
 pub mod abe_policy;
 pub mod core;
 pub mod data_struct;
-#[cfg(any(test, feature = "test_utils"))]
 pub mod test_utils;
-
 pub use error::Error;
 
-pub use self::core::{
-    api::{CleartextHeader, Covercrypt, EncryptedHeader},
-    Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
-};
+pub use self::core::{api, Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey};

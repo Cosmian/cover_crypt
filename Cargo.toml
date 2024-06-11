@@ -4,6 +4,7 @@ version = "14.0.0"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
+  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
 ]
 documentation = "https://docs.rs/cosmian_cover_crypt/"
 edition = "2021"
@@ -14,23 +15,24 @@ description = "Key Policy attribute encryption based on subset cover"
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
 name = "cosmian_cover_crypt"
+
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
-[[bench]]
-name = "benches"
-harness = false
+[[example]]
+name = "encrypt"
+required-features = ["serialization"]
+
+[[example]]
+name = "decrypt"
+required-features = ["serialization"]
 
 [features]
 serialization = []
-test_utils = ["base64"]
-full_bench = ["serialization"]
-hybridized_bench = []
 
 [dependencies]
-base64 = { version = "0.21.0", optional = true }
-cosmian_crypto_core = { version = "9.2.0", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
-pqc_kyber = { version = "0.4", features = ["std", "hazmat"] }
+cosmian_crypto_core = { version="9.4", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
+pqc_kyber = { version = "0.7", features = ["std", "kyber768"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 tiny-keccak = { version = "2.0.2", features = ["shake", "kmac"] }
