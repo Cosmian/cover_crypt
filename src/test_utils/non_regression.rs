@@ -122,11 +122,7 @@ struct UserSecretKeyTestVector {
 }
 
 impl UserSecretKeyTestVector {
-    pub fn new(
-        msk: &mut MasterSecretKey,
-        policy: &Policy,
-        access_policy: &str,
-    ) -> Result<Self, Error> {
+    pub fn new(msk: &MasterSecretKey, access_policy: &str) -> Result<Self, Error> {
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
         Ok(Self {
