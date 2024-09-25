@@ -11,7 +11,7 @@ use pqc_kyber::{KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SE
 use zeroize::ZeroizeOnDrop;
 
 use crate::{
-    abe_policy::Partition,
+    abe_policy::{Partition, Policy},
     data_struct::{RevisionMap, RevisionVec},
 };
 
@@ -70,6 +70,7 @@ pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
     pub(crate) subkeys: HashMap<Partition, PublicSubkey>,
+    policy: Policy
 }
 
 pub(super) type SecretSubkey = (Option<KyberSecretKey>, R25519PrivateKey);
@@ -81,6 +82,7 @@ pub struct MasterSecretKey {
     s2: R25519PrivateKey,
     pub(crate) subkeys: RevisionMap<Partition, SecretSubkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
+    policy: Policy
 }
 
 #[derive(Debug, PartialEq, Eq)]
