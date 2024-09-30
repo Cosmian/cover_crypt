@@ -135,19 +135,20 @@ impl Covercrypt {
 
     /// Generates a USK associated to the given access policy.
     ///
-    /// It will be given the latest secret of each coordinate in the semantic
-    /// space of its access policy.
-    // TODO document error cases.
+    /// A new user secret key only has the latest keys corresponding to its
+    /// access policy.
+    ///
+    /// - `msk`           : master secret key
+    /// - `access_policy` : user access policy
     pub fn generate_user_secret_key(
         &self,
         msk: &mut MasterSecretKey,
         access_policy: &AccessPolicy,
-        policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(access_policy)?,
+            &msk.policy.access_policy_to_partitions(access_policy, true)?,
         )
     }
 
@@ -179,39 +180,17 @@ pub trait CovercryptKEM {
     /// Generates an encapsulation for the given access
     /// policy.
     ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
-    fn encaps(
+    /// - `pk`                  : public key
+    /// - `encryption_policy`   : encryption policy used for the encapsulation
+    pub fn encaps(
         &self,
-        mpk: &MasterPublicKey,
-        policy: &Policy,
-        ap: &AccessPolicy,
-    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>;
-
-    /// Attempts opening the given encapsulation using the given
-    /// user secret key.
-    ///
-    /// Returns the encapsulated symmetric key if the user key holds
-    /// the correct rights.
-    fn decaps(
-        &self,
-        usk: &UserSecretKey,
-        enc: &Encapsulation,
-    ) -> Result<Option<Secret<SEED_LENGTH>>, Error>;
-}
-
-impl CovercryptKEM for Covercrypt {
-    fn encaps(
-        &self,
-        mpk: &MasterPublicKey,
-        policy: &Policy,
-        ap: &AccessPolicy,
-    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
+        pk: &MasterPublicKey,
+        access_policy: &AccessPolicy,
+    ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            mpk,
-            &policy.generate_point_coordinates(ap)?,
+            pk,
+            &pk.policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
@@ -227,19 +206,21 @@ impl CovercryptKEM for Covercrypt {
 pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
     /// Encrypts the given plaintext using Covercrypt and the given DEM.
     ///
-    /// Creates a Covercrypt encapsulation of a 256-bit seed, and use it with
-    /// the given authentication data to encrypt the plaintext.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
-    fn encrypt(
-        &self,
-        mpk: &MasterPublicKey,
-        policy: &Policy,
-        ap: &AccessPolicy,
-        plaintext: &[u8],
-    ) -> Result<(Encapsulation, Vec<u8>), Error>;
+    /// - `cover_crypt`         : `Covercrypt` object
+    /// - `public_key`          : `Covercrypt` public key
+    /// - `encryption_policy`   : access policy used for the encapsulation
+    /// - `header_metadata`     : additional data symmetrically encrypted in the
+    ///   header
+    /// - `authentication_data` : authentication data used in the DEM encryption
+    pub fn generate(
+        cover_crypt: &Covercrypt,
+        public_key: &MasterPublicKey,
+        encryption_policy: &AccessPolicy,
+        metadata: Option<&[u8]>,
+        authentication_data: Option<&[u8]>,
+    ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Self), Error> {
+        let (symmetric_key, encapsulation) =
+            cover_crypt.encaps(public_key, encryption_policy)?;
 
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
     ///
