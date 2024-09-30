@@ -25,7 +25,7 @@ use crate::{
     abe_policy::{
         AttributeStatus,
         AttributeStatus::{DecryptOnly, EncryptDecrypt},
-        EncryptionHint, Partition,
+        EncryptionHint, Partition, Policy
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
@@ -175,6 +175,8 @@ pub fn setup(
     let mut sub_sk = RevisionMap::with_capacity(partitions.len());
     let mut sub_pk = HashMap::with_capacity(partitions.len());
 
+    let policy = Policy::new();
+
     for (partition, (is_hybridized, write_status)) in partitions {
         let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
         sub_sk.insert(partition.clone(), secret_subkey);
@@ -192,11 +194,13 @@ pub fn setup(
             s2,
             subkeys: sub_sk,
             kmac_key,
+            policy: policy.clone()
         },
         MasterPublicKey {
             g1,
             g2,
             subkeys: sub_pk,
+            policy : policy.clone()
         },
     )
 }
@@ -511,7 +515,7 @@ pub fn refresh(
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_core::{
-        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
+        reexport::rand_core::SeedableRng, CsRng,
     };
 
     use super::*;

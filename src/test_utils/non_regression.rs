@@ -7,7 +7,7 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 
 use super::policy;
 use crate::{
-    abe_policy::{AccessPolicy, Policy},
+    abe_policy::AccessPolicy,
     core::{MasterPublicKey, MasterSecretKey, UserSecretKey},
     Covercrypt, EncryptedHeader, Error,
 };
@@ -68,7 +68,6 @@ impl EncryptionTestVector {
 
     pub fn new(
         mpk: &MasterPublicKey,
-        policy: &Policy,
         encryption_policy: &str,
         plaintext: &str,
         header_metadata: Option<&[u8]>,
@@ -80,7 +79,6 @@ impl EncryptionTestVector {
         let cover_crypt = Covercrypt::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
-            policy,
             mpk,
             &AccessPolicy::from_boolean_expression(encryption_policy)?,
             header_metadata,
@@ -125,7 +123,6 @@ impl UserSecretKeyTestVector {
                     .generate_user_secret_key(
                         msk,
                         &AccessPolicy::from_boolean_expression(access_policy)?,
-                        policy,
                     )?
                     .serialize()?,
             ),
@@ -172,29 +169,25 @@ impl NonRegressionTestVector {
         let reg_vectors = Self {
             public_key: transcoder.encode(mpk.serialize()?),
             master_secret_key: transcoder.encode(msk.serialize()?),
-            policy: transcoder.encode(<Vec<u8>>::try_from(&policy).unwrap()),
+            policy: transcoder.encode(<Vec<u8>>::try_from(&msk.policy).unwrap()),
             //
             // Create user decryption keys
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
                 &msk,
-                &policy,
                 "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
             )?,
             medium_secret_mkg_key: UserSecretKeyTestVector::new(
                 &msk,
-                &policy,
                 "Security Level::Medium Secret && Department::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
                 &msk,
-                &policy,
                 "Security Level::Top Secret && Department::FIN",
             )?,
             //
             // Generate ciphertexts
             top_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
-                &policy,
                 "Department::MKG && Security Level::Top Secret",
                 "top_secret_mkg_plaintext",
                 Some(&header_metadata),
@@ -203,7 +196,6 @@ impl NonRegressionTestVector {
 
             low_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
-                &policy,
                 "Department::MKG && Security Level::Low Secret",
                 "low_secret_mkg_plaintext",
                 Some(&header_metadata),
@@ -212,7 +204,6 @@ impl NonRegressionTestVector {
 
             low_secret_fin_test_vector: EncryptionTestVector::new(
                 &mpk,
-                &policy,
                 "Department::FIN && Security Level::Low Secret",
                 "low_secret_fin_plaintext",
                 None,

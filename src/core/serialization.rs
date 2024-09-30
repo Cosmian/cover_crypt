@@ -10,7 +10,7 @@ use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
 use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
-    abe_policy::Partition,
+    abe_policy::{Partition, Policy},
     core::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
@@ -88,6 +88,7 @@ impl Serializable for MasterPublicKey {
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashMap::with_capacity(n_partitions);
+        let mut policy = Policy::new();
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
@@ -95,7 +96,7 @@ impl Serializable for MasterPublicKey {
                 R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
             subkeys.insert(partition, (pk_i, h_i));
         }
-        Ok(Self { g1, g2, subkeys })
+        Ok(Self { g1, g2, subkeys, policy })
     }
 }
 
@@ -148,6 +149,7 @@ impl Serializable for MasterSecretKey {
 
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = RevisionMap::with_capacity(n_partitions);
+        let mut policy = Policy::new();
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
@@ -172,6 +174,7 @@ impl Serializable for MasterSecretKey {
             s2,
             subkeys,
             kmac_key,
+            policy,
         })
     }
 }
@@ -497,11 +500,11 @@ mod tests {
                 "Department::MKG && Security Level::High Secret",
             )?;
             let (msk, mpk) = cc.generate_master_keys(&policy)?;
-            let usk = cc.generate_user_secret_key(&msk, &user_policy, &policy)?;
+            let usk = cc.generate_user_secret_key(&msk, &user_policy)?;
 
             // Check `EncryptedHeader` serialization.
             let (_secret_key, encrypted_header) =
-                EncryptedHeader::generate(&cc, &policy, &mpk, &encryption_policy, None, None)?;
+                EncryptedHeader::generate(&cc, &mpk, &encryption_policy, None, None)?;
             let bytes = encrypted_header.serialize()?;
             assert_eq!(
                 bytes.len(),

@@ -120,17 +120,15 @@ impl Covercrypt {
     ///
     /// - `msk`           : master secret key
     /// - `access_policy` : user access policy
-    /// - `policy`        : global policy
     pub fn generate_user_secret_key(
         &self,
         msk: &MasterSecretKey,
         access_policy: &AccessPolicy,
-        policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
         keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.access_policy_to_partitions(access_policy, true)?,
+            &msk.policy.access_policy_to_partitions(access_policy, true)?,
         )
     }
 
@@ -157,19 +155,17 @@ impl Covercrypt {
     /// generates its `Covercrypt` encapsulation for the given policy
     /// `attributes`.
     ///
-    /// - `policy`              : global policy
     /// - `pk`                  : public key
     /// - `encryption_policy`   : encryption policy used for the encapsulation
     pub fn encaps(
         &self,
-        policy: &Policy,
         pk: &MasterPublicKey,
         access_policy: &AccessPolicy,
     ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &policy.access_policy_to_partitions(access_policy, false)?,
+            &pk.policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
@@ -255,7 +251,6 @@ impl EncryptedHeader {
     /// encapsulated in this header.
     ///
     /// - `cover_crypt`         : `Covercrypt` object
-    /// - `policy`              : global policy
     /// - `public_key`          : `Covercrypt` public key
     /// - `encryption_policy`   : access policy used for the encapsulation
     /// - `header_metadata`     : additional data symmetrically encrypted in the
@@ -263,14 +258,13 @@ impl EncryptedHeader {
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &Covercrypt,
-        policy: &Policy,
         public_key: &MasterPublicKey,
         encryption_policy: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Self), Error> {
         let (symmetric_key, encapsulation) =
-            cover_crypt.encaps(policy, public_key, encryption_policy)?;
+            cover_crypt.encaps(public_key, encryption_policy)?;
 
         let encrypted_metadata = metadata
             .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))
