@@ -8,8 +8,8 @@ use std::{
 
 use cosmian_crypto_core::{
     kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
-    R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
-};
+    R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey, 
+    };
 use pqc_kyber::{
     indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
@@ -23,9 +23,8 @@ use super::{
 };
 use crate::{
     abe_policy::{
-        AttributeStatus,
-        AttributeStatus::{DecryptOnly, EncryptDecrypt},
-        EncryptionHint, Partition, Policy
+        AttributeStatus::{self, DecryptOnly, EncryptDecrypt},
+        EncryptionHint, Partition, Policy, PolicyVersion,
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
@@ -194,13 +193,13 @@ pub fn setup(
             s2,
             subkeys: sub_sk,
             kmac_key,
-            policy: policy.clone()
+            policy,
         },
         MasterPublicKey {
             g1,
             g2,
             subkeys: sub_pk,
-            policy
+            policy,
         },
     )
 }

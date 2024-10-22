@@ -70,7 +70,7 @@ pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
     pub(crate) subkeys: HashMap<Partition, PublicSubkey>,
-    pub policy: Policy
+    policy: Policy,
 }
 
 pub(super) type SecretSubkey = (Option<KyberSecretKey>, R25519PrivateKey);
@@ -82,7 +82,7 @@ pub struct  MasterSecretKey {
     s2: R25519PrivateKey,
     pub(crate) subkeys: RevisionMap<Partition, SecretSubkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
-    pub policy: Policy
+    policy: Policy,
 }
 
 #[derive(Debug, PartialEq, Eq)]
