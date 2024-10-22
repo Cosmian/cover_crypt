@@ -17,12 +17,8 @@ use super::{
     SEED_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{
-        AttributeStatus,
-        AttributeStatus::{DecryptOnly, EncryptDecrypt},
-        EncryptionHint, Partition, Policy
-    },
-    core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
+    abe_policy::{AttributeStatus, Coordinate, EncryptionHint},
+    core::{Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
@@ -65,57 +61,24 @@ fn verify_usk(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
     }
 }
 
-/// Generates the master secret key and master public key of the `Covercrypt`
-/// scheme.
-///
-/// # Parameters
-///
-/// - `rng`             : random number generator
-/// - `partitions`      : set of partition to be used
-pub fn setup(
-    rng: &mut impl CryptoRngCore,
-    partitions: HashMap<Partition, (EncryptionHint, AttributeStatus)>,
-) -> (MasterSecretKey, MasterPublicKey) {
-    let s = R25519PrivateKey::new(rng);
-    let s1 = R25519PrivateKey::new(rng);
-    let s2 = R25519PrivateKey::new(rng);
-    let h = R25519PublicKey::from(&s);
-    let g1 = R25519PublicKey::from(&s1);
-    let g2 = R25519PublicKey::from(&s2);
-
-    let mut sub_sk = RevisionMap::with_capacity(partitions.len());
-    let mut sub_pk = HashMap::with_capacity(partitions.len());
-
-    let policy = Policy::new();
-
-    for (partition, (is_hybridized, write_status)) in partitions {
-        let (public_subkey, secret_subkey) = create_subkey_pair(rng, &h, is_hybridized);
-        sub_sk.insert(partition.clone(), secret_subkey);
-        if write_status == EncryptDecrypt {
-            sub_pk.insert(partition, public_subkey);
-        }
+/// Generates new MSK with the given tracing level.
+pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<MasterSecretKey, Error> {
+    if tracing_level < MIN_TRACING_LEVEL {
+        return Err(Error::OperationNotPermitted(format!(
+            "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
+        )));
     }
     let s = elgamal::Scalar::new(rng);
 
     let mut tsk = TracingSecretKey::default();
     (0..=tracing_level).for_each(|_| tsk.increase_tracing(rng));
 
-    (
-        MasterSecretKey {
-            s,
-            s1,
-            s2,
-            subkeys: sub_sk,
-            kmac_key,
-            policy: policy.clone()
-        },
-        MasterPublicKey {
-            g1,
-            g2,
-            subkeys: sub_pk,
-            policy : policy.clone()
-        },
-    )
+    Ok(MasterSecretKey {
+        s,
+        tsk,
+        coordinate_secrets: RevisionMap::new(),
+        signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
+    })
 }
 
 /// Generates a USK for the given set of coordinates.
@@ -391,11 +354,29 @@ pub fn refresh(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use cosmian_crypto_core::{
-        reexport::rand_core::SeedableRng, CsRng,
-    };
+/// For each coordinate given, filters out associated secrets that do not belong
+/// to the MSK and add the most recent ones from the MSK to the associated list
+/// of secret.
+///
+/// Removes coordinates that do not belong to the MSK.
+///
+/// Preserves the following invariant:
+/// > 1. most recent coordinate secrets are listed first
+/// > 2) USK secrets are a strict sub-sequence of the MSK ones
+fn refresh_coordinate_keys(
+    msk: &MasterSecretKey,
+    coordinate_keys: RevisionVec<Coordinate, CoordinateSecretKey>,
+) -> RevisionVec<Coordinate, CoordinateSecretKey> {
+    coordinate_keys
+        .into_iter()
+        .filter_map(|(coordinate, user_chain)| {
+            msk.coordinate_secrets
+                .get(&coordinate)
+                .and_then(|msk_chain| {
+                    let mut updated_chain = LinkedList::new();
+                    let mut msk_secrets = msk_chain.iter();
+                    let mut usk_secrets = user_chain.into_iter();
+                    let first_secret = usk_secrets.next()?;
 
                     // Add the most recent secrets from the MSK that do not belong
                     // to the USK at the front of the updated chain (cf Invariant.1)

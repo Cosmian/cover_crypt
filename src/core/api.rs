@@ -82,55 +82,51 @@ impl Covercrypt {
     /// - adds the policy coordinates that don't belong yet to the MSK,
     /// generating new keys.
     ///
-    /// The new MPK holds the latest public keys of each coordinates of the new policy.
+    ///  - `msk`    : master secret key
+    ///  - `mpk`    : master public key
     pub fn update_master_keys(
         &self,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         update_coordinate_keys(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_universal_coordinates()?,
-        )?;
-        msk.mpk()
+            mpk,
+            msk.policy.generate_all_partitions()?,
+        )
     }
 
-    /// Generates new keys for each coordinate in the semantic space of the
-    /// given access policy and update the given master keys.
-    ///
-    /// All user keys need to be refreshed.
-    // TODO document error cases.
-    pub fn rekey(
+    /// Generate new keys associated to the given access policy in the master
+    /// keys. User keys will need to be refreshed after this step.
+    ///  - `access_policy`  : describe the keys to renew
+    ///  - `msk`            : master secret key
+    ///  - `mpk`            : master public key
+    pub fn rekey_master_keys(
         &self,
-        ap: &AccessPolicy,
-        policy: &Policy,
+        access_policy: &AccessPolicy,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(ap)?,
-        )?;
-        msk.mpk()
+            mpk,
+            mpk.policy.access_policy_to_partitions(access_policy, false)?,
+        )
     }
 
-    /// Removes all but the latest secret of each coordinate in the semantic
-    /// space of the given access policy from the given master keys.
-    ///
-    /// This action is *irreversible*, and all user keys need to be refreshed.
-    // TODO document error cases.
+    /// Removes old keys associated to the given master keys from the master
+    /// keys. This will permanently remove access to old ciphers.
+    ///  - `access_policy`  : describe the keys to prune
+    ///  - `msk`            : master secret key
     pub fn prune_master_secret_key(
         &self,
         access_policy: &AccessPolicy,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         prune(
             msk,
-            &policy.generate_semantic_space_coordinates(access_policy)?,
-        );
-        msk.mpk()
+            &msk.policy.access_policy_to_partitions(access_policy, false)?,
+        )
     }
 
     /// Generates a USK associated to the given access policy.

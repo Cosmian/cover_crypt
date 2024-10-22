@@ -141,7 +141,7 @@ pub struct MasterPublicKey {
     g1: R25519PublicKey,
     g2: R25519PublicKey,
     pub(crate) subkeys: HashMap<Partition, PublicSubkey>,
-    pub policy: Policy
+    policy: Policy,
 }
 
 /// Covercrypt tracing secret key.
@@ -262,7 +262,7 @@ pub struct  MasterSecretKey {
     s2: R25519PrivateKey,
     pub(crate) subkeys: RevisionMap<Partition, SecretSubkey>,
     kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
-    pub policy: Policy
+    policy: Policy,
 }
 
 impl MasterSecretKey {
