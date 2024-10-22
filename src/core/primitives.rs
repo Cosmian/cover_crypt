@@ -200,7 +200,7 @@ pub fn setup(
             g1,
             g2,
             subkeys: sub_pk,
-            policy : policy.clone()
+            policy
         },
     )
 }
