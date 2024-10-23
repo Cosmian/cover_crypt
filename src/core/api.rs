@@ -58,12 +58,10 @@ impl Covercrypt {
     /// When a partition exists on the master keys, but not in the new policy,
     /// it is removed from the master keys.
     ///
-    ///  - `policy` : Policy to use to generate the keys
     ///  - `msk`    : master secret key
     ///  - `mpk`    : master public key
     pub fn update_master_keys(
         &self,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
         mpk: &mut MasterPublicKey,
     ) -> Result<(), Error> {
@@ -71,20 +69,18 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            policy.generate_all_partitions()?,
+            msk.policy.generate_all_partitions()?,
         )
     }
 
     /// Generate new keys associated to the given access policy in the master
     /// keys. User keys will need to be refreshed after this step.
     ///  - `access_policy`  : describe the keys to renew
-    ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
     ///  - `mpk`            : master public key
     pub fn rekey_master_keys(
         &self,
         access_policy: &AccessPolicy,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
         mpk: &mut MasterPublicKey,
     ) -> Result<(), Error> {
@@ -92,24 +88,22 @@ impl Covercrypt {
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             mpk,
-            policy.access_policy_to_partitions(access_policy, false)?,
+            mpk.policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
     /// Removes old keys associated to the given master keys from the master
     /// keys. This will permanently remove access to old ciphers.
     ///  - `access_policy`  : describe the keys to prune
-    ///  - `policy`         : global policy
     ///  - `msk`            : master secret key
     pub fn prune_master_secret_key(
         &self,
         access_policy: &AccessPolicy,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
     ) -> Result<(), Error> {
         prune(
             msk,
-            &policy.access_policy_to_partitions(access_policy, false)?,
+            &msk.policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
@@ -120,17 +114,15 @@ impl Covercrypt {
     ///
     /// - `msk`           : master secret key
     /// - `access_policy` : user access policy
-    /// - `policy`        : global policy
     pub fn generate_user_secret_key(
         &self,
         msk: &MasterSecretKey,
         access_policy: &AccessPolicy,
-        policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
         keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &policy.access_policy_to_partitions(access_policy, true)?,
+            &msk.policy.access_policy_to_partitions(access_policy, true)?,
         )
     }
 
@@ -157,19 +149,17 @@ impl Covercrypt {
     /// generates its `Covercrypt` encapsulation for the given policy
     /// `attributes`.
     ///
-    /// - `policy`              : global policy
     /// - `pk`                  : public key
     /// - `encryption_policy`   : encryption policy used for the encapsulation
     pub fn encaps(
         &self,
-        policy: &Policy,
         pk: &MasterPublicKey,
         access_policy: &AccessPolicy,
     ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             pk,
-            &policy.access_policy_to_partitions(access_policy, false)?,
+            &pk.policy.access_policy_to_partitions(access_policy, false)?,
         )
     }
 
@@ -255,7 +245,6 @@ impl EncryptedHeader {
     /// encapsulated in this header.
     ///
     /// - `cover_crypt`         : `Covercrypt` object
-    /// - `policy`              : global policy
     /// - `public_key`          : `Covercrypt` public key
     /// - `encryption_policy`   : access policy used for the encapsulation
     /// - `header_metadata`     : additional data symmetrically encrypted in the
@@ -263,14 +252,13 @@ impl EncryptedHeader {
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &Covercrypt,
-        policy: &Policy,
         public_key: &MasterPublicKey,
         encryption_policy: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(SymmetricKey<SYM_KEY_LENGTH>, Self), Error> {
         let (symmetric_key, encapsulation) =
-            cover_crypt.encaps(policy, public_key, encryption_policy)?;
+            cover_crypt.encaps(public_key, encryption_policy)?;
 
         let encrypted_metadata = metadata
             .map(|bytes| cover_crypt.encrypt(&symmetric_key, bytes, authentication_data))
