@@ -3,7 +3,6 @@ use crate::{
     Error,
 };
 
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 
 #[cfg(feature = "serialization")]
 pub mod non_regression;
@@ -82,7 +81,7 @@ mod tests {
 
         // rekey all partitions which include `Department::FIN`
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &mut msk, &mut mpk)?;
         // public key contains only the last subkeys
         assert_eq!(mpk.subkeys.len(), 20);
         // secret key stores the 5 old subkeys
@@ -90,7 +89,7 @@ mod tests {
         assert_eq!(msk.subkeys.count_elements(), 25);
 
         // remove older subkeys for `Department::FIN`
-        cover_crypt.prune_master_secret_key(&rekey_access_policy, &policy, &mut msk)?;
+        cover_crypt.prune_master_secret_key(&rekey_access_policy, &mut msk)?;
         assert_eq!(mpk.subkeys.len(), 20);
         // we only keep the last subkeys in the secret key
         assert_eq!(msk.subkeys.count_elements(), 20);
@@ -125,15 +124,15 @@ mod tests {
         assert_eq!(msk.subkeys.count_elements(), 2 * 2);
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A1"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &mut msk, &mut mpk)?;
         assert_eq!(msk.subkeys.count_elements(), 4 + 2); // Adding 2 new keys for partitions D1A1':D2A1, D1A1':D2A2
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D1", "D1A2"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &mut msk, &mut mpk)?;
         assert_eq!(msk.subkeys.count_elements(), 6 + 2); // Adding 2 new keys for partitions D1A2':D2A1, D1A2':D2A2
 
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("D2", "D2A1"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &mut msk, &mut mpk)?;
         assert_eq!(msk.subkeys.count_elements(), 8 + 2); // Adding 2 new keys D1A1':D2A1', D1A2':D2A1'
 
         Ok(())
@@ -151,7 +150,7 @@ mod tests {
         let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
         // rekey the MKG department
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "MKG"));
-        cover_crypt.rekey_master_keys(&rekey_access_policy, &policy, &mut msk, &mut mpk)?;
+        cover_crypt.rekey_master_keys(&rekey_access_policy, &mut msk, &mut mpk)?;
         // refresh the user key and preserve access to old partitions
         cover_crypt.refresh_user_secret_key(&mut usk, &msk, true)?;
         // 4 partitions accessed by the user were rekeyed (MKG Protected, Low Secret,
@@ -213,7 +212,7 @@ mod tests {
             EncryptionHint::Classic,
         )?;
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        cover_crypt.update_master_keys(&mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
@@ -278,7 +277,7 @@ mod tests {
         policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        cover_crypt.update_master_keys(&mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
         assert_eq!(new_partitions_msk.len(), new_partitions_mpk.len());
@@ -335,7 +334,7 @@ mod tests {
         policy.disable_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        cover_crypt.update_master_keys(&mut msk, &mut mpk)?;
         let new_partitions_msk: Vec<Partition> = msk.subkeys.keys().cloned().collect();
         let new_partitions_mpk: Vec<Partition> = mpk.subkeys.keys().cloned().collect();
         // the disabled partition have been removed from mpk
@@ -371,7 +370,7 @@ mod tests {
         //
         // Rotating the disabled attribute should only change the msk
         let rekey_ap = AccessPolicy::Attr(Attribute::new("Department", "FIN"));
-        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut mpk)?;
+        cover_crypt.rekey_master_keys(&rekey_ap, &mut msk, &mut mpk)?;
         // 5 new partitions added to the msk
         assert_eq!(msk.subkeys.count_elements() - 10, mpk.subkeys.len());
 
@@ -402,7 +401,7 @@ mod tests {
         policy.rename_attribute(&Attribute::new("Department", "FIN"), "Finance".to_string())?;
 
         // update the master keys
-        cover_crypt.update_master_keys(&policy, &mut msk, &mut mpk)?;
+        cover_crypt.update_master_keys(&mut msk, &mut mpk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -429,8 +428,7 @@ mod tests {
             & AccessPolicy::new("Security Level", "Top Secret");
         let cover_crypt = Covercrypt::default();
         let (msk, mpk) = cover_crypt.generate_master_keys(&policy)?;
-        let (sym_key, encrypted_key) = cover_crypt.encaps(
->            &mpk;
+        let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk,
             &AccessPolicy::from_boolean_expression(
                 "Department::R&D && Security Level::Top Secret",
             )?,
@@ -499,7 +497,7 @@ mod tests {
         //
         // Rotate argument (must update master keys)
         let rekey_ap = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
-        cover_crypt.rekey_master_keys(&rekey_ap, &policy, &mut msk, &mut master_public_key)?;
+        cover_crypt.rekey_master_keys(&rekey_ap, &mut msk, &mut master_public_key)?;
 
         //
         // Encrypt with new attribute

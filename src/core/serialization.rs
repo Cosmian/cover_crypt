@@ -10,7 +10,7 @@ use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
 use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
-    abe_policy::{Partition, Policy},
+    abe_policy::Partition,
     core::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
@@ -88,7 +88,7 @@ impl Serializable for MasterPublicKey {
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashMap::with_capacity(n_partitions);
-        let policy = Policy::read(de)?;
+        let policy = MasterPublicKey::policy.read(de)?;
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
@@ -149,7 +149,7 @@ impl Serializable for MasterSecretKey {
 
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = RevisionMap::with_capacity(n_partitions);
-        let policy = Policy::Read(de)?;
+        let policy = MasterSecretKey::policy.read(de)?;
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;

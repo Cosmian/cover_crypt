@@ -76,7 +76,7 @@ pub struct MasterPublicKey {
 pub(super) type SecretSubkey = (Option<KyberSecretKey>, R25519PrivateKey);
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct  MasterSecretKey {
+pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,

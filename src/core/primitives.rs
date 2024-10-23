@@ -24,7 +24,7 @@ use super::{
 use crate::{
     abe_policy::{
         AttributeStatus::{self, DecryptOnly, EncryptDecrypt},
-        EncryptionHint, Partition, Policy, PolicyVersion,
+        EncryptionHint, Partition, Policy,
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
