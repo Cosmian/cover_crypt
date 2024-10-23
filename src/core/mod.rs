@@ -256,7 +256,7 @@ impl TracingPublicKey {
 /// - the secret keys associated to the universal coordinates;
 /// - an optional key for symmetric USK-signing.
 #[derive(Debug, PartialEq, Eq)]
-pub struct  MasterSecretKey {
+pub struct MasterSecretKey {
     s: R25519PrivateKey,
     s1: R25519PrivateKey,
     s2: R25519PrivateKey,
