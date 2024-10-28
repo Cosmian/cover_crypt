@@ -15,7 +15,7 @@ use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy},
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SEED_LENGTH,
+        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SHARED_SECRET_LENGTH,
     },
     Error,
 };
@@ -51,8 +51,8 @@ impl Covercrypt {
     /// encapsulations can be created.
     pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         let mut msk = setup(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
             MIN_TRACING_LEVEL,
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
         )?;
 
         // Add broadcast coordinate with classic encryption level.
@@ -187,7 +187,7 @@ pub trait CovercryptKEM {
         mpk: &MasterPublicKey,
         policy: &Policy,
         ap: &AccessPolicy,
-    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>;
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Encapsulation), Error>;
 
     /// Attempts opening the given encapsulation using the given
     /// user secret key.
@@ -198,7 +198,7 @@ pub trait CovercryptKEM {
         &self,
         usk: &UserSecretKey,
         enc: &Encapsulation,
-    ) -> Result<Option<Secret<SEED_LENGTH>>, Error>;
+    ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error>;
 }
 
 impl CovercryptKEM for Covercrypt {
@@ -207,7 +207,7 @@ impl CovercryptKEM for Covercrypt {
         mpk: &MasterPublicKey,
         policy: &Policy,
         ap: &AccessPolicy,
-    ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
@@ -219,7 +219,7 @@ impl CovercryptKEM for Covercrypt {
         &self,
         usk: &UserSecretKey,
         encapsulation: &Encapsulation,
-    ) -> Result<Option<Secret<SEED_LENGTH>>, Error> {
+    ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
         decaps(usk, encapsulation)
     }
 }
@@ -266,15 +266,15 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         ap: &AccessPolicy,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
-        if SEED_LENGTH < KEY_LENGTH {
+        if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
                 "insufficient entropy to generate a {}-byte key from a {}-byte seed",
-                KEY_LENGTH, SEED_LENGTH
+                KEY_LENGTH, SHARED_SECRET_LENGTH
             )));
         }
         let (seed, enc) = self.encaps(mpk, policy, ap)?;
         let mut sym_key = SymmetricKey::default();
-        kdf256!(&mut sym_key, &seed);
+        kdf256!(&mut *sym_key, &*seed);
         let mut rng = self.rng.lock().expect("poisoned lock");
         let res = E::encrypt(&mut *rng, &sym_key, plaintext)?;
         Ok((enc, res))
@@ -286,16 +286,16 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         ciphertext: &[u8],
         enc: &Encapsulation,
     ) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
-        if SEED_LENGTH < KEY_LENGTH {
+        if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
                 "insufficient entropy to generate a {}-byte key from a {}-byte seed",
-                KEY_LENGTH, SEED_LENGTH
+                KEY_LENGTH, SHARED_SECRET_LENGTH
             )));
         }
         let seed = self.decaps(usk, enc)?;
         seed.map(|seed| {
             let mut sym_key = SymmetricKey::<KEY_LENGTH>::default();
-            kdf256!(&mut sym_key, &seed);
+            kdf256!(&mut *sym_key, &*seed);
             E::decrypt(&sym_key, ciphertext)
         })
         .transpose()

@@ -1,10 +1,11 @@
+#![allow(non_snake_case)]
+
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     hash::Hash,
-    ops::Deref,
 };
 
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
 
 use crate::{
     abe_policy::{Coordinate, Policy},
@@ -15,25 +16,25 @@ use crate::{
 pub mod ae;
 pub mod api;
 mod encrypted_header;
+mod kem;
 pub mod primitives;
 #[cfg(feature = "serialization")]
 pub mod serialization;
 
-mod elgamal;
-mod postquantum;
+mod nike;
 #[cfg(test)]
 mod tests;
 
-use elgamal::{EcPoint, Scalar};
 pub use encrypted_header::{CleartextHeader, EncryptedHeader};
+use nike::{EcPoint, Scalar};
 
-use self::postquantum::{MlKemAesPke, PkeTrait};
+use self::{
+    kem::{DecapsulationKey512, Kem},
+    nike::{Nike, R25519},
+};
 
 /// The length of the secret encapsulated by Covercrypt.
-///
-/// They are 32 bytes long to enable reaching 128 bits of post-quantum security
-/// when using it with a sensible DEM.
-pub const SEED_LENGTH: usize = 32;
+pub const SHARED_SECRET_LENGTH: usize = 32;
 
 /// The length of the key used to sign user secret keys.
 ///
@@ -61,58 +62,72 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 
 /// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct CoordinateSecretKey {
-    el: Scalar,
-    pq: Option<postquantum::SecretKey>,
+#[derive(Clone, Debug, PartialEq)]
+enum CoordinateSecretKey {
+    Hybridized { sk: Scalar, dk: DecapsulationKey512 },
+    Classic { sk: Scalar },
 }
 
 impl CoordinateSecretKey {
     /// Generates a new random coordinate keypair cryptographically bound to the
     /// Covercrypt binding point `h`.
     fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
-        let el = Scalar::new(rng);
-        let pq = if hybridize {
-            let (pq, _) = MlKemAesPke.keygen(rng)?;
-            Some(pq)
+        let sk = Scalar::new(rng);
+        if hybridize {
+            let (dk, _) = kem::MlKem512::keygen(rng)?;
+            Ok(Self::Hybridized { sk, dk })
         } else {
-            None
-        };
-        Ok(Self { el, pq })
+            Ok(Self::Classic { sk })
+        }
     }
 
     /// Generates the associated coordinate public key.
     #[must_use]
-    fn public_key(&self, h: &EcPoint) -> CoordinatePublicKey {
-        let el_pk = h * &self.el;
-        let pq_pk = self.pq.as_ref().map(|sk| sk.pk());
-        CoordinatePublicKey {
-            el: el_pk,
-            pq: pq_pk,
+    fn cpk(&self, h: &EcPoint) -> CoordinatePublicKey {
+        match self {
+            Self::Hybridized { sk, dk } => CoordinatePublicKey::Hybridized {
+                H: h * sk,
+                ek: dk.ek(),
+            },
+            Self::Classic { sk } => CoordinatePublicKey::Classic { H: h * sk },
         }
     }
 
     /// Returns true if this coordinate keypair is hybridized.
     fn is_hybridized(&self) -> bool {
-        self.pq.is_some()
+        match self {
+            Self::Hybridized { .. } => true,
+            Self::Classic { .. } => false,
+        }
     }
 
-    fn drop_hybridization(&mut self) {
-        self.pq = None;
+    fn drop_hybridization(&self) -> Self {
+        match self {
+            Self::Hybridized { sk: x_i, .. } => Self::Classic { sk: x_i.clone() },
+            Self::Classic { .. } => self.clone(),
+        }
     }
 }
 
 /// The Covercrypt public keys hold the DH secret public key associated to a coordinate.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct CoordinatePublicKey {
-    el: EcPoint,
-    pq: Option<postquantum::PublicKey>,
+#[derive(Clone, Debug, PartialEq)]
+enum CoordinatePublicKey {
+    Hybridized {
+        H: EcPoint,
+        ek: kem::EncapsulationKey512,
+    },
+    Classic {
+        H: EcPoint,
+    },
 }
 
 impl CoordinatePublicKey {
     pub fn is_hybridized(&self) -> bool {
-        self.pq.is_some()
+        match self {
+            Self::Hybridized { .. } => true,
+            Self::Classic { .. } => false,
+        }
     }
 
     pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
@@ -161,25 +176,37 @@ impl UserId {
 /// - a generator
 /// - the tracers;
 /// - the set of known user IDs.
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
-    tracers: LinkedList<elgamal::Keypair>,
+    s: Scalar,
+    tracers: LinkedList<(Scalar, EcPoint)>,
     users: HashSet<UserId>,
 }
 
 impl TracingSecretKey {
+    fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
+        let s = nike::Scalar::new(rng);
+        let tracers = (0..=level)
+            .map(|_| R25519::keygen(rng))
+            .collect::<Result<_, _>>()?;
+        let users = HashSet::new();
+
+        Ok(Self { s, tracers, users })
+    }
+
     /// Returns the current tracing level.
     fn tracing_level(&self) -> usize {
         self.tracers.len() - 1
     }
 
     /// Generates a new tracer. Returns the associated trap.
-    fn increase_tracing(&mut self, rng: &mut impl CryptoRngCore) {
-        self.tracers.push_back(elgamal::Keypair::random(rng));
+    fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
+        self.tracers.push_back(R25519::keygen(rng)?);
+        Ok(())
     }
 
     /// Drops the oldest tracer and returns it.
-    fn _decrease_tracing(&mut self) -> Result<elgamal::Keypair, Error> {
+    fn _decrease_tracing(&mut self) -> Result<(Scalar, EcPoint), Error> {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -204,7 +231,7 @@ impl TracingSecretKey {
             }
         } else {
             for _ in self.tracing_level()..target_level {
-                self.increase_tracing(rng);
+                self._increase_tracing(rng)?;
             }
         }
         Ok(())
@@ -230,13 +257,75 @@ impl TracingSecretKey {
     /// Generates the associated tracing public key.
     #[must_use]
     fn tpk(&self) -> TracingPublicKey {
-        TracingPublicKey(
-            self.tracers
+        TracingPublicKey(self.tracers.iter().map(|(_, p)| p).cloned().collect())
+    }
+
+    /// Returns the binding points.
+    fn binding_point(&self) -> EcPoint {
+        EcPoint::from(&self.s)
+    }
+
+    /// Generates a new ID and adds it to the list of known user IDs.
+    fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
+        if let Some(last_tracer) = self.tracers.back() {
+            // Generate all but the last marker at random.
+            let mut markers: LinkedList<Scalar> = self
+                .tracers
                 .iter()
-                .filter_map(elgamal::Keypair::pk)
-                .cloned()
-                .collect(),
-        )
+                .zip(0..self.tracers.len() - 1)
+                .map(|_| Scalar::new(rng))
+                .collect();
+
+            let last_marker = &(&self.s
+                - &self
+                    .tracers
+                    .iter()
+                    .zip(markers.iter())
+                    .map(|((sk_i, _), a_i)| sk_i * a_i)
+                    .fold(Scalar::zero(), |acc, x_i| &acc + &x_i))
+                / &last_tracer.0;
+
+            markers.push_back(last_marker);
+            let id = UserId(markers);
+            self.add_user(id.clone());
+            Ok(id)
+        } else {
+            Err(Error::KeyError("MSK has no tracer".to_string()))
+        }
+    }
+
+    /// Returns true if the given user ID is valid.
+    fn _validate_user_id(&self, id: &UserId) -> bool {
+        self.s
+            == id
+                .iter()
+                .zip(self.tracers.iter())
+                .map(|(identifier, tracer)| identifier * &tracer.0)
+                .sum()
+    }
+
+    /// If the tracing level of the user ID is not in sync with the one of the
+    /// MSK, generate a new ID with the correct tracing level and replace the
+    /// old ID by the new one in the MSK.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if the ID is unknown.
+    fn refresh_id(&mut self, rng: &mut impl CryptoRngCore, id: UserId) -> Result<UserId, Error> {
+        if !self.is_known(&id) {
+            Err(Error::Tracing("unknown user".to_string()))
+        } else if id.tracing_level() != self.tracing_level() {
+            let new_id = self.generate_user_id(rng)?;
+            self.add_user(new_id.clone());
+            self.del_user(&id);
+            Ok(new_id)
+        } else {
+            // Since the integrity of the USK is checked, there is no need to
+            // validated the ID before returning it. This saves O(tracing-level)
+            // multiplications... but there is actually no way to locally check
+            // the caller actually checked the integrity first.
+            Ok(id)
+        }
     }
 }
 
@@ -258,9 +347,8 @@ impl TracingPublicKey {
 /// - the tracing secret key used to produce challenges to trace user keys;
 /// - the secret keys associated to the universal coordinates;
 /// - an optional key for symmetric USK-signing.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct MasterSecretKey {
-    s: Scalar,
     tsk: TracingSecretKey,
     coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
@@ -268,69 +356,6 @@ pub struct MasterSecretKey {
 }
 
 impl MasterSecretKey {
-    /// Returns the binding points.
-    fn binding_point(&self) -> EcPoint {
-        EcPoint::from(&self.s)
-    }
-
-    /// Generates a new ID and adds it to the list of known user IDs.
-    fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
-        if let Some(first_tracer) = self.tsk.tracers.front() {
-            let mut markers = LinkedList::new();
-            // Generate all but the first identifier at random. The first
-            // one is the solution of `(s - linear_comb)/first_tracer`.
-            let mut linear_comb = Scalar::zero();
-            for tracer in self.tsk.tracers.iter().skip(1) {
-                let ai = Scalar::new(rng);
-                linear_comb = &linear_comb + &(&ai * tracer.sk());
-                markers.push_back(ai);
-            }
-            markers.push_front(&(&self.s - &linear_comb) / first_tracer.sk());
-            let id = UserId(markers);
-            self.tsk.add_user(id.clone());
-            Ok(id)
-        } else {
-            Err(Error::KeyError("MSK has no tracer".to_string()))
-        }
-    }
-
-    /// Returns true if the given user ID is valid.
-    fn _validate_user_id(&self, id: &UserId) -> bool {
-        self.s
-            == id
-                .iter()
-                .zip(self.tsk.tracers.iter())
-                .map(|(identifier, tracer)| identifier * tracer.sk())
-                .fold(Scalar::zero(), |mut acc, elt| {
-                    acc = &acc + &elt;
-                    acc
-                })
-    }
-
-    /// If the tracing level of the user ID is not in sync with the one of the
-    /// MSK, generate a new ID with the correct tracing level and replace the
-    /// old ID by the new one in the MSK.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the ID is unknown.
-    fn refresh_id(&mut self, rng: &mut impl CryptoRngCore, id: UserId) -> Result<UserId, Error> {
-        if !self.tsk.is_known(&id) {
-            Err(Error::Tracing("unknown user".to_string()))
-        } else if id.tracing_level() != self.tsk.tracing_level() {
-            let new_id = self.generate_user_id(rng)?;
-            self.tsk.add_user(new_id.clone());
-            self.tsk.del_user(&id);
-            Ok(new_id)
-        } else {
-            // Since the integrity of the USK is checked, there is no need to
-            // validated the ID before returning it. This saves O(tracing-level)
-            // multiplications... but there is actually no way to locally check
-            // the caller actually checked the integrity first.
-            Ok(id)
-        }
-    }
-
     /// Returns the most recent secret key associated to each given coordinate.
     ///
     /// # Error
@@ -353,16 +378,16 @@ impl MasterSecretKey {
 
     /// Generates a new MPK holding the latest public information of each universal coordinate.
     pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
-        let h = self.binding_point();
+        let h = self.tsk.binding_point();
         Ok(MasterPublicKey {
             tpk: self.tsk.tpk(),
             coordinate_keys: self
                 .coordinate_secrets
                 .iter()
                 .filter_map(|(coordinate, secrets)| {
-                    secrets.front().and_then(|(is_activated, s)| {
+                    secrets.front().and_then(|(is_activated, csk)| {
                         if *is_activated {
-                            Some((coordinate.clone(), s.public_key(&h)))
+                            Some((coordinate.clone(), csk.cpk(&h)))
                         } else {
                             None
                         }
@@ -379,7 +404,7 @@ impl MasterSecretKey {
 /// It is composed of:
 /// - the tracing public key;
 /// - the public keys of the universal coordinates.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
@@ -398,6 +423,22 @@ impl MasterPublicKey {
     fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
         self.tpk.0.iter().map(|gi| gi * r).collect()
     }
+
+    fn select_subkeys(
+        &self,
+        targets: &HashSet<Coordinate>,
+    ) -> Result<Vec<&CoordinatePublicKey>, Error> {
+        let subkeys = targets
+            .iter()
+            .map(|coordinate| {
+                self.coordinate_keys.get(coordinate).ok_or_else(|| {
+                    Error::KeyError(format!("no public key for coordinate '{coordinate:#?}'"))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        CoordinatePublicKey::assert_homogeneity(&subkeys)?;
+        Ok(subkeys)
+    }
 }
 
 /// Covercrypt User Secret Key (USK).
@@ -406,11 +447,11 @@ impl MasterPublicKey {
 /// - a user ID (pair of scalars);
 /// - the keys of the coordinates derived from the user decryption policy;
 /// - a signature from the MSK that guarantees its integrity.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
     id: UserId,
     coordinate_keys: RevisionVec<Coordinate, CoordinateSecretKey>,
-    msk_signature: Option<KmacSignature>,
+    signature: Option<KmacSignature>,
 }
 
 /// Encapsulation of a `SEED_LENGTH`-byte seed for a given coordinate.
@@ -418,21 +459,15 @@ pub struct UserSecretKey {
 /// In case the security level of the associated coordinate was set to
 /// post-quantum secure, the key encapsulation is hybridized. This implies a
 /// significant size overhead.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 enum SeedEncapsulation {
-    Classic([u8; SEED_LENGTH]),
-    Hybridized(<MlKemAesPke as PkeTrait<{ Aes256Gcm::KEY_LENGTH }>>::Ciphertext),
-}
-
-impl Deref for SeedEncapsulation {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            SeedEncapsulation::Classic(ctx) => ctx,
-            SeedEncapsulation::Hybridized(ctx) => ctx,
-        }
-    }
+    Classic {
+        F: [u8; SHARED_SECRET_LENGTH],
+    },
+    Hybridized {
+        E: kem::Encapsulation512,
+        F: [u8; SHARED_SECRET_LENGTH],
+    },
 }
 
 /// Covercrypt encapsulation.
@@ -444,16 +479,16 @@ impl Deref for SeedEncapsulation {
 /// - the early abort tag;
 /// - the traps used to select users that can open this encapsulation;
 /// - the coordinate encapsulations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Encapsulation {
     tag: Tag,
-    traps: Vec<EcPoint>,
+    c: Vec<EcPoint>,
     coordinate_encapsulations: Vec<SeedEncapsulation>,
 }
 
 impl Encapsulation {
     /// Returns the tracing level of this encapsulation.
     pub fn tracing_level(&self) -> usize {
-        self.traps.len() - 1
+        self.c.len() - 1
     }
 }

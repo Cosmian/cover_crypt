@@ -23,7 +23,7 @@ fn test_encapsulation() {
     let other_coordinate = Coordinate::random(&mut rng);
     let target_coordinate = Coordinate::random(&mut rng);
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_coordinate_keys(
         &mut rng,
         &mut msk,
@@ -77,7 +77,7 @@ fn test_encapsulation() {
 fn test_update() {
     let mut rng = CsRng::from_entropy();
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     assert_eq!(msk.tsk.users.len(), 0);
     assert_eq!(msk.tsk.tracing_level(), MIN_TRACING_LEVEL);
     assert_eq!(msk.coordinate_secrets.len(), 0);
@@ -139,7 +139,7 @@ fn test_rekey() {
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
     let universe = HashSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_coordinate_keys(
         &mut rng,
         &mut msk,
@@ -211,7 +211,7 @@ fn test_integrity_check() {
     let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_coordinate_keys(
         &mut rng,
         &mut msk,
