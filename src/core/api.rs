@@ -136,15 +136,17 @@ impl Covercrypt {
     ///
     /// - `msk`           : master secret key
     /// - `access_policy` : user access policy
+    /// - `policy`        : global policy
     pub fn generate_user_secret_key(
         &self,
         msk: &mut MasterSecretKey,
         access_policy: &AccessPolicy,
+        policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            &msk.policy.access_policy_to_partitions(access_policy, true)?,
+            &policy.access_policy_to_partitions(access_policy, true)?,
         )
     }
 

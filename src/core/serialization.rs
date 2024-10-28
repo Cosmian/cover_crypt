@@ -10,13 +10,10 @@ use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
 use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
 use crate::{
-    abe_policy::Partition,
-    core::{
+    abe_policy::{Partition, Policy}, core::{
         Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
         SYM_KEY_LENGTH,
-    },
-    data_struct::{RevisionMap, RevisionVec},
-    CleartextHeader, EncryptedHeader, Error,
+    }, data_struct::{RevisionMap, RevisionVec}, test_utils::policy, CleartextHeader, EncryptedHeader, Error
 };
 
 /// Returns the byte length of a serialized option
@@ -56,6 +53,23 @@ macro_rules! deserialize_option {
     }};
 }
 
+// impl Serializable for Policy {
+//     type Error = Error;
+
+//     fn length(&self) -> usize {
+//         self.attributes().len()
+//     }
+
+    // fn write(&self, ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer) -> Result<usize, Self::Error> {
+    //     let n  =ser.write(&self.to_bytes())?;
+    //     Ok(n)
+    // }
+
+    // fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    //    de.read();
+    // }
+// }
+
 impl Serializable for MasterPublicKey {
     type Error = Error;
 
@@ -80,6 +94,8 @@ impl Serializable for MasterPublicKey {
             serialize_option!(ser, n, pk_i, value, ser.write_array(value));
             n += ser.write_array(&h_i.to_bytes())?;
         }
+        n += ser.write(&self.policy.to_bytes());
+
         Ok(n)
     }
 
@@ -88,7 +104,6 @@ impl Serializable for MasterPublicKey {
         let g2 = R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = HashMap::with_capacity(n_partitions);
-        let policy = MasterPublicKey::policy.read(de)?;
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let pk_i = deserialize_option!(de, KyberPublicKey(de.read_array()?));
@@ -96,6 +111,7 @@ impl Serializable for MasterPublicKey {
                 R25519PublicKey::try_from_bytes(de.read_array::<{ R25519PublicKey::LENGTH }>()?)?;
             subkeys.insert(partition, (pk_i, h_i));
         }
+        let policy = Policy::read(de)?;
         Ok(Self { g1, g2, subkeys, policy })
     }
 }
@@ -136,7 +152,7 @@ impl Serializable for MasterSecretKey {
         if let Some(kmac_key) = &self.kmac_key {
             n += ser.write_array(kmac_key)?;
         }
-
+        n += ser.write(&self.policy.to_bytes());
         Ok(n)
     }
 
@@ -146,10 +162,8 @@ impl Serializable for MasterSecretKey {
         let s2 =
             R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
         let s = R25519PrivateKey::try_from_bytes(de.read_array::<{ R25519PrivateKey::LENGTH }>()?)?;
-
         let n_partitions = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut subkeys = RevisionMap::with_capacity(n_partitions);
-        let policy = MasterSecretKey::policy.read(de)?;
         for _ in 0..n_partitions {
             let partition = Partition::from(de.read_vec()?);
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
@@ -167,7 +181,7 @@ impl Serializable for MasterSecretKey {
             Ok(key_bytes) => Some(SymmetricKey::try_from_bytes(key_bytes)?),
             Err(_) => None,
         };
-
+        let policy = Policy::read(de)?;
         Ok(Self {
             s,
             s1,

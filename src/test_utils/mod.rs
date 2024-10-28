@@ -3,7 +3,7 @@ use crate::{
     Error,
 };
 
-
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 #[cfg(feature = "serialization")]
 pub mod non_regression;
 
@@ -148,7 +148,7 @@ mod tests {
         let decryption_policy = AccessPolicy::from_boolean_expression(
             "Department::MKG && Security Level::High Secret",
         )?;
-        let mut usk = cover_crypt.generate_user_secret_key(&msk, &decryption_policy)?;
+        let mut usk = cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
         let original_usk = UserSecretKey::deserialize(usk.serialize()?.as_slice())?;
         // rekey the MKG department
         let rekey_access_policy = AccessPolicy::Attr(Attribute::new("Department", "MKG"));
@@ -197,7 +197,7 @@ mod tests {
 
         let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy)?;
+            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
 
         policy.add_attribute(
             Attribute::new("Department", "Sales"),
@@ -247,7 +247,7 @@ mod tests {
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy)?;
+            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
@@ -301,7 +301,7 @@ mod tests {
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy)?;
+            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
 
         //
         // Encrypt
@@ -368,7 +368,7 @@ mod tests {
         let decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&msk, &decryption_policy)?;
+            cover_crypt.generate_user_secret_key(&msk, &decryption_policy, &policy)?;
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
@@ -412,7 +412,7 @@ mod tests {
                 "Department::R&D && Security Level::Top Secret",
             )?,
         )?;
-        let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy)?;
+        let usk = cover_crypt.generate_user_secret_key(&msk, &access_policy, &policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
         Ok(())
@@ -435,6 +435,7 @@ mod tests {
         let _user_key = cover_crypt.generate_user_secret_key(
             &msk,
             &AccessPolicy::from_boolean_expression("Security Level::Top Secret")?,
+            &policy,
         )?;
 
         Ok(())
@@ -460,6 +461,7 @@ mod tests {
             &AccessPolicy::from_boolean_expression(
                 "Security Level::Top Secret && Department::FIN",
             )?,
+            &policy,
         )?;
 
         //
