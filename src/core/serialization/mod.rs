@@ -13,7 +13,7 @@ use super::{
     SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::Coordinate,
+    abe_policy::{Coordinate, Policy},
     core::{
         CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
         SeedEncapsulation, UserSecretKey, SEED_LENGTH,
@@ -105,6 +105,7 @@ impl Serializable for MasterPublicKey {
             n += ser.write(coordinate)?;
             n += ser.write(pk)?;
         }
+        n += ser.write(&self.policy)?;
         Ok(n)
     }
 
@@ -117,9 +118,11 @@ impl Serializable for MasterPublicKey {
             let pk = de.read::<CoordinatePublicKey>()?;
             coordinate_keys.insert(coordinate, pk);
         }
+        let policy = Policy::try_from(de.read()?)?;
         Ok(Self {
             tpk,
             coordinate_keys,
+            policy,
         })
     }
 }
@@ -197,6 +200,7 @@ impl Serializable for MasterSecretKey {
         if let Some(kmac_key) = &self.signing_key {
             n += ser.write_array(kmac_key)?;
         }
+        n += ser.write_vec(&self.policy)?;
         Ok(n)
     }
 
@@ -226,11 +230,14 @@ impl Serializable for MasterSecretKey {
             )?)
         };
 
+        let policy = Policy::try_from(de.read()?)?;
+
         Ok(Self {
             s,
             tsk,
             coordinate_secrets: coordinate_keypairs,
             signing_key,
+            policy,
         })
     }
 }
@@ -526,6 +533,22 @@ impl Serializable for CleartextHeader {
     }
 }
 
+impl Serializable for Policy {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        self.attributes().len()
+    }
+
+    fn write(&self, ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer) -> Result<usize, Self::Error> {
+        let n  =ser.write(&self.to_bytes())?;
+        Ok(n)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+       de.read();
+    }
+}
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;

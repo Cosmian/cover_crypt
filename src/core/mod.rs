@@ -7,7 +7,7 @@ use std::{
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
 
 use crate::{
-    abe_policy::{Partition, Policy},
+    abe_policy::{Coordinate, Policy},
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
@@ -136,12 +136,15 @@ impl CoordinatePublicKey {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 struct UserId(LinkedList<Scalar>);
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct MasterPublicKey {
-    g1: R25519PublicKey,
-    g2: R25519PublicKey,
-    pub(crate) subkeys: HashMap<Partition, PublicSubkey>,
-    policy: Policy,
+impl UserId {
+    /// Returns the tracing level of the USK.
+    fn tracing_level(&self) -> usize {
+        self.0.len() - 1
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &Scalar> {
+        self.0.iter()
+    }
 }
 
 /// Covercrypt tracing secret key.
@@ -257,11 +260,10 @@ impl TracingPublicKey {
 /// - an optional key for symmetric USK-signing.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
-    s: R25519PrivateKey,
-    s1: R25519PrivateKey,
-    s2: R25519PrivateKey,
-    pub(crate) subkeys: RevisionMap<Partition, SecretSubkey>,
-    kmac_key: Option<SymmetricKey<KMAC_KEY_LENGTH>>,
+    s: Scalar,
+    tsk: TracingSecretKey,
+    coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
+    signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
     policy: Policy,
 }
 
@@ -367,6 +369,7 @@ impl MasterSecretKey {
                     })
                 })
                 .collect(),
+            policy: self.policy.clone(),
         })
     }
 }
@@ -380,6 +383,7 @@ impl MasterSecretKey {
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
+    policy: Policy,
 }
 
 impl MasterPublicKey {

@@ -17,7 +17,7 @@ use super::{
     SEED_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, Coordinate, EncryptionHint},
+    abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
     core::{Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
     Error,
@@ -78,6 +78,7 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
         tsk,
         coordinate_secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
+        policy: Policy::new(),
     })
 }
 
