@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, DimensionBuilder, EncryptionHint},
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
     api::{Covercrypt, CovercryptKEM, CovercryptPKE},
     core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
-    test_utils::setup_cc_and_gen_master_keys,
+    test_utils::cc_keygen,
 };
 
 use super::{
@@ -23,7 +23,7 @@ fn test_encapsulation() {
     let other_coordinate = Coordinate::random(&mut rng);
     let target_coordinate = Coordinate::random(&mut rng);
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_coordinate_keys(
         &mut rng,
         &mut msk,
@@ -77,7 +77,7 @@ fn test_encapsulation() {
 fn test_update() {
     let mut rng = CsRng::from_entropy();
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     assert_eq!(msk.tsk.users.len(), 0);
     assert_eq!(msk.tsk.tracing_level(), MIN_TRACING_LEVEL);
     assert_eq!(msk.coordinate_secrets.len(), 0);
@@ -139,7 +139,7 @@ fn test_rekey() {
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
     let universe = HashSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_coordinate_keys(
         &mut rng,
         &mut msk,
@@ -211,7 +211,7 @@ fn test_integrity_check() {
     let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
 
-    let mut msk = setup(&mut rng, MIN_TRACING_LEVEL).unwrap();
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_coordinate_keys(
         &mut rng,
         &mut msk,
@@ -251,7 +251,8 @@ fn test_integrity_check() {
 #[test]
 fn test_covercrypt_kem() {
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
-    let (mut msk, _mpk, cc) = setup_cc_and_gen_master_keys().unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _mpk) = cc_keygen(&cc).unwrap();
     let mpk = cc
         .update_master_keys(&mut msk)
         .expect("cannot update master keys");
@@ -265,25 +266,10 @@ fn test_covercrypt_kem() {
 
 #[test]
 fn test_covercrypt_pke() {
-    let sec_level = DimensionBuilder::new(
-        "Security Level",
-        vec![("Top Secret", EncryptionHint::Hybridized)],
-        true,
-    );
-    let department =
-        DimensionBuilder::new("Department", vec![("FIN", EncryptionHint::Classic)], false);
-
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
-
     let cc = Covercrypt::default();
-    let (mut msk, _) = cc.setup().expect("cannot generate master keys");
+    let (mut msk, mpk) = cc_keygen(&cc).unwrap();
 
-    let _ = msk.policy.add_dimension(department);
-    let _ = msk.policy.add_dimension(sec_level);
-
-    let mpk = cc
-        .update_master_keys(&mut msk)
-        .expect("cannot update master keys");
     let ptx = "testing encryption/decryption".as_bytes();
 
     let (enc, ctx) =

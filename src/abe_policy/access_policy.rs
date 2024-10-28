@@ -1,9 +1,8 @@
 //! This module defines methods to parse and manipulate access policies.
 //!
-//! Access policies are boolean equations of *attributes*. Attributes are
+//! Access policies are boolean equations of *qualified attributes*. Attributes are
 //! defined as a combination of a dimension name and a component name (belonging
 //! to the named dimension).
-//!
 
 use std::{
     collections::LinkedList,
@@ -11,7 +10,7 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use crate::{abe_policy::Attribute, Error};
+use crate::{abe_policy::QualifiedAttribute, Error};
 
 /// An access policy is a boolean expression of attributes.
 ///
@@ -21,14 +20,14 @@ use crate::{abe_policy::Attribute, Error};
 /// Only `positive` literals are allowed (no negation).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessPolicy {
-    Attr(Attribute),
+    Attr(QualifiedAttribute),
     And(Box<AccessPolicy>, Box<AccessPolicy>),
     Or(Box<AccessPolicy>, Box<AccessPolicy>),
     Any,
 }
 
 impl AccessPolicy {
-    /// Finds the corresponding closing parenthesis in the boolean expression
+    /// Find the corresponding closing parenthesis in the boolean expression
     /// given as a string.
     fn find_matching_closing_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
         let mut count = 0;
@@ -144,7 +143,7 @@ impl AccessPolicy {
                     }
                     _ => {
                         let attr: String = e.chars().take_while(seeker).collect();
-                        q.push_back(Self::Attr(Attribute::try_from(attr.as_str())?));
+                        q.push_back(Self::Attr(QualifiedAttribute::try_from(attr.as_str())?));
                         e = &e[attr.len()..];
                     }
                 }
@@ -164,7 +163,7 @@ impl AccessPolicy {
     /// attributes. Returns the DNF as the list of its conjunctions, themselves
     /// represented as the list of their attributes.
     #[must_use]
-    pub fn to_dnf(&self) -> Vec<Vec<Attribute>> {
+    pub fn to_dnf(&self) -> Vec<Vec<QualifiedAttribute>> {
         match self {
             Self::Attr(attr) => vec![vec![attr.clone()]],
             Self::And(lhs, rhs) => {

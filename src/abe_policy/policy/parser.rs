@@ -2,13 +2,18 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::{
-    AttributeParameters, Dimension, DimensionBuilder, EncryptionHint, LegacyPolicy, Policy,
-    PolicyV1, PolicyVersion,
+use crate::{
+    abe_policy::{AttributeParameters, Dimension, DimensionBuilder, EncryptionHint},
+    Error,
 };
-use crate::Error;
 
-impl Policy {
+use super::{
+    policy_v2::PolicyV2,
+    policy_versions::{LegacyPolicy, PolicyV1},
+    PolicyVersion,
+};
+
+impl PolicyV2 {
     /// Converts the given bytes into a Policy, supports legacy policy versions.
     pub fn parse_and_convert(bytes: &[u8]) -> Result<Self, Error> {
         let json_policy: Value =
@@ -22,6 +27,7 @@ impl Policy {
                 Ok(PolicyVersion::V2) => {
                     serde_json::from_value::<Self>(json_policy).map_err(Error::DeserializationError)
                 }
+                Ok(_) => todo!(),
                 Err(e) => Err(Error::DeserializationError(e)),
             }
         } else {
@@ -33,7 +39,7 @@ impl Policy {
     }
 }
 
-impl TryFrom<&[u8]> for Policy {
+impl TryFrom<&[u8]> for PolicyV2 {
     type Error = Error;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
@@ -41,15 +47,15 @@ impl TryFrom<&[u8]> for Policy {
     }
 }
 
-impl TryFrom<&Policy> for Vec<u8> {
+impl TryFrom<&PolicyV2> for Vec<u8> {
     type Error = Error;
 
-    fn try_from(policy: &Policy) -> Result<Self, Self::Error> {
+    fn try_from(policy: &PolicyV2) -> Result<Self, Self::Error> {
         serde_json::to_vec(policy).map_err(Self::Error::DeserializationError)
     }
 }
 
-impl TryFrom<HashMap<String, Vec<String>>> for Policy {
+impl TryFrom<HashMap<String, Vec<String>>> for PolicyV2 {
     type Error = Error;
 
     /// Create a policy object from policy specifications
@@ -138,10 +144,10 @@ impl TryFrom<HashMap<String, Vec<String>>> for Policy {
     }
 }
 
-impl TryFrom<Policy> for HashMap<String, Vec<String>> {
+impl TryFrom<PolicyV2> for HashMap<String, Vec<String>> {
     type Error = Error;
 
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+    fn try_from(policy: PolicyV2) -> Result<Self, Self::Error> {
         fn convert_attribute(attribute: (String, AttributeParameters)) -> String {
             let (name, params) = attribute;
             match params.get_encryption_hint() {
@@ -176,7 +182,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        abe_policy::{Attribute, Dimension, DimensionBuilder, EncryptionHint, Policy},
+        abe_policy::{Dimension, DimensionBuilder, EncryptionHint, Policy, QualifiedAttribute},
         Error,
     };
 
@@ -258,19 +264,25 @@ mod tests {
         );
         assert_eq!(
             policy
-                .get_attribute_hybridization_hint(&Attribute::new("Department", "MKG"))
+                .get_attribute_hybridization_hint(&QualifiedAttribute::new("Department", "MKG"))
                 .unwrap(),
             EncryptionHint::Classic
         );
         assert_eq!(
             policy
-                .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Protected"))
+                .get_attribute_hybridization_hint(&QualifiedAttribute::new(
+                    "Security Level",
+                    "Protected"
+                ))
                 .unwrap(),
             EncryptionHint::Classic
         );
         assert_eq!(
             policy
-                .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Top Secret"))
+                .get_attribute_hybridization_hint(&QualifiedAttribute::new(
+                    "Security Level",
+                    "Top Secret"
+                ))
                 .unwrap(),
             EncryptionHint::Hybridized
         );

@@ -11,22 +11,16 @@ mod access_policy;
 mod attribute;
 mod coordinates;
 mod dimension;
-mod parser;
 mod policy;
-mod policy_versions;
 
-pub use access_policy::AccessPolicy;
-pub use attribute::{Attribute, AttributeStatus, Attributes, EncryptionHint};
-pub use coordinates::Coordinate;
-pub use dimension::{AttributeParameters, Dimension, DimensionBuilder};
-pub use policy_versions::{LegacyPolicy, PolicyV1, PolicyV2 as Policy};
-use serde::{Deserialize, Serialize};
-
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 mod tests;
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PolicyVersion {
-    V1,
-    V2,
-}
+pub use access_policy::AccessPolicy;
+pub use attribute::{AttributeStatus, EncryptionHint, QualifiedAttribute};
+pub use coordinates::Coordinate;
+pub use dimension::{AttributeParameters, Dimension, DimensionBuilder};
+pub use policy::Policy;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub use tests::gen_policy;

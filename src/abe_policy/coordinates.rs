@@ -6,7 +6,7 @@ use crate::Error;
 
 /// Space coordinate.
 ///
-/// It is a representation of a given combination of one component per
+/// It is a representation of a given combination of one attribute per
 /// dimension.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Coordinate(Vec<u8>);
@@ -52,22 +52,17 @@ impl Coordinate {
     ///   compared to the crypto operation times)
     /// - recreating a deleted components will result in the same coordinate.
     ///   This is
-    pub fn from_attribute_ids(mut attribute_ids: Vec<u32>) -> Result<Self, Error> {
-        // guard against overflow of the 1024 bytes buffer below
-        if attribute_ids.len() > 200 {
-            return Err(Error::InvalidAttribute(
-                "The current implementation does not currently support more than 200 attributes for a coordinate".to_string(),
-            ));
-        }
-        // the sort operation allows to get the same `Coordinate` for :
+    pub fn from_attribute_ids(mut attribute_ids: Vec<usize>) -> Result<Self, Error> {
+        // Sorting allows to get the same `Coordinate` for :
         // `Department::HR && Level::Secret`
         // and
         // `Level::Secret && Department::HR`
         attribute_ids.sort_unstable();
-        // the actual size in bytes will be at least equal to the length
-        let mut ser = Serializer::with_capacity(attribute_ids.len());
+        // Allocate an upper-bound on the actual space required to ensure no more allocation is
+        // performed.
+        let mut ser = Serializer::with_capacity(4 * attribute_ids.len());
         for value in attribute_ids {
-            ser.write_leb128_u64(u64::from(value))?;
+            ser.write_leb128_u64(u64::try_from(value)?)?;
         }
         Ok(Self(ser.finalize().to_vec()))
     }
@@ -126,12 +121,12 @@ mod tests {
 
     #[test]
     fn test_coordinates() -> Result<(), Error> {
-        let mut values: Vec<u32> = vec![12, 0, u32::MAX, 1];
+        let mut values: Vec<usize> = vec![12, 0, usize::MAX, 1];
         let coordinate = Coordinate::from_attribute_ids(values.clone())?;
         values.sort_unstable();
         let mut de = Deserializer::new(&coordinate);
         for v in values {
-            let val = de.read_leb128_u64().unwrap() as u32;
+            let val = de.read_leb128_u64().unwrap() as usize;
             assert_eq!(v, val);
         }
         Ok(())

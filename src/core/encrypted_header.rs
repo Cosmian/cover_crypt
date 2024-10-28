@@ -5,13 +5,13 @@ use cosmian_crypto_core::{
 use crate::{
     abe_policy::AccessPolicy,
     api::{Covercrypt, CovercryptKEM},
-    core::SEED_LENGTH,
+    core::SHARED_SECRET_LENGTH,
     Encapsulation, Error, MasterPublicKey, UserSecretKey,
 };
 
 /// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte seed, and metadata
 /// encrypted under the scheme AES256Gcm using a key derived from the encapsulated seed.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct EncryptedHeader {
     pub encapsulation: Encapsulation,
     pub encrypted_metadata: Option<Vec<u8>>,
@@ -34,13 +34,13 @@ impl EncryptedHeader {
         encryption_policy: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
-    ) -> Result<(Secret<SEED_LENGTH>, Self), Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self), Error> {
         let (seed, encapsulation) = cover_crypt.encaps(public_key, encryption_policy)?;
 
         let encrypted_metadata = metadata
             .map(|bytes| {
                 let mut key = SymmetricKey::<{ Aes256Gcm::KEY_LENGTH }>::default();
-                kdf256!(&mut key, &seed, &[0u8]);
+                kdf256!(&mut *key, &*seed, &[0u8]);
                 let mut rng = cover_crypt.rng();
                 let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *rng);
                 let aes = Aes256Gcm::new(&key);
@@ -50,8 +50,8 @@ impl EncryptedHeader {
 
         // Generating a new seed adding a variant component 1, to prevent reusing
         // seed used for the metadata encryption.
-        let mut new_seed = Secret::<SEED_LENGTH>::default();
-        kdf256!(&mut new_seed, &seed, &[1u8]);
+        let mut new_seed = Secret::<SHARED_SECRET_LENGTH>::default();
+        kdf256!(&mut *new_seed, &*seed, &[1u8]);
 
         Ok((
             new_seed,
@@ -81,7 +81,7 @@ impl EncryptedHeader {
                     .as_ref()
                     .map(|ctx| {
                         let mut key = SymmetricKey::<{ Aes256Gcm::KEY_LENGTH }>::default();
-                        kdf256!(&mut key, &seed, &[0u8]);
+                        kdf256!(&mut *key, &*seed, &[0u8]);
                         let mut rng = cover_crypt.rng();
                         let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *rng);
                         let aes = Aes256Gcm::new(&key);
@@ -89,8 +89,8 @@ impl EncryptedHeader {
                     })
                     .transpose()?;
 
-                let mut new_seed = Secret::<SEED_LENGTH>::default();
-                kdf256!(&mut new_seed, &seed, &[1u8]);
+                let mut new_seed = Secret::<SHARED_SECRET_LENGTH>::default();
+                kdf256!(&mut *new_seed, &*seed, &[1u8]);
 
                 Ok(CleartextHeader {
                     seed: new_seed,
@@ -107,6 +107,6 @@ impl EncryptedHeader {
 /// - `metadata`        : additional data symmetrically encrypted in a header
 #[derive(Debug, PartialEq, Eq)]
 pub struct CleartextHeader {
-    pub seed: Secret<SEED_LENGTH>,
+    pub seed: Secret<SHARED_SECRET_LENGTH>,
     pub metadata: Option<Vec<u8>>,
 }

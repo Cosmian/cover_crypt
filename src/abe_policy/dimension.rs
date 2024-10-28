@@ -3,6 +3,7 @@ use std::{
     fmt::Debug,
 };
 
+use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Serializable};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -11,7 +12,6 @@ use super::{
 };
 use crate::{data_struct::Dict, Error};
 
-///
 /// Creates a dimension by its name and its underlying attribute properties.
 /// An attribute property defines its name and a hint about whether hybridized
 /// encryption should be used for it (hint set to `true` if this is the case).
@@ -72,25 +72,73 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub(crate) id: u32,
+    pub(crate) id: usize,
     pub(crate) encryption_hint: EncryptionHint,
     pub(crate) write_status: AttributeStatus,
+}
+
+impl Serializable for AttributeParameters {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        2 + to_leb128_len(self.id)
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        let mut n = ser.write_leb128_u64(self.id as u64)?;
+        n += ser.write_leb128_u64(<bool>::from(self.encryption_hint) as u64)?;
+        n += ser.write_leb128_u64(<bool>::from(self.write_status) as u64)?;
+        Ok(n)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let id = de.read_leb128_u64()?.try_into()?;
+        let hint = de.read_leb128_u64()?;
+        let encryption_hint = if 0 == hint {
+            EncryptionHint::Classic
+        } else if 1 == hint {
+            EncryptionHint::Hybridized
+        } else {
+            return Err(Error::ConversionFailed(format!(
+                "erroneous hint value {hint}"
+            )));
+        };
+
+        let status = de.read_leb128_u64()?;
+        let write_status = if 0 == status {
+            AttributeStatus::DecryptOnly
+        } else if 1 == status {
+            AttributeStatus::EncryptDecrypt
+        } else {
+            return Err(Error::ConversionFailed(format!(
+                "erroneous status value {hint}"
+            )));
+        };
+
+        Ok(Self {
+            id,
+            encryption_hint,
+            write_status,
+        })
+    }
 }
 
 impl AttributeParameters {
     /// Creates a `AttributeParameters` with the provided `encryption_hint`
     /// and increments the `seed_id` to generate unique IDs.
-    pub fn new(encryption_hint: EncryptionHint, seed_id: &mut u32) -> Self {
-        *seed_id += 1;
+    pub fn new(encryption_hint: EncryptionHint, id: usize) -> Self {
         Self {
-            id: *seed_id,
+            id,
             encryption_hint,
             write_status: AttributeStatus::EncryptDecrypt,
         }
     }
 
     #[must_use]
-    pub fn get_id(&self) -> u32 {
+    pub fn get_id(&self) -> usize {
         self.id
     }
 
@@ -115,29 +163,87 @@ pub enum Dimension {
     Ordered(Dict<AttributeName, AttributeParameters>),
 }
 
-impl Dimension {
-    /// Creates a new `Dimension` based on the given `DimensionBuilder`,
-    /// initializing attributes and order if applicable.
-    ///
-    /// # Arguments
-    ///
-    /// * `dim` - The `DimensionBuilder` to base the dimension on.
-    /// * `seed_id` - A mutable reference to a seed ID used for generating
-    ///   unique values for attributes.
-    pub fn new(dim: DimensionBuilder, seed_id: &mut u32) -> Self {
-        let attributes_mapping = dim.attributes_properties.into_iter().map(|attr| {
-            (
-                attr.name,
-                AttributeParameters::new(attr.encryption_hint, seed_id),
-            )
-        });
+impl Default for Dimension {
+    fn default() -> Self {
+        Self::Unordered(Default::default())
+    }
+}
 
-        match dim.hierarchical {
-            true => Self::Ordered(attributes_mapping.collect()),
-            false => Self::Unordered(attributes_mapping.collect()),
+impl Serializable for Dimension {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        let f = |attributes: Box<dyn Iterator<Item = (&String, &AttributeParameters)>>| {
+            attributes
+                .map(|(name, attribute)| {
+                    let l = name.len();
+                    to_leb128_len(l) + l + attribute.length()
+                })
+                .sum::<usize>()
+        };
+        1 + match self {
+            Dimension::Unordered(attributes) => {
+                to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
+            }
+            Dimension::Ordered(attributes) => {
+                to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
+            }
         }
     }
 
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        let write_attributes =
+            |mut attributes: Box<dyn Iterator<Item = (&String, &AttributeParameters)>>,
+             ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer|
+             -> Result<usize, Error> {
+                attributes.try_fold(0, |mut n, (name, attribute)| {
+                    n += ser.write_vec(name.as_bytes())?;
+                    n += ser.write(attribute)?;
+                    Ok(n)
+                })
+            };
+
+        let mut n = ser.write_leb128_u64(self.is_ordered() as u64)?;
+        match self {
+            Dimension::Unordered(attributes) => {
+                n += ser.write_leb128_u64(attributes.len() as u64)?;
+                n += write_attributes(Box::new(attributes.iter()), ser)?;
+            }
+            Dimension::Ordered(attributes) => {
+                n += ser.write_leb128_u64(attributes.len() as u64)?;
+                n += write_attributes(Box::new(attributes.iter()), ser)?;
+            }
+        };
+
+        Ok(n)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let is_ordered = de.read_leb128_u64()?;
+        let l = de.read_leb128_u64()?;
+        let attributes = (0..l).map(|_| {
+            let name = String::from_utf8(de.read_vec()?)
+                .map_err(|e| Error::ConversionFailed(e.to_string()))?;
+            let attribute = de.read::<AttributeParameters>()?;
+            Ok::<_, Error>((name, attribute))
+        });
+
+        if 0 == is_ordered {
+            attributes.collect::<Result<_, _>>().map(Self::Ordered)
+        } else if 1 == is_ordered {
+            attributes.collect::<Result<_, _>>().map(Self::Unordered)
+        } else {
+            Err(Error::ConversionFailed(format!(
+                "invalid boolean value {is_ordered}"
+            )))
+        }
+    }
+}
+
+impl Dimension {
     #[must_use]
     pub fn nb_attributes(&self) -> usize {
         match self {
@@ -152,6 +258,20 @@ impl Dimension {
             Self::Unordered(_) => false,
             Self::Ordered(_) => true,
         }
+    }
+
+    pub fn order(&mut self, attributes: &[String]) -> Result<(), Error> {
+        let attributes = attributes
+            .iter()
+            .map(|a| {
+                self.get_attribute(a)
+                    .ok_or_else(|| Error::AttributeNotFound(a.to_string()))
+                    .cloned()
+                    .map(|attribute| (a.to_owned(), attribute))
+            })
+            .collect::<Result<Dict<_, _>, _>>()?;
+        *self = Self::Ordered(attributes);
+        Ok(())
     }
 
     /// Returns an iterator over the attributes name.
@@ -208,25 +328,58 @@ impl Dimension {
     ///
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
-        &mut self,
-        attr_name: AttributeName,
-        encryption_hint: EncryptionHint,
-        seed_id: &mut u32,
-    ) -> Result<(), Error> {
+        self,
+        attribute: AttributeName,
+        hint: EncryptionHint,
+        after: Option<AttributeName>,
+        id: usize,
+    ) -> Result<Self, Error> {
         match self {
-            Self::Unordered(attributes) => {
-                if let Entry::Vacant(entry) = attributes.entry(attr_name) {
-                    entry.insert(AttributeParameters::new(encryption_hint, seed_id));
-                    Ok(())
+            Self::Unordered(mut attributes) => {
+                if let Entry::Vacant(entry) = attributes.entry(attribute) {
+                    entry.insert(AttributeParameters::new(hint, id));
+                    Ok(Self::Unordered(attributes))
                 } else {
                     Err(Error::OperationNotPermitted(
                         "Attribute already in dimension".to_string(),
                     ))
                 }
             }
-            Self::Ordered(_) => Err(Error::OperationNotPermitted(
-                "Hierarchical dimension are immutable".to_string(),
-            )),
+            Self::Ordered(attributes) => {
+                if attributes.contains_key(&attribute) {
+                    return Err(Error::OperationNotPermitted(
+                        "Attribute already in dimension".to_string(),
+                    ));
+                }
+                let after = if let Some(after) = after {
+                    if !attributes.contains_key(&after) {
+                        return Err(Error::AttributeNotFound(
+                            "the specified `after` attribute {after} does not exist".to_string(),
+                        ));
+                    }
+                    after
+                } else {
+                    "".to_owned()
+                };
+                let higher_attributes = attributes
+                    .clone()
+                    .into_iter()
+                    .rev()
+                    .take_while(|(name, _)| name != &after)
+                    .collect::<Vec<_>>();
+
+                let mut new_attributes = attributes
+                    .clone()
+                    .into_iter()
+                    .take_while(|a| Some(a) != higher_attributes.last())
+                    .collect::<Dict<_, _>>();
+
+                new_attributes.insert(attribute, AttributeParameters::new(hint, id));
+                higher_attributes.into_iter().rev().for_each(|(name, dim)| {
+                    new_attributes.insert(name, dim);
+                });
+                Ok(Self::Ordered(new_attributes))
+            }
         }
     }
 

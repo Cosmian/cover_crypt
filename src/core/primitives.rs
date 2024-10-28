@@ -5,16 +5,19 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore, RandomFixedSizeCBytes, Secret, SymmetricKey,
+    bytes_ser_de::Serializable,
+    reexport::rand_core::{CryptoRngCore, RngCore},
+    RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
+
 use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
 use super::{
-    elgamal,
-    postquantum::{MlKemAesPke, PkeTrait},
-    CoordinatePublicKey, CoordinateSecretKey, KmacSignature, TracingSecretKey, MIN_TRACING_LEVEL,
-    SEED_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    kem::{self, Kem},
+    nike::{self, Nike},
+    CoordinatePublicKey, CoordinateSecretKey, EcPoint, KmacSignature, TracingSecretKey, UserId,
+    MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
@@ -23,36 +26,75 @@ use crate::{
     Error,
 };
 
+fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
+    let mut out = [0; LENGTH];
+    for pos in 0..LENGTH {
+        out[pos] = lhs[pos] ^ rhs[pos];
+    }
+    out
+}
+
+fn xor_3<const LENGTH: usize>(
+    lhs: &[u8; LENGTH],
+    mhs: &[u8; LENGTH],
+    rhs: &[u8; LENGTH],
+) -> [u8; LENGTH] {
+    let mut out = [0; LENGTH];
+    for pos in 0..LENGTH {
+        out[pos] = lhs[pos] ^ mhs[pos] ^ rhs[pos];
+    }
+    out
+}
+
+fn shuffle<T>(xs: &mut [T], rng: &mut impl RngCore) {
+    xs.sort_by(|_, _| {
+        if rng.next_u32() & 1 == 0 {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    });
+}
+
 /// Computes the signature of the given USK using the MSK.
-fn sign_usk(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature> {
+fn sign(
+    msk: &MasterSecretKey,
+    id: &UserId,
+    keys: &RevisionVec<Coordinate, CoordinateSecretKey>,
+) -> Result<Option<KmacSignature>, Error> {
     if let Some(kmac_key) = &msk.signing_key {
-        let mut kmac = Kmac::v256(kmac_key, b"USK signature");
-        for marker in usk.id.iter() {
+        let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
+        for marker in id.iter() {
             kmac.update(marker.as_bytes())
         }
         // Subkeys ordering needs to be deterministic to allow deterministic
-        // signatures. This explains why a hash-map cannot be used in USK.
-        for (coordinate, keys) in usk.coordinate_keys.iter() {
+        // signatures. This explains why a hash-map is not used in USK.
+        for (coordinate, keys) in keys.iter() {
             kmac.update(coordinate);
-            for k in keys.iter() {
-                kmac.update(k.el.as_bytes());
-                if let Some(k) = &k.pq {
-                    kmac.update(k);
+            for subkey in keys.iter() {
+                match subkey {
+                    CoordinateSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
+                        kmac.update(s_i.as_bytes());
+                        kmac.update(&dk_i.serialize()?);
+                    }
+                    CoordinateSecretKey::Classic { sk: s_i } => {
+                        kmac.update(s_i.as_bytes());
+                    }
                 }
             }
         }
         let mut res = [0; SIGNATURE_LENGTH];
         kmac.into_xof().squeeze(&mut res);
-        Some(res)
+        Ok(Some(res))
     } else {
-        None
+        Ok(None)
     }
 }
 
 /// Verifies the integrity of the given USK using the MSK.
-fn verify_usk(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
-    let fresh_signature = sign_usk(msk, usk);
-    if fresh_signature != usk.msk_signature {
+fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
+    let fresh_signature = sign(msk, &usk.id, &usk.coordinate_keys)?;
+    if fresh_signature != usk.signature {
         Err(Error::KeyError(
             "USK failed the integrity check".to_string(),
         ))
@@ -61,21 +103,63 @@ fn verify_usk(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
     }
 }
 
+fn g_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<nike::Scalar, Error> {
+    let mut bytes = [0; 64];
+    let mut hasher = Shake::v256();
+    hasher.update(&**seed);
+    hasher.squeeze(&mut bytes);
+    let s = nike::Scalar::from_raw_bytes(&bytes);
+    bytes.zeroize();
+    Ok(s)
+}
+
+fn h_hash(mut ss: EcPoint) -> Secret<SHARED_SECRET_LENGTH> {
+    let mut secret = Secret::<SHARED_SECRET_LENGTH>::default();
+    let mut hasher = Shake::v256();
+    hasher.update(&ss.to_bytes());
+    hasher.squeeze(&mut *secret);
+    ss.zeroize();
+    secret
+}
+
+fn j_hash(
+    seed: &[u8; SHARED_SECRET_LENGTH],
+    c: &[EcPoint],
+    encapsulations: &[SeedEncapsulation],
+) -> Result<([u8; TAG_LENGTH], Secret<SHARED_SECRET_LENGTH>), Error> {
+    let mut hasher = Shake::v256();
+
+    hasher.update(seed);
+    for (c_i, seed_encapsulation) in c.iter().zip(encapsulations) {
+        hasher.update(&c_i.to_bytes());
+        match seed_encapsulation {
+            SeedEncapsulation::Classic { F: F_i } => hasher.update(F_i),
+            SeedEncapsulation::Hybridized { E: E_i, F: F_i } => {
+                hasher.update(&E_i.serialize()?);
+                hasher.update(F_i);
+            }
+        }
+    }
+
+    let mut tag = [0; TAG_LENGTH];
+    let mut seed = Secret::<SHARED_SECRET_LENGTH>::default();
+    hasher.squeeze(&mut tag);
+    hasher.squeeze(&mut *seed);
+    Ok((tag, seed))
+}
+
 /// Generates new MSK with the given tracing level.
-pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<MasterSecretKey, Error> {
+pub fn setup(tracing_level: usize, rng: &mut impl CryptoRngCore) -> Result<MasterSecretKey, Error> {
     if tracing_level < MIN_TRACING_LEVEL {
         return Err(Error::OperationNotPermitted(format!(
             "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
         )));
     }
-    let s = elgamal::Scalar::new(rng);
 
-    let mut tsk = TracingSecretKey::default();
-    (0..=tracing_level).for_each(|_| tsk.increase_tracing(rng));
-    let policy = Policy::new();
+    let tsk = TracingSecretKey::new_with_level(tracing_level, rng)?;
+    let policy = Policy::default();
 
     Ok(MasterSecretKey {
-        s,
         tsk,
         coordinate_secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
@@ -96,40 +180,18 @@ pub fn usk_keygen(
     msk: &mut MasterSecretKey,
     coordinates: HashSet<Coordinate>,
 ) -> Result<UserSecretKey, Error> {
+    // Extract keys first to avoid unnecessary computation in case those cannot be found.
     let coordinate_keys = msk
         .get_latest_coordinate_sk(coordinates.into_iter())
         .collect::<Result<RevisionVec<_, _>, Error>>()?;
+    let id = msk.tsk.generate_user_id(rng)?;
+    let signature = sign(msk, &id, &coordinate_keys)?;
 
-    // Do not generate the ID if an error happens when extracting coordinate secrets.
-    let id = msk.generate_user_id(rng)?;
-
-    // Signature has to be added in a second time to allow using the signing
-    // primitive. Maybe a better signing function could avoid it.
-    let mut usk = UserSecretKey {
+    Ok(UserSecretKey {
         id,
         coordinate_keys,
-        msk_signature: None,
-    };
-    usk.msk_signature = sign_usk(msk, &usk);
-    Ok(usk)
-}
-
-fn eakem_hash(
-    seed: &Secret<SEED_LENGTH>,
-    encapsulations: &[SeedEncapsulation],
-) -> Result<([u8; TAG_LENGTH], Secret<SEED_LENGTH>), Error> {
-    let mut hasher = Shake::v256();
-
-    hasher.update(seed);
-    for enc in encapsulations {
-        hasher.update(enc);
-    }
-
-    let mut tag = [0; TAG_LENGTH];
-    let mut seed = Secret::<SEED_LENGTH>::default();
-    hasher.squeeze(&mut tag);
-    hasher.squeeze(&mut seed);
-    Ok((tag, seed))
+        signature,
+    })
 }
 
 /// Generates a Covercrypt encapsulation of a random `SEED_LENGTH`-byte key for
@@ -145,53 +207,42 @@ pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Coordinate>,
-) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
-    let subkeys = encryption_set
-        .iter()
-        .map(|coordinate| {
-            mpk.coordinate_keys.get(coordinate).ok_or_else(|| {
-                Error::KeyError(format!("no public key for coordinate '{coordinate:#?}'"))
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, Encapsulation), Error> {
+    let coordinate_keys = mpk.select_subkeys(encryption_set)?;
 
-    CoordinatePublicKey::assert_homogeneity(&subkeys)?;
+    let S = Secret::<SHARED_SECRET_LENGTH>::random(rng);
+    let r = g_hash(&S)?;
+    let c = mpk.set_traps(&r);
 
-    let seed = Secret::<SEED_LENGTH>::random(rng);
-    let ephemeral_random = elgamal::Scalar::new(rng);
-    let traps = mpk.set_traps(&ephemeral_random);
-
-    let mut coordinate_encapsulations = subkeys
+    let mut coordinate_encapsulations = coordinate_keys
         .into_iter()
         .map(|subkey| -> Result<SeedEncapsulation, _> {
-            let mut elgamal_ctx = [0; SEED_LENGTH];
-            elgamal::mask(&mut elgamal_ctx, &ephemeral_random, &subkey.el, &seed);
-            if let Some(pq) = &subkey.pq {
-                let postquantum_ctx = MlKemAesPke.encrypt(rng, pq, &elgamal_ctx)?;
-                elgamal_ctx.zeroize(); // ElGamal ciphertext is not secure in a post-quantum world
-                Ok(SeedEncapsulation::Hybridized(postquantum_ctx))
-            } else {
-                Ok(SeedEncapsulation::Classic(elgamal_ctx))
+            match subkey {
+                CoordinatePublicKey::Hybridized { H, ek } => {
+                    let mut K1 = h_hash(nike::R25519::session_key(&r, H)?);
+                    let (K2, E) = kem::MlKem512::enc(ek, rng)?;
+                    let F = xor_3(&S, &K1, &K2);
+                    K1.zeroize();
+                    Ok(SeedEncapsulation::Hybridized { E, F })
+                }
+                CoordinatePublicKey::Classic { H } => {
+                    let K1 = h_hash(nike::R25519::session_key(&r, H)?);
+                    let F = xor_2(&S, &K1);
+                    Ok(SeedEncapsulation::Classic { F })
+                }
             }
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    // Shuffle encapsulations.
-    coordinate_encapsulations.sort_by(|_, _| {
-        if rng.next_u32() & 1 == 0 {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    });
+    shuffle(&mut coordinate_encapsulations, rng);
 
-    let (tag, key) = eakem_hash(&seed, &coordinate_encapsulations)?;
+    let (tag, ss) = j_hash(&S, &c, &coordinate_encapsulations)?;
 
     Ok((
-        key,
+        ss,
         Encapsulation {
             tag,
-            traps,
+            c,
             coordinate_encapsulations,
         },
     ))
@@ -202,13 +253,14 @@ pub fn encaps(
 pub fn decaps(
     usk: &UserSecretKey,
     encapsulation: &Encapsulation,
-) -> Result<Option<Secret<SEED_LENGTH>>, Error> {
-    let ephemeral_point = usk
+) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
+    // A = ⊙ _i (α_i. c_i)
+    let A = usk
         .id
         .iter()
-        .zip(encapsulation.traps.iter())
+        .zip(encapsulation.c.iter())
         .map(|(marker, trap)| trap * marker)
-        .fold(elgamal::EcPoint::identity(), |mut acc, elt| {
+        .fold(nike::EcPoint::identity(), |mut acc, elt| {
             acc = &acc + &elt;
             acc
         });
@@ -216,29 +268,35 @@ pub fn decaps(
     for enc in &encapsulation.coordinate_encapsulations {
         // The breadth-first search tries all coordinate subkeys in a chronological order.
         for key in usk.coordinate_keys.bfs() {
-            let seed: Secret<SEED_LENGTH> = match (key.pq.as_ref(), enc) {
-                (Some(pq), SeedEncapsulation::Hybridized(ctx)) => {
-                    let elgamal_ctx = MlKemAesPke.decrypt(pq, ctx);
-                    if let Ok(elgamal_ctx) = elgamal_ctx {
-                        elgamal::unmask(&key.el, &ephemeral_point, &elgamal_ctx)?
-                    } else {
-                        continue;
-                    }
+            let S = match (key, enc) {
+                (
+                    CoordinateSecretKey::Hybridized { sk, dk },
+                    SeedEncapsulation::Hybridized { E, F },
+                ) => {
+                    let mut K1 = h_hash(nike::R25519::session_key(sk, &A)?);
+                    let K2 = kem::MlKem512::dec(dk, E)?;
+                    let S = xor_3(F, &K1, &K2);
+                    K1.zeroize();
+                    S
                 }
-                (None, SeedEncapsulation::Classic(enc)) => {
-                    elgamal::unmask(&key.el, &ephemeral_point, enc)?
+                (CoordinateSecretKey::Classic { sk }, SeedEncapsulation::Classic { F }) => {
+                    let K1 = h_hash(nike::R25519::session_key(sk, &A)?);
+                    xor_2(F, &K1)
                 }
-                (None, SeedEncapsulation::Hybridized(_))
-                | (Some(_), SeedEncapsulation::Classic(_)) => {
-                    // No need to try when there is a hybridization mismatch.
+                (CoordinateSecretKey::Hybridized { .. }, SeedEncapsulation::Classic { .. })
+                | (CoordinateSecretKey::Classic { .. }, SeedEncapsulation::Hybridized { .. }) => {
                     continue;
                 }
             };
 
-            let (tag, seed) = eakem_hash(&seed, &encapsulation.coordinate_encapsulations)?;
+            let (tag, ss) = j_hash(
+                &S,
+                &encapsulation.c,
+                &encapsulation.coordinate_encapsulations,
+            )?;
 
             if tag == encapsulation.tag {
-                return Ok(Some(seed));
+                return Ok(Some(ss));
             }
         }
     }
@@ -267,7 +325,7 @@ pub fn update_coordinate_keys(
         {
             *is_activated = AttributeStatus::EncryptDecrypt == status;
             if EncryptionHint::Classic == hint {
-                coordinate_secret.drop_hybridization();
+                *coordinate_secret = coordinate_secret.drop_hybridization();
             }
         } else {
             if AttributeStatus::DecryptOnly == status {
@@ -339,9 +397,11 @@ pub fn refresh(
     usk: &mut UserSecretKey,
     keep_old_rights: bool,
 ) -> Result<(), Error> {
-    verify_usk(msk, usk)?;
+    verify(msk, usk)?;
+
     let usk_id = take(&mut usk.id);
-    usk.id = msk.refresh_id(rng, usk_id)?;
+    let new_id = msk.tsk.refresh_id(rng, usk_id)?;
+
     let usk_rights = take(&mut usk.coordinate_keys);
     let new_rights = if keep_old_rights {
         refresh_coordinate_keys(msk, usk_rights)
@@ -349,8 +409,13 @@ pub fn refresh(
         msk.get_latest_coordinate_sk(usk_rights.into_keys())
             .collect::<Result<RevisionVec<Coordinate, CoordinateSecretKey>, Error>>()?
     };
+
+    let signature = sign(msk, &new_id, &new_rights)?;
+
+    usk.id = new_id;
     usk.coordinate_keys = new_rights;
-    usk.msk_signature = sign_usk(msk, usk);
+    usk.signature = signature;
+
     Ok(())
 }
 
