@@ -118,7 +118,7 @@ impl Serializable for MasterPublicKey {
             let pk = de.read::<CoordinatePublicKey>()?;
             coordinate_keys.insert(coordinate, pk);
         }
-        let policy = Policy::try_from(de.read()?)?;
+        let policy = de.read::<Policy>()?;
         Ok(Self {
             tpk,
             coordinate_keys,
@@ -200,7 +200,7 @@ impl Serializable for MasterSecretKey {
         if let Some(kmac_key) = &self.signing_key {
             n += ser.write_array(kmac_key)?;
         }
-        n += ser.write_vec(&self.policy)?;
+        n += ser.write(&self.policy)?;
         Ok(n)
     }
 
@@ -230,7 +230,7 @@ impl Serializable for MasterSecretKey {
             )?)
         };
 
-        let policy = Policy::try_from(de.read()?)?;
+        let policy = de.read::<Policy>()?;
 
         Ok(Self {
             s,
@@ -540,21 +540,25 @@ impl Serializable for Policy {
         self.attributes().len()
     }
 
-    fn write(&self, ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer) -> Result<usize, Self::Error> {
-        let n  =ser.write(&self.to_bytes())?;
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        let n = ser.write(self)?;
         Ok(n)
     }
 
     fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-       de.read();
+        let n = de.read::<Policy>()?;
+        Ok(n)
     }
 }
+
 #[cfg(test)]
+
 mod tests {
     use std::collections::HashMap;
-
     use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
-
     use super::*;
     use crate::{
         abe_policy::{AttributeStatus, EncryptionHint},
