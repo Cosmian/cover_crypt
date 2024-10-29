@@ -72,13 +72,14 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
 
     let mut tsk = TracingSecretKey::default();
     (0..=tracing_level).for_each(|_| tsk.increase_tracing(rng));
+    let policy = Policy::new();
 
     Ok(MasterSecretKey {
         s,
         tsk,
         coordinate_secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
-        policy: Policy::new(),
+        policy,
     })
 }
 

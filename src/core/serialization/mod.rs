@@ -96,6 +96,7 @@ impl Serializable for MasterPublicKey {
                 .iter()
                 .map(|(coordinate, pk)| coordinate.length() + pk.length())
                 .sum::<usize>()
+            + self.policy.attributes().len()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -183,6 +184,7 @@ impl Serializable for MasterSecretKey {
                 })
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
+            + self.policy.attributes().len()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -230,7 +232,7 @@ impl Serializable for MasterSecretKey {
             )?)
         };
 
-        let policy = de.read::<Policy>()?;
+        let policy = de.read()?;
 
         Ok(Self {
             s,
@@ -544,8 +546,8 @@ impl Serializable for Policy {
         &self,
         ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
     ) -> Result<usize, Self::Error> {
-        let n = ser.write(self)?;
-        Ok(n)
+        let n = Vec::<u8>::try_from(self);
+        Ok(ser.write_vec(&n? as &[u8])?)
     }
 
     fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
