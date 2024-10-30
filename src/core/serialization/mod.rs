@@ -96,7 +96,7 @@ impl Serializable for MasterPublicKey {
                 .iter()
                 .map(|(coordinate, pk)| coordinate.length() + pk.length())
                 .sum::<usize>()
-            + self.policy.attributes().len()
+            + self.policy.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -184,7 +184,7 @@ impl Serializable for MasterSecretKey {
                 })
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
-            + self.policy.attributes().len()
+            + self.policy.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -539,7 +539,19 @@ impl Serializable for Policy {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.attributes().len()
+        to_leb128_len(self.version.clone() as usize)
+            + to_leb128_len(self.last_attribute_value.try_into().unwrap())
+            + self
+                .dimensions
+                .iter()
+                .map(|(s, dim)| {
+                    to_leb128_len(s.len())
+                        + dim.attributes().into_iter().map(|d| {
+                            d.len()
+                        })
+                        .sum::<usize>()
+                })
+                .sum::<usize>()
     }
 
     fn write(
@@ -559,8 +571,6 @@ impl Serializable for Policy {
 #[cfg(test)]
 
 mod tests {
-    use std::collections::HashMap;
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
     use super::*;
     use crate::{
         abe_policy::{AttributeStatus, EncryptionHint},
@@ -570,6 +580,8 @@ mod tests {
             MIN_TRACING_LEVEL,
         },
     };
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use std::collections::HashMap;
 
     #[test]
     fn test_coordinate_pk() {
