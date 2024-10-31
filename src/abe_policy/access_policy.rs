@@ -25,7 +25,7 @@ pub enum AccessPolicy {
     And(Box<AccessPolicy>, Box<AccessPolicy>),
     Or(Box<AccessPolicy>, Box<AccessPolicy>),
     Any,    
-}
+
 
 impl AccessPolicy {
     /// Finds the corresponding closing parenthesis in the boolean expression

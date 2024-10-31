@@ -126,10 +126,7 @@ impl UserSecretKeyTestVector {
         Ok(Self {
             key: transcoder.encode(
                 Covercrypt::default()
-                    .generate_user_secret_key(
-                        msk,
-                        &AccessPolicy::from_boolean_expression(access_policy)?,
-                    )?
+                    .generate_user_secret_key(msk, &AccessPolicy::parse(access_policy)?, policy)?
                     .serialize()?,
             ),
             access_policy: access_policy.to_string(),
@@ -179,15 +176,18 @@ impl NonRegressionTestVector {
             //
             // Create user decryption keys
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
+                &policy,
                 "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
             )?,
             medium_secret_mkg_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
+                &policy,
                 "Security Level::Medium Secret && Department::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
-                &msk,
+                &mut msk,
+                &policy,
                 "Security Level::Top Secret && Department::FIN",
             )?,
             //

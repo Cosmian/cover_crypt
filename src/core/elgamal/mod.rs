@@ -207,4 +207,3 @@ mod tests {
         assert_eq!(keypair, keypair_);
     }
 }
-    

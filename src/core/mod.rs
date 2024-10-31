@@ -7,7 +7,7 @@ use std::{
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
 
 use crate::{
-    abe_policy::{Coordinate, Policy},
+    abe_policy::Coordinate,
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };

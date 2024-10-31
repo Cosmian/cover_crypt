@@ -107,6 +107,7 @@ impl Serializable for MasterPublicKey {
             n += ser.write(pk)?;
         }
         n += ser.write(&self.policy)?;
+
         Ok(n)
     }
 
@@ -185,6 +186,7 @@ impl Serializable for MasterSecretKey {
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
             + self.policy.length()
+
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -565,9 +567,13 @@ impl Serializable for Policy {
     }
 }
 
-#[cfg(test)]
 
+#[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+
     use super::*;
     use crate::{
         abe_policy::{AttributeStatus, EncryptionHint},
@@ -577,8 +583,7 @@ mod tests {
             MIN_TRACING_LEVEL,
         },
     };
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
-    use std::collections::HashMap;
+
 
     #[test]
     fn test_coordinate_pk() {
