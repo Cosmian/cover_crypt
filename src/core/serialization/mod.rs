@@ -540,33 +540,36 @@ impl Serializable for Policy {
     type Error = Error;
 
     fn length(&self) -> usize {
-        to_leb128_len(self.version.clone() as usize)
-            + to_leb128_len(usize::try_from(self.last_attribute_value).unwrap())
-            + self
-                .dimensions
-                .iter()
-                .map(|(s, dim)| {
-                    to_leb128_len(s.len())
-                        + dim
-                            .attributes()
-                            .iter()
-                            .map(|d | {
-                               to_leb128_len(usize::try_from(d.id).unwrap()) + to_leb128_len(d.encryption_hint.clone() as usize) + to_leb128_len(d.write_status.clone() as usize)
-                            }).sum::<usize>()
-                }).sum::<usize>()
+        let bytes = <Vec<u8>>::try_from(self).unwrap();
+        bytes.len() + to_leb128_len(bytes.len())
+
+            // 1 + to_leb128_len(self.last_attribute_value as usize)
+            //     + self
+            //         .dimensions
+            //         .clone()
+            //         .iter()
+            //         .map(|(s, dim)| {
+            //             to_leb128_len(s.len())
+            //                 + s.len()
+            //                 + dim
+            //                     .attributes()
+            //                     .map(|d| to_leb128_len(d.id as usize) + 2)
+            //                     .sum::<usize>()
+            //         })
+            //         .sum::<usize>()
     }
 
     fn write(
         &self,
         ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
     ) -> Result<usize, Self::Error> {
-        let n = Vec::<u8>::try_from(self);
-        Ok(ser.write_vec(&n? as &[u8])?)
+        let bytes = <Vec<u8>>::try_from(self)?;
+        ser.write_vec(&bytes).map_err(Self::Error::from)
     }
 
     fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let n = de.read::<Policy>()?;
-        Ok(n)
+        let bytes = de.read_vec()?;
+        Policy::parse_and_convert(&bytes).map_err(Self::Error::from)
     }
 }
 

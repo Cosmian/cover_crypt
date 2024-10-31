@@ -1,5 +1,7 @@
 use std::{
-    collections::{HashMap, HashSet}, fmt::Display, vec
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    vec,
 };
 
 use super::{
@@ -431,4 +433,3 @@ mod tests {
         Ok(())
     }
 }
-    
