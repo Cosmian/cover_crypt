@@ -30,7 +30,7 @@ fn generate_new(
         use cosmian_crypto_core::bytes_ser_de::Serializable;
         let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
         let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
-        println!(
+        println!(   
             "USK = {}",
             transcoder.encode(
                 cc.generate_user_secret_key(_msk, &access_policy, &policy)

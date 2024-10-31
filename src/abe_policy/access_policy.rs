@@ -24,7 +24,7 @@ pub enum AccessPolicy {
     Attr(Attribute),
     And(Box<AccessPolicy>, Box<AccessPolicy>),
     Or(Box<AccessPolicy>, Box<AccessPolicy>),
-    Any,
+    Any,    
 }
 
 impl AccessPolicy {

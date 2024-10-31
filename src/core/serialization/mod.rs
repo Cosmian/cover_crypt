@@ -546,10 +546,7 @@ impl Serializable for Policy {
                 .iter()
                 .map(|(s, dim)| {
                     to_leb128_len(s.len())
-                        + dim.attributes().into_iter().map(|d| {
-                            d.len()
-                        })
-                        .sum::<usize>()
+                        + dim.attributes().into_iter().map(|d| d.len()).sum::<usize>()
                 })
                 .sum::<usize>()
     }

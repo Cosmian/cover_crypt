@@ -205,7 +205,7 @@ fn specification_conversion_round_trip() -> Result<(), Error> {
             .get_attribute_hybridization_hint(&Attribute::new("Department", "MKG"))
             .unwrap(),
         EncryptionHint::Classic
-    );
+    );  
     assert_eq!(
         policy_from_spec
             .get_attribute_hybridization_hint(&Attribute::new("Security Level", "Protected"))

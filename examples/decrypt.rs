@@ -16,7 +16,7 @@ fn main() {
 
     let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
     let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
-
+    
     let cc = Covercrypt::default();
     let usk = UserSecretKey::deserialize(&transcoder.decode(USK.as_bytes()).unwrap()).unwrap();
     let encrypted_header =
