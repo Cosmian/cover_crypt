@@ -13,7 +13,7 @@ use super::{
     SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{Coordinate, Policy},
+    abe_policy::{AttributeParameters, Coordinate, Policy},
     core::{
         CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
         SeedEncapsulation, UserSecretKey, SEED_LENGTH,
@@ -186,7 +186,6 @@ impl Serializable for MasterSecretKey {
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
             + self.policy.length()
-
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -548,7 +547,13 @@ impl Serializable for Policy {
                 .iter()
                 .map(|(s, dim)| {
                     to_leb128_len(s.len())
-                        + dim.attributes().into_iter().map(|d| d.len()).sum::<usize>()
+                        + dim
+                            .attributes()
+                            .into_iter()
+                            .map(|d | {
+                                d.id.len() + d.encryption_hint.len() + d.write_status.len()
+                            })
+                            .product::<usize>()
                 })
                 .sum::<usize>()
     }
@@ -567,7 +572,6 @@ impl Serializable for Policy {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -583,7 +587,6 @@ mod tests {
             MIN_TRACING_LEVEL,
         },
     };
-
 
     #[test]
     fn test_coordinate_pk() {
