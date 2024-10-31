@@ -13,7 +13,7 @@ use super::{
     SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeParameters, Coordinate, Policy},
+    abe_policy::{Coordinate, Policy},
     core::{
         CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
         SeedEncapsulation, UserSecretKey, SEED_LENGTH,
@@ -541,7 +541,7 @@ impl Serializable for Policy {
 
     fn length(&self) -> usize {
         to_leb128_len(self.version.clone() as usize)
-            + to_leb128_len(self.last_attribute_value.try_into().unwrap())
+            + to_leb128_len(usize::try_from(self.last_attribute_value).unwrap())
             + self
                 .dimensions
                 .iter()
@@ -549,13 +549,11 @@ impl Serializable for Policy {
                     to_leb128_len(s.len())
                         + dim
                             .attributes()
-                            .into_iter()
+                            .iter()
                             .map(|d | {
-                                d.id.len() + d.encryption_hint.len() + d.write_status.len()
-                            })
-                            .product::<usize>()
-                })
-                .sum::<usize>()
+                               to_leb128_len(usize::try_from(d.id).unwrap()) + to_leb128_len(d.encryption_hint.clone() as usize) + to_leb128_len(d.write_status.clone() as usize)
+                            }).sum::<usize>()
+                }).sum::<usize>()
     }
 
     fn write(

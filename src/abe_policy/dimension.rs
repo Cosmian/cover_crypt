@@ -72,9 +72,9 @@ impl DimensionBuilder {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
 pub struct AttributeParameters {
-    pub(super) id: u32,
-    pub(super) encryption_hint: EncryptionHint,
-    pub(super) write_status: AttributeStatus,
+    pub(crate) id: u32,
+    pub(crate) encryption_hint: EncryptionHint,
+    pub(crate) write_status: AttributeStatus,
 }
 
 impl AttributeParameters {

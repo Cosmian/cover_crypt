@@ -30,4 +30,3 @@ pub enum PolicyVersion {
     V1,
     V2,
 }
-    
