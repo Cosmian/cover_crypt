@@ -542,7 +542,6 @@ impl Serializable for Policy {
     fn length(&self) -> usize {
         let bytes = <Vec<u8>>::try_from(self).unwrap();
         bytes.len() + to_leb128_len(bytes.len())
-
     }
 
     fn write(

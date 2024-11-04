@@ -315,7 +315,7 @@ impl Dimension {
     /// If the dimension is ordered, the attributes are returned in order.
     #[must_use]
     pub fn attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
-        match self {    
+        match self {
             Self::Unordered(attributes) => Box::new(attributes.values()),
             Self::Ordered(attributes) => Box::new(attributes.values()),
         }

@@ -20,7 +20,7 @@ fn main() {
         ],
         true,
     );
-    
+
     // Another attribute axis will be department names.
     // This axis is *not* hierarchical.
     let department = DimensionBuilder::new(

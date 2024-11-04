@@ -105,7 +105,7 @@ impl Serializable for Coordinate {
     }
 
     fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let bytes =  de.read_vec()?;
+        let bytes = de.read_vec()?;
         Ok(Self(bytes))
     }
 }
