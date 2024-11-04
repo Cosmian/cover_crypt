@@ -172,7 +172,6 @@ impl NonRegressionTestVector {
         let reg_vectors = Self {
             public_key: transcoder.encode(mpk.serialize()?),
             master_secret_key: transcoder.encode(msk.serialize()?),
-            policy: policy.to_string(),
             //
             // Create user decryption keys
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
