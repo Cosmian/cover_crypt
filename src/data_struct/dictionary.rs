@@ -5,7 +5,6 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     mem::swap,
-    usize,
 };
 
 use serde::{
@@ -16,7 +15,6 @@ use serde::{
 
 use super::error::Error;
 
-#[allow(clippy::legacy_numeric_constants)]
 type Index = usize;
 /// `HashMap` keeping insertion order inspired by Python dictionary.
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
