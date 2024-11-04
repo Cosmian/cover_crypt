@@ -78,9 +78,9 @@ impl Covercrypt {
     ///
     /// Sets the MPK coordinates to the one defined by the policy:
     /// - removes coordinates from the MSK that don't belong to the new policy
-    /// along with their associated keys;
+    ///   along with their associated keys;
     /// - adds the policy coordinates that don't belong yet to the MSK,
-    /// generating new keys.
+    ///   generating new keys.
     ///
     /// The new MPK holds the latest public keys of each coordinates of the new policy.
     pub fn update_master_keys(

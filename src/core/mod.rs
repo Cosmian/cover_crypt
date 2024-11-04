@@ -7,7 +7,7 @@ use std::{
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Aes256Gcm, SymmetricKey};
 
 use crate::{
-    abe_policy::Coordinate,
+    abe_policy::{Coordinate, Policy},
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
@@ -264,6 +264,7 @@ pub struct MasterSecretKey {
     tsk: TracingSecretKey,
     coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
+    policy: Policy,
 }
 
 impl MasterSecretKey {
@@ -368,6 +369,7 @@ impl MasterSecretKey {
                     })
                 })
                 .collect(),
+            policy: self.policy.clone(),
         })
     }
 }
@@ -381,6 +383,7 @@ impl MasterSecretKey {
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
+    policy: Policy,
 }
 
 impl MasterPublicKey {

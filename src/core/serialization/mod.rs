@@ -13,7 +13,7 @@ use super::{
     SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::Coordinate,
+    abe_policy::{Coordinate, Policy},
     core::{
         CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
         SeedEncapsulation, UserSecretKey, SEED_LENGTH,
@@ -96,6 +96,7 @@ impl Serializable for MasterPublicKey {
                 .iter()
                 .map(|(coordinate, pk)| coordinate.length() + pk.length())
                 .sum::<usize>()
+            + self.policy.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -105,6 +106,8 @@ impl Serializable for MasterPublicKey {
             n += ser.write(coordinate)?;
             n += ser.write(pk)?;
         }
+        n += ser.write(&self.policy)?;
+
         Ok(n)
     }
 
@@ -117,9 +120,11 @@ impl Serializable for MasterPublicKey {
             let pk = de.read::<CoordinatePublicKey>()?;
             coordinate_keys.insert(coordinate, pk);
         }
+        let policy = de.read::<Policy>()?;
         Ok(Self {
             tpk,
             coordinate_keys,
+            policy,
         })
     }
 }
@@ -180,6 +185,7 @@ impl Serializable for MasterSecretKey {
                 })
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
+            + self.policy.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -197,6 +203,7 @@ impl Serializable for MasterSecretKey {
         if let Some(kmac_key) = &self.signing_key {
             n += ser.write_array(kmac_key)?;
         }
+        n += ser.write(&self.policy)?;
         Ok(n)
     }
 
@@ -226,11 +233,14 @@ impl Serializable for MasterSecretKey {
             )?)
         };
 
+        let policy = de.read()?;
+
         Ok(Self {
             s,
             tsk,
             coordinate_secrets: coordinate_keypairs,
             signing_key,
+            policy,
         })
     }
 }
@@ -523,6 +533,28 @@ impl Serializable for CleartextHeader {
             Some(metadata)
         };
         Ok(Self { seed, metadata })
+    }
+}
+
+impl Serializable for Policy {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        let bytes = <Vec<u8>>::try_from(self).unwrap();
+        bytes.len() + to_leb128_len(bytes.len())
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        let bytes = <Vec<u8>>::try_from(self)?;
+        ser.write_vec(&bytes).map_err(Self::Error::from)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let bytes = de.read_vec()?;
+        Policy::parse_and_convert(&bytes).map_err(Self::Error::from)
     }
 }
 

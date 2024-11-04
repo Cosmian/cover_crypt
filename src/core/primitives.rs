@@ -17,7 +17,7 @@ use super::{
     SEED_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, Coordinate, EncryptionHint},
+    abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
     core::{Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
     Error,
@@ -72,12 +72,14 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
 
     let mut tsk = TracingSecretKey::default();
     (0..=tracing_level).for_each(|_| tsk.increase_tracing(rng));
+    let policy = Policy::new();
 
     Ok(MasterSecretKey {
         s,
         tsk,
         coordinate_secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
+        policy,
     })
 }
 
@@ -248,7 +250,7 @@ pub fn decaps(
 ///
 /// - removes coordinates from the MSK that do not belong to the given coordinates;
 /// - adds the given coordinates that do not belong yet to the MSK and generates
-/// an associated keypair;
+///   an associated keypair;
 /// - modify hybridization property accordingly to the one of the given coordinates;
 /// - modify the attribute status accordingly to the one of the given coordinates.
 pub fn update_coordinate_keys(
@@ -328,9 +330,9 @@ pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Coordinate>) {
 ///
 /// For each coordinate in the USK:
 /// - if `keep_old_rights` is set to false, the last secret from MSK is given to
-/// the USK, all secrets previously owned by the USK are removed;
+///   the USK, all secrets previously owned by the USK are removed;
 /// - otherwise, secrets from the USK that do not belong to the MSK are removed,
-/// and secrets from the MSK that do not belong to the USK are added.
+///   and secrets from the MSK that do not belong to the USK are added.
 pub fn refresh(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
@@ -338,10 +340,8 @@ pub fn refresh(
     keep_old_rights: bool,
 ) -> Result<(), Error> {
     verify_usk(msk, usk)?;
-
     let usk_id = take(&mut usk.id);
     usk.id = msk.refresh_id(rng, usk_id)?;
-
     let usk_rights = take(&mut usk.coordinate_keys);
     let new_rights = if keep_old_rights {
         refresh_coordinate_keys(msk, usk_rights)

@@ -5,7 +5,6 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     mem::swap,
-    usize,
 };
 
 use serde::{
@@ -269,6 +268,7 @@ where
 }
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
 
