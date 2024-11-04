@@ -543,20 +543,6 @@ impl Serializable for Policy {
         let bytes = <Vec<u8>>::try_from(self).unwrap();
         bytes.len() + to_leb128_len(bytes.len())
 
-            // 1 + to_leb128_len(self.last_attribute_value as usize)
-            //     + self
-            //         .dimensions
-            //         .clone()
-            //         .iter()
-            //         .map(|(s, dim)| {
-            //             to_leb128_len(s.len())
-            //                 + s.len()
-            //                 + dim
-            //                     .attributes()
-            //                     .map(|d| to_leb128_len(d.id as usize) + 2)
-            //                     .sum::<usize>()
-            //         })
-            //         .sum::<usize>()
     }
 
     fn write(
