@@ -33,7 +33,7 @@ fn generate_new(
         println!(
             "USK = {}",
             transcoder.encode(
-                cc.generate_user_secret_key(_msk, &access_policy, &policy)
+                cc.generate_user_secret_key(_msk, &access_policy, policy)
                     .unwrap()
                     .serialize()
                     .unwrap()
