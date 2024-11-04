@@ -250,7 +250,7 @@ pub fn decaps(
 ///
 /// - removes coordinates from the MSK that do not belong to the given coordinates;
 /// - adds the given coordinates that do not belong yet to the MSK and generates
-/// an associated keypair;
+///   an associated keypair;
 /// - modify hybridization property accordingly to the one of the given coordinates;
 /// - modify the attribute status accordingly to the one of the given coordinates.
 pub fn update_coordinate_keys(
@@ -330,9 +330,9 @@ pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Coordinate>) {
 ///
 /// For each coordinate in the USK:
 /// - if `keep_old_rights` is set to false, the last secret from MSK is given to
-/// the USK, all secrets previously owned by the USK are removed;
+///   the USK, all secrets previously owned by the USK are removed;
 /// - otherwise, secrets from the USK that do not belong to the MSK are removed,
-/// and secrets from the MSK that do not belong to the USK are added.
+///   and secrets from the MSK that do not belong to the USK are added.
 pub fn refresh(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
