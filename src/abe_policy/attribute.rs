@@ -146,7 +146,7 @@ impl TryFrom<&str> for Attribute {
 
 impl std::fmt::Display for Attribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:  :{}", self.dimension, self.name)
+        write!(f, "{}::{}", self.dimension, self.name)
     }
 }
 
