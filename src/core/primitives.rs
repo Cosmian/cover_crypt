@@ -67,7 +67,6 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
         return Err(Error::OperationNotPermitted(format!(
             "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
         )));
-
     }
     let s = elgamal::Scalar::new(rng);
 
@@ -100,8 +99,10 @@ pub fn usk_keygen(
     let coordinate_keys = msk
         .get_latest_coordinate_sk(coordinates.into_iter())
         .collect::<Result<RevisionVec<_, _>, Error>>()?;
+
     // Do not generate the ID if an error happens when extracting coordinate secrets.
     let id = msk.generate_user_id(rng)?;
+
     // Signature has to be added in a second time to allow using the signing
     // primitive. Maybe a better signing function could avoid it.
     let mut usk = UserSecretKey {
