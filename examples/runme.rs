@@ -44,14 +44,14 @@ fn main() {
     // Setup Covercrypt and generate master keys
     let cover_crypt = Covercrypt::default();
     let (mut msk, _) = cover_crypt.setup().unwrap();
-    let mpk = cover_crypt.update_master_keys(&policy, &mut msk).unwrap();
+    let mpk = cover_crypt.update_master_keys(&mut msk).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).
     let access_policy =
         AccessPolicy::parse("Security Level::Top Secret && Department::FIN").unwrap();
     let mut usk = cover_crypt
-        .generate_user_secret_key(&mut msk, &access_policy, &policy)
+        .generate_user_secret_key(&mut msk, &access_policy)
         .unwrap();
 
     // Encrypt
@@ -74,7 +74,7 @@ fn main() {
     //
     // Rekey the user access policy.
     let mpk = cover_crypt
-        .rekey(&access_policy, &policy, &mut msk)
+        .rekey(&access_policy, &mut msk)
         .unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();

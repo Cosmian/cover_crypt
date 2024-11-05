@@ -75,17 +75,17 @@ mod tests {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let _ = cover_crypt.update_master_keys(&mut msk)?;
 
         let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk =
-            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         policy.add_attribute(
             Attribute::new("Department", "Sales"),
             EncryptionHint::Classic,
         )?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         let secret_sales_ap =
             AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
@@ -113,14 +113,14 @@ mod tests {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         // New user secret key
         let decryption_policy = AccessPolicy::parse(
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
@@ -131,7 +131,7 @@ mod tests {
         policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
-        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let _ = cover_crypt.update_master_keys(&mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -158,7 +158,7 @@ mod tests {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         //
         // New user secret key
@@ -166,7 +166,7 @@ mod tests {
             "Security Level::Top Secret && (Department::FIN || Department::HR)",
         )?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         //
         // Encrypt
@@ -178,7 +178,7 @@ mod tests {
         policy.disable_attribute(&Attribute::new("Department", "FIN"))?;
 
         // update the master keys
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -215,13 +215,13 @@ mod tests {
         let mut policy = policy()?;
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         // New user secret key
         let decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
         let mut top_secret_fin_usk =
-            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy, &policy)?;
+            cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
@@ -232,7 +232,7 @@ mod tests {
         policy.rename_attribute(&Attribute::new("Department", "FIN"), "Finance".to_string())?;
 
         // update the master keys
-        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let _ = cover_crypt.update_master_keys(&mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cover_crypt, &top_secret_fin_usk, None)
@@ -260,10 +260,10 @@ mod tests {
         .unwrap();
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
         let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
         let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &policy, &ap)?;
-        let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy, &policy)?;
+        let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy)?;
         let recovered_key = cover_crypt.decaps(&usk, &encrypted_key)?;
         assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
         Ok(())
@@ -272,21 +272,16 @@ mod tests {
     #[test]
     fn test_single_attribute_in_access_policy() -> Result<(), Error> {
         //
-        // Declare policy
-        let policy = policy()?;
-
-        //
         // Setup Covercrypt
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let _ = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let _ = cover_crypt.update_master_keys(&mut msk)?;
 
         //
         // New user secret key
         let _user_key = cover_crypt.generate_user_secret_key(
             &mut msk,
             &AccessPolicy::parse("Security Level::Top Secret")?,
-            &policy,
         )?;
 
         Ok(())
@@ -303,14 +298,13 @@ mod tests {
         // Setup Covercrypt
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         //
         // New user secret key
         let mut top_secret_fin_usk = cover_crypt.generate_user_secret_key(
             &mut msk,
             &AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?,
-            &policy,
         )?;
 
         //
@@ -330,7 +324,7 @@ mod tests {
         //
         // Rotate argument (must update master keys)
         let rekey_ap = AccessPolicy::Attr(Attribute::from(("Security Level", "Top Secret")));
-        let mpk = cover_crypt.rekey(&rekey_ap, &policy, &mut msk)?;
+        let mpk = cover_crypt.rekey(&rekey_ap, &mut msk)?;
 
         //
         // Encrypt with new attribute

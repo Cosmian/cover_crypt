@@ -8,7 +8,7 @@ use super::{
     AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Coordinate, Dimension,
     DimensionBuilder, EncryptionHint, Policy, PolicyVersion,
 };
-use crate::Error;
+use crate::{api::Covercrypt, Error};
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -45,7 +45,6 @@ impl Policy {
             dim.name.clone(),
             Dimension::new(dim, &mut self.last_attribute_value),
         );
-
         Ok(())
     }
 
@@ -76,7 +75,17 @@ impl Policy {
     ) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => {
-                policy_dim.add_attribute(attr.name, encryption_hint, &mut self.last_attribute_value)
+                let new_attribute = policy_dim.add_attribute(
+                    attr.name,
+                    encryption_hint,
+                    &mut self.last_attribute_value,
+                );
+
+                let cover_crypt = Covercrypt::default();
+                let (mut msk, _) = cover_crypt.setup()?;
+                cover_crypt.update_master_keys(&mut msk)?;
+
+                new_attribute
             }
             None => Err(Error::DimensionNotFound(attr.dimension)),
         }

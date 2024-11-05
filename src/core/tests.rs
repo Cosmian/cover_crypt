@@ -255,10 +255,10 @@ fn test_covercrypt_kem() {
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
     let mpk = cc
-        .update_master_keys(&policy, &mut msk)
+        .update_master_keys(&mut msk)
         .expect("cannot update master keys");
     let usk = cc
-        .generate_user_secret_key(&mut msk, &ap, &policy)
+        .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &policy, &ap).unwrap();
     let res = cc.decaps(&usk, &enc).unwrap();
@@ -273,7 +273,7 @@ fn test_covercrypt_pke() {
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
     let mpk = cc
-        .update_master_keys(&policy, &mut msk)
+        .update_master_keys(&mut msk)
         .expect("cannot update master keys");
     let ptx = "testing encryption/decryption".as_bytes();
 
@@ -282,7 +282,7 @@ fn test_covercrypt_pke() {
     )
     .expect("cannot encrypt!");
     let usk = cc
-        .generate_user_secret_key(&mut msk, &ap, &policy)
+        .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let ptx1 = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(
         &cc,

@@ -33,7 +33,7 @@ fn generate_new(
         println!(
             "USK = {}",
             transcoder.encode(
-                cc.generate_user_secret_key(_msk, &access_policy, policy)
+                cc.generate_user_secret_key(_msk, &access_policy)
                     .unwrap()
                     .serialize()
                     .unwrap()
@@ -53,7 +53,7 @@ fn main() {
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
     let mpk = cc
-        .update_master_keys(&policy, &mut msk)
+        .update_master_keys(&mut msk)
         .expect("cannot update master keys");
 
     generate_new(&cc, &policy, &mut msk, &mpk);
