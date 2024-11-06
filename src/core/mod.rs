@@ -257,7 +257,8 @@ impl TracingPublicKey {
 /// - the scalar `s` used to bind tracing and coordinate keys;
 /// - the tracing secret key used to produce challenges to trace user keys;
 /// - the secret keys associated to the universal coordinates;
-/// - an optional key for symmetric USK-signing.
+/// - an optional key for symmetric USK-signing;
+/// - the policy defined for the user.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
     s: Scalar,
@@ -378,7 +379,8 @@ impl MasterSecretKey {
 ///
 /// It is composed of:
 /// - the tracing public key;
-/// - the public keys of the universal coordinates.
+/// - the public keys of the universal coordinates;
+/// - the policy defined for the user.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,

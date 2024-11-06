@@ -17,7 +17,7 @@ use super::{
     SEED_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
+    abe_policy::{AttributeStatus, Coordinate, DimensionBuilder, EncryptionHint, Policy},
     core::{Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
     Error,
@@ -72,7 +72,20 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
 
     let mut tsk = TracingSecretKey::default();
     (0..=tracing_level).for_each(|_| tsk.increase_tracing(rng));
-    let policy = Policy::new();
+
+    let mut policy = Policy::new();
+    let sec_level = DimensionBuilder::new(
+        "Security Level",
+        Vec::new(),
+        true,
+    );
+    let department = DimensionBuilder::new(
+        "Department",
+        Vec::new(),
+        false,
+    );
+    policy.add_dimension(sec_level).unwrap();
+    policy.add_dimension(department).unwrap();
 
     Ok(MasterSecretKey {
         s,

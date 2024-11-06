@@ -41,20 +41,34 @@ impl Policy {
             return Err(Error::ExistingPolicy(dim.name));
         }
 
-        self.dimensions.insert(
+        let added_dim= self.dimensions.insert(
             dim.name.clone(),
             Dimension::new(dim, &mut self.last_attribute_value),
         );
+
+        let cover_crypt = Covercrypt::default();
+        let (mut msk, _) = cover_crypt.setup()?;
+        cover_crypt.update_master_keys(&mut msk)?;
+
+        drop(added_dim);
+
         Ok(())
     }
 
     /// Removes the given dim from the policy.
     /// /!\ Invalidates all previous keys and ciphers.
     pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
-        self.dimensions
+        let _ = self
+            .dimensions
             .remove(dim_name)
             .map(|_| ())
-            .ok_or(Error::DimensionNotFound(dim_name.to_string()))
+            .ok_or(Error::DimensionNotFound(dim_name.to_string()));
+
+        let cover_crypt = Covercrypt::default();
+        let (mut msk, _) = cover_crypt.setup()?;
+        cover_crypt.update_master_keys(&mut msk)?;
+
+        Ok(())
     }
 
     /// Adds the given attribute to the policy.
@@ -104,7 +118,13 @@ impl Policy {
                         .to_string(),
                 ))
             } else {
-                dim.remove_attribute(&attr.name)
+                let removed_attr = dim.remove_attribute(&attr.name);
+
+                let cover_crypt = Covercrypt::default();
+                let (mut msk, _) = cover_crypt.setup()?;
+                cover_crypt.update_master_keys(&mut msk)?;
+
+                removed_attr
             }
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
@@ -116,7 +136,15 @@ impl Policy {
     /// But the decryption key will be kept to allow reading old ciphertext.
     pub fn disable_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => policy_dim.disable_attribute(&attr.name),
+            Some(policy_dim) => {
+                let disabled_attr = policy_dim.disable_attribute(&attr.name);
+
+                let cover_crypt = Covercrypt::default();
+                let (mut msk, _) = cover_crypt.setup()?;
+                cover_crypt.update_master_keys(&mut msk)?;
+
+                disabled_attr
+            }
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
@@ -124,7 +152,15 @@ impl Policy {
     /// Changes the name of an attribute.
     pub fn rename_attribute(&mut self, attr: &Attribute, new_name: String) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
+            Some(policy_dim) => {
+                let renamed_attr = policy_dim.rename_attribute(&attr.name, new_name);
+
+                let cover_crypt = Covercrypt::default();
+                let (mut msk, _) = cover_crypt.setup()?;
+                cover_crypt.update_master_keys(&mut msk)?;
+
+                renamed_attr
+            }
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
