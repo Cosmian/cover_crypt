@@ -265,7 +265,8 @@ pub struct MasterSecretKey {
     tsk: TracingSecretKey,
     coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
-    policy: Policy,
+    // ask Théophile 
+    pub policy: Policy,
 }
 
 impl MasterSecretKey {
@@ -385,7 +386,8 @@ impl MasterSecretKey {
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
-    policy: Policy,
+    // ask Théophile for pub
+    pub policy: Policy,
 }
 
 impl MasterPublicKey {

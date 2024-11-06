@@ -57,7 +57,6 @@ fn main() {
     // Encrypt
     let (_, encrypted_header) = EncryptedHeader::generate(
         &cover_crypt,
-        &policy,
         &mpk,
         &access_policy.clone(),
         None,
@@ -80,7 +79,7 @@ fn main() {
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
     let (_, new_encrypted_header) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &enc_policy, None, None).unwrap();
+        EncryptedHeader::generate(&cover_crypt, &mpk, &enc_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
     assert!(new_encrypted_header

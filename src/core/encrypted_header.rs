@@ -3,10 +3,7 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    abe_policy::{AccessPolicy, Policy},
-    api::{Covercrypt, CovercryptKEM},
-    core::SEED_LENGTH,
-    Encapsulation, Error, MasterPublicKey, UserSecretKey,
+    abe_policy::AccessPolicy, api::{Covercrypt, CovercryptKEM}, core::SEED_LENGTH, Encapsulation, Error, MasterPublicKey, UserSecretKey
 };
 
 /// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte seed, and metadata
@@ -30,13 +27,12 @@ impl EncryptedHeader {
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         cover_crypt: &Covercrypt,
-        policy: &Policy,
         public_key: &MasterPublicKey,
         encryption_policy: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(Secret<SEED_LENGTH>, Self), Error> {
-        let (seed, encapsulation) = cover_crypt.encaps(public_key, policy, encryption_policy)?;
+        let (seed, encapsulation) = cover_crypt.encaps(public_key, encryption_policy)?;
 
         let encrypted_metadata = metadata
             .map(|bytes| {

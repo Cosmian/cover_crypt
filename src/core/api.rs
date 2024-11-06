@@ -12,7 +12,7 @@ use super::{
     MIN_TRACING_LEVEL,
 };
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy},
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SEED_LENGTH,
@@ -181,7 +181,6 @@ pub trait CovercryptKEM {
     fn encaps(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>;
 
@@ -201,13 +200,12 @@ impl CovercryptKEM for Covercrypt {
     fn encaps(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
-            &policy.generate_point_coordinates(ap)?,
+            &mpk.policy.generate_point_coordinates(ap)?,
         )
     }
 
@@ -232,7 +230,6 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error>;
@@ -258,7 +255,6 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
@@ -268,7 +264,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
                 KEY_LENGTH, SEED_LENGTH
             )));
         }
-        let (seed, enc) = self.encaps(mpk, policy, ap)?;
+        let (seed, enc) = self.encaps(mpk, ap)?;
         let mut sym_key = SymmetricKey::default();
         kdf256!(&mut sym_key, &seed);
         let mut rng = self.rng.lock().expect("poisoned lock");
