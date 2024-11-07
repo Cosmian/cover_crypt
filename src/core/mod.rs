@@ -258,15 +258,14 @@ impl TracingPublicKey {
 /// - the tracing secret key used to produce challenges to trace user keys;
 /// - the secret keys associated to the universal coordinates;
 /// - an optional key for symmetric USK-signing;
-/// - the policy defined for the user.
+/// - the policy.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterSecretKey {
     s: Scalar,
     tsk: TracingSecretKey,
     coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
-    // ask Théophile 
-    pub policy: Policy,
+    pub(crate) policy: Policy,
 }
 
 impl MasterSecretKey {
@@ -381,13 +380,12 @@ impl MasterSecretKey {
 /// It is composed of:
 /// - the tracing public key;
 /// - the public keys of the universal coordinates;
-/// - the policy defined for the user.
+/// - the policy.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
-    // ask Théophile for pub
-    pub policy: Policy,
+    policy: Policy,
 }
 
 impl MasterPublicKey {

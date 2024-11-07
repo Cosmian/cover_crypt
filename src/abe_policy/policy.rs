@@ -8,13 +8,7 @@ use super::{
     AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Coordinate, Dimension,
     DimensionBuilder, EncryptionHint, Policy, PolicyVersion,
 };
-use crate::{api::Covercrypt, Error, MasterPublicKey};
-
-fn update_master_keys() -> Result<MasterPublicKey, Error> {
-    let cover_crypt = Covercrypt::default();
-    let (mut msk, _) = cover_crypt.setup()?;
-    cover_crypt.update_master_keys(&mut msk)
-}
+use crate::Error;
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,14 +41,10 @@ impl Policy {
             return Err(Error::ExistingPolicy(dim.name));
         }
 
-        let added_dim = self.dimensions.insert(
+        self.dimensions.insert(
             dim.name.clone(),
             Dimension::new(dim, &mut self.last_attribute_value),
         );
-
-        let _ = update_master_keys();
-
-        drop(added_dim);
 
         Ok(())
     }
@@ -62,15 +52,10 @@ impl Policy {
     /// Removes the given dim from the policy.
     /// /!\ Invalidates all previous keys and ciphers.
     pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
-        let removed_dim = self
-            .dimensions
+        self.dimensions
             .remove(dim_name)
             .map(|_| ())
-            .ok_or(Error::DimensionNotFound(dim_name.to_string()));
-
-        let _ = update_master_keys();
-
-        removed_dim
+            .ok_or(Error::DimensionNotFound(dim_name.to_string()))
     }
 
     /// Adds the given attribute to the policy.
@@ -91,15 +76,7 @@ impl Policy {
     ) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
             Some(policy_dim) => {
-                let new_attribute = policy_dim.add_attribute(
-                    attr.name,
-                    encryption_hint,
-                    &mut self.last_attribute_value,
-                );
-
-                let _ = update_master_keys();
-
-                new_attribute
+                policy_dim.add_attribute(attr.name, encryption_hint, &mut self.last_attribute_value)
             }
             None => Err(Error::DimensionNotFound(attr.dimension)),
         }
@@ -118,11 +95,7 @@ impl Policy {
                         .to_string(),
                 ))
             } else {
-                let removed_attr = dim.remove_attribute(&attr.name);
-
-                let _ = update_master_keys();
-
-                removed_attr
+                dim.remove_attribute(&attr.name)
             }
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
@@ -134,13 +107,7 @@ impl Policy {
     /// But the decryption key will be kept to allow reading old ciphertext.
     pub fn disable_attribute(&mut self, attr: &Attribute) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => {
-                let disabled_attr = policy_dim.disable_attribute(&attr.name);
-
-                let _ = update_master_keys();
-
-                disabled_attr
-            }
+            Some(policy_dim) => policy_dim.disable_attribute(&attr.name),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
@@ -148,13 +115,7 @@ impl Policy {
     /// Changes the name of an attribute.
     pub fn rename_attribute(&mut self, attr: &Attribute, new_name: String) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => {
-                let renamed_attr = policy_dim.rename_attribute(&attr.name, new_name);
-
-                let _ = update_master_keys();
-
-                renamed_attr
-            }
+            Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
@@ -310,11 +271,11 @@ pub fn combine(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::msk;
+    use crate::test_utils::setup_cc_and_gen_master_keys;
 
     #[test]
     fn test_combine() -> Result<(), Error> {
-        let (msk, _mpk, _cover_crypt) = msk()?;
+        let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
         let mut policy = msk.policy;
 
         // There should be `Prod_dim(|dim| + 1)` coordinates.
@@ -353,7 +314,8 @@ mod tests {
 
     #[test]
     fn test_generate_semantic_coordinates() -> Result<(), Error> {
-        let (msk, _mpk, _cover_crypt) = msk()?;
+        let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
+
         let policy = msk.policy;
 
         let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";

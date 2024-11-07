@@ -3,7 +3,10 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    abe_policy::AccessPolicy, api::{Covercrypt, CovercryptKEM}, core::SEED_LENGTH, Encapsulation, Error, MasterPublicKey, UserSecretKey
+    abe_policy::AccessPolicy,
+    api::{Covercrypt, CovercryptKEM},
+    core::SEED_LENGTH,
+    Encapsulation, Error, MasterPublicKey, UserSecretKey,
 };
 
 /// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte seed, and metadata

@@ -83,15 +83,17 @@ impl Covercrypt {
     ///   generating new keys.
     ///
     /// The new MPK holds the latest public keys of each coordinates of the new policy.
-    pub fn update_master_keys(
-        &self,
-        msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> {
+    pub fn update_master_keys(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
         update_coordinate_keys(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             msk.policy.generate_universal_coordinates()?,
         )?;
+        msk.mpk()
+    }
+
+    /// Generates a new MPK holding the latest public information of each universal coordinate.
+    pub fn gen_mpk(&self, msk: &MasterSecretKey) -> Result<MasterPublicKey, Error> {
         msk.mpk()
     }
 
@@ -125,7 +127,8 @@ impl Covercrypt {
     ) -> Result<MasterPublicKey, Error> {
         prune(
             msk,
-            &msk.policy.generate_semantic_space_coordinates(access_policy)?,
+            &msk.policy
+                .generate_semantic_space_coordinates(access_policy)?,
         );
         msk.mpk()
     }
@@ -143,7 +146,8 @@ impl Covercrypt {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            msk.policy.generate_semantic_space_coordinates(access_policy)?,
+            msk.policy
+                .generate_semantic_space_coordinates(access_policy)?,
         )
     }
 

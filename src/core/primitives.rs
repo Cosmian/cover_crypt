@@ -72,7 +72,6 @@ pub fn setup(rng: &mut impl CryptoRngCore, tracing_level: usize) -> Result<Maste
 
     let mut tsk = TracingSecretKey::default();
     (0..=tracing_level).for_each(|_| tsk.increase_tracing(rng));
-
     let policy = Policy::new();
 
     Ok(MasterSecretKey {

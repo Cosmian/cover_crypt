@@ -1,5 +1,5 @@
 use crate::{
-    abe_policy::{DimensionBuilder, EncryptionHint, Policy},
+    abe_policy::{DimensionBuilder, EncryptionHint},
     api::Covercrypt,
     Error, MasterPublicKey, MasterSecretKey,
 };
@@ -7,14 +7,13 @@ use crate::{
 // pub mod non_regression;
 
 /// Creates the MSK object used in tests.
-pub fn msk() -> Result<(MasterSecretKey, MasterPublicKey, Covercrypt), Error> {
+pub fn setup_cc_and_gen_master_keys() -> Result<(MasterSecretKey, MasterPublicKey, Covercrypt), Error> {
     let sec_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
             ("Low Secret", EncryptionHint::Classic),
             ("Medium Secret", EncryptionHint::Classic),
-            ("Confidential", EncryptionHint::Classic),
             ("Top Secret", EncryptionHint::Hybridized),
         ],
         true,
@@ -29,7 +28,6 @@ pub fn msk() -> Result<(MasterSecretKey, MasterPublicKey, Covercrypt), Error> {
         ],
         false,
     );
-    let _policy = Policy::new();
 
     let cover_crypt = Covercrypt::default();
     let (mut msk, _) = cover_crypt.setup()?;
@@ -45,21 +43,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy},
-        api::CovercryptKEM,
-        core::EncryptedHeader,
+        abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy, Policy}, api::CovercryptKEM, core::EncryptedHeader
     };
 
-    #[test]
-    fn write_policy() -> Result<(), Error> {
-        let (msk, _mpk, _cover_crypt) = msk()?;
-        let policy = msk.policy;
-        std::fs::write("target/policy.json", serde_json::to_vec(&policy).unwrap()).unwrap();
-        Ok(())
-    }
-
-    /// Read policy from a file. Assert `LegacyPolicy` is convertible into a
-    /// `Policy`.
     #[test]
     fn read_policy() {
         // Can read a `Policy` V2
@@ -80,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_add_attribute() -> Result<(), Error> {
-        let (mut msk, _mpk, cover_crypt) = msk()?;
+        let (mut msk, _mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
 
         let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk =
@@ -115,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_delete_attribute() -> Result<(), Error> {
-        let (mut msk, mpk, cover_crypt) = msk()?;
+        let (mut msk, mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
 
         // New user secret key
         let decryption_policy = AccessPolicy::parse(
@@ -158,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_deactivate_attribute() -> Result<(), Error> {
-        let (mut msk, mpk, cover_crypt) = msk()?;
+        let (mut msk, mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
 
         //
         // New user secret key
@@ -210,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_rename_attribute() -> Result<(), Error> {
-        let (mut msk, mpk, cover_crypt) = msk()?;
+        let (mut msk, mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
 
         // New user secret key
         let decryption_policy =
@@ -253,7 +239,7 @@ mod tests {
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )
         .unwrap();
-        let (mut msk, mpk, cover_crypt) = msk()?;
+        let (mut msk, mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
         let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
         let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &ap)?;
         let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy)?;
@@ -264,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_single_attribute_in_access_policy() -> Result<(), Error> {
-        let (mut msk, _mpk, cover_crypt) = msk()?;
+        let (mut msk, _mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
 
         //
         // New user secret key
@@ -282,7 +268,7 @@ mod tests {
         // Declare policy
         let top_secret_ap = &AccessPolicy::parse("Security Level::Top Secret")?;
 
-        let (mut msk, mpk, cover_crypt) = msk()?;
+        let (mut msk, mpk, cover_crypt) = setup_cc_and_gen_master_keys()?;
 
         //
         // New user secret key

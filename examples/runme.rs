@@ -55,14 +55,8 @@ fn main() {
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) = EncryptedHeader::generate(
-        &cover_crypt,
-        &mpk,
-        &access_policy.clone(),
-        None,
-        None,
-    )
-    .unwrap();
+    let (_, encrypted_header) =
+        EncryptedHeader::generate(&cover_crypt, &mpk, &access_policy.clone(), None, None).unwrap();
 
     // The user is able to decrypt the encrypted header.
     assert!(encrypted_header
@@ -72,9 +66,7 @@ fn main() {
 
     //
     // Rekey the user access policy.
-    let mpk = cover_crypt
-        .rekey(&access_policy, &mut msk)
-        .unwrap();
+    let mpk = cover_crypt.rekey(&access_policy, &mut msk).unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
