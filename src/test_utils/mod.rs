@@ -7,7 +7,8 @@ use crate::{
 // pub mod non_regression;
 
 /// Creates the MSK object used in tests.
-pub fn setup_cc_and_gen_master_keys() -> Result<(MasterSecretKey, MasterPublicKey, Covercrypt), Error> {
+pub fn setup_cc_and_gen_master_keys(
+) -> Result<(MasterSecretKey, MasterPublicKey, Covercrypt), Error> {
     let sec_level = DimensionBuilder::new(
         "Security Level",
         vec![
@@ -43,7 +44,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy, Policy}, api::CovercryptKEM, core::EncryptedHeader
+        abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy, Policy},
+        api::CovercryptKEM,
+        core::EncryptedHeader,
     };
 
     #[test]

@@ -40,7 +40,7 @@ fn check_policy() -> Result<(), Error> {
     }
     for properties in &department.attributes_properties {
         assert!(attributes.contains(&Attribute::new("Department", &properties.name)));
-    };
+    }
     Ok(())
 }
 
