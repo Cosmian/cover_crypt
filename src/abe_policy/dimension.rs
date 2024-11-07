@@ -328,17 +328,17 @@ impl Dimension {
     ///
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
-        self,
+        &mut self,
         attribute: AttributeName,
         hint: EncryptionHint,
-        after: Option<AttributeName>,
+        after: Option<&str>,
         id: usize,
-    ) -> Result<Self, Error> {
+    ) -> Result<(), Error> {
         match self {
-            Self::Unordered(mut attributes) => {
+            Self::Unordered(attributes) => {
                 if let Entry::Vacant(entry) = attributes.entry(attribute) {
                     entry.insert(AttributeParameters::new(hint, id));
-                    Ok(Self::Unordered(attributes))
+                    Ok(())
                 } else {
                     Err(Error::OperationNotPermitted(
                         "Attribute already in dimension".to_string(),
@@ -352,20 +352,20 @@ impl Dimension {
                     ));
                 }
                 let after = if let Some(after) = after {
-                    if !attributes.contains_key(&after) {
+                    if !attributes.contains_key(after) {
                         return Err(Error::AttributeNotFound(
                             "the specified `after` attribute {after} does not exist".to_string(),
                         ));
                     }
                     after
                 } else {
-                    "".to_owned()
+                    ""
                 };
                 let higher_attributes = attributes
                     .clone()
                     .into_iter()
                     .rev()
-                    .take_while(|(name, _)| name != &after)
+                    .take_while(|(name, _)| name != after)
                     .collect::<Vec<_>>();
 
                 let mut new_attributes = attributes
@@ -378,7 +378,8 @@ impl Dimension {
                 higher_attributes.into_iter().rev().for_each(|(name, dim)| {
                     new_attributes.insert(name, dim);
                 });
-                Ok(Self::Ordered(new_attributes))
+                *attributes = new_attributes;
+                Ok(())
             }
         }
     }
@@ -399,9 +400,10 @@ impl Dimension {
                 .remove(attr_name)
                 .map(|_| ())
                 .ok_or(Error::AttributeNotFound(attr_name.to_string())),
-            Self::Ordered(_) => Err(Error::OperationNotPermitted(
-                "Hierarchical dimension are immutable".to_string(),
-            )),
+            Self::Ordered(attributes) => attributes
+                .remove(attr_name)
+                .map(|_| ())
+                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
         }
     }
 

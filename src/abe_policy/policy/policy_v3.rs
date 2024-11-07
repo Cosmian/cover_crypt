@@ -94,7 +94,7 @@ impl PolicyV3 {
         &mut self,
         attribute: QualifiedAttribute,
         encryption_hint: EncryptionHint,
-        after: Option<String>,
+        after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
             .dimensions
@@ -102,13 +102,11 @@ impl PolicyV3 {
             .map(Dimension::nb_attributes)
             .sum::<usize>();
 
-        let dimension = self
-            .dimensions
-            .remove(&attribute.dimension)
+        self.dimensions
+            .get_mut(&attribute.dimension)
             .ok_or_else(|| Error::DimensionNotFound(attribute.dimension.clone()))?
             .add_attribute(attribute.name, encryption_hint, after, cnt)?;
 
-        self.dimensions.insert(attribute.dimension, dimension);
         Ok(())
     }
 
@@ -138,6 +136,17 @@ impl PolicyV3 {
             Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
+    }
+
+    pub fn attributes(&'_ self) -> impl '_ + Iterator<Item = QualifiedAttribute> {
+        self.dimensions.iter().flat_map(|(dimension, d)| {
+            d.get_attributes_name()
+                .map(move |name| QualifiedAttribute::new(dimension, name.as_str()))
+        })
+    }
+
+    pub fn dimensions(&self) -> impl Iterator<Item = &str> {
+        self.dimensions.keys().map(|d| d.as_str())
     }
 
     /// Marks an attribute as read only.

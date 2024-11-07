@@ -42,8 +42,7 @@ fn main() {
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
     let cc = Covercrypt::default();
-    let (mut msk, _) = cc.setup().expect("cannot generate master keys");
-    let mpk = msk.mpk().unwrap();
+    let (mut msk, mpk) = cc.setup().expect("cannot generate master keys");
 
     generate_new(&cc, &mut msk, &mpk);
 
