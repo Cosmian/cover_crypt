@@ -6,6 +6,8 @@ use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, Coordinate, DimensionBuilder, EncryptionHint},
     api::{Covercrypt, CovercryptKEM, CovercryptPKE},
     core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
+    test_utils::msk,
+    Error,
 };
 
 use super::{
@@ -248,22 +250,9 @@ fn test_integrity_check() {
 }
 
 #[test]
-fn test_covercrypt_kem() {
-    let sec_level = DimensionBuilder::new(
-        "Security Level",
-        vec![("Top Secret", EncryptionHint::Hybridized)],
-        true,
-    );
-    let department =
-        DimensionBuilder::new("Department", vec![("FIN", EncryptionHint::Classic)], false);
-
+fn test_covercrypt_kem() -> Result<(), Error> {
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, _) = cc.setup().expect("cannot generate master keys");
-
-    let _ = msk.policy.add_dimension(department);
-    let _ = msk.policy.add_dimension(sec_level);
-
+    let (mut msk, _mpk, cc) = msk()?;
     let mpk = cc
         .update_master_keys(&mut msk)
         .expect("cannot update master keys");
@@ -273,6 +262,7 @@ fn test_covercrypt_kem() {
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
+    Ok(())
 }
 
 #[test]

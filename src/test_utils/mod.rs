@@ -1,19 +1,20 @@
 use crate::{
     abe_policy::{DimensionBuilder, EncryptionHint, Policy},
-    Error,
+    api::Covercrypt,
+    Error, MasterPublicKey, MasterSecretKey,
 };
 
 // pub mod non_regression;
 
-/// Creates the test policy.
-pub fn policy() -> Result<Policy, Error> {
+/// Creates the MSK object used in tests.
+pub fn msk() -> Result<(MasterSecretKey, MasterPublicKey, Covercrypt), Error> {
     let sec_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
             ("Low Secret", EncryptionHint::Classic),
             ("Medium Secret", EncryptionHint::Classic),
-            ("High Secret", EncryptionHint::Classic),
+            ("Confidential", EncryptionHint::Classic),
             ("Top Secret", EncryptionHint::Hybridized),
         ],
         true,
@@ -28,10 +29,15 @@ pub fn policy() -> Result<Policy, Error> {
         ],
         false,
     );
-    let mut policy = Policy::new();
-    policy.add_dimension(sec_level)?;
-    policy.add_dimension(department)?;
-    Ok(policy)
+    let _policy = Policy::new();
+
+    let cover_crypt = Covercrypt::default();
+    let (mut msk, _) = cover_crypt.setup()?;
+    msk.policy.add_dimension(sec_level)?;
+    msk.policy.add_dimension(department)?;
+    let mpk = cover_crypt.update_master_keys(&mut msk)?;
+
+    Ok((msk, mpk, cover_crypt))
 }
 
 #[cfg(test)]
@@ -39,15 +45,17 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, Attribute, LegacyPolicy},
-        api::{Covercrypt, CovercryptKEM},
+        abe_policy::{AccessPolicy, Attribute, EncryptionHint, LegacyPolicy},
+        api::CovercryptKEM,
         core::EncryptedHeader,
     };
 
     #[test]
-    fn write_policy() {
-        let _policy = policy().unwrap();
-        std::fs::write("target/policy.json", serde_json::to_vec(&_policy).unwrap()).unwrap();
+    fn write_policy() -> Result<(), Error> {
+        let (msk, _mpk, _cover_crypt) = msk()?;
+        let policy = msk.policy;
+        std::fs::write("target/policy.json", serde_json::to_vec(&policy).unwrap()).unwrap();
+        Ok(())
     }
 
     /// Read policy from a file. Assert `LegacyPolicy` is convertible into a
@@ -72,26 +80,17 @@ mod tests {
 
     #[test]
     fn test_add_attribute() -> Result<(), Error> {
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Low Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department = DimensionBuilder::new("Department", Vec::new(), false);
-
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, mpk) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
+        let (mut msk, _mpk, cover_crypt) = msk()?;
 
         let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk =
             cover_crypt.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
-        msk.policy.add_attribute(
+        let _ = &mut msk.policy.add_attribute(
             Attribute::new("Department", "Sales"),
             EncryptionHint::Classic,
         )?;
+        let mpk = cover_crypt.update_master_keys(&mut msk)?;
 
         let secret_sales_ap =
             AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
@@ -116,25 +115,7 @@ mod tests {
 
     #[test]
     fn test_delete_attribute() -> Result<(), Error> {
-        let cover_crypt = Covercrypt::default();
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Top Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department = DimensionBuilder::new(
-            "Department",
-            vec![
-                ("FIN", EncryptionHint::Classic),
-                ("HR", EncryptionHint::Classic),
-            ],
-            false,
-        );
-
-        let (mut msk, _) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
-        let mpk = cover_crypt.update_master_keys(&mut msk)?;
+        let (mut msk, mpk, cover_crypt) = msk()?;
 
         // New user secret key
         let decryption_policy = AccessPolicy::parse(
@@ -177,25 +158,7 @@ mod tests {
 
     #[test]
     fn test_deactivate_attribute() -> Result<(), Error> {
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Top Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department = DimensionBuilder::new(
-            "Department",
-            vec![
-                ("HR", EncryptionHint::Classic),
-                ("FIN", EncryptionHint::Classic),
-            ],
-            false,
-        );
-
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
-        let mpk = cover_crypt.update_master_keys(&mut msk)?;
+        let (mut msk, mpk, cover_crypt) = msk()?;
 
         //
         // New user secret key
@@ -247,20 +210,8 @@ mod tests {
 
     #[test]
     fn test_rename_attribute() -> Result<(), Error> {
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Top Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department =
-            DimensionBuilder::new("Department", vec![("FIN", EncryptionHint::Classic)], false);
+        let (mut msk, mpk, cover_crypt) = msk()?;
 
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
-
-        let mpk = cover_crypt.update_master_keys(&mut msk)?;
         // New user secret key
         let decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
@@ -302,26 +253,7 @@ mod tests {
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )
         .unwrap();
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Top Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department = DimensionBuilder::new(
-            "Department",
-            vec![
-                ("FIN", EncryptionHint::Classic),
-                ("MKG", EncryptionHint::Classic),
-            ],
-            false,
-        );
-
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
-
-        let mpk = cover_crypt.update_master_keys(&mut msk)?;
+        let (mut msk, mpk, cover_crypt) = msk()?;
         let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
         let (sym_key, encrypted_key) = cover_crypt.encaps(&mpk, &ap)?;
         let usk = cover_crypt.generate_user_secret_key(&mut msk, &access_policy)?;
@@ -332,22 +264,7 @@ mod tests {
 
     #[test]
     fn test_single_attribute_in_access_policy() -> Result<(), Error> {
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Top Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department =
-            DimensionBuilder::new("Department", vec![("FIN", EncryptionHint::Classic)], false);
-
-        //
-        // Setup Covercrypt
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
-
-        let _ = cover_crypt.update_master_keys(&mut msk)?;
+        let (mut msk, _mpk, cover_crypt) = msk()?;
 
         //
         // New user secret key
@@ -365,21 +282,7 @@ mod tests {
         // Declare policy
         let top_secret_ap = &AccessPolicy::parse("Security Level::Top Secret")?;
 
-        //
-        // Setup Covercrypt
-        let sec_level = DimensionBuilder::new(
-            "Security Level",
-            vec![("Top Secret", EncryptionHint::Hybridized)],
-            true,
-        );
-        let department =
-            DimensionBuilder::new("Department", vec![("FIN", EncryptionHint::Classic)], false);
-
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        let _ = msk.policy.add_dimension(department);
-        let _ = msk.policy.add_dimension(sec_level);
-        let mpk = cover_crypt.update_master_keys(&mut msk)?;
+        let (mut msk, mpk, cover_crypt) = msk()?;
 
         //
         // New user secret key

@@ -8,7 +8,13 @@ use super::{
     AccessPolicy, Attribute, AttributeParameters, AttributeStatus, Coordinate, Dimension,
     DimensionBuilder, EncryptionHint, Policy, PolicyVersion,
 };
-use crate::{api::Covercrypt, Error};
+use crate::{api::Covercrypt, Error, MasterPublicKey};
+
+fn update_master_keys() -> Result<MasterPublicKey, Error> {
+    let cover_crypt = Covercrypt::default();
+    let (mut msk, _) = cover_crypt.setup()?;
+    cover_crypt.update_master_keys(&mut msk)
+}
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,14 +47,12 @@ impl Policy {
             return Err(Error::ExistingPolicy(dim.name));
         }
 
-        let added_dim= self.dimensions.insert(
+        let added_dim = self.dimensions.insert(
             dim.name.clone(),
             Dimension::new(dim, &mut self.last_attribute_value),
         );
 
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        cover_crypt.update_master_keys(&mut msk)?;
+        let _ = update_master_keys();
 
         drop(added_dim);
 
@@ -58,17 +62,15 @@ impl Policy {
     /// Removes the given dim from the policy.
     /// /!\ Invalidates all previous keys and ciphers.
     pub fn remove_dimension(&mut self, dim_name: &str) -> Result<(), Error> {
-        let _ = self
+        let removed_dim = self
             .dimensions
             .remove(dim_name)
             .map(|_| ())
             .ok_or(Error::DimensionNotFound(dim_name.to_string()));
 
-        let cover_crypt = Covercrypt::default();
-        let (mut msk, _) = cover_crypt.setup()?;
-        cover_crypt.update_master_keys(&mut msk)?;
+        let _ = update_master_keys();
 
-        Ok(())
+        removed_dim
     }
 
     /// Adds the given attribute to the policy.
@@ -95,9 +97,7 @@ impl Policy {
                     &mut self.last_attribute_value,
                 );
 
-                let cover_crypt = Covercrypt::default();
-                let (mut msk, _) = cover_crypt.setup()?;
-                cover_crypt.update_master_keys(&mut msk)?;
+                let _ = update_master_keys();
 
                 new_attribute
             }
@@ -120,9 +120,7 @@ impl Policy {
             } else {
                 let removed_attr = dim.remove_attribute(&attr.name);
 
-                let cover_crypt = Covercrypt::default();
-                let (mut msk, _) = cover_crypt.setup()?;
-                cover_crypt.update_master_keys(&mut msk)?;
+                let _ = update_master_keys();
 
                 removed_attr
             }
@@ -139,9 +137,7 @@ impl Policy {
             Some(policy_dim) => {
                 let disabled_attr = policy_dim.disable_attribute(&attr.name);
 
-                let cover_crypt = Covercrypt::default();
-                let (mut msk, _) = cover_crypt.setup()?;
-                cover_crypt.update_master_keys(&mut msk)?;
+                let _ = update_master_keys();
 
                 disabled_attr
             }
@@ -155,9 +151,7 @@ impl Policy {
             Some(policy_dim) => {
                 let renamed_attr = policy_dim.rename_attribute(&attr.name, new_name);
 
-                let cover_crypt = Covercrypt::default();
-                let (mut msk, _) = cover_crypt.setup()?;
-                cover_crypt.update_master_keys(&mut msk)?;
+                let _ = update_master_keys();
 
                 renamed_attr
             }
@@ -316,11 +310,12 @@ pub fn combine(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::policy;
+    use crate::test_utils::msk;
 
     #[test]
-    fn test_combine() {
-        let mut policy = policy().unwrap();
+    fn test_combine() -> Result<(), Error> {
+        let (msk, _mpk, _cover_crypt) = msk()?;
+        let mut policy = msk.policy;
 
         // There should be `Prod_dim(|dim| + 1)` coordinates.
         assert_eq!(
@@ -353,11 +348,13 @@ mod tests {
                 .map(|dim| dim.attributes().count() + 1)
                 .product::<usize>()
         );
+        Ok(())
     }
 
     #[test]
     fn test_generate_semantic_coordinates() -> Result<(), Error> {
-        let policy = policy()?;
+        let (msk, _mpk, _cover_crypt) = msk()?;
+        let policy = msk.policy;
 
         let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";
 
