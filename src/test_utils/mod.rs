@@ -275,4 +275,15 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_broadcast() {
+        let cc = Covercrypt::default();
+        let ap = AccessPolicy::parse("*").unwrap();
+        let (mut msk, mpk) = cc.setup().unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &ap).unwrap();
+        let (secret, bc) = cc.encaps(&mpk, &ap).unwrap();
+        let res = cc.decaps(&usk, &bc).unwrap();
+        assert_eq!(Some(secret), res);
+    }
 }

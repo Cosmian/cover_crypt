@@ -98,7 +98,16 @@ impl AccessPolicy {
         let mut q = LinkedList::<Self>::new();
         loop {
             e = e.trim();
+
             if e.is_empty() {
+                if let Some(first) = q.pop_front() {
+                    return Ok(Self::conjugate(first, q.into_iter()));
+                } else {
+                    return Err(Error::InvalidBooleanExpression(
+                        "empty string is not a valid access policy".to_string(),
+                    ));
+                }
+            } else if e == "*" {
                 return Ok(Self::conjugate(Self::Any, q.into_iter()));
             } else {
                 match &e[..1] {
@@ -227,7 +236,8 @@ mod tests {
         println!("{ap:#?}");
         let ap = AccessPolicy::parse("D1::A (D2::A || D2::B)").unwrap();
         println!("{ap:#?}");
-        assert_eq!(AccessPolicy::parse("").unwrap(), AccessPolicy::Any);
+        assert_eq!(AccessPolicy::parse("*").unwrap(), AccessPolicy::Any);
+        assert!(AccessPolicy::parse("").is_err());
 
         // These are invalid access policies.
         // TODO: make this one valid (change the parsing rule of the attribute).

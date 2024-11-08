@@ -48,10 +48,10 @@ impl Covercrypt {
     /// They only hold keys for the origin coordinate: only broadcast
     /// encapsulations can be created.
     pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        let msk = setup(
-            MIN_TRACING_LEVEL,
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-        )?;
+        let mut rng = self.rng.lock().expect("Mutex lock failed!");
+        let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
+        let coordinates = msk.policy.generate_universal_coordinates()?;
+        update_coordinate_keys(&mut *rng, &mut msk, coordinates)?;
         let mpk = msk.mpk()?;
         Ok((msk, mpk))
     }
