@@ -47,7 +47,7 @@ fn test_encapsulation() {
         &HashSet::from_iter([target_coordinate.clone()]),
     )
     .unwrap();
-    assert_eq!(enc.coordinate_encapsulations.len(), 1);
+    assert_eq!(enc.encapsulations.len(), 1);
 
     for _ in 0..3 {
         let usk = usk_keygen(

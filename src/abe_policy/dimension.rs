@@ -127,8 +127,6 @@ impl Serializable for AttributeParameters {
 }
 
 impl AttributeParameters {
-    /// Creates a `AttributeParameters` with the provided `encryption_hint`
-    /// and increments the `seed_id` to generate unique IDs.
     pub fn new(encryption_hint: EncryptionHint, id: usize) -> Self {
         Self {
             id,
@@ -319,13 +317,7 @@ impl Dimension {
 
     /// Adds a new attribute to the dimension with the provided properties.
     ///
-    /// # Arguments
-    ///
-    /// * `attr` - The properties of the attribute to add.
-    /// * `seed_id` - A seed used for generating unique ID.
-    ///
     /// # Errors
-    ///
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,

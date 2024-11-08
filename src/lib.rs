@@ -18,4 +18,4 @@ pub use error::Error;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
-pub use self::core::{api, Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey};
+pub use self::core::{api, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};

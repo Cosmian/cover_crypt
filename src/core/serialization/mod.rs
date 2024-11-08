@@ -15,7 +15,7 @@ use crate::{
     abe_policy::{Coordinate, Policy},
     core::{
         CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
-        SeedEncapsulation, UserSecretKey, SHARED_SECRET_LENGTH,
+        UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
     Error,
@@ -386,7 +386,7 @@ impl Serializable for UserSecretKey {
     }
 }
 
-impl Serializable for SeedEncapsulation {
+impl Serializable for Encapsulation {
     type Error = Error;
 
     fn length(&self) -> usize {
@@ -429,16 +429,16 @@ impl Serializable for SeedEncapsulation {
     }
 }
 
-impl Serializable for Encapsulation {
+impl Serializable for XEnc {
     type Error = Error;
 
     fn length(&self) -> usize {
         TAG_LENGTH
             + to_leb128_len(self.c.len())
             + self.c.iter().map(Serializable::length).sum::<usize>()
-            + to_leb128_len(self.coordinate_encapsulations.len())
+            + to_leb128_len(self.encapsulations.len())
             + self
-                .coordinate_encapsulations
+                .encapsulations
                 .iter()
                 .map(Serializable::length)
                 .sum::<usize>()
@@ -450,8 +450,8 @@ impl Serializable for Encapsulation {
         for trap in &self.c {
             n += ser.write(trap)?;
         }
-        n += ser.write_leb128_u64(self.coordinate_encapsulations.len() as u64)?;
-        for enc in &self.coordinate_encapsulations {
+        n += ser.write_leb128_u64(self.encapsulations.len() as u64)?;
+        for enc in &self.encapsulations {
             n += ser.write(enc)?;
         }
         Ok(n)
@@ -468,13 +468,13 @@ impl Serializable for Encapsulation {
         let n_encapsulations = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut coordinate_encapsulations = Vec::with_capacity(n_encapsulations);
         for _ in 0..n_encapsulations {
-            let enc = de.read::<SeedEncapsulation>()?;
+            let enc = de.read::<Encapsulation>()?;
             coordinate_encapsulations.push(enc);
         }
         Ok(Self {
             tag,
             c: traps,
-            coordinate_encapsulations,
+            encapsulations: coordinate_encapsulations,
         })
     }
 }
@@ -503,7 +503,7 @@ impl Serializable for EncryptedHeader {
 
     /// Tries to deserialize the encrypted header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let encapsulation = de.read::<Encapsulation>()?;
+        let encapsulation = de.read::<XEnc>()?;
         let ciphertext = de.read_vec()?;
         let encrypted_metadata = if ciphertext.is_empty() {
             None
@@ -537,7 +537,7 @@ impl Serializable for CleartextHeader {
 
     /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.seed[..SHARED_SECRET_LENGTH])?;
+        let mut n = ser.write_array(&self.secret[..SHARED_SECRET_LENGTH])?;
         match &self.metadata {
             Some(bytes) => n += ser.write_vec(bytes)?,
             None => n += ser.write_vec(&[])?,
@@ -554,7 +554,10 @@ impl Serializable for CleartextHeader {
         } else {
             Some(metadata)
         };
-        Ok(Self { seed, metadata })
+        Ok(Self {
+            secret: seed,
+            metadata,
+        })
     }
 }
 
@@ -678,7 +681,7 @@ mod tests {
                 encapsulation.length(),
                 "Wrong encapsulation size"
             );
-            let encapsulation_ = Encapsulation::deserialize(&bytes).unwrap();
+            let encapsulation_ = XEnc::deserialize(&bytes).unwrap();
             assert_eq!(
                 encapsulation, encapsulation_,
                 "Wrong `Encapsulation` serialization."

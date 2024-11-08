@@ -12,7 +12,7 @@ use crate::{
     abe_policy::AccessPolicy,
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SHARED_SECRET_LENGTH,
+        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     Error,
 };
@@ -179,7 +179,7 @@ pub trait KemAc<const LENGTH: usize> {
 impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     type EncapsulationKey = MasterPublicKey;
     type DecapsulationKey = UserSecretKey;
-    type Encapsulation = Encapsulation;
+    type Encapsulation = XEnc;
     type Error = Error;
 
     fn encaps(
@@ -197,7 +197,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     fn decaps(
         &self,
         usk: &UserSecretKey,
-        enc: &Encapsulation,
+        enc: &XEnc,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
         decaps(usk, enc)
     }
@@ -235,7 +235,7 @@ pub trait PkeAc<Aead, const KEY_LENGTH: usize> {
 impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> PkeAc<E, KEY_LENGTH> for Covercrypt {
     type EncryptionKey = MasterPublicKey;
     type DecryptionKey = UserSecretKey;
-    type Ciphertext = (Encapsulation, Vec<u8>);
+    type Ciphertext = (XEnc, Vec<u8>);
     type Error = Error;
 
     fn encrypt(
@@ -243,7 +243,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> PkeAc<E, KEY_LENGTH> for Coverc
         mpk: &MasterPublicKey,
         ap: &AccessPolicy,
         ptx: &[u8],
-    ) -> Result<(Encapsulation, Vec<u8>), Error> {
+    ) -> Result<(XEnc, Vec<u8>), Error> {
         if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
                 "insufficient entropy to generate a {}-byte key from a {}-byte seed",
@@ -261,7 +261,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> PkeAc<E, KEY_LENGTH> for Coverc
     fn decrypt(
         &self,
         usk: &UserSecretKey,
-        ctx: &(Encapsulation, Vec<u8>),
+        ctx: &(XEnc, Vec<u8>),
     ) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
         if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(

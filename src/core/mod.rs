@@ -457,13 +457,13 @@ pub struct UserSecretKey {
     signature: Option<KmacSignature>,
 }
 
-/// Encapsulation of a `SEED_LENGTH`-byte seed for a given coordinate.
+/// Encapsulation of a `SHARED_SECRET_LENGTH`-byte secret for a given coordinate.
 ///
 /// In case the security level of the associated coordinate was set to
 /// post-quantum secure, the key encapsulation is hybridized. This implies a
 /// significant size overhead.
 #[derive(Debug, Clone, Hash, PartialEq)]
-enum SeedEncapsulation {
+enum Encapsulation {
     Classic {
         F: [u8; SHARED_SECRET_LENGTH],
     },
@@ -483,13 +483,13 @@ enum SeedEncapsulation {
 /// - the traps used to select users that can open this encapsulation;
 /// - the coordinate encapsulations.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Encapsulation {
+pub struct XEnc {
     tag: Tag,
     c: Vec<EcPoint>,
-    coordinate_encapsulations: Vec<SeedEncapsulation>,
+    encapsulations: Vec<Encapsulation>,
 }
 
-impl Encapsulation {
+impl XEnc {
     /// Returns the tracing level of this encapsulation.
     pub fn tracing_level(&self) -> usize {
         self.c.len() - 1

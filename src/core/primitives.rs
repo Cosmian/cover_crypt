@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
     abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
-    core::{Encapsulation, MasterPublicKey, MasterSecretKey, SeedEncapsulation, UserSecretKey},
+    core::{Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
@@ -125,7 +125,7 @@ fn h_hash(mut ss: EcPoint) -> Secret<SHARED_SECRET_LENGTH> {
 fn j_hash(
     seed: &[u8; SHARED_SECRET_LENGTH],
     c: &[EcPoint],
-    encapsulations: &[SeedEncapsulation],
+    encapsulations: &[Encapsulation],
 ) -> Result<([u8; TAG_LENGTH], Secret<SHARED_SECRET_LENGTH>), Error> {
     let mut hasher = Shake::v256();
 
@@ -133,8 +133,8 @@ fn j_hash(
     for (c_i, seed_encapsulation) in c.iter().zip(encapsulations) {
         hasher.update(&c_i.to_bytes());
         match seed_encapsulation {
-            SeedEncapsulation::Classic { F: F_i } => hasher.update(F_i),
-            SeedEncapsulation::Hybridized { E: E_i, F: F_i } => {
+            Encapsulation::Classic { F: F_i } => hasher.update(F_i),
+            Encapsulation::Hybridized { E: E_i, F: F_i } => {
                 hasher.update(&E_i.serialize()?);
                 hasher.update(F_i);
             }
@@ -207,7 +207,7 @@ pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Coordinate>,
-) -> Result<(Secret<SHARED_SECRET_LENGTH>, Encapsulation), Error> {
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let coordinate_keys = mpk.select_subkeys(encryption_set)?;
 
     let S = Secret::<SHARED_SECRET_LENGTH>::random(rng);
@@ -216,19 +216,19 @@ pub fn encaps(
 
     let mut coordinate_encapsulations = coordinate_keys
         .into_iter()
-        .map(|subkey| -> Result<SeedEncapsulation, _> {
+        .map(|subkey| -> Result<Encapsulation, _> {
             match subkey {
                 CoordinatePublicKey::Hybridized { H, ek } => {
                     let mut K1 = h_hash(nike::R25519::session_key(&r, H)?);
                     let (K2, E) = kem::MlKem512::enc(ek, rng)?;
                     let F = xor_3(&S, &K1, &K2);
                     K1.zeroize();
-                    Ok(SeedEncapsulation::Hybridized { E, F })
+                    Ok(Encapsulation::Hybridized { E, F })
                 }
                 CoordinatePublicKey::Classic { H } => {
                     let K1 = h_hash(nike::R25519::session_key(&r, H)?);
                     let F = xor_2(&S, &K1);
-                    Ok(SeedEncapsulation::Classic { F })
+                    Ok(Encapsulation::Classic { F })
                 }
             }
         })
@@ -240,10 +240,10 @@ pub fn encaps(
 
     Ok((
         ss,
-        Encapsulation {
+        XEnc {
             tag,
             c,
-            coordinate_encapsulations,
+            encapsulations: coordinate_encapsulations,
         },
     ))
 }
@@ -252,7 +252,7 @@ pub fn encaps(
 /// the encapsulated key upon success, otherwise returns `None`.
 pub fn decaps(
     usk: &UserSecretKey,
-    encapsulation: &Encapsulation,
+    encapsulation: &XEnc,
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
     // A = ⊙ _i (α_i. c_i)
     let A = usk
@@ -265,13 +265,13 @@ pub fn decaps(
             acc
         });
 
-    for enc in &encapsulation.coordinate_encapsulations {
+    for enc in &encapsulation.encapsulations {
         // The breadth-first search tries all coordinate subkeys in a chronological order.
         for key in usk.coordinate_keys.bfs() {
             let S = match (key, enc) {
                 (
                     CoordinateSecretKey::Hybridized { sk, dk },
-                    SeedEncapsulation::Hybridized { E, F },
+                    Encapsulation::Hybridized { E, F },
                 ) => {
                     let mut K1 = h_hash(nike::R25519::session_key(sk, &A)?);
                     let K2 = kem::MlKem512::dec(dk, E)?;
@@ -279,21 +279,17 @@ pub fn decaps(
                     K1.zeroize();
                     S
                 }
-                (CoordinateSecretKey::Classic { sk }, SeedEncapsulation::Classic { F }) => {
+                (CoordinateSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
                     let K1 = h_hash(nike::R25519::session_key(sk, &A)?);
                     xor_2(F, &K1)
                 }
-                (CoordinateSecretKey::Hybridized { .. }, SeedEncapsulation::Classic { .. })
-                | (CoordinateSecretKey::Classic { .. }, SeedEncapsulation::Hybridized { .. }) => {
+                (CoordinateSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
+                | (CoordinateSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => {
                     continue;
                 }
             };
 
-            let (tag, ss) = j_hash(
-                &S,
-                &encapsulation.c,
-                &encapsulation.coordinate_encapsulations,
-            )?;
+            let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
 
             if tag == encapsulation.tag {
                 return Ok(Some(ss));
