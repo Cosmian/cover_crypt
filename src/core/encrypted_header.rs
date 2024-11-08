@@ -4,7 +4,7 @@ use cosmian_crypto_core::{
 
 use crate::{
     abe_policy::AccessPolicy,
-    api::{Covercrypt, CovercryptKEM},
+    api::{Covercrypt, KemAc},
     core::SHARED_SECRET_LENGTH,
     Encapsulation, Error, MasterPublicKey, UserSecretKey,
 };

@@ -4,7 +4,7 @@ use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
-    api::{Covercrypt, CovercryptKEM, CovercryptPKE},
+    api::{Covercrypt, KemAc, PkeAc},
     core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
     test_utils::cc_keygen,
 };
@@ -253,9 +253,7 @@ fn test_covercrypt_kem() {
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
     let cc = Covercrypt::default();
     let (mut msk, _mpk) = cc_keygen(&cc).unwrap();
-    let mpk = cc
-        .update_master_keys(&mut msk)
-        .expect("cannot update master keys");
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
     let usk = cc
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
@@ -272,18 +270,12 @@ fn test_covercrypt_pke() {
 
     let ptx = "testing encryption/decryption".as_bytes();
 
-    let (enc, ctx) =
-        CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::encrypt(&cc, &mpk, &ap, ptx)
-            .expect("cannot encrypt!");
+    let ctx = PkeAc::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::encrypt(&cc, &mpk, &ap, ptx)
+        .expect("cannot encrypt!");
     let usk = cc
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
-    let ptx1 = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(
-        &cc,
-        &usk,
-        &enc,
-        ctx.as_slice(),
-    )
-    .expect("cannot decrypt the ciphertext");
+    let ptx1 = PkeAc::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(&cc, &usk, &ctx)
+        .expect("cannot decrypt the ciphertext");
     assert_eq!(ptx, &*ptx1.unwrap());
 }

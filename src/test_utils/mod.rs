@@ -6,7 +6,7 @@ use crate::{abe_policy::gen_policy, api::Covercrypt, Error, MasterPublicKey, Mas
 pub fn cc_keygen(cc: &Covercrypt) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
     let (mut msk, _) = cc.setup()?;
     gen_policy(&mut msk.policy)?;
-    let mpk = cc.update_master_keys(&mut msk)?;
+    let mpk = cc.update_msk(&mut msk)?;
     Ok((msk, mpk))
 }
 
@@ -16,7 +16,7 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, EncryptionHint, QualifiedAttribute},
-        api::{Covercrypt, CovercryptKEM},
+        api::{Covercrypt, KemAc},
         core::EncryptedHeader,
     };
 
@@ -33,7 +33,7 @@ mod tests {
             EncryptionHint::Classic,
             None,
         )?;
-        let mpk = cc.update_master_keys(&mut msk)?;
+        let mpk = cc.update_msk(&mut msk)?;
 
         let secret_sales_ap =
             AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
@@ -77,7 +77,7 @@ mod tests {
             .del_attribute(&QualifiedAttribute::new("Department", "FIN"))?;
 
         // update the master keys
-        let _ = cc.update_master_keys(&mut msk)?;
+        let _ = cc.update_msk(&mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
@@ -122,7 +122,7 @@ mod tests {
             .disable_attribute(&QualifiedAttribute::new("Department", "FIN"))?;
 
         // update the master keys
-        let mpk = cc.update_master_keys(&mut msk)?;
+        let mpk = cc.update_msk(&mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
@@ -173,7 +173,7 @@ mod tests {
         )?;
 
         // update the master keys
-        let _ = cc.update_master_keys(&mut msk)?;
+        let _ = cc.update_msk(&mut msk)?;
 
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)

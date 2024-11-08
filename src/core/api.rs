@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Mutex, MutexGuard},
-};
+use std::sync::{Mutex, MutexGuard};
 
 use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
 use zeroize::Zeroizing;
@@ -12,7 +9,7 @@ use super::{
     MIN_TRACING_LEVEL,
 };
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
+    abe_policy::AccessPolicy,
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SHARED_SECRET_LENGTH,
@@ -43,6 +40,7 @@ impl Covercrypt {
     pub fn rng(&self) -> MutexGuard<CsRng> {
         self.rng.lock().expect("poisoned mutex")
     }
+
     /// Sets up the Covercrypt scheme.
     ///
     /// Generates a MSK and a MPK with a tracing level of
@@ -50,40 +48,26 @@ impl Covercrypt {
     /// They only hold keys for the origin coordinate: only broadcast
     /// encapsulations can be created.
     pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        let mut msk = setup(
+        let msk = setup(
             MIN_TRACING_LEVEL,
             &mut *self.rng.lock().expect("Mutex lock failed!"),
         )?;
-
-        // Add broadcast coordinate with classic encryption level.
-        //
-        // TODO replace this function by `add_coordinates`,
-        // `remove_coordinates`, `hybridize_coordinates` and
-        // `deprecate_coordinates`.
-        update_coordinate_keys(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            &mut msk,
-            HashMap::from_iter([(
-                Coordinate::from_attribute_ids(vec![])?,
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
-            )]),
-        )?;
         let mpk = msk.mpk()?;
-
         Ok((msk, mpk))
     }
 
     /// Updates the MSK according to this policy. Returns the new version of the
     /// MPK.
     ///
-    /// Sets the MPK coordinates to the one defined by the policy:
+    /// Sets the MSK coordinates to the one defined by the policy:
     /// - removes coordinates from the MSK that don't belong to the new policy
     ///   along with their associated keys;
     /// - adds the policy coordinates that don't belong yet to the MSK,
     ///   generating new keys.
     ///
     /// The new MPK holds the latest public keys of each coordinates of the new policy.
-    pub fn update_master_keys(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
+    // TODO: this function should be internalized and replaced by specialized functions.
+    pub fn update_msk(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
         update_coordinate_keys(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
@@ -92,10 +76,10 @@ impl Covercrypt {
         msk.mpk()
     }
 
-    /// Generates new keys for each coordinate in the semantic space of the
-    /// given access policy and update the given master keys.
+    /// Generates new secrets for each right a USK associated to the given access policy would
+    /// hold, updates the MSK and returns the new MPK.
     ///
-    /// All user keys need to be refreshed.
+    /// User keys need to be refreshed.
     // TODO document error cases.
     pub fn rekey(
         &self,
@@ -110,8 +94,8 @@ impl Covercrypt {
         msk.mpk()
     }
 
-    /// Removes all but the latest secret of each coordinate in the semantic
-    /// space of the given access policy from the given master keys.
+    /// Removes from the master secret key all but the latest secret of each right a USK associated
+    /// to the given access policy would hold. Returns the new MPK.
     ///
     /// This action is *irreversible*, and all user keys need to be refreshed.
     // TODO document error cases.
@@ -126,8 +110,8 @@ impl Covercrypt {
 
     /// Generates a USK associated to the given access policy.
     ///
-    /// It will be given the latest secret of each coordinate in the semantic
-    /// space of its access policy.
+    /// The new key is given the latest secret of each right in the complementary space of its
+    /// access policy.
     // TODO document error cases.
     pub fn generate_user_secret_key(
         &self,
@@ -141,12 +125,13 @@ impl Covercrypt {
         )
     }
 
-    /// Refreshes the USK relatively to the given MSK and policy.
+    /// Refreshes the USK with respect to the given MSK.
     ///
-    /// The USK will be given the latest secrets of each coordinate in the
-    /// semantic space of its access policy and secrets that have been removed
-    /// from the MSK will be removed. If `keep_old_rights` is set to false, only
-    /// the latest secret of each coordinate is kept instead.
+    /// The USK is given all missing secrets since the first secret hold by the USK, for each right
+    /// in the complementary space of its access policy. Secrets hold by the USK but have been
+    /// removed from the MSK are removed.
+    ///
+    /// If `keep_old_rights` is set to false, only the latest secret of each right is kept instead.
     ///
     /// Updates the tracing level to match the one of the MSK if needed.
     // TODO document error cases.
@@ -165,37 +150,43 @@ impl Covercrypt {
     }
 }
 
-pub trait CovercryptKEM {
-    /// Generates an encapsulation for the given access
-    /// policy.
+pub trait KemAc<const LENGTH: usize> {
+    type EncapsulationKey;
+    type DecapsulationKey;
+    type Encapsulation;
+    type Error: std::error::Error;
+
+    /// Generates a new encapsulation for the given access policy.
     ///
     /// # Error
-    ///
     /// Returns an error if the access policy is not valid.
     fn encaps(
         &self,
-        mpk: &MasterPublicKey,
+        ek: &Self::EncapsulationKey,
         ap: &AccessPolicy,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Encapsulation), Error>;
+    ) -> Result<(Secret<LENGTH>, Self::Encapsulation), Self::Error>;
 
-    /// Attempts opening the given encapsulation using the given
-    /// user secret key.
-    ///
-    /// Returns the encapsulated symmetric key if the user key holds
-    /// the correct rights.
+    /// Attempts opening the given encapsulation with the given key. Returns the encapsulated
+    /// secret upon success or `None` if this key was not authorized to open this encapsulation.
+    // TODO: document error cases.
     fn decaps(
         &self,
-        usk: &UserSecretKey,
-        enc: &Encapsulation,
-    ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error>;
+        dk: &Self::DecapsulationKey,
+        enc: &Self::Encapsulation,
+    ) -> Result<Option<Secret<LENGTH>>, Self::Error>;
 }
 
-impl CovercryptKEM for Covercrypt {
+impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
+    type EncapsulationKey = MasterPublicKey;
+    type DecapsulationKey = UserSecretKey;
+    type Encapsulation = Encapsulation;
+    type Error = Error;
+
     fn encaps(
         &self,
         mpk: &MasterPublicKey,
         ap: &AccessPolicy,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Encapsulation), Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
@@ -212,40 +203,41 @@ impl CovercryptKEM for Covercrypt {
     }
 }
 
-pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
-    /// Encrypts the given plaintext using Covercrypt and the given DEM.
-    ///
-    /// Creates a Covercrypt encapsulation of a 256-bit seed, and use it with
-    /// the given authentication data to encrypt the plaintext.
+pub trait PkeAc<Aead, const KEY_LENGTH: usize> {
+    type EncryptionKey;
+    type DecryptionKey;
+    type Ciphertext;
+    type Error: std::error::Error;
+
+    /// Encrypts the given plaintext under the given access policy.
     ///
     /// # Error
     ///
     /// Returns an error if the access policy is not valid.
     fn encrypt(
         &self,
-        mpk: &MasterPublicKey,
+        ek: &Self::EncryptionKey,
         ap: &AccessPolicy,
         ptx: &[u8],
-    ) -> Result<(Encapsulation, Vec<u8>), Error>;
+    ) -> Result<Self::Ciphertext, Self::Error>;
 
-    /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
-    ///
-    /// Attempts opening the Covercrypt encapsulation. If it succeeds, decrypts
-    /// the ciphertext using the DEM with the encapsulated key and the given
-    /// authentication data. Returns ‘None‘ otherwise.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
+    /// Attempts decrypting the given ciphertext with the given key. Returns the plaintext upon
+    /// success, or `None` if this key was not authorized to decrypt this ciphertext.
+    //
+    // TODO: document error cases.
     fn decrypt(
         &self,
-        usk: &UserSecretKey,
-        enc: &Encapsulation,
-        ctx: &[u8],
-    ) -> Result<Option<Zeroizing<Vec<u8>>>, Error>;
+        usk: &Self::DecryptionKey,
+        ctx: &Self::Ciphertext,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error>;
 }
 
-impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> for Covercrypt {
+impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> PkeAc<E, KEY_LENGTH> for Covercrypt {
+    type EncryptionKey = MasterPublicKey;
+    type DecryptionKey = UserSecretKey;
+    type Ciphertext = (Encapsulation, Vec<u8>);
+    type Error = Error;
+
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
@@ -269,8 +261,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
     fn decrypt(
         &self,
         usk: &UserSecretKey,
-        enc: &Encapsulation,
-        ctx: &[u8],
+        ctx: &(Encapsulation, Vec<u8>),
     ) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
         if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
@@ -278,11 +269,11 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
                 KEY_LENGTH, SHARED_SECRET_LENGTH
             )));
         }
-        let seed = self.decaps(usk, enc)?;
+        let seed = self.decaps(usk, &ctx.0)?;
         seed.map(|seed| {
             let mut sym_key = SymmetricKey::<KEY_LENGTH>::default();
             kdf256!(&mut *sym_key, &*seed);
-            E::decrypt(&sym_key, ctx)
+            E::decrypt(&sym_key, &ctx.1)
         })
         .transpose()
     }
