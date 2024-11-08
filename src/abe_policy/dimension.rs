@@ -40,9 +40,8 @@ impl AttributeParameters {
 
 type AttributeName = String;
 
+/// A dimension is an object that contains attributes. It can be ordered or unordered.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-/// A dimension is a space that holds attributes. It can be ordered (an
-/// dimension) or unordered (a set).
 pub enum Dimension {
     Unordered(HashMap<AttributeName, AttributeParameters>),
     Ordered(Dict<AttributeName, AttributeParameters>),
@@ -70,8 +69,9 @@ impl Dimension {
     }
 
     /// Returns an iterator over the attributes name.
-    /// If the dimension is ordered, the names are returned in this order,
-    /// otherwise they are returned in arbitrary order.
+    ///
+    /// If the dimension is ordered, the names are returned in this order, otherwise they are
+    /// returned in arbitrary order.
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.keys()),
@@ -86,10 +86,7 @@ impl Dimension {
         }
     }
 
-    /// Restricts the dimension to the given attribute.
-    ///
-    /// If the dimension is unordered, the resulting dimension only holds this
-    /// attribute. Otherwise it also holds lower attributes.
+    /// Restricts the dimension to the attribute that are lower than the given one.
     pub fn restrict(&self, attr_name: AttributeName) -> Result<Self, Error> {
         let params = self
             .get_attribute(&attr_name)

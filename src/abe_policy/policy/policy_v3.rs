@@ -216,52 +216,25 @@ impl PolicyV3 {
             .collect()
     }
 
-    /// Extend the given conjunction with lower-ranked ones with respect to the order defined by
-    /// hierarchical dimensions.
-    fn cascade(&self, conj: &[QualifiedAttribute]) -> Vec<Vec<QualifiedAttribute>> {
-        conj.iter()
-            .enumerate()
-            .flat_map(|(i, qa)| {
-                self.dimensions
-                    .get(&qa.dimension)
-                    .map(|d| {
-                        if d.is_ordered() {
-                            d.get_attributes_name()
-                                .take_while(|name| *name != &qa.name)
-                                .map(String::to_string)
-                                .map(|name| QualifiedAttribute {
-                                    dimension: qa.dimension.clone(),
-                                    name,
-                                })
-                                .map(|qa| (i, qa))
-                                .collect()
-                        } else {
-                            vec![]
-                        }
-                    })
-                    .unwrap_or_default()
-            })
-            .fold(
-                vec![conj.to_vec()],
-                |mut acc: Vec<Vec<QualifiedAttribute>>, (i, qa): (usize, QualifiedAttribute)| {
-                    let mut new_conj = conj.to_vec();
-                    new_conj[i] = qa;
-                    acc.push(new_conj);
-                    acc
-                },
-            )
-    }
-
     /// Returns the complementary points of the given conjugate point, following hierarchies when
     /// needed.
     fn generate_complementary_points(
         &self,
-        clause: &[QualifiedAttribute],
+        p: &[QualifiedAttribute],
     ) -> Result<Vec<Vec<usize>>, Error> {
-        // The goal is to compute Ω_c = Ω\π_c(Ω) + P_c.
+        // The goal is to compute Ω_c = Ω\π_c(Ω) + {P: P <= P_c}.
 
-        // Compute π_c, the semantic space of the clause.
-        let semantic_space = self.generate_semantic_space(clause)?;
+        // Compute π_c, the semantic space of the point.
+        //
+        // The generated space is restricted to points lower than the associated point. This is
+        // handy since it allows both to filter omega to get the restricted space and to generate
+        // all projections and hierarchical extensions.
+        let semantic_space = self.generate_semantic_space(p)?;
+
+        let semantic_points = combine(semantic_space.iter().collect::<Vec<_>>().as_slice())
+            .into_iter()
+            .map(|(ids, _, _)| ids)
+            .collect::<Vec<_>>();
 
         // The restricted space is Ω\π_c(Ω).
         let restricted_space = self
@@ -270,22 +243,11 @@ impl PolicyV3 {
             .filter(|(name, _)| !semantic_space.contains_key(*name))
             .collect::<Vec<_>>();
 
-        // Compute P_c.
-        let clause_points = self
-            .cascade(clause)
-            .iter()
-            .map(|conj| {
-                conj.iter()
-                    .map(|qa| self.get_attribute(qa).map(|a| a.id))
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .collect::<Result<Vec<Vec<_>>, _>>()?;
-
         // Now generate the complementary space by combining the
-        let mut complementary_points = combine(&restricted_space)
+        let complementary_points = combine(&restricted_space)
             .into_iter()
             .flat_map(|(prefix, _, _)| {
-                clause_points.iter().map(move |suffix| {
+                semantic_points.iter().map(move |suffix| {
                     let mut prefix = prefix.clone();
                     prefix.append(&mut suffix.clone());
                     prefix
@@ -293,14 +255,7 @@ impl PolicyV3 {
             })
             .collect::<Vec<_>>();
 
-        let mut semantic_points = combine(semantic_space.iter().collect::<Vec<_>>().as_slice())
-            .into_iter()
-            .map(|(ids, _, _)| ids)
-            .collect::<Vec<_>>();
-
-        semantic_points.append(&mut complementary_points);
-
-        Ok(semantic_points)
+        Ok(complementary_points)
     }
 
     fn generate_complementary_coordinates(
@@ -500,8 +455,6 @@ mod tests {
             let comp_points =
                 policy.generate_complementary_coordinates(&AccessPolicy::parse(ap)?)?;
 
-            //assert_eq!(comp_points.len(), 1 + 4 + 4);
-
             // Check the coordinates are the same as the ones manually generated, i.e.:
             // - Coordinate()
             // - Coordinate(HR, Protected)
@@ -596,19 +549,22 @@ mod tests {
                 policy
                     .generate_complementary_coordinates(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // There are 5 coordinates in the security dimension,
-                // plus the two broadcast coordinates (1D and 0D).
-                1 + (1 + 5)
+                // There are 5 coordinates in the security dimension, plus the broadcast for this
+                // dimension. This is the restricted space. There is only one projection of
+                // DPT::HR, which is the universal broadcast. The complementary space is generated
+                // by extending these two points with the restricted space.
+                2 * (1 + 5)
             );
 
-            let ap = "Security Level::Protected";
+            let ap = "Security Level::Low Secret";
             assert_eq!(
                 policy
                     .generate_complementary_coordinates(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // There are 4 coordinates in the department dimension,
-                // plus the two broadcast coordinates (1D and 0D).
-                1 + 1 + 4
+                // The restricted space is the department dimension, and the lower points are the
+                // associated point, the point associated to "Security Level::Protected" and the
+                // universal broadcast.
+                3 * (1 + 4)
             );
         }
         Ok(())

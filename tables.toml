@@ -1,9 +1,0 @@
-[top_comments]
-Overview = """
-This is a benchmark comparison report.
-"""
-
-[table_comments]
-covercrypt = """
-CoverCrypt full benchmarks
-"""
