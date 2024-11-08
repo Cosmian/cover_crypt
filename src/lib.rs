@@ -10,17 +10,17 @@
 
 mod error;
 
-pub mod abe_policy;
-pub mod core;
-pub mod data_struct;
-pub use error::Error;
-
+mod abe_policy;
 pub mod ae;
 pub mod api;
+pub mod core;
+pub mod data_struct;
 mod encrypted_header;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
 pub use self::core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
+pub use abe_policy::AccessPolicy;
 pub use encrypted_header::{CleartextHeader, EncryptedHeader};
+pub use error::Error;

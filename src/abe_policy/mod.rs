@@ -19,7 +19,7 @@ mod tests;
 pub use access_policy::AccessPolicy;
 pub use attribute::{AttributeStatus, EncryptionHint, QualifiedAttribute};
 pub use coordinates::Coordinate;
-pub use dimension::{AttributeParameters, Dimension, DimensionBuilder};
+pub use dimension::{AttributeParameters, Dimension};
 pub use policy::Policy;
 
 #[cfg(any(test, feature = "test-utils"))]

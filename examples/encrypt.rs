@@ -1,5 +1,5 @@
 use cosmian_cover_crypt::{
-    abe_policy::AccessPolicy, api::Covercrypt, EncryptedHeader, MasterPublicKey, MasterSecretKey,
+    api::Covercrypt, AccessPolicy, EncryptedHeader, MasterPublicKey, MasterSecretKey,
 };
 
 /// Generates a new USK and encrypted header and prints them.

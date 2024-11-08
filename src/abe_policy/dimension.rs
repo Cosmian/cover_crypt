@@ -6,68 +6,8 @@ use std::{
 use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Serializable};
 use serde::{Deserialize, Serialize};
 
-use super::{
-    attribute::{AttributeBuilder, EncryptionHint},
-    AttributeStatus,
-};
+use super::{attribute::EncryptionHint, AttributeStatus};
 use crate::{data_struct::Dict, Error};
-
-/// Creates a dimension by its name and its underlying attribute properties.
-/// An attribute property defines its name and a hint about whether hybridized
-/// encryption should be used for it (hint set to `true` if this is the case).
-///
-/// If `hierarchical` is set to `true`, we assume a lexicographical order based
-/// on the attribute name.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DimensionBuilder {
-    /// Dimension name
-    pub name: String,
-    /// Names of the dimension attributes and hybridized encryption hints
-    pub attributes_properties: Vec<AttributeBuilder>,
-    /// `true` if the dimension is hierarchical
-    pub hierarchical: bool,
-}
-
-impl DimensionBuilder {
-    /// Generates a new policy dimension with the given name and attribute
-    /// names. A hierarchical dimension enforces order between its
-    /// attributes.
-    ///
-    /// - `name`                    : dimension name
-    /// - `attribute_properties`    : dimension attribute properties
-    /// - `hierarchical`            : set to `true` if the dimension is
-    ///   hierarchical
-    #[must_use]
-    pub fn new(
-        name: &str,
-        attributes_properties: Vec<(&str, EncryptionHint)>,
-        hierarchical: bool,
-    ) -> Self {
-        Self {
-            name: name.to_string(),
-            attributes_properties: attributes_properties
-                .into_iter()
-                .map(|(dim_name, encryption_hint)| AttributeBuilder {
-                    name: dim_name.to_string(),
-                    encryption_hint,
-                })
-                .collect(),
-            hierarchical,
-        }
-    }
-
-    /// Returns the number of attributes belonging to this dimension.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.attributes_properties.len()
-    }
-
-    /// Return `true` if the attribute list is empty
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.attributes_properties.is_empty()
-    }
-}
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 /// Represents an `Attribute` inside a `Dimension`.
@@ -256,20 +196,6 @@ impl Dimension {
             Self::Unordered(_) => false,
             Self::Ordered(_) => true,
         }
-    }
-
-    pub fn order(&mut self, attributes: &[String]) -> Result<(), Error> {
-        let attributes = attributes
-            .iter()
-            .map(|a| {
-                self.get_attribute(a)
-                    .ok_or_else(|| Error::AttributeNotFound(a.to_string()))
-                    .cloned()
-                    .map(|attribute| (a.to_owned(), attribute))
-            })
-            .collect::<Result<Dict<_, _>, _>>()?;
-        *self = Self::Ordered(attributes);
-        Ok(())
     }
 
     /// Returns an iterator over the attributes name.
