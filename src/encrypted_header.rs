@@ -4,10 +4,8 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    abe_policy::AccessPolicy,
-    api::{Covercrypt, KemAc},
-    core::SHARED_SECRET_LENGTH,
-    Error, MasterPublicKey, UserSecretKey, XEnc,
+    abe_policy::AccessPolicy, api::Covercrypt, core::SHARED_SECRET_LENGTH, traits::KemAc, Error,
+    MasterPublicKey, UserSecretKey, XEnc,
 };
 
 /// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte secret, and metadata

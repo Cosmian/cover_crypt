@@ -16,7 +16,8 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AccessPolicy, EncryptionHint, QualifiedAttribute},
-        api::{Covercrypt, KemAc},
+        api::Covercrypt,
+        traits::KemAc,
         EncryptedHeader,
     };
 

@@ -10,6 +10,7 @@ use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
 use crate::{
     abe_policy::{Coordinate, Policy},
     data_struct::{RevisionMap, RevisionVec},
+    traits::{Kem, Nike},
     Error,
 };
 
@@ -22,10 +23,7 @@ mod tests;
 
 pub mod primitives;
 
-use self::{
-    kem::{DecapsulationKey512, Kem},
-    nike::{Nike, R25519},
-};
+use self::{kem::DecapsulationKey512, kem::MlKem512, nike::R25519};
 use nike::{EcPoint, Scalar};
 
 /// The length of the secret encapsulated by Covercrypt.
@@ -69,7 +67,7 @@ impl CoordinateSecretKey {
     fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
         let sk = Scalar::new(rng);
         if hybridize {
-            let (dk, _) = kem::MlKem512::keygen(rng)?;
+            let (dk, _) = MlKem512::keygen(rng)?;
             Ok(Self::Hybridized { sk, dk })
         } else {
             Ok(Self::Classic { sk })

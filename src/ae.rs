@@ -4,26 +4,11 @@ use cosmian_crypto_core::{
 };
 use zeroize::Zeroizing;
 
-use crate::Error;
-
-/// Authenticated Encryption trait
-pub trait AE<const KEY_LENGTH: usize> {
-    /// Encrypts the given plaintext `ptx` using the given `key`.
-    fn encrypt(
-        rng: &mut impl CryptoRngCore,
-        key: &SymmetricKey<KEY_LENGTH>,
-        ptx: &[u8],
-    ) -> Result<Vec<u8>, Error>;
-
-    /// Decrypts the given ciphertext `ctx` using the given `key`.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the integrity of the ciphertext could not be verified.
-    fn decrypt(key: &SymmetricKey<KEY_LENGTH>, ctx: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error>;
-}
+use crate::{traits::AE, Error};
 
 impl AE<{ Self::KEY_LENGTH }> for Aes256Gcm {
+    type Error = Error;
+
     fn encrypt(
         rng: &mut impl CryptoRngCore,
         key: &SymmetricKey<{ Self::KEY_LENGTH }>,

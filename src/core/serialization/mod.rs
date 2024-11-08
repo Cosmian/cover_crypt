@@ -489,12 +489,13 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AttributeStatus, EncryptionHint},
-        api::{Covercrypt, KemAc},
+        api::Covercrypt,
         core::{
             primitives::{encaps, setup, update_coordinate_keys, usk_keygen},
             MIN_TRACING_LEVEL,
         },
         test_utils::cc_keygen,
+        traits::KemAc,
         AccessPolicy,
     };
 

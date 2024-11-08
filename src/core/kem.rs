@@ -7,29 +7,8 @@ use ml_kem::{
 };
 use zeroize::Zeroize;
 
+use crate::traits::Kem;
 use crate::{core::SHARED_SECRET_LENGTH, Error};
-
-pub trait Kem {
-    type EncapsulationKey;
-    type DecapsulationKey;
-    type SessionKey;
-    type Encapsulation;
-    type Error: std::error::Error;
-
-    fn keygen(
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error>;
-
-    fn enc(
-        ek: &Self::EncapsulationKey,
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<(Self::SessionKey, Self::Encapsulation), Self::Error>;
-
-    fn dec(
-        dk: &Self::DecapsulationKey,
-        enc: &Self::Encapsulation,
-    ) -> Result<Self::SessionKey, Self::Error>;
-}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct EncapsulationKey512(Box<<ml_kem::MlKem512 as KemCore>::EncapsulationKey>);

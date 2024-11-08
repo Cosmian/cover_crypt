@@ -4,9 +4,10 @@ use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
-    api::{Covercrypt, KemAc, PkeAc},
+    api::Covercrypt,
     core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
     test_utils::cc_keygen,
+    traits::{KemAc, PkeAc},
 };
 
 use super::{
@@ -270,12 +271,12 @@ fn test_covercrypt_pke() {
 
     let ptx = "testing encryption/decryption".as_bytes();
 
-    let ctx = PkeAc::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::encrypt(&cc, &mpk, &ap, ptx)
+    let ctx = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(&cc, &mpk, &ap, ptx)
         .expect("cannot encrypt!");
     let usk = cc
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
-    let ptx1 = PkeAc::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(&cc, &usk, &ctx)
+    let ptx1 = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(&cc, &usk, &ctx)
         .expect("cannot decrypt the ciphertext");
     assert_eq!(ptx, &*ptx1.unwrap());
 }

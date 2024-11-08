@@ -1,37 +1,11 @@
-use std::ops::Add;
-use std::ops::Mul;
-
 use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
 
 pub use cosmian_crypto_core::R25519PrivateKey as Scalar;
 pub use cosmian_crypto_core::R25519PublicKey as EcPoint;
 
+use crate::traits::KhNike;
+use crate::traits::Nike;
 use crate::Error;
-
-pub trait Nike {
-    type SecretKey;
-    type PublicKey;
-    type SessionKey;
-    type Error: std::error::Error;
-
-    /// Generates a new keypair.
-    fn keygen(
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<(Self::SecretKey, Self::PublicKey), Self::Error>;
-
-    /// Generates the session key associated to the given keypair.
-    fn session_key(
-        sk: &Self::SecretKey,
-        pk: &Self::PublicKey,
-    ) -> Result<Self::SessionKey, Self::Error>;
-}
-
-#[allow(dead_code)]
-pub trait KhNike<S, G>: Nike<SecretKey = S, PublicKey = G, SessionKey = G>
-where
-    for<'a> &'a G: Mul<&'a S, Output = G> + Add<&'a G, Output = G>,
-{
-}
 
 pub struct R25519;
 

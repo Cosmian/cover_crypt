@@ -14,15 +14,15 @@ use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
 use super::{
-    kem::{self, Kem},
-    nike::{self, Nike},
-    CoordinatePublicKey, CoordinateSecretKey, EcPoint, KmacSignature, TracingSecretKey, UserId,
-    MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    kem::MlKem512, nike::R25519, CoordinatePublicKey, CoordinateSecretKey, EcPoint, KmacSignature,
+    Scalar, TracingSecretKey, UserId, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
+    SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
     core::{Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
     data_struct::{RevisionMap, RevisionVec},
+    traits::{Kem, Nike},
     Error,
 };
 
@@ -103,12 +103,12 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
     }
 }
 
-fn g_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<nike::Scalar, Error> {
+fn g_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<Scalar, Error> {
     let mut bytes = [0; 64];
     let mut hasher = Shake::v256();
     hasher.update(&**seed);
     hasher.squeeze(&mut bytes);
-    let s = nike::Scalar::from_raw_bytes(&bytes);
+    let s = Scalar::from_raw_bytes(&bytes);
     bytes.zeroize();
     Ok(s)
 }
@@ -219,14 +219,14 @@ pub fn encaps(
         .map(|subkey| -> Result<Encapsulation, _> {
             match subkey {
                 CoordinatePublicKey::Hybridized { H, ek } => {
-                    let mut K1 = h_hash(nike::R25519::session_key(&r, H)?);
-                    let (K2, E) = kem::MlKem512::enc(ek, rng)?;
+                    let mut K1 = h_hash(R25519::session_key(&r, H)?);
+                    let (K2, E) = MlKem512::enc(ek, rng)?;
                     let F = xor_3(&S, &K1, &K2);
                     K1.zeroize();
                     Ok(Encapsulation::Hybridized { E, F })
                 }
                 CoordinatePublicKey::Classic { H } => {
-                    let K1 = h_hash(nike::R25519::session_key(&r, H)?);
+                    let K1 = h_hash(R25519::session_key(&r, H)?);
                     let F = xor_2(&S, &K1);
                     Ok(Encapsulation::Classic { F })
                 }
@@ -260,7 +260,7 @@ pub fn decaps(
         .iter()
         .zip(encapsulation.c.iter())
         .map(|(marker, trap)| trap * marker)
-        .fold(nike::EcPoint::identity(), |mut acc, elt| {
+        .fold(EcPoint::identity(), |mut acc, elt| {
             acc = &acc + &elt;
             acc
         });
@@ -273,14 +273,14 @@ pub fn decaps(
                     CoordinateSecretKey::Hybridized { sk, dk },
                     Encapsulation::Hybridized { E, F },
                 ) => {
-                    let mut K1 = h_hash(nike::R25519::session_key(sk, &A)?);
-                    let K2 = kem::MlKem512::dec(dk, E)?;
+                    let mut K1 = h_hash(R25519::session_key(sk, &A)?);
+                    let K2 = MlKem512::dec(dk, E)?;
                     let S = xor_3(F, &K1, &K2);
                     K1.zeroize();
                     S
                 }
                 (CoordinateSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
-                    let K1 = h_hash(nike::R25519::session_key(sk, &A)?);
+                    let K1 = h_hash(R25519::session_key(sk, &A)?);
                     xor_2(F, &K1)
                 }
                 (CoordinateSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })

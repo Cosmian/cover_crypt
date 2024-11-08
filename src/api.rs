@@ -4,9 +4,9 @@ use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secre
 use zeroize::Zeroizing;
 
 use super::{
-    ae::AE,
     core::primitives::{prune, update_coordinate_keys, usk_keygen},
     core::MIN_TRACING_LEVEL,
+    traits::AE,
 };
 use crate::{
     abe_policy::AccessPolicy,
@@ -14,6 +14,7 @@ use crate::{
         primitives::{decaps, encaps, refresh, rekey, setup},
         MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
+    traits::{KemAc, PkeAc},
     Error,
 };
 
@@ -27,12 +28,6 @@ impl Default for Covercrypt {
         Self {
             rng: Mutex::new(CsRng::from_entropy()),
         }
-    }
-}
-
-impl PartialEq for Covercrypt {
-    fn eq(&self, _other: &Self) -> bool {
-        true
     }
 }
 
@@ -150,32 +145,6 @@ impl Covercrypt {
     }
 }
 
-pub trait KemAc<const LENGTH: usize> {
-    type EncapsulationKey;
-    type DecapsulationKey;
-    type Encapsulation;
-    type Error: std::error::Error;
-
-    /// Generates a new encapsulation for the given access policy.
-    ///
-    /// # Error
-    /// Returns an error if the access policy is not valid.
-    fn encaps(
-        &self,
-        ek: &Self::EncapsulationKey,
-        ap: &AccessPolicy,
-    ) -> Result<(Secret<LENGTH>, Self::Encapsulation), Self::Error>;
-
-    /// Attempts opening the given encapsulation with the given key. Returns the encapsulated
-    /// secret upon success or `None` if this key was not authorized to open this encapsulation.
-    // TODO: document error cases.
-    fn decaps(
-        &self,
-        dk: &Self::DecapsulationKey,
-        enc: &Self::Encapsulation,
-    ) -> Result<Option<Secret<LENGTH>>, Self::Error>;
-}
-
 impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     type EncapsulationKey = MasterPublicKey;
     type DecapsulationKey = UserSecretKey;
@@ -203,36 +172,9 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     }
 }
 
-pub trait PkeAc<Aead, const KEY_LENGTH: usize> {
-    type EncryptionKey;
-    type DecryptionKey;
-    type Ciphertext;
-    type Error: std::error::Error;
-
-    /// Encrypts the given plaintext under the given access policy.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the access policy is not valid.
-    fn encrypt(
-        &self,
-        ek: &Self::EncryptionKey,
-        ap: &AccessPolicy,
-        ptx: &[u8],
-    ) -> Result<Self::Ciphertext, Self::Error>;
-
-    /// Attempts decrypting the given ciphertext with the given key. Returns the plaintext upon
-    /// success, or `None` if this key was not authorized to decrypt this ciphertext.
-    //
-    // TODO: document error cases.
-    fn decrypt(
-        &self,
-        usk: &Self::DecryptionKey,
-        ctx: &Self::Ciphertext,
-    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error>;
-}
-
-impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> PkeAc<E, KEY_LENGTH> for Covercrypt {
+impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH, Error = Error>> PkeAc<KEY_LENGTH, E>
+    for Covercrypt
+{
     type EncryptionKey = MasterPublicKey;
     type DecryptionKey = UserSecretKey;
     type Ciphertext = (XEnc, Vec<u8>);

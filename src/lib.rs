@@ -17,6 +17,7 @@ mod data_struct;
 mod encrypted_header;
 
 pub mod api;
+pub mod traits;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
