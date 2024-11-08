@@ -3,42 +3,17 @@ use std::collections::HashMap;
 use crate::{
     abe_policy::{Attribute, Dimension, DimensionBuilder, EncryptionHint, Policy},
     error::Error,
+    test_utils::setup_cc_and_gen_master_keys,
 };
 
-/// Creates the policy object used in tests.
-pub fn policy() -> Result<Policy, Error> {
-    let sec_level = DimensionBuilder::new(
-        "Security Level",
-        vec![
-            ("Protected", EncryptionHint::Classic),
-            ("Confidential", EncryptionHint::Classic),
-            ("Top Secret", EncryptionHint::Hybridized),
-        ],
-        true,
-    );
-    let department = DimensionBuilder::new(
-        "Department",
-        vec![
-            ("R&D", EncryptionHint::Classic),
-            ("HR", EncryptionHint::Classic),
-            ("MKG", EncryptionHint::Classic),
-            ("FIN", EncryptionHint::Classic),
-        ],
-        false,
-    );
-    let mut policy = Policy::new();
-    policy.add_dimension(sec_level)?;
-    policy.add_dimension(department)?;
-    Ok(policy)
-}
-
 #[test]
-fn check_policy() {
+fn check_policy() -> Result<(), Error> {
     let security_level = DimensionBuilder::new(
         "Security Level",
         vec![
             ("Protected", EncryptionHint::Classic),
-            ("Confidential", EncryptionHint::Classic),
+            ("Low Secret", EncryptionHint::Classic),
+            ("Medium Secret", EncryptionHint::Classic),
             ("Top Secret", EncryptionHint::Hybridized),
         ],
         true,
@@ -53,9 +28,9 @@ fn check_policy() {
         ],
         false,
     );
-    let mut policy = Policy::new();
-    policy.add_dimension(security_level.clone()).unwrap();
-    policy.add_dimension(department.clone()).unwrap();
+    let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
+
+    let policy = msk.policy;
 
     // check that policy
     let attributes = policy.attributes();
@@ -66,12 +41,16 @@ fn check_policy() {
     for properties in &department.attributes_properties {
         assert!(attributes.contains(&Attribute::new("Department", &properties.name)));
     }
+    Ok(())
 }
 
 #[test]
 fn test_edit_policy_attributes() -> Result<(), Error> {
-    let mut policy = policy()?;
-    assert_eq!(policy.attributes().len(), 7);
+    let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
+
+    let mut policy = msk.policy;
+
+    assert_eq!(policy.attributes().len(), 8);
 
     // Try renaming Research to already used name MKG
     assert!(policy
@@ -97,17 +76,17 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
         .get_attributes_name()
         .cloned()
         .collect();
-    assert!(order.len() == 3);
+    assert!(order.len() == 4);
     assert!(order.contains(&"Open".to_string()));
     assert!(!order.contains(&"Protected".to_string()));
 
-    assert_eq!(policy.attributes().len(), 7);
+    assert_eq!(policy.attributes().len(), 8);
     // Add new attribute Sales
     let new_attr = Attribute::new("Department", "Sales");
     assert!(policy
         .add_attribute(new_attr.clone(), EncryptionHint::Classic)
         .is_ok());
-    assert_eq!(policy.attributes().len(), 8);
+    assert_eq!(policy.attributes().len(), 9);
 
     // Try adding already existing attribute HR
     let duplicate_attr = Attribute::new("Department", "HR");
@@ -123,8 +102,8 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
     // Remove research attribute
     let delete_attr = Attribute::new("Department", "Research");
-    assert!(policy.remove_attribute(&delete_attr).is_ok());
-    assert_eq!(policy.attributes().len(), 7);
+    assert!(policy.remove_attribute(&delete_attr.clone()).is_ok());
+    assert_eq!(policy.attributes().len(), 8);
 
     // Duplicate remove
     assert!(policy.remove_attribute(&delete_attr).is_err());
@@ -175,9 +154,9 @@ fn test_edit_policy_attributes() -> Result<(), Error> {
 
 #[test]
 fn specification_conversion_round_trip() -> Result<(), Error> {
-    let policy = policy()?;
+    let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
 
-    let spec: HashMap<String, Vec<String>> = policy.try_into()?;
+    let spec: HashMap<String, Vec<String>> = msk.policy.try_into()?;
 
     let policy_from_spec: Policy = spec.try_into()?;
 
@@ -198,7 +177,7 @@ fn specification_conversion_round_trip() -> Result<(), Error> {
             .unwrap()
             .attributes()
             .count(),
-        3
+        4
     );
     assert_eq!(
         policy_from_spec

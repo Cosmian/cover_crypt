@@ -12,7 +12,7 @@ use super::{
     MIN_TRACING_LEVEL,
 };
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint, Policy},
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
     core::{
         primitives::{decaps, encaps, refresh, rekey, setup},
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, SEED_LENGTH,
@@ -83,15 +83,11 @@ impl Covercrypt {
     ///   generating new keys.
     ///
     /// The new MPK holds the latest public keys of each coordinates of the new policy.
-    pub fn update_master_keys(
-        &self,
-        policy: &Policy,
-        msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> {
+    pub fn update_master_keys(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
         update_coordinate_keys(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_universal_coordinates()?,
+            msk.policy.generate_universal_coordinates()?,
         )?;
         msk.mpk()
     }
@@ -104,13 +100,12 @@ impl Covercrypt {
     pub fn rekey(
         &self,
         ap: &AccessPolicy,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(ap)?,
+            msk.policy.generate_semantic_space_coordinates(ap)?,
         )?;
         msk.mpk()
     }
@@ -123,12 +118,12 @@ impl Covercrypt {
     pub fn prune_master_secret_key(
         &self,
         access_policy: &AccessPolicy,
-        policy: &Policy,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         prune(
             msk,
-            &policy.generate_semantic_space_coordinates(access_policy)?,
+            &msk.policy
+                .generate_semantic_space_coordinates(access_policy)?,
         );
         msk.mpk()
     }
@@ -142,12 +137,12 @@ impl Covercrypt {
         &self,
         msk: &mut MasterSecretKey,
         access_policy: &AccessPolicy,
-        policy: &Policy,
     ) -> Result<UserSecretKey, Error> {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            policy.generate_semantic_space_coordinates(access_policy)?,
+            msk.policy
+                .generate_semantic_space_coordinates(access_policy)?,
         )
     }
 
@@ -185,7 +180,6 @@ pub trait CovercryptKEM {
     fn encaps(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error>;
 
@@ -205,13 +199,12 @@ impl CovercryptKEM for Covercrypt {
     fn encaps(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
     ) -> Result<(Secret<SEED_LENGTH>, Encapsulation), Error> {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
-            &policy.generate_point_coordinates(ap)?,
+            &mpk.policy.generate_point_coordinates(ap)?,
         )
     }
 
@@ -236,7 +229,6 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error>;
@@ -262,7 +254,6 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
     fn encrypt(
         &self,
         mpk: &MasterPublicKey,
-        policy: &Policy,
         ap: &AccessPolicy,
         plaintext: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
@@ -272,7 +263,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
                 KEY_LENGTH, SEED_LENGTH
             )));
         }
-        let (seed, enc) = self.encaps(mpk, policy, ap)?;
+        let (seed, enc) = self.encaps(mpk, ap)?;
         let mut sym_key = SymmetricKey::default();
         kdf256!(&mut sym_key, &seed);
         let mut rng = self.rng.lock().expect("poisoned lock");

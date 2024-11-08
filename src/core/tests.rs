@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
+    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, DimensionBuilder, EncryptionHint},
     api::{Covercrypt, CovercryptKEM, CovercryptPKE},
     core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
-    test_utils::policy,
+    test_utils::setup_cc_and_gen_master_keys,
 };
 
 use super::{
@@ -250,39 +250,47 @@ fn test_integrity_check() {
 
 #[test]
 fn test_covercrypt_kem() {
-    let policy = policy().expect("cannot generate policy");
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, _) = cc.setup().expect("cannot generate master keys");
+    let (mut msk, _mpk, cc) = setup_cc_and_gen_master_keys().unwrap();
     let mpk = cc
-        .update_master_keys(&policy, &mut msk)
+        .update_master_keys(&mut msk)
         .expect("cannot update master keys");
     let usk = cc
-        .generate_user_secret_key(&mut msk, &ap, &policy)
+        .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
-    let (secret, enc) = cc.encaps(&mpk, &policy, &ap).unwrap();
+    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 }
 
 #[test]
 fn test_covercrypt_pke() {
-    let policy = policy().expect("cannot generate policy");
+    let sec_level = DimensionBuilder::new(
+        "Security Level",
+        vec![("Top Secret", EncryptionHint::Hybridized)],
+        true,
+    );
+    let department =
+        DimensionBuilder::new("Department", vec![("FIN", EncryptionHint::Classic)], false);
+
     let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
 
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
+
+    let _ = msk.policy.add_dimension(department);
+    let _ = msk.policy.add_dimension(sec_level);
+
     let mpk = cc
-        .update_master_keys(&policy, &mut msk)
+        .update_master_keys(&mut msk)
         .expect("cannot update master keys");
     let ptx = "testing encryption/decryption".as_bytes();
 
-    let (enc, ctx) = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::encrypt(
-        &cc, &mpk, &policy, &ap, ptx,
-    )
-    .expect("cannot encrypt!");
+    let (enc, ctx) =
+        CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::encrypt(&cc, &mpk, &ap, ptx)
+            .expect("cannot encrypt!");
     let usk = cc
-        .generate_user_secret_key(&mut msk, &ap, &policy)
+        .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let ptx1 = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(
         &cc,

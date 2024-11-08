@@ -271,11 +271,12 @@ pub fn combine(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::policy;
+    use crate::test_utils::setup_cc_and_gen_master_keys;
 
     #[test]
-    fn test_combine() {
-        let mut policy = policy().unwrap();
+    fn test_combine() -> Result<(), Error> {
+        let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
+        let mut policy = msk.policy;
 
         // There should be `Prod_dim(|dim| + 1)` coordinates.
         assert_eq!(
@@ -308,11 +309,14 @@ mod tests {
                 .map(|dim| dim.attributes().count() + 1)
                 .product::<usize>()
         );
+        Ok(())
     }
 
     #[test]
     fn test_generate_semantic_coordinates() -> Result<(), Error> {
-        let policy = policy()?;
+        let (msk, _mpk, _cover_crypt) = setup_cc_and_gen_master_keys()?;
+
+        let policy = msk.policy;
 
         let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";
 

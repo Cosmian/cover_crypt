@@ -44,26 +44,19 @@ fn main() {
     // Setup Covercrypt and generate master keys
     let cover_crypt = Covercrypt::default();
     let (mut msk, _) = cover_crypt.setup().unwrap();
-    let mpk = cover_crypt.update_master_keys(&policy, &mut msk).unwrap();
+    let mpk = cover_crypt.update_master_keys(&mut msk).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).
     let access_policy =
         AccessPolicy::parse("Security Level::Top Secret && Department::FIN").unwrap();
     let mut usk = cover_crypt
-        .generate_user_secret_key(&mut msk, &access_policy, &policy)
+        .generate_user_secret_key(&mut msk, &access_policy)
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) = EncryptedHeader::generate(
-        &cover_crypt,
-        &policy,
-        &mpk,
-        &access_policy.clone(),
-        None,
-        None,
-    )
-    .unwrap();
+    let (_, encrypted_header) =
+        EncryptedHeader::generate(&cover_crypt, &mpk, &access_policy.clone(), None, None).unwrap();
 
     // The user is able to decrypt the encrypted header.
     assert!(encrypted_header
@@ -73,14 +66,12 @@ fn main() {
 
     //
     // Rekey the user access policy.
-    let mpk = cover_crypt
-        .rekey(&access_policy, &policy, &mut msk)
-        .unwrap();
+    let mpk = cover_crypt.rekey(&access_policy, &mut msk).unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
     let (_, new_encrypted_header) =
-        EncryptedHeader::generate(&cover_crypt, &policy, &mpk, &enc_policy, None, None).unwrap();
+        EncryptedHeader::generate(&cover_crypt, &mpk, &enc_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
     assert!(new_encrypted_header
