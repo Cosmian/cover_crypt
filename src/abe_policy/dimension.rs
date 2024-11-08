@@ -75,17 +75,14 @@ impl AttributeParameters {
         }
     }
 
-    #[must_use]
     pub fn get_id(&self) -> usize {
         self.id
     }
 
-    #[must_use]
     pub fn get_encryption_hint(&self) -> EncryptionHint {
         self.encryption_hint
     }
 
-    #[must_use]
     pub fn get_status(&self) -> AttributeStatus {
         self.write_status
     }

@@ -11,7 +11,7 @@ fn main() {
         Engine,
     };
     use cosmian_cover_crypt::api::Covercrypt;
-    use cosmian_cover_crypt::core::UserSecretKey;
+    use cosmian_cover_crypt::UserSecretKey;
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     let config: GeneralPurposeConfig = GeneralPurposeConfig::default();

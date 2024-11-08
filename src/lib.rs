@@ -11,11 +11,12 @@
 mod error;
 
 mod abe_policy;
-pub mod ae;
-pub mod api;
-pub mod core;
-pub mod data_struct;
+mod ae;
+mod core;
+mod data_struct;
 mod encrypted_header;
+
+pub mod api;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
