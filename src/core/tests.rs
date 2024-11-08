@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, Coordinate, EncryptionHint},
+    abe_policy::{AccessPolicy, AttributeStatus, EncryptionHint, Right},
     api::Covercrypt,
-    core::primitives::{decaps, encaps, refresh, rekey, update_coordinate_keys},
+    core::primitives::{decaps, encaps, refresh, rekey, update_msk},
     test_utils::cc_keygen,
     traits::{KemAc, PkeAc},
 };
@@ -21,11 +21,11 @@ use super::{
 #[test]
 fn test_encapsulation() {
     let mut rng = CsRng::from_entropy();
-    let other_coordinate = Coordinate::random(&mut rng);
-    let target_coordinate = Coordinate::random(&mut rng);
+    let other_coordinate = Right::random(&mut rng);
+    let target_coordinate = Right::random(&mut rng);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
-    update_coordinate_keys(
+    update_msk(
         &mut rng,
         &mut msk,
         HashMap::from_iter([
@@ -81,27 +81,27 @@ fn test_update() {
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     assert_eq!(msk.tsk.users.len(), 0);
     assert_eq!(msk.tsk.tracing_level(), MIN_TRACING_LEVEL);
-    assert_eq!(msk.coordinate_secrets.len(), 0);
+    assert_eq!(msk.secrets.len(), 0);
 
     let mpk = msk.mpk().unwrap();
     assert_eq!(mpk.tpk.tracing_level(), MIN_TRACING_LEVEL);
-    assert_eq!(mpk.coordinate_keys.len(), 0);
+    assert_eq!(mpk.encryption_keys.len(), 0);
 
     // Add 30 new random coordinates and verifies the correct number of
     // coordinate keys is added to the MSK (and the MPK).
     let mut coordinates = (0..30)
         .map(|_| {
             (
-                Coordinate::random(&mut rng),
+                Right::random(&mut rng),
                 (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
             )
         })
         .collect::<HashMap<_, _>>();
-    update_coordinate_keys(&mut rng, &mut msk, coordinates.clone()).unwrap();
-    assert_eq!(msk.coordinate_secrets.len(), 30);
+    update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
+    assert_eq!(msk.secrets.len(), 30);
 
     let mpk = msk.mpk().unwrap();
-    assert_eq!(mpk.coordinate_keys.len(), 30);
+    assert_eq!(mpk.encryption_keys.len(), 30);
 
     // Deprecate half coordinates.
     //
@@ -115,17 +115,17 @@ fn test_update() {
                 *status = AttributeStatus::DecryptOnly;
             }
         });
-    update_coordinate_keys(&mut rng, &mut msk, coordinates.clone()).unwrap();
-    assert_eq!(msk.coordinate_secrets.len(), 30);
+    update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
+    assert_eq!(msk.secrets.len(), 30);
     let mpk = msk.mpk().unwrap();
-    assert_eq!(mpk.coordinate_keys.len(), 15);
+    assert_eq!(mpk.encryption_keys.len(), 15);
 
     // Keep only 10 coordinates.
     let coordinates = coordinates.into_iter().take(10).collect::<HashMap<_, _>>();
-    update_coordinate_keys(&mut rng, &mut msk, coordinates).unwrap();
-    assert_eq!(msk.coordinate_secrets.len(), 10);
+    update_msk(&mut rng, &mut msk, coordinates).unwrap();
+    assert_eq!(msk.secrets.len(), 10);
     let mpk = msk.mpk().unwrap();
-    assert_eq!(mpk.coordinate_keys.len(), 5);
+    assert_eq!(mpk.encryption_keys.len(), 5);
 }
 
 /// This test asserts that re-keyed coordinates allow creating encapsulations
@@ -134,14 +134,14 @@ fn test_update() {
 #[test]
 fn test_rekey() {
     let mut rng = CsRng::from_entropy();
-    let coordinate_1 = Coordinate::random(&mut rng);
-    let coordinate_2 = Coordinate::random(&mut rng);
+    let coordinate_1 = Right::random(&mut rng);
+    let coordinate_2 = Right::random(&mut rng);
     let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
     let universe = HashSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
-    update_coordinate_keys(
+    update_msk(
         &mut rng,
         &mut msk,
         HashMap::from_iter([
@@ -207,13 +207,13 @@ fn test_rekey() {
 #[test]
 fn test_integrity_check() {
     let mut rng = CsRng::from_entropy();
-    let coordinate_1 = Coordinate::random(&mut rng);
-    let coordinate_2 = Coordinate::random(&mut rng);
+    let coordinate_1 = Right::random(&mut rng);
+    let coordinate_2 = Right::random(&mut rng);
     let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
-    update_coordinate_keys(
+    update_msk(
         &mut rng,
         &mut msk,
         HashMap::from_iter([

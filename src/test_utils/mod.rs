@@ -85,12 +85,11 @@ mod tests {
             .unwrap()
             .is_some());
 
-        // refresh the user key and preserve access to old coordinates
         let _new_decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::HR")?;
 
-        // refreshing the user key will remove access to removed coordinates even if we
-        // keep old rotations
+        // Refreshing the USK removes the keys associated to rights that do not exist anymore in
+        // the MSK, even if it is asked to preserve the old secrets.
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, true)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
@@ -135,14 +134,14 @@ mod tests {
 
         assert!(EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None).is_err());
 
-        // refresh the user key and preserve access to old coordinates
+        // refresh the user key and preserve old secrets
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, true)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
             .unwrap()
             .is_some());
 
-        // refresh the user key and remove access to old coordinates should still work
+        // refresh the user key and remove old secrets
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
@@ -181,7 +180,7 @@ mod tests {
             .unwrap()
             .is_some());
 
-        // refresh the user key and preserve access to old coordinates
+        // refresh the user key and preserve old secrets
         let _new_decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::Finance")?;
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
@@ -252,7 +251,7 @@ mod tests {
         //
         // Rotate argument (must update master keys)
         let rekey_ap =
-            AccessPolicy::Attr(QualifiedAttribute::from(("Security Level", "Top Secret")));
+            AccessPolicy::Term(QualifiedAttribute::from(("Security Level", "Top Secret")));
         let mpk = cc.rekey(&mut msk, &rekey_ap)?;
 
         //

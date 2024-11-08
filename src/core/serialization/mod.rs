@@ -8,11 +8,11 @@ use cosmian_crypto_core::{
 };
 
 use super::{
-    nike::EcPoint, CoordinatePublicKey, CoordinateSecretKey, TracingPublicKey, TracingSecretKey,
-    UserId, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    nike::EcPoint, CoordinatePublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
+    SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{Coordinate, Policy},
+    abe_policy::{Policy, Right},
     core::{
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
@@ -93,9 +93,9 @@ impl Serializable for MasterPublicKey {
 
     fn length(&self) -> usize {
         self.tpk.length()
-            + to_leb128_len(self.coordinate_keys.len())
+            + to_leb128_len(self.encryption_keys.len())
             + self
-                .coordinate_keys
+                .encryption_keys
                 .iter()
                 .map(|(coordinate, pk)| coordinate.length() + pk.length())
                 .sum::<usize>()
@@ -104,8 +104,8 @@ impl Serializable for MasterPublicKey {
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write(&self.tpk)?;
-        n += ser.write_leb128_u64(self.coordinate_keys.len() as u64)?;
-        for (coordinate, pk) in &self.coordinate_keys {
+        n += ser.write_leb128_u64(self.encryption_keys.len() as u64)?;
+        for (coordinate, pk) in &self.encryption_keys {
             n += ser.write(coordinate)?;
             n += ser.write(pk)?;
         }
@@ -119,14 +119,14 @@ impl Serializable for MasterPublicKey {
         let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut coordinate_keys = HashMap::with_capacity(n_coordinates);
         for _ in 0..n_coordinates {
-            let coordinate = de.read::<Coordinate>()?;
+            let coordinate = de.read::<Right>()?;
             let pk = de.read::<CoordinatePublicKey>()?;
             coordinate_keys.insert(coordinate, pk);
         }
         let policy = de.read::<Policy>()?;
         Ok(Self {
             tpk,
-            coordinate_keys,
+            encryption_keys: coordinate_keys,
             policy,
         })
     }
@@ -190,9 +190,9 @@ impl Serializable for MasterSecretKey {
 
     fn length(&self) -> usize {
         self.tsk.length()
-            + to_leb128_len(self.coordinate_secrets.len())
+            + to_leb128_len(self.secrets.len())
             + self
-                .coordinate_secrets
+                .secrets
                 .iter()
                 .map(|(coordinate, chain)| {
                     coordinate.length()
@@ -206,8 +206,8 @@ impl Serializable for MasterSecretKey {
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write(&self.tsk)?;
-        n += ser.write_leb128_u64(self.coordinate_secrets.len() as u64)?;
-        for (coordinate, chain) in &self.coordinate_secrets.map {
+        n += ser.write_leb128_u64(self.secrets.len() as u64)?;
+        for (coordinate, chain) in &self.secrets.map {
             n += ser.write(coordinate)?;
             n += ser.write_leb128_u64(to_leb128_len(chain.len()) as u64)?;
             for (is_activated, sk) in chain {
@@ -232,7 +232,7 @@ impl Serializable for MasterSecretKey {
             let chain = (0..n_keys)
                 .map(|_| -> Result<_, Error> {
                     let is_activated = de.read_leb128_u64()? == 1;
-                    let sk = de.read::<CoordinateSecretKey>()?;
+                    let sk = de.read::<RightSecretKey>()?;
                     Ok((is_activated, sk))
                 })
                 .collect::<Result<LinkedList<_>, _>>()?;
@@ -251,7 +251,7 @@ impl Serializable for MasterSecretKey {
 
         Ok(Self {
             tsk,
-            coordinate_secrets: coordinate_keypairs,
+            secrets: coordinate_keypairs,
             signing_key,
             policy,
         })
@@ -284,7 +284,7 @@ impl Serializable for UserId {
     }
 }
 
-impl Serializable for CoordinateSecretKey {
+impl Serializable for RightSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
@@ -368,7 +368,7 @@ impl Serializable for UserSecretKey {
             let coordinate = de.read()?;
             let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
             let new_chain = (0..n_keys)
-                .map(|_| de.read::<CoordinateSecretKey>())
+                .map(|_| de.read::<RightSecretKey>())
                 .collect::<Result<_, _>>()?;
             coordinate_keys.insert_new_chain(coordinate, new_chain);
         }
@@ -491,7 +491,7 @@ mod tests {
         abe_policy::{AttributeStatus, EncryptionHint},
         api::Covercrypt,
         core::{
-            primitives::{encaps, setup, update_coordinate_keys, usk_keygen},
+            primitives::{encaps, setup, update_msk, usk_keygen},
             MIN_TRACING_LEVEL,
         },
         test_utils::cc_keygen,
@@ -503,9 +503,9 @@ mod tests {
     fn test_serializations() {
         {
             let mut rng = CsRng::from_entropy();
-            let coordinate_1 = Coordinate::random(&mut rng);
-            let coordinate_2 = Coordinate::random(&mut rng);
-            let coordinate_3 = Coordinate::random(&mut rng);
+            let coordinate_1 = Right::random(&mut rng);
+            let coordinate_2 = Right::random(&mut rng);
+            let coordinate_3 = Right::random(&mut rng);
 
             let universe = HashMap::from([
                 (
@@ -527,7 +527,7 @@ mod tests {
             let mut rng = CsRng::from_entropy();
 
             let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
-            update_coordinate_keys(&mut rng, &mut msk, universe).unwrap();
+            update_msk(&mut rng, &mut msk, universe).unwrap();
             let mpk = msk.mpk().unwrap();
             let usk = usk_keygen(&mut rng, &mut msk, user_set).unwrap();
             let (_, enc) = encaps(&mut rng, &mpk, &target_set).unwrap();

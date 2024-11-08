@@ -4,7 +4,7 @@ use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secre
 use zeroize::Zeroizing;
 
 use super::{
-    core::primitives::{prune, update_coordinate_keys, usk_keygen},
+    core::primitives::{prune, update_msk, usk_keygen},
     core::MIN_TRACING_LEVEL,
     traits::AE,
 };
@@ -38,15 +38,13 @@ impl Covercrypt {
 
     /// Sets up the Covercrypt scheme.
     ///
-    /// Generates a MSK and a MPK with a tracing level of
+    /// Generates a MSK and a MPK only holing broadcasting keys, and with a tracing level of
     /// [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
-    /// They only hold keys for the origin coordinate: only broadcast
-    /// encapsulations can be created.
     pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         let mut rng = self.rng.lock().expect("Mutex lock failed!");
         let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
-        let coordinates = msk.policy.generate_universal_coordinates()?;
-        update_coordinate_keys(&mut *rng, &mut msk, coordinates)?;
+        let rights = msk.policy.omega()?;
+        update_msk(&mut *rng, &mut msk, rights)?;
         let mpk = msk.mpk()?;
         Ok((msk, mpk))
     }
@@ -54,19 +52,18 @@ impl Covercrypt {
     /// Updates the MSK according to this policy. Returns the new version of the
     /// MPK.
     ///
-    /// Sets the MSK coordinates to the one defined by the policy:
-    /// - removes coordinates from the MSK that don't belong to the new policy
-    ///   along with their associated keys;
-    /// - adds the policy coordinates that don't belong yet to the MSK,
-    ///   generating new keys.
+    /// Sets the MSK rights to the one defined by the policy:
+    /// - removes rights from the MSK that don't belong to the new policy along with their
+    ///   associated secrets;
+    /// - adds the policy rights that don't belong yet to the MSK, generating new secrets.
     ///
-    /// The new MPK holds the latest public keys of each coordinates of the new policy.
+    /// The new MPK holds the latest encryption key of each right of the new policy.
     // TODO: this function should be internalized and replaced by specialized functions.
     pub fn update_msk(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
-        update_coordinate_keys(
+        update_msk(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            msk.policy.generate_universal_coordinates()?,
+            msk.policy.omega()?,
         )?;
         msk.mpk()
     }
@@ -126,7 +123,8 @@ impl Covercrypt {
     /// in the complementary space of its access policy. Secrets hold by the USK but have been
     /// removed from the MSK are removed.
     ///
-    /// If `keep_old_rights` is set to false, only the latest secret of each right is kept instead.
+    /// If `keep_old_secrets` is set to false, only the latest secret of each right is kept
+    /// instead.
     ///
     /// Updates the tracing level to match the one of the MSK if needed.
     // TODO document error cases.
@@ -134,13 +132,13 @@ impl Covercrypt {
         &self,
         msk: &mut MasterSecretKey,
         usk: &mut UserSecretKey,
-        keep_old_rights: bool,
+        keep_old_secrets: bool,
     ) -> Result<(), Error> {
         refresh(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
             usk,
-            keep_old_rights,
+            keep_old_secrets,
         )
     }
 }

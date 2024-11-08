@@ -8,7 +8,7 @@ use std::{
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
 
 use crate::{
-    abe_policy::{Coordinate, Policy},
+    abe_policy::{Policy, Right},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
     Error,
@@ -56,12 +56,12 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 /// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
-enum CoordinateSecretKey {
+enum RightSecretKey {
     Hybridized { sk: Scalar, dk: DecapsulationKey512 },
     Classic { sk: Scalar },
 }
 
-impl CoordinateSecretKey {
+impl RightSecretKey {
     /// Generates a new random coordinate keypair cryptographically bound to the
     /// Covercrypt binding point `h`.
     fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
@@ -336,15 +336,15 @@ impl TracingPublicKey {
 /// The Covercrypt Master Secret Key (MSK).
 ///
 /// It is composed of:
-/// - the scalar `s` used to bind tracing and coordinate keys;
+/// - the scalar `s` used to bind tracing and right secrets;
 /// - the tracing secret key used to produce challenges to trace user keys;
-/// - the secret keys associated to the universal coordinates;
+/// - the secret associated to the each right in Omega;
 /// - an optional key for symmetric USK-signing;
 /// - the policy.
 #[derive(Debug, PartialEq)]
 pub struct MasterSecretKey {
     tsk: TracingSecretKey,
-    coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
+    secrets: RevisionMap<Right, (bool, RightSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
     pub policy: Policy,
 }
@@ -357,10 +357,10 @@ impl MasterSecretKey {
     /// Returns an error if some coordinate is missing from the MSK.
     fn get_latest_coordinate_sk<'a>(
         &'a self,
-        coordinates: impl Iterator<Item = Coordinate> + 'a,
-    ) -> impl Iterator<Item = Result<(Coordinate, CoordinateSecretKey), Error>> + 'a {
+        coordinates: impl Iterator<Item = Right> + 'a,
+    ) -> impl Iterator<Item = Result<(Right, RightSecretKey), Error>> + 'a {
         coordinates.map(|coordinate| {
-            self.coordinate_secrets
+            self.secrets
                 .get_latest(&coordinate)
                 .ok_or(Error::KeyError(format!(
                     "MSK has no key for coordinate {coordinate:?}"
@@ -375,8 +375,8 @@ impl MasterSecretKey {
         let h = self.tsk.binding_point();
         Ok(MasterPublicKey {
             tpk: self.tsk.tpk(),
-            coordinate_keys: self
-                .coordinate_secrets
+            encryption_keys: self
+                .secrets
                 .iter()
                 .filter_map(|(coordinate, secrets)| {
                     secrets.front().and_then(|(is_activated, csk)| {
@@ -397,12 +397,12 @@ impl MasterSecretKey {
 ///
 /// It is composed of:
 /// - the tracing public key;
-/// - the public keys of the universal coordinates;
+/// - the public keys for each right in Omega;
 /// - the policy.
 #[derive(Debug, PartialEq)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
-    coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
+    encryption_keys: HashMap<Right, CoordinatePublicKey>,
     pub(crate) policy: Policy,
 }
 
@@ -419,14 +419,11 @@ impl MasterPublicKey {
         self.tpk.0.iter().map(|gi| gi * r).collect()
     }
 
-    fn select_subkeys(
-        &self,
-        targets: &HashSet<Coordinate>,
-    ) -> Result<Vec<&CoordinatePublicKey>, Error> {
+    fn select_subkeys(&self, targets: &HashSet<Right>) -> Result<Vec<&CoordinatePublicKey>, Error> {
         let subkeys = targets
             .iter()
             .map(|coordinate| {
-                self.coordinate_keys.get(coordinate).ok_or_else(|| {
+                self.encryption_keys.get(coordinate).ok_or_else(|| {
                     Error::KeyError(format!("no public key for coordinate '{coordinate:#?}'"))
                 })
             })
@@ -445,7 +442,7 @@ impl MasterPublicKey {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
     id: UserId,
-    coordinate_keys: RevisionVec<Coordinate, CoordinateSecretKey>,
+    coordinate_keys: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
 

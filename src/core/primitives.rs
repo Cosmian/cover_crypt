@@ -14,12 +14,12 @@ use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
 use super::{
-    kem::MlKem512, nike::R25519, CoordinatePublicKey, CoordinateSecretKey, EcPoint, KmacSignature,
+    kem::MlKem512, nike::R25519, CoordinatePublicKey, EcPoint, KmacSignature, RightSecretKey,
     Scalar, TracingSecretKey, UserId, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
     SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, Coordinate, EncryptionHint, Policy},
+    abe_policy::{AttributeStatus, EncryptionHint, Policy, Right},
     core::{Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
@@ -60,7 +60,7 @@ fn shuffle<T>(xs: &mut [T], rng: &mut impl RngCore) {
 fn sign(
     msk: &MasterSecretKey,
     id: &UserId,
-    keys: &RevisionVec<Coordinate, CoordinateSecretKey>,
+    keys: &RevisionVec<Right, RightSecretKey>,
 ) -> Result<Option<KmacSignature>, Error> {
     if let Some(kmac_key) = &msk.signing_key {
         let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
@@ -73,11 +73,11 @@ fn sign(
             kmac.update(coordinate);
             for subkey in keys.iter() {
                 match subkey {
-                    CoordinateSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
+                    RightSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
                         kmac.update(s_i.as_bytes());
                         kmac.update(&dk_i.serialize()?);
                     }
-                    CoordinateSecretKey::Classic { sk: s_i } => {
+                    RightSecretKey::Classic { sk: s_i } => {
                         kmac.update(s_i.as_bytes());
                     }
                 }
@@ -161,7 +161,7 @@ pub fn setup(tracing_level: usize, rng: &mut impl CryptoRngCore) -> Result<Maste
 
     Ok(MasterSecretKey {
         tsk,
-        coordinate_secrets: RevisionMap::new(),
+        secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
         policy,
     })
@@ -178,7 +178,7 @@ pub fn setup(tracing_level: usize, rng: &mut impl CryptoRngCore) -> Result<Maste
 pub fn usk_keygen(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    coordinates: HashSet<Coordinate>,
+    coordinates: HashSet<Right>,
 ) -> Result<UserSecretKey, Error> {
     // Extract keys first to avoid unnecessary computation in case those cannot be found.
     let coordinate_keys = msk
@@ -206,7 +206,7 @@ pub fn usk_keygen(
 pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
-    encryption_set: &HashSet<Coordinate>,
+    encryption_set: &HashSet<Right>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let coordinate_keys = mpk.select_subkeys(encryption_set)?;
 
@@ -269,22 +269,19 @@ pub fn decaps(
         // The breadth-first search tries all coordinate subkeys in a chronological order.
         for key in usk.coordinate_keys.bfs() {
             let S = match (key, enc) {
-                (
-                    CoordinateSecretKey::Hybridized { sk, dk },
-                    Encapsulation::Hybridized { E, F },
-                ) => {
+                (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
                     let mut K1 = h_hash(R25519::session_key(sk, &A)?);
                     let K2 = MlKem512::dec(dk, E)?;
                     let S = xor_3(F, &K1, &K2);
                     K1.zeroize();
                     S
                 }
-                (CoordinateSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
+                (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
                     let K1 = h_hash(R25519::session_key(sk, &A)?);
                     xor_2(F, &K1)
                 }
-                (CoordinateSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
-                | (CoordinateSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => {
+                (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
+                | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => {
                     continue;
                 }
             };
@@ -299,26 +296,18 @@ pub fn decaps(
     Ok(None)
 }
 
-/// Updates the coordinate keys from given MSK relatively to the given universal
-/// coordinates:
-///
-/// - removes coordinates from the MSK that do not belong to the given coordinates;
-/// - adds the given coordinates that do not belong yet to the MSK and generates
-///   an associated keypair;
-/// - modify hybridization property accordingly to the one of the given coordinates;
-/// - modify the attribute status accordingly to the one of the given coordinates.
-pub fn update_coordinate_keys(
+/// Updates the MSK such that it has at least one secret per right given, and no secret for rights
+/// that are not given. Updates hybridization of the remaining secrets when required.
+pub fn update_msk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    coordinates: HashMap<Coordinate, (EncryptionHint, AttributeStatus)>,
+    rights: HashMap<Right, (EncryptionHint, AttributeStatus)>,
 ) -> Result<(), Error> {
-    let mut coordinate_keypairs = take(&mut msk.coordinate_secrets);
-    coordinate_keypairs.retain(|coordinate| coordinates.contains_key(coordinate));
+    let mut secrets = take(&mut msk.secrets);
+    secrets.retain(|r| rights.contains_key(r));
 
-    for (coordinate, (hint, status)) in coordinates {
-        if let Some((is_activated, coordinate_secret)) =
-            coordinate_keypairs.get_latest_mut(&coordinate)
-        {
+    for (r, (hint, status)) in rights {
+        if let Some((is_activated, coordinate_secret)) = secrets.get_latest_mut(&r) {
             *is_activated = AttributeStatus::EncryptDecrypt == status;
             if EncryptionHint::Classic == hint {
                 *coordinate_secret = coordinate_secret.drop_hybridization();
@@ -326,43 +315,38 @@ pub fn update_coordinate_keys(
         } else {
             if AttributeStatus::DecryptOnly == status {
                 return Err(Error::OperationNotPermitted(
-                    "cannot add decrypt only coordinate key".to_string(),
+                    "cannot add decrypt only secret".to_string(),
                 ));
             }
-            let secret = CoordinateSecretKey::random(rng, EncryptionHint::Hybridized == hint)?;
-            coordinate_keypairs.insert(coordinate, (true, secret));
+            let secret = RightSecretKey::random(rng, EncryptionHint::Hybridized == hint)?;
+            secrets.insert(r, (true, secret));
         }
     }
-    msk.coordinate_secrets = coordinate_keypairs;
+    msk.secrets = secrets;
     Ok(())
 }
 
-/// Generates a new key for each coordinate in the given set that belongs to the
-/// MSK.
+/// Generates a new secret for each right in the given set that belongs to the MSK.
 pub fn rekey(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    target_space: HashSet<Coordinate>,
+    rights: HashSet<Right>,
 ) -> Result<(), Error> {
-    for coordinate in target_space {
-        if msk.coordinate_secrets.contains_key(&coordinate) {
+    for r in rights {
+        if msk.secrets.contains_key(&r) {
             let is_hybridized = msk
-                .coordinate_secrets
-                .get_latest(&coordinate)
+                .secrets
+                .get_latest(&r)
                 .map(|(_, k)| k.is_hybridized())
                 .ok_or_else(|| {
-                    Error::OperationNotPermitted(format!(
-                        "no current key for coordinate {coordinate:#?}"
-                    ))
+                    Error::OperationNotPermitted(format!("no current key for coordinate {r:#?}"))
                 })?;
 
-            msk.coordinate_secrets.insert(
-                coordinate,
-                (true, CoordinateSecretKey::random(rng, is_hybridized)?),
-            );
+            msk.secrets
+                .insert(r, (true, RightSecretKey::random(rng, is_hybridized)?));
         } else {
             return Err(Error::OperationNotPermitted(
-                "cannot re-key coordinate that does not belong to the MSK".to_string(),
+                "cannot re-key a right not belonging to the MSK".to_string(),
             ));
         }
     }
@@ -374,9 +358,9 @@ pub fn rekey(
 /// # Safety
 ///
 /// This operation *permanently* deletes old keys, this is thus not reversible!
-pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Coordinate>) {
+pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Right>) {
     for coordinate in coordinates {
-        msk.coordinate_secrets.keep(coordinate, 1);
+        msk.secrets.keep(coordinate, 1);
     }
 }
 
@@ -403,7 +387,7 @@ pub fn refresh(
         refresh_coordinate_keys(msk, usk_rights)
     } else {
         msk.get_latest_coordinate_sk(usk_rights.into_keys())
-            .collect::<Result<RevisionVec<Coordinate, CoordinateSecretKey>, Error>>()?
+            .collect::<Result<RevisionVec<Right, RightSecretKey>, Error>>()?
     };
 
     let signature = sign(msk, &new_id, &new_rights)?;
@@ -426,46 +410,44 @@ pub fn refresh(
 /// > 2) USK secrets are a strict sub-sequence of the MSK ones
 fn refresh_coordinate_keys(
     msk: &MasterSecretKey,
-    coordinate_keys: RevisionVec<Coordinate, CoordinateSecretKey>,
-) -> RevisionVec<Coordinate, CoordinateSecretKey> {
+    coordinate_keys: RevisionVec<Right, RightSecretKey>,
+) -> RevisionVec<Right, RightSecretKey> {
     coordinate_keys
         .into_iter()
         .filter_map(|(coordinate, user_chain)| {
-            msk.coordinate_secrets
-                .get(&coordinate)
-                .and_then(|msk_chain| {
-                    let mut updated_chain = LinkedList::new();
-                    let mut msk_secrets = msk_chain.iter();
-                    let mut usk_secrets = user_chain.into_iter();
-                    let first_secret = usk_secrets.next()?;
+            msk.secrets.get(&coordinate).and_then(|msk_chain| {
+                let mut updated_chain = LinkedList::new();
+                let mut msk_secrets = msk_chain.iter();
+                let mut usk_secrets = user_chain.into_iter();
+                let first_secret = usk_secrets.next()?;
 
-                    // Add the most recent secrets from the MSK that do not belong
-                    // to the USK at the front of the updated chain (cf Invariant.1)
-                    for (_, msk_secret) in msk_secrets.by_ref() {
-                        if msk_secret == &first_secret {
-                            break;
-                        }
-                        updated_chain.push_back(msk_secret.clone());
-                    }
-
-                    // Push the first USK secret since it was consumed from the USK
-                    // chain iterator.
-                    updated_chain.push_back(first_secret);
-
-                    // Push the secrets already stored in the USK that also belong
-                    // to the MSK keypairs.
-                    for coordinate_sk in usk_secrets {
-                        if let Some((_, msk_secret)) = msk_secrets.next() {
-                            if msk_secret == &coordinate_sk {
-                                updated_chain.push_back(msk_secret.clone());
-                                continue;
-                            }
-                        }
-                        // No more shared secret after the first divergence (cf Invariant.2).
+                // Add the most recent secrets from the MSK that do not belong
+                // to the USK at the front of the updated chain (cf Invariant.1)
+                for (_, msk_secret) in msk_secrets.by_ref() {
+                    if msk_secret == &first_secret {
                         break;
                     }
-                    Some((coordinate, updated_chain))
-                })
+                    updated_chain.push_back(msk_secret.clone());
+                }
+
+                // Push the first USK secret since it was consumed from the USK
+                // chain iterator.
+                updated_chain.push_back(first_secret);
+
+                // Push the secrets already stored in the USK that also belong
+                // to the MSK keypairs.
+                for coordinate_sk in usk_secrets {
+                    if let Some((_, msk_secret)) = msk_secrets.next() {
+                        if msk_secret == &coordinate_sk {
+                            updated_chain.push_back(msk_secret.clone());
+                            continue;
+                        }
+                    }
+                    // No more shared secret after the first divergence (cf Invariant.2).
+                    break;
+                }
+                Some((coordinate, updated_chain))
+            })
         })
         .collect::<RevisionVec<_, _>>()
 }
