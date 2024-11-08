@@ -299,6 +299,17 @@ mod serialization {
         }
     }
 
+    #[test]
+    fn test_attribute_serialization() {
+        use cosmian_crypto_core::bytes_ser_de::test_serialization;
+
+        let attribute = AttributeParameters::new(EncryptionHint::Classic, 13);
+        test_serialization(&attribute).unwrap();
+
+        let attribute = AttributeParameters::new(EncryptionHint::Hybridized, usize::MAX);
+        test_serialization(&attribute).unwrap();
+    }
+
     impl Serializable for Dimension {
         type Error = Error;
 
@@ -364,14 +375,37 @@ mod serialization {
             });
 
             if 0 == is_ordered {
-                attributes.collect::<Result<_, _>>().map(Self::Ordered)
-            } else if 1 == is_ordered {
                 attributes.collect::<Result<_, _>>().map(Self::Unordered)
+            } else if 1 == is_ordered {
+                attributes.collect::<Result<_, _>>().map(Self::Ordered)
             } else {
                 Err(Error::ConversionFailed(format!(
                     "invalid boolean value {is_ordered}"
                 )))
             }
         }
+    }
+
+    #[test]
+    fn test_dimension_serialization() {
+        use cosmian_crypto_core::bytes_ser_de::test_serialization;
+
+        let mut d = Dimension::Ordered(Dict::new());
+        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
+            .unwrap();
+        d.add_attribute("B".to_string(), EncryptionHint::Hybridized, Some("A"), 1)
+            .unwrap();
+        d.add_attribute("C".to_string(), EncryptionHint::Hybridized, Some("B"), 2)
+            .unwrap();
+        test_serialization(&d).unwrap();
+
+        let mut d = Dimension::Unordered(HashMap::new());
+        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
+            .unwrap();
+        d.add_attribute("B".to_string(), EncryptionHint::Hybridized, None, 1)
+            .unwrap();
+        d.add_attribute("C".to_string(), EncryptionHint::Hybridized, None, 2)
+            .unwrap();
+        test_serialization(&d).unwrap();
     }
 }

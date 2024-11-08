@@ -1,5 +1,6 @@
 use cosmian_crypto_core::{
-    kdf256, Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, Secret, SymmetricKey,
+    kdf256, Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce,
+    RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use crate::{
@@ -37,9 +38,10 @@ impl EncryptedHeader {
 
         let encrypted_metadata = metadata
             .map(|bytes| {
-                let key = SymmetricKey::derive(&seed, &[0])?;
+                let key = SymmetricKey::derive(&seed, &[0u8])?;
                 let nonce = Nonce::new(&mut *cc.rng());
-                Aes256Gcm::new(&key).encrypt(&nonce, bytes, authentication_data)
+                let ctx = Aes256Gcm::new(&key).encrypt(&nonce, bytes, authentication_data)?;
+                Ok::<_, Error>([nonce.as_bytes(), &ctx].concat())
             })
             .transpose()?;
 
@@ -72,9 +74,19 @@ impl EncryptedHeader {
                     .encrypted_metadata
                     .as_ref()
                     .map(|ctx| {
-                        let key = SymmetricKey::derive(&seed, &[0])?;
-                        let nonce = Nonce::<{ Aes256Gcm::NONCE_LENGTH }>::new(&mut *cc.rng());
-                        Aes256Gcm::new(&key).decrypt(&nonce, ctx, authentication_data)
+                        if ctx.len() < Aes256Gcm::NONCE_LENGTH {
+                            Err(CryptoCoreError::CiphertextTooSmallError {
+                                ciphertext_len: ctx.len(),
+                                min: Aes256Gcm::NONCE_LENGTH as u64,
+                            })
+                        } else {
+                            let key = SymmetricKey::derive(&seed, &[0u8])?;
+                            Aes256Gcm::new(&key).decrypt(
+                                &Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?,
+                                &ctx[Aes256Gcm::NONCE_LENGTH..],
+                                authentication_data,
+                            )
+                        }
                     })
                     .transpose()?;
 
@@ -95,6 +107,7 @@ pub struct CleartextHeader {
 }
 
 mod serialization {
+
     use super::*;
     use cosmian_crypto_core::bytes_ser_de::{
         to_leb128_len, Deserializer, Serializable, Serializer,
@@ -106,9 +119,9 @@ mod serialization {
         fn length(&self) -> usize {
             self.encapsulation.length()
                 + if let Some(metadata) = &self.encrypted_metadata {
-                    to_leb128_len(to_leb128_len(metadata.len()) + metadata.len())
+                    to_leb128_len(metadata.len()) + metadata.len()
                 } else {
-                    0
+                    1
                 }
         }
 
@@ -177,5 +190,63 @@ mod serialization {
                 metadata,
             })
         }
+    }
+
+    #[test]
+    fn test_ser() {
+        use crate::test_utils::cc_keygen;
+        use cosmian_crypto_core::bytes_ser_de::test_serialization;
+
+        let cc = Covercrypt::default();
+        let (mut msk, mpk) = cc_keygen(&cc).unwrap();
+
+        let ap = AccessPolicy::parse(
+            "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        )
+        .unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &ap).unwrap();
+
+        //
+        // Simple ciphertext.
+        //
+
+        let test_encrypted_header = |ap, metadata, authentication_data| {
+            let (secret, encrypted_header) =
+                EncryptedHeader::generate(&cc, &mpk, &ap, metadata, authentication_data).unwrap();
+            test_serialization(&encrypted_header)
+                .expect("failed serialization test for the encrypted header");
+            let decrypted_header = encrypted_header
+                .decrypt(&cc, &usk, authentication_data)
+                .unwrap();
+            let decrypted_header = decrypted_header.unwrap();
+            test_serialization(&decrypted_header)
+                .expect("failed serialization test for the cleartext header");
+            assert_eq!(
+                secret, decrypted_header.secret,
+                "failed secret equality test"
+            );
+            assert_eq!(
+                metadata,
+                decrypted_header.metadata.as_deref(),
+                "failed metadata equality test"
+            );
+        };
+
+        test_encrypted_header(AccessPolicy::parse("Department::MKG").unwrap(), None, None);
+        test_encrypted_header(
+            AccessPolicy::parse("Department::MKG").unwrap(),
+            Some("metadata".as_bytes()),
+            None,
+        );
+        test_encrypted_header(
+            AccessPolicy::parse("Department::MKG").unwrap(),
+            Some("metadata".as_bytes()),
+            Some("authentication data".as_bytes()),
+        );
+        test_encrypted_header(
+            AccessPolicy::parse("Department::MKG").unwrap(),
+            None,
+            Some("authentication data".as_bytes()),
+        );
     }
 }

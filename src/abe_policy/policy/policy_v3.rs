@@ -381,6 +381,7 @@ fn combine(
 }
 
 mod serialization {
+
     use super::*;
     use cosmian_crypto_core::bytes_ser_de::{
         to_leb128_len, Deserializer, Serializable, Serializer,
@@ -404,13 +405,9 @@ mod serialization {
         fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
             let mut n = ser.write_leb128_u64(self.version as u64)?;
             n += ser.write_leb128_u64(self.dimensions.len() as u64)?;
-            self.dimensions.iter().try_for_each(|(name, attributes)| {
+            self.dimensions.iter().try_for_each(|(name, dimension)| {
                 n += ser.write_vec(name.as_bytes())?;
-                n += ser.write_leb128_u64(attributes.nb_attributes() as u64)?;
-                attributes.attributes().try_for_each(|a| {
-                    n += ser.write(a)?;
-                    Ok::<_, Self::Error>(())
-                })?;
+                n += ser.write(dimension)?;
                 Ok::<_, Self::Error>(())
             })?;
             Ok(n)
@@ -437,6 +434,16 @@ mod serialization {
                 dimensions,
             })
         }
+    }
+
+    #[test]
+    fn test_policy_serialization() {
+        use crate::abe_policy::gen_policy;
+        use cosmian_crypto_core::bytes_ser_de::test_serialization;
+
+        let mut policy = Default::default();
+        gen_policy(&mut policy).unwrap();
+        test_serialization(&policy).unwrap();
     }
 }
 

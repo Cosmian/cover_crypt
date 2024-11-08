@@ -489,165 +489,71 @@ mod tests {
     use super::*;
     use crate::{
         abe_policy::{AttributeStatus, EncryptionHint},
+        api::{Covercrypt, KemAc},
         core::{
-            kem::{self, Kem},
             primitives::{encaps, setup, update_coordinate_keys, usk_keygen},
-            Scalar, MIN_TRACING_LEVEL,
+            MIN_TRACING_LEVEL,
         },
+        test_utils::cc_keygen,
+        AccessPolicy,
     };
 
     #[test]
-    fn test_coordinate_pk() {
-        let mut rng = CsRng::from_entropy();
-
-        {
-            let cpk = CoordinatePublicKey::Classic {
-                H: EcPoint::from(&Scalar::new(&mut rng)),
-            };
-            let bytes = cpk.serialize().unwrap();
-            assert_eq!(bytes.len(), cpk.length());
-            let cpk_ = CoordinatePublicKey::deserialize(&bytes).unwrap();
-            assert_eq!(cpk, cpk_);
-        }
-
-        {
-            let H = EcPoint::from(&Scalar::new(&mut rng));
-            let (_, ek) = kem::MlKem512::keygen(&mut rng).unwrap();
-            let cpk = CoordinatePublicKey::Hybridized { H, ek };
-
-            let bytes = cpk.serialize().unwrap();
-            assert_eq!(bytes.len(), cpk.length());
-            let cpk_ = CoordinatePublicKey::deserialize(&bytes).unwrap();
-            assert_eq!(cpk, cpk_);
-        }
-    }
-
-    #[test]
-    fn test_tracing_keys() {
-        let mut rng = CsRng::from_entropy();
-
-        let tsk = TracingSecretKey::new_with_level(MIN_TRACING_LEVEL, &mut rng).unwrap();
-
-        {
-            let bytes = tsk.serialize().unwrap();
-            assert_eq!(bytes.len(), tsk.length());
-            let tsk_ = TracingSecretKey::deserialize(&bytes).unwrap();
-            assert_eq!(tsk, tsk_);
-        }
-    }
-
-    #[test]
     fn test_serializations() {
-        let mut rng = CsRng::from_entropy();
-        let coordinate_1 = Coordinate::random(&mut rng);
-        let coordinate_2 = Coordinate::random(&mut rng);
-        let coordinate_3 = Coordinate::random(&mut rng);
-
-        let universe = HashMap::from([
-            (
-                coordinate_1.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
-            ),
-            (
-                coordinate_2.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
-            ),
-            (
-                coordinate_3.clone(),
-                (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
-            ),
-        ]);
-
-        let user_set = HashSet::from([coordinate_1.clone(), coordinate_3.clone()]);
-        let target_set = HashSet::from([coordinate_1, coordinate_3]);
-        let mut rng = CsRng::from_entropy();
-
-        let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
-        update_coordinate_keys(&mut rng, &mut msk, universe).unwrap();
-        let mpk = msk.mpk().unwrap();
-
-        // Check Covercrypt `MasterSecretKey` serialization.
         {
-            test_serialization(&msk.tsk).unwrap();
-            test_serialization(&msk).unwrap();
-        }
+            let mut rng = CsRng::from_entropy();
+            let coordinate_1 = Coordinate::random(&mut rng);
+            let coordinate_2 = Coordinate::random(&mut rng);
+            let coordinate_3 = Coordinate::random(&mut rng);
 
-        // Check Covercrypt `PublicKey` serialization.
-        {
-            let bytes = mpk.serialize().unwrap();
-            assert_eq!(bytes.len(), mpk.length(), "Wrong master public key length");
-            let mpk_ = MasterPublicKey::deserialize(&bytes).unwrap();
-            assert_eq!(mpk, mpk_, "Wrong `PublicKey` derserialization.");
-        }
+            let universe = HashMap::from([
+                (
+                    coordinate_1.clone(),
+                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                ),
+                (
+                    coordinate_2.clone(),
+                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                ),
+                (
+                    coordinate_3.clone(),
+                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                ),
+            ]);
 
-        // Check Covercrypt `UserSecretKey` serialization.
-        {
+            let user_set = HashSet::from([coordinate_1.clone(), coordinate_3.clone()]);
+            let target_set = HashSet::from([coordinate_1, coordinate_3]);
+            let mut rng = CsRng::from_entropy();
+
+            let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
+            update_coordinate_keys(&mut rng, &mut msk, universe).unwrap();
+            let mpk = msk.mpk().unwrap();
             let usk = usk_keygen(&mut rng, &mut msk, user_set).unwrap();
-            let bytes = usk.serialize().unwrap();
-            assert_eq!(bytes.len(), usk.length(), "Wrong user secret key size");
-            let usk_ = UserSecretKey::deserialize(&bytes).unwrap();
-            assert_eq!(usk, usk_, "Wrong `UserSecretKey` deserialization.");
+            let (_, enc) = encaps(&mut rng, &mpk, &target_set).unwrap();
+
+            test_serialization(&msk).unwrap();
+            test_serialization(&mpk).unwrap();
+            test_serialization(&usk).unwrap();
+            test_serialization(&enc).unwrap();
         }
 
-        // Check Covercrypt `Encapsulation` serialization.
         {
-            let (_, encapsulation) = encaps(&mut rng, &mpk, &target_set).unwrap();
-            let bytes = encapsulation.serialize().unwrap();
-            assert_eq!(
-                bytes.len(),
-                encapsulation.length(),
-                "Wrong encapsulation size"
-            );
-            let encapsulation_ = XEnc::deserialize(&bytes).unwrap();
-            assert_eq!(
-                encapsulation, encapsulation_,
-                "Wrong `Encapsulation` serialization."
-            );
+            let cc = Covercrypt::default();
+            let (mut msk, mpk) = cc_keygen(&cc).unwrap();
+            let usk = cc
+                .generate_user_secret_key(
+                    &mut msk,
+                    &AccessPolicy::parse("Security Level::Top Secret").unwrap(),
+                )
+                .unwrap();
+            let (_, enc) = cc
+                .encaps(&mpk, &AccessPolicy::parse("Department::MKG").unwrap())
+                .unwrap();
+
+            test_serialization(&msk).unwrap();
+            test_serialization(&mpk).unwrap();
+            test_serialization(&usk).unwrap();
+            test_serialization(&enc).unwrap();
         }
-
-        // // Setup Covercrypt.
-        // {
-        //     use crate::{abe_policy::AccessPolicy, test_utils::policy, Covercrypt};
-
-        //     let cc = Covercrypt::default();
-        //     let policy = policy()?;
-        //     let user_policy = AccessPolicy::from_boolean_expression(
-        //         "Department::MKG && Security Level::Top Secret",
-        //     )?;
-        //     let encryption_policy = AccessPolicy::from_boolean_expression(
-        //         "Department::MKG && Security Level::High Secret",
-        //     )?;
-        //     let (msk, mpk) = cc.generate_master_keys(&policy)?;
-        //     let usk = cc.generate_user_secret_key(&msk, &user_policy, &policy)?;
-
-        //     // Check `EncryptedHeader` serialization.
-        //     let (_secret_key, encrypted_header) =
-        //         EncryptedHeader::generate(&cc, &policy, &mpk, &encryption_policy, None, None)?;
-        //     let bytes = encrypted_header.serialize()?;
-        //     assert_eq!(
-        //         bytes.len(),
-        //         encrypted_header.length(),
-        //         "Wrong encapsulation size."
-        //     );
-        //     let encrypted_header_ = EncryptedHeader::deserialize(&bytes)?;
-        //     assert_eq!(
-        //         encrypted_header, encrypted_header_,
-        //         "Wrong `EncryptedHeader` derserialization."
-        //     );
-
-        //     // Check `CleartextHeader` serialization.
-        //     let cleartext_header = encrypted_header.decrypt(&cc, &usk, None)?;
-        //     let bytes = cleartext_header.serialize()?;
-        //     assert_eq!(
-        //         bytes.len(),
-        //         cleartext_header.length(),
-        //         "Wrong cleartext header size."
-        //     );
-        //     let cleartext_header_ = CleartextHeader::deserialize(&bytes)?;
-        //     assert_eq!(
-        //         cleartext_header, cleartext_header_,
-        //         "Wrong `CleartextHeader` derserialization."
-        //     );
-        // }
     }
 }
