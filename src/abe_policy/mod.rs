@@ -10,8 +10,8 @@ mod tests;
 pub use access_policy::AccessPolicy;
 pub use attribute::{AttributeStatus, EncryptionHint, QualifiedAttribute};
 pub use dimension::{Attribute, Dimension};
-pub use policy::Policy;
+pub use policy::AccessStructure;
 pub use rights::Right;
 
 #[cfg(any(test, feature = "test-utils"))]
-pub use tests::gen_policy;
+pub use tests::gen_structure;

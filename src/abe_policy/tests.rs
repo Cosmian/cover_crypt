@@ -1,8 +1,8 @@
-use crate::{abe_policy::Policy, Error};
+use crate::{abe_policy::AccessStructure, Error};
 
 use super::EncryptionHint;
 
-pub fn gen_policy(policy: &mut Policy) -> Result<(), Error> {
+pub fn gen_structure(policy: &mut AccessStructure) -> Result<(), Error> {
     policy.add_hierarchy("Security Level".to_string())?;
 
     policy.add_attribute(

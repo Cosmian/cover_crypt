@@ -19,7 +19,7 @@ use super::{
     SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AttributeStatus, EncryptionHint, Policy, Right},
+    abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
     core::{Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
@@ -157,13 +157,13 @@ pub fn setup(tracing_level: usize, rng: &mut impl CryptoRngCore) -> Result<Maste
     }
 
     let tsk = TracingSecretKey::new_with_level(tracing_level, rng)?;
-    let policy = Policy::default();
+    let policy = AccessStructure::default();
 
     Ok(MasterSecretKey {
         tsk,
         secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
-        policy,
+        access_structure: policy,
     })
 }
 

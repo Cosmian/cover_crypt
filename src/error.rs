@@ -19,7 +19,7 @@ pub enum Error {
     DimensionNotFound(String),
     DeserializationError(serde_json::Error),
     ExistingCombination(String),
-    InsufficientAccessPolicy,
+    InsufficientRights,
     ConversionFailed(String),
     Tracing(String),
 }
@@ -45,9 +45,9 @@ impl Display for Error {
             Self::ExistingCombination(combination) => {
                 write!(f, "Combination {combination} already exists")
             }
-            Self::InsufficientAccessPolicy => write!(
+            Self::InsufficientRights => write!(
                 f,
-                "Unable to decrypt the header. User decryption key has not the right policy to \
+                "Unable to decrypt the header. User decryption key has not the right to \
                  decrypt this input."
             ),
             Self::ConversionFailed(err) => write!(f, "Conversion failed: {err}"),

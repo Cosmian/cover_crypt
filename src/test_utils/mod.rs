@@ -1,11 +1,11 @@
-use crate::{abe_policy::gen_policy, api::Covercrypt, Error, MasterPublicKey, MasterSecretKey};
+use crate::{abe_policy::gen_structure, api::Covercrypt, Error, MasterPublicKey, MasterSecretKey};
 
 //pub mod non_regression;
 
-/// Creates the test policy.
+/// Creates the test access structure.
 pub fn cc_keygen(cc: &Covercrypt) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
     let (mut msk, _) = cc.setup()?;
-    gen_policy(&mut msk.policy)?;
+    gen_structure(&mut msk.access_structure)?;
     let mpk = cc.update_msk(&mut msk)?;
     Ok((msk, mpk))
 }
@@ -29,7 +29,7 @@ mod tests {
         let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
         let mut low_secret_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
-        let _ = &mut msk.policy.add_attribute(
+        let _ = &mut msk.access_structure.add_attribute(
             QualifiedAttribute::new("Department", "Sales"),
             EncryptionHint::Classic,
             None,
@@ -74,7 +74,7 @@ mod tests {
             EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        msk.policy
+        msk.access_structure
             .del_attribute(&QualifiedAttribute::new("Department", "FIN"))?;
 
         // update the master keys
@@ -118,7 +118,7 @@ mod tests {
             EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        msk.policy
+        msk.access_structure
             .disable_attribute(&QualifiedAttribute::new("Department", "FIN"))?;
 
         // update the master keys
@@ -167,7 +167,7 @@ mod tests {
             EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
-        msk.policy.rename_attribute(
+        msk.access_structure.rename_attribute(
             &QualifiedAttribute::new("Department", "FIN"),
             "Finance".to_string(),
         )?;
@@ -225,8 +225,6 @@ mod tests {
 
     #[test]
     fn test_rotate_then_encrypt() -> Result<(), Error> {
-        //
-        // Declare policy
         let top_secret_ap = &AccessPolicy::parse("Security Level::Top Secret")?;
 
         let cc = Covercrypt::default();

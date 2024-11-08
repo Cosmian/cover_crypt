@@ -9,16 +9,16 @@ use crate::{
     Error,
 };
 
-use super::PolicyVersion;
+use super::Version;
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
-pub struct PolicyV3 {
-    version: PolicyVersion,
+pub struct AccessStructure {
+    version: Version,
     // Use a hash-map to efficiently find dimensions by name.
     dimensions: HashMap<String, Dimension>,
 }
 
-impl PolicyV3 {
+impl AccessStructure {
     /// Generate the set of USK rights described by the given access policy.
     pub fn ap_to_usk_rights(&self, ap: &AccessPolicy) -> Result<HashSet<Right>, Error> {
         self.generate_complementary_rights(ap)
@@ -29,7 +29,7 @@ impl PolicyV3 {
         self.generate_associated_rights(ap)
     }
 
-    /// Add an anarchic dimension with the given name to the policy.
+    /// Add an anarchic dimension with the given name to the access structure.
     ///
     /// Requires USK refresh
     /// ====================
@@ -45,7 +45,7 @@ impl PolicyV3 {
         }
     }
 
-    /// Add a hierarchic dimension with the given name to the policy.
+    /// Add a hierarchic dimension with the given name to the access structure.
     ///
     /// Requires USK refresh
     /// ====================
@@ -61,7 +61,7 @@ impl PolicyV3 {
         }
     }
 
-    /// Removes the given dim from the policy.
+    /// Removes the given dim from the access structure.
     ///
     /// Requires USK refresh
     /// ====================
@@ -74,7 +74,7 @@ impl PolicyV3 {
             .ok_or(Error::DimensionNotFound(dimension.to_string()))
     }
 
-    /// Add the given qualified attribute to the policy.
+    /// Add the given qualified attribute to the access structure.
     ///
     /// If the dimension if hierarchical, specifying `after` will set the rank of the new attribute
     /// to be in-between the existing attribute which name is given as `after`, and before the
@@ -108,7 +108,7 @@ impl PolicyV3 {
         Ok(())
     }
 
-    /// Remove the given qualified attribute from the policy.
+    /// Remove the given qualified attribute from the access structure.
     ///
     /// Requires USK refresh
     /// ====================
@@ -123,7 +123,7 @@ impl PolicyV3 {
     }
 }
 
-impl PolicyV3 {
+impl AccessStructure {
     /// Changes the name of an attribute.
     pub fn rename_attribute(
         &mut self,
@@ -131,7 +131,7 @@ impl PolicyV3 {
         new_name: String,
     ) -> Result<(), Error> {
         match self.dimensions.get_mut(&attribute.dimension) {
-            Some(policy_dim) => policy_dim.rename_attribute(&attribute.name, new_name),
+            Some(d) => d.rename_attribute(&attribute.name, new_name),
             None => Err(Error::DimensionNotFound(attribute.dimension.to_string())),
         }
     }
@@ -152,12 +152,12 @@ impl PolicyV3 {
     /// But the decryption key will be kept to allow reading old ciphertext.
     pub fn disable_attribute(&mut self, attr: &QualifiedAttribute) -> Result<(), Error> {
         match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => policy_dim.disable_attribute(&attr.name),
+            Some(d) => d.disable_attribute(&attr.name),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
 
-    /// Generates all rights defined by this policy and return their hybridization and
+    /// Generates all rights defined by this access structure and return their hybridization and
     /// activation status.
     pub(crate) fn omega(&self) -> Result<HashMap<Right, (EncryptionHint, AttributeStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
@@ -170,8 +170,8 @@ impl PolicyV3 {
     }
 }
 
-impl PolicyV3 {
-    /// Returns the given attribute from the policy.
+impl AccessStructure {
+    /// Returns the given attribute from the access structure.
     /// Fails if there is no such attribute.
     fn get_attribute(&self, attr: &QualifiedAttribute) -> Result<&Attribute, Error> {
         if let Some(dim) = self.dimensions.get(&attr.dimension) {
@@ -337,7 +337,7 @@ mod serialization {
         to_leb128_len, Deserializer, Serializable, Serializer,
     };
 
-    impl Serializable for PolicyV3 {
+    impl Serializable for AccessStructure {
         type Error = Error;
 
         fn length(&self) -> usize {
@@ -365,7 +365,7 @@ mod serialization {
 
         fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
             let version = de.read_leb128_u64()?;
-            let dimensions = if version == PolicyVersion::V3 as u64 {
+            let dimensions = if version == Version::V3 as u64 {
                 (0..de.read_leb128_u64()?)
                     .map(|_| {
                         let name = String::from_utf8(de.read_vec()?)
@@ -380,44 +380,44 @@ mod serialization {
                 ))
             }?;
             Ok(Self {
-                version: PolicyVersion::V3,
+                version: Version::V3,
                 dimensions,
             })
         }
     }
 
     #[test]
-    fn test_policy_serialization() {
-        use crate::abe_policy::gen_policy;
+    fn test_access_structure_serialization() {
+        use crate::abe_policy::gen_structure;
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
-        let mut policy = Default::default();
-        gen_policy(&mut policy).unwrap();
-        test_serialization(&policy).unwrap();
+        let mut structure = Default::default();
+        gen_structure(&mut structure).unwrap();
+        test_serialization(&structure).unwrap();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::abe_policy::gen_policy;
+    use crate::abe_policy::gen_structure;
 
     #[test]
     fn test_combine() {
-        let mut policy = PolicyV3::default();
-        gen_policy(&mut policy).unwrap();
+        let mut structure = AccessStructure::default();
+        gen_structure(&mut structure).unwrap();
 
         // There should be `Prod_dim(|dim| + 1)` rights.
         assert_eq!(
-            combine(&policy.dimensions.iter().collect::<Vec<_>>()).len(),
-            policy
+            combine(&structure.dimensions.iter().collect::<Vec<_>>()).len(),
+            structure
                 .dimensions
                 .values()
-                .map(|dim| dim.attributes().count() + 1)
+                .map(|d| d.attributes().count() + 1)
                 .product::<usize>()
         );
 
-        policy.add_anarchy("Country".to_string()).unwrap();
+        structure.add_anarchy("Country".to_string()).unwrap();
         [
             ("France", EncryptionHint::Classic),
             ("Germany", EncryptionHint::Classic),
@@ -425,14 +425,14 @@ mod tests {
         ]
         .into_iter()
         .try_for_each(|(attribute, hint)| {
-            policy.add_attribute(QualifiedAttribute::new("Country", attribute), hint, None)
+            structure.add_attribute(QualifiedAttribute::new("Country", attribute), hint, None)
         })
         .unwrap();
 
         // There should be `Prod_dim(|dim| + 1)` rights.
         assert_eq!(
-            combine(&policy.dimensions.iter().collect::<Vec<_>>()).len(),
-            policy
+            combine(&structure.dimensions.iter().collect::<Vec<_>>()).len(),
+            structure
                 .dimensions
                 .values()
                 .map(|dim| dim.attributes().count() + 1)
@@ -442,12 +442,12 @@ mod tests {
 
     #[test]
     fn test_generate_complementary_rights() -> Result<(), Error> {
-        let mut policy = PolicyV3::default();
-        gen_policy(&mut policy).unwrap();
+        let mut structure = AccessStructure::default();
+        gen_structure(&mut structure).unwrap();
 
         {
             let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";
-            let comp_points = policy.generate_complementary_rights(&AccessPolicy::parse(ap)?)?;
+            let comp_points = structure.generate_complementary_rights(&AccessPolicy::parse(ap)?)?;
 
             // Check the rights are the same as the ones manually generated, i.e.:
             // - rights()
@@ -459,80 +459,76 @@ mod tests {
 
             rights.insert(Right::from_attribute_ids(vec![])?);
 
-            rights.insert(Right::from_attribute_ids(vec![policy.get_attribute_id(
-                &QualifiedAttribute {
+            rights.insert(Right::from_attribute_ids(vec![structure
+                .get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),
-                },
-            )?])?);
-            rights.insert(Right::from_attribute_ids(vec![policy.get_attribute_id(
-                &QualifiedAttribute {
+                })?])?);
+            rights.insert(Right::from_attribute_ids(vec![structure
+                .get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "HR".to_string(),
-                },
-            )?])?);
-            rights.insert(Right::from_attribute_ids(vec![policy.get_attribute_id(
-                &QualifiedAttribute {
+                })?])?);
+            rights.insert(Right::from_attribute_ids(vec![structure
+                .get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Protected".to_string(),
-                },
-            )?])?);
-            rights.insert(Right::from_attribute_ids(vec![policy.get_attribute_id(
-                &QualifiedAttribute {
+                })?])?);
+            rights.insert(Right::from_attribute_ids(vec![structure
+                .get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Low Secret".to_string(),
-                },
-            )?])?);
+                })?])?);
 
             rights.insert(Right::from_attribute_ids(vec![
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),
                 })?,
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Protected".to_string(),
                 })?,
             ])?);
             rights.insert(Right::from_attribute_ids(vec![
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "HR".to_string(),
                 })?,
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Protected".to_string(),
                 })?,
             ])?);
 
             rights.insert(Right::from_attribute_ids(vec![
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "HR".to_string(),
                 })?,
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Low Secret".to_string(),
                 })?,
             ])?);
 
             rights.insert(Right::from_attribute_ids(vec![
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),
                 })?,
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Protected".to_string(),
                 })?,
             ])?);
 
             rights.insert(Right::from_attribute_ids(vec![
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Department".to_string(),
                     name: "FIN".to_string(),
                 })?,
-                policy.get_attribute_id(&QualifiedAttribute {
+                structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "Security Level".to_string(),
                     name: "Low Secret".to_string(),
                 })?,
@@ -544,7 +540,7 @@ mod tests {
         {
             let ap = "Department::HR";
             assert_eq!(
-                policy
+                structure
                     .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
                 // There are 5 rights in the security dimension, plus the broadcast for this
@@ -556,7 +552,7 @@ mod tests {
 
             let ap = "Security Level::Low Secret";
             assert_eq!(
-                policy
+                structure
                     .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
                 // The restricted space is the department dimension, and the lower points are the

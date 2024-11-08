@@ -12,7 +12,7 @@ use super::{
     SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{Policy, Right},
+    abe_policy::{AccessStructure, Right},
     core::{
         Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
@@ -99,7 +99,7 @@ impl Serializable for MasterPublicKey {
                 .iter()
                 .map(|(coordinate, pk)| coordinate.length() + pk.length())
                 .sum::<usize>()
-            + self.policy.length()
+            + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -109,7 +109,7 @@ impl Serializable for MasterPublicKey {
             n += ser.write(coordinate)?;
             n += ser.write(pk)?;
         }
-        n += ser.write(&self.policy)?;
+        n += ser.write(&self.access_structure)?;
 
         Ok(n)
     }
@@ -123,11 +123,11 @@ impl Serializable for MasterPublicKey {
             let pk = de.read::<CoordinatePublicKey>()?;
             coordinate_keys.insert(coordinate, pk);
         }
-        let policy = de.read::<Policy>()?;
+        let access_structure = de.read::<AccessStructure>()?;
         Ok(Self {
             tpk,
             encryption_keys: coordinate_keys,
-            policy,
+            access_structure,
         })
     }
 }
@@ -201,7 +201,7 @@ impl Serializable for MasterSecretKey {
                 })
                 .sum::<usize>()
             + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
-            + self.policy.length()
+            + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -218,7 +218,7 @@ impl Serializable for MasterSecretKey {
         if let Some(kmac_key) = &self.signing_key {
             n += ser.write_array(&**kmac_key)?;
         }
-        n += ser.write(&self.policy)?;
+        n += ser.write(&self.access_structure)?;
         Ok(n)
     }
 
@@ -247,13 +247,13 @@ impl Serializable for MasterSecretKey {
             )?)
         };
 
-        let policy = de.read()?;
+        let access_structure = de.read()?;
 
         Ok(Self {
             tsk,
             secrets: coordinate_keypairs,
             signing_key,
-            policy,
+            access_structure,
         })
     }
 }

@@ -2,19 +2,19 @@ use serde::{Deserialize, Serialize};
 
 //mod parser;
 //mod policy_v2;
-mod policy_v3;
+mod access_structure;
 //mod policy_versions;
 
-pub use policy_v3::PolicyV3 as Policy;
+pub use access_structure::AccessStructure;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PolicyVersion {
+pub enum Version {
     V1,
     V2,
     V3,
 }
 
-impl Default for PolicyVersion {
+impl Default for Version {
     fn default() -> Self {
         Self::V3
     }
@@ -23,17 +23,17 @@ impl Default for PolicyVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::abe_policy::{gen_policy, EncryptionHint, QualifiedAttribute};
+    use crate::abe_policy::{gen_structure, EncryptionHint, QualifiedAttribute};
 
     #[test]
     fn test_edit_anarchic_attributes() {
-        let mut policy = Policy::default();
-        gen_policy(&mut policy).unwrap();
+        let mut structure = AccessStructure::default();
+        gen_structure(&mut structure).unwrap();
 
-        assert_eq!(policy.attributes().count(), 9);
+        assert_eq!(structure.attributes().count(), 9);
 
         // Try renaming Research to already used name MKG
-        assert!(policy
+        assert!(structure
             .rename_attribute(
                 &QualifiedAttribute::new("Department", "R&D"),
                 "MKG".to_string(),
@@ -41,14 +41,14 @@ mod tests {
             .is_err());
 
         // Rename R&D to Research
-        assert!(policy
+        assert!(structure
             .rename_attribute(
                 &QualifiedAttribute::new("Department", "R&D"),
                 "Research".to_string(),
             )
             .is_ok());
 
-        let order: Vec<_> = policy
+        let order: Vec<_> = structure
             .attributes()
             .filter(|a| a.dimension.as_str() == "Security Level")
             .map(|a| a.name)
@@ -58,82 +58,80 @@ mod tests {
 
         // Add new attribute Sales
         let new_attr = QualifiedAttribute::new("Department", "Sales");
-        assert!(policy
+        assert!(structure
             .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
             .is_ok());
-        assert_eq!(policy.attributes().count(), 10);
+        assert_eq!(structure.attributes().count(), 10);
 
         // Try adding already existing attribute HR
         let duplicate_attr = QualifiedAttribute::new("Department", "HR");
-        assert!(policy
+        assert!(structure
             .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
             .is_err());
 
         // Try adding attribute to non existing dimension
         let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
-        assert!(policy
+        assert!(structure
             .add_attribute(missing_dimension.clone(), EncryptionHint::Classic, None)
             .is_err());
 
         // Remove research attribute
         let delete_attr = QualifiedAttribute::new("Department", "Research");
-        policy.del_attribute(&delete_attr).unwrap();
-        assert_eq!(policy.attributes().count(), 9);
+        structure.del_attribute(&delete_attr).unwrap();
+        assert_eq!(structure.attributes().count(), 9);
 
         // Duplicate remove
-        assert!(policy.del_attribute(&delete_attr).is_err());
+        assert!(structure.del_attribute(&delete_attr).is_err());
 
         // Missing dimension remove
-        assert!(policy.del_attribute(&missing_dimension).is_err());
+        assert!(structure.del_attribute(&missing_dimension).is_err());
 
         // Remove all attributes from a dimension
-        policy.del_attribute(&new_attr).unwrap();
-        policy
+        structure.del_attribute(&new_attr).unwrap();
+        structure
             .del_attribute(&QualifiedAttribute::new("Department", "HR"))
             .unwrap();
-        policy
+        structure
             .del_attribute(&QualifiedAttribute::new("Department", "MKG"))
             .unwrap();
 
-        // TODO: temporary fix before we allow removing an entire dimension
-        // policy.remove_attribute(&Attribute::new("Department", "FIN"))?;
-        policy.del_dimension("Department").unwrap();
+        structure.del_dimension("Department").unwrap();
 
-        assert_eq!(policy.dimensions().count(), 1);
+        assert_eq!(structure.dimensions().count(), 1);
 
         // Add new dimension
-        policy.add_anarchy("DimensionTest".to_string()).unwrap();
-        policy
+        structure.add_anarchy("DimensionTest".to_string()).unwrap();
+        structure
             .add_attribute(
                 QualifiedAttribute::new("DimensionTest", "Attr1"),
                 EncryptionHint::Classic,
                 None,
             )
             .unwrap();
-        policy
+        structure
             .add_attribute(
                 QualifiedAttribute::new("DimensionTest", "Attr2"),
                 EncryptionHint::Classic,
                 None,
             )
             .unwrap();
-        assert_eq!(policy.dimensions().count(), 2);
+        assert_eq!(structure.dimensions().count(), 2);
 
         //// Remove the new dimension
-        policy.del_dimension("DimensionTest").unwrap();
-        assert_eq!(policy.dimensions().count(), 1);
+        structure.del_dimension("DimensionTest").unwrap();
+        assert_eq!(structure.dimensions().count(), 1);
 
         //// Try removing non existing dimension
-        assert!(policy.del_dimension("MissingDim").is_err());
+        assert!(structure.del_dimension("MissingDim").is_err());
     }
 
     #[test]
     fn test_edit_hierarchic_attributes() {
-        let mut policy = Policy::default();
-        gen_policy(&mut policy).unwrap();
+        let mut structure = AccessStructure::default();
+        gen_structure(&mut structure).unwrap();
 
         assert_eq!(
-            policy
+            structure
                 .attributes()
                 .filter(|a| a.dimension == "Security Level")
                 .collect::<Vec<_>>(),
@@ -162,23 +160,23 @@ mod tests {
         );
 
         // Rename ordered dimension
-        assert!(policy
+        assert!(structure
             .rename_attribute(
                 &QualifiedAttribute::new("Security Level", "Protected"),
                 "Detcetorp".to_string(),
             )
             .is_ok());
 
-        let order = policy.attributes().map(|q| q.name).collect::<Vec<_>>();
+        let order = structure.attributes().map(|q| q.name).collect::<Vec<_>>();
         assert!(order.contains(&"Detcetorp".to_string()));
         assert!(!order.contains(&"Protected".to_string()));
 
         //// Try modifying hierarchical dimension
-        policy
+        structure
             .del_attribute(&QualifiedAttribute::new("Security Level", "Detcetorp"))
             .unwrap();
 
-        policy
+        structure
             .add_attribute(
                 QualifiedAttribute::new("Security Level", "After Medium"),
                 EncryptionHint::Classic,
@@ -187,7 +185,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            policy
+            structure
                 .attributes()
                 .filter(|a| a.dimension == "Security Level")
                 .collect::<Vec<_>>(),
@@ -215,6 +213,6 @@ mod tests {
             ]
         );
         //// Removing a hierarchical dimension is permitted
-        policy.del_dimension("Security Level").unwrap();
+        structure.del_dimension("Security Level").unwrap();
     }
 }

@@ -8,7 +8,7 @@ use std::{
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
 
 use crate::{
-    abe_policy::{Policy, Right},
+    abe_policy::{AccessStructure, Right},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
     Error,
@@ -340,13 +340,13 @@ impl TracingPublicKey {
 /// - the tracing secret key used to produce challenges to trace user keys;
 /// - the secret associated to the each right in Omega;
 /// - an optional key for symmetric USK-signing;
-/// - the policy.
+/// - the access structure.
 #[derive(Debug, PartialEq)]
 pub struct MasterSecretKey {
     tsk: TracingSecretKey,
     secrets: RevisionMap<Right, (bool, RightSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
-    pub policy: Policy,
+    pub access_structure: AccessStructure,
 }
 
 impl MasterSecretKey {
@@ -388,7 +388,7 @@ impl MasterSecretKey {
                     })
                 })
                 .collect(),
-            policy: self.policy.clone(),
+            access_structure: self.access_structure.clone(),
         })
     }
 }
@@ -398,12 +398,12 @@ impl MasterSecretKey {
 /// It is composed of:
 /// - the tracing public key;
 /// - the public keys for each right in Omega;
-/// - the policy.
+/// - the access structure.
 #[derive(Debug, PartialEq)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     encryption_keys: HashMap<Right, CoordinatePublicKey>,
-    pub(crate) policy: Policy,
+    pub(crate) access_structure: AccessStructure,
 }
 
 impl MasterPublicKey {

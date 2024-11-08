@@ -68,15 +68,7 @@ impl From<AttributeStatus> for bool {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Attribute representation used to create an attribute and add it to a dimension.
-pub struct AttributeBuilder {
-    pub name: String,
-    pub encryption_hint: EncryptionHint,
-}
-
-/// A policy attribute is composed of a dimension name and a component
-/// name.
+/// A qualified attribute is composed of a dimension an attribute name.
 #[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
 pub struct QualifiedAttribute {
@@ -85,10 +77,7 @@ pub struct QualifiedAttribute {
 }
 
 impl QualifiedAttribute {
-    /// Create a Policy Attribute.
-    ///
-    /// - `dimension`    : policy dimension the attributes belongs to
-    /// - `name`         : unique attribute name within this dimension
+    /// Creates a qualified attribute with the given dimension and attribute names.
     #[must_use]
     pub fn new(dimension: &str, name: &str) -> Self {
         Self {

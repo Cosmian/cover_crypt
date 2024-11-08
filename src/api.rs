@@ -43,27 +43,26 @@ impl Covercrypt {
     pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
         let mut rng = self.rng.lock().expect("Mutex lock failed!");
         let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
-        let rights = msk.policy.omega()?;
+        let rights = msk.access_structure.omega()?;
         update_msk(&mut *rng, &mut msk, rights)?;
         let mpk = msk.mpk()?;
         Ok((msk, mpk))
     }
 
-    /// Updates the MSK according to this policy. Returns the new version of the
-    /// MPK.
+    /// Updates the MSK according to its access structure. Returns the new version of the MPK.
     ///
-    /// Sets the MSK rights to the one defined by the policy:
-    /// - removes rights from the MSK that don't belong to the new policy along with their
+    /// Sets the MSK rights to the one defined by the access structure:
+    /// - removes rights from the MSK that don't belong to the access structure along with their
     ///   associated secrets;
-    /// - adds the policy rights that don't belong yet to the MSK, generating new secrets.
+    /// - adds the rights that don't belong yet to the MSK, generating new secrets.
     ///
-    /// The new MPK holds the latest encryption key of each right of the new policy.
+    /// The new MPK holds the latest encryption key of each right of the access structure.
     // TODO: this function should be internalized and replaced by specialized functions.
     pub fn update_msk(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
         update_msk(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            msk.policy.omega()?,
+            msk.access_structure.omega()?,
         )?;
         msk.mpk()
     }
@@ -81,7 +80,7 @@ impl Covercrypt {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            msk.policy.ap_to_usk_rights(ap)?,
+            msk.access_structure.ap_to_usk_rights(ap)?,
         )?;
         msk.mpk()
     }
@@ -96,7 +95,7 @@ impl Covercrypt {
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
-        prune(msk, &msk.policy.ap_to_usk_rights(ap)?);
+        prune(msk, &msk.access_structure.ap_to_usk_rights(ap)?);
         msk.mpk()
     }
 
@@ -113,7 +112,7 @@ impl Covercrypt {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            msk.policy.ap_to_usk_rights(ap)?,
+            msk.access_structure.ap_to_usk_rights(ap)?,
         )
     }
 
@@ -157,7 +156,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
-            &mpk.policy.ap_to_enc_rights(ap)?,
+            &mpk.access_structure.ap_to_enc_rights(ap)?,
         )
     }
 
