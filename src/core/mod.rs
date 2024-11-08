@@ -14,21 +14,19 @@ use crate::{
 };
 
 mod kem;
-pub mod primitives;
-#[cfg(feature = "serialization")]
-pub mod serialization;
+mod nike;
+mod serialization;
 
 #[cfg(test)]
 mod tests;
 
-mod nike;
-
-use nike::{EcPoint, Scalar};
+pub mod primitives;
 
 use self::{
     kem::{DecapsulationKey512, Kem},
     nike::{Nike, R25519},
 };
+use nike::{EcPoint, Scalar};
 
 /// The length of the secret encapsulated by Covercrypt.
 pub const SHARED_SECRET_LENGTH: usize = 32;

@@ -93,3 +93,89 @@ pub struct CleartextHeader {
     pub secret: Secret<SHARED_SECRET_LENGTH>,
     pub metadata: Option<Vec<u8>>,
 }
+
+mod serialization {
+    use super::*;
+    use cosmian_crypto_core::bytes_ser_de::{
+        to_leb128_len, Deserializer, Serializable, Serializer,
+    };
+
+    impl Serializable for EncryptedHeader {
+        type Error = Error;
+
+        fn length(&self) -> usize {
+            self.encapsulation.length()
+                + if let Some(metadata) = &self.encrypted_metadata {
+                    to_leb128_len(to_leb128_len(metadata.len()) + metadata.len())
+                } else {
+                    0
+                }
+        }
+
+        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+            let mut n = self.encapsulation.write(ser)?;
+            match &self.encrypted_metadata {
+                Some(bytes) => n += ser.write_vec(bytes)?,
+                None => n += ser.write_vec(&[])?,
+            }
+            Ok(n)
+        }
+
+        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+            let encapsulation = de.read::<XEnc>()?;
+            let ciphertext = de.read_vec()?;
+            let encrypted_metadata = if ciphertext.is_empty() {
+                None
+            } else {
+                Some(ciphertext)
+            };
+            Ok(Self {
+                encapsulation,
+                encrypted_metadata,
+            })
+        }
+    }
+
+    impl Serializable for CleartextHeader {
+        type Error = Error;
+
+        fn length(&self) -> usize {
+            SHARED_SECRET_LENGTH
+                + to_leb128_len(
+                    self.metadata
+                        .as_ref()
+                        .map(std::vec::Vec::len)
+                        .unwrap_or_default(),
+                )
+                + self
+                    .metadata
+                    .as_ref()
+                    .map(std::vec::Vec::len)
+                    .unwrap_or_default()
+        }
+
+        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+            let mut n = ser.write_array(&self.secret[..SHARED_SECRET_LENGTH])?;
+            match &self.metadata {
+                Some(bytes) => n += ser.write_vec(bytes)?,
+                None => n += ser.write_vec(&[])?,
+            }
+            Ok(n)
+        }
+
+        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+            let seed =
+                Secret::from_unprotected_bytes(&mut de.read_array::<SHARED_SECRET_LENGTH>()?);
+            let metadata = de.read_vec()?;
+            let metadata = if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            };
+            Ok(Self {
+                secret: seed,
+                metadata,
+            })
+        }
+    }
+}

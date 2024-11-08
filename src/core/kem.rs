@@ -1,4 +1,5 @@
-use cosmian_crypto_core::{bytes_ser_de::Serializable, reexport::rand_core::CryptoRngCore, Secret};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Secret};
 use ml_kem::{
     array::Array,
     kem::{Decapsulate, Encapsulate},
@@ -40,17 +41,14 @@ impl Serializable for EncapsulationKey512 {
         800
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut bytes = self.0.as_bytes();
         let n = ser.write_array(&bytes)?;
         bytes.zeroize();
         Ok(n)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let mut bytes = Array::from(de.read_array::<800>()?);
         let ek = <<ml_kem::MlKem512 as KemCore>::EncapsulationKey>::from_bytes(&bytes);
         bytes.zeroize();
@@ -74,17 +72,14 @@ impl Serializable for DecapsulationKey512 {
         1632
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut bytes = self.0.as_bytes();
         let n = ser.write_array(&bytes)?;
         bytes.zeroize();
         Ok(n)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let mut bytes = Array::from(de.read_array::<1632>()?);
         let dk = <<ml_kem::MlKem512 as KemCore>::DecapsulationKey>::from_bytes(&bytes);
         bytes.zeroize();
@@ -102,14 +97,11 @@ impl Serializable for Encapsulation512 {
         768
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         Ok(ser.write_array(&self.0)?)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self(Box::new(Array::<
             u8,
             <ml_kem::MlKem512 as KemCore>::CiphertextSize,

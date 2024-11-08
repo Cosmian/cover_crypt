@@ -3,7 +3,6 @@ use std::{
     fmt::Debug,
 };
 
-use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Serializable};
 use serde::{Deserialize, Serialize};
 
 use super::{attribute::EncryptionHint, AttributeStatus};
@@ -15,55 +14,6 @@ pub struct AttributeParameters {
     pub(crate) id: usize,
     pub(crate) encryption_hint: EncryptionHint,
     pub(crate) write_status: AttributeStatus,
-}
-
-impl Serializable for AttributeParameters {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        2 + to_leb128_len(self.id)
-    }
-
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        let mut n = ser.write_leb128_u64(self.id as u64)?;
-        n += ser.write_leb128_u64(<bool>::from(self.encryption_hint) as u64)?;
-        n += ser.write_leb128_u64(<bool>::from(self.write_status) as u64)?;
-        Ok(n)
-    }
-
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let id = de.read_leb128_u64()?.try_into()?;
-        let hint = de.read_leb128_u64()?;
-        let encryption_hint = if 0 == hint {
-            EncryptionHint::Classic
-        } else if 1 == hint {
-            EncryptionHint::Hybridized
-        } else {
-            return Err(Error::ConversionFailed(format!(
-                "erroneous hint value {hint}"
-            )));
-        };
-
-        let status = de.read_leb128_u64()?;
-        let write_status = if 0 == status {
-            AttributeStatus::DecryptOnly
-        } else if 1 == status {
-            AttributeStatus::EncryptDecrypt
-        } else {
-            return Err(Error::ConversionFailed(format!(
-                "erroneous status value {hint}"
-            )));
-        };
-
-        Ok(Self {
-            id,
-            encryption_hint,
-            write_status,
-        })
-    }
 }
 
 impl AttributeParameters {
@@ -104,82 +54,7 @@ impl Default for Dimension {
     }
 }
 
-impl Serializable for Dimension {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        let f = |attributes: Box<dyn Iterator<Item = (&String, &AttributeParameters)>>| {
-            attributes
-                .map(|(name, attribute)| {
-                    let l = name.len();
-                    to_leb128_len(l) + l + attribute.length()
-                })
-                .sum::<usize>()
-        };
-        1 + match self {
-            Dimension::Unordered(attributes) => {
-                to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
-            }
-            Dimension::Ordered(attributes) => {
-                to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
-            }
-        }
-    }
-
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        let write_attributes =
-            |mut attributes: Box<dyn Iterator<Item = (&String, &AttributeParameters)>>,
-             ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer|
-             -> Result<usize, Error> {
-                attributes.try_fold(0, |mut n, (name, attribute)| {
-                    n += ser.write_vec(name.as_bytes())?;
-                    n += ser.write(attribute)?;
-                    Ok(n)
-                })
-            };
-
-        let mut n = ser.write_leb128_u64(self.is_ordered() as u64)?;
-        match self {
-            Dimension::Unordered(attributes) => {
-                n += ser.write_leb128_u64(attributes.len() as u64)?;
-                n += write_attributes(Box::new(attributes.iter()), ser)?;
-            }
-            Dimension::Ordered(attributes) => {
-                n += ser.write_leb128_u64(attributes.len() as u64)?;
-                n += write_attributes(Box::new(attributes.iter()), ser)?;
-            }
-        };
-
-        Ok(n)
-    }
-
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let is_ordered = de.read_leb128_u64()?;
-        let l = de.read_leb128_u64()?;
-        let attributes = (0..l).map(|_| {
-            let name = String::from_utf8(de.read_vec()?)
-                .map_err(|e| Error::ConversionFailed(e.to_string()))?;
-            let attribute = de.read::<AttributeParameters>()?;
-            Ok::<_, Error>((name, attribute))
-        });
-
-        if 0 == is_ordered {
-            attributes.collect::<Result<_, _>>().map(Self::Ordered)
-        } else if 1 == is_ordered {
-            attributes.collect::<Result<_, _>>().map(Self::Unordered)
-        } else {
-            Err(Error::ConversionFailed(format!(
-                "invalid boolean value {is_ordered}"
-            )))
-        }
-    }
-}
-
 impl Dimension {
-    #[must_use]
     pub fn nb_attributes(&self) -> usize {
         match self {
             Self::Unordered(attributes) => attributes.len(),
@@ -187,7 +62,6 @@ impl Dimension {
         }
     }
 
-    #[must_use]
     pub fn is_ordered(&self) -> bool {
         match self {
             Self::Unordered(_) => false,
@@ -198,7 +72,6 @@ impl Dimension {
     /// Returns an iterator over the attributes name.
     /// If the dimension is ordered, the names are returned in this order,
     /// otherwise they are returned in arbitrary order.
-    #[must_use]
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &AttributeName>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.keys()),
@@ -206,7 +79,6 @@ impl Dimension {
         }
     }
 
-    #[must_use]
     pub fn get_attribute(&self, attr_name: &AttributeName) -> Option<&AttributeParameters> {
         match self {
             Self::Unordered(attributes) => attributes.get(attr_name),
@@ -238,7 +110,7 @@ impl Dimension {
         }
     }
 
-    /// Adds a new attribute to the dimension with the provided properties.
+    /// Adds a new attribute to this dimension with the provided properties.
     ///
     /// # Errors
     /// Returns an error if the operation is not permitted.
@@ -299,66 +171,49 @@ impl Dimension {
         }
     }
 
-    /// Removes an attribute from the dimension.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to remove.
+    /// Removes the attribute with the given name from this dimension.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the operation is not permitted or if the attribute
-    /// is not found.
-    pub fn remove_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
+    /// Returns an error if no attribute with this name is found.
+    pub fn remove_attribute(&mut self, name: &AttributeName) -> Result<(), Error> {
         match self {
             Self::Unordered(attributes) => attributes
-                .remove(attr_name)
+                .remove(name)
                 .map(|_| ())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+                .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Ordered(attributes) => attributes
-                .remove(attr_name)
+                .remove(name)
                 .map(|_| ())
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+                .ok_or(Error::AttributeNotFound(name.to_string())),
         }
     }
 
-    /// Deactivates an attribute by marking it as read-only.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The name of the attribute to deactivate.
+    /// Disables the attribute with the given name.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the attribute is not found.
-    pub fn disable_attribute(&mut self, attr_name: &AttributeName) -> Result<(), Error> {
+    /// Returns an error if no attribute with this name is found.
+    pub fn disable_attribute(&mut self, name: &AttributeName) -> Result<(), Error> {
         match self {
             Self::Unordered(attributes) => attributes
-                .get_mut(attr_name)
+                .get_mut(name)
                 .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+                .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Ordered(attributes) => attributes
-                .get_mut(attr_name)
+                .get_mut(name)
                 .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
-                .ok_or(Error::AttributeNotFound(attr_name.to_string())),
+                .ok_or(Error::AttributeNotFound(name.to_string())),
         }
     }
 
-    /// Renames an attribute with a new name.
-    ///
-    /// # Arguments
-    ///
-    /// * `attr_name` - The current name of the attribute to rename.
-    /// * `new_name` - The new name for the attribute.
+    /// Renames the attribute with the given name.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the new attribute name is already used in the same
-    /// dimension or if the attribute is not found.
+    /// Returns an error if the new name is already used in the same dimension or if no attribute
+    /// with the given old name is found.
     pub fn rename_attribute(
         &mut self,
-        attr_name: &AttributeName,
-        new_name: String,
+        old_name: &AttributeName,
+        new_name: AttributeName,
     ) -> Result<(), Error> {
         match self {
             Self::Unordered(attributes) => {
@@ -367,27 +222,156 @@ impl Dimension {
                         "New attribute name is already used in the same dimension".to_string(),
                     ));
                 }
-                match attributes.remove(attr_name) {
+                match attributes.remove(old_name) {
                     Some(attr_params) => {
                         attributes.insert(new_name, attr_params);
                         Ok(())
                     }
-                    None => Err(Error::AttributeNotFound(attr_name.to_string())),
+                    None => Err(Error::AttributeNotFound(old_name.to_string())),
                 }
             }
             Self::Ordered(attributes) => attributes
-                .update_key(attr_name, new_name)
+                .update_key(old_name, new_name)
                 .map_err(|e| Error::OperationNotPermitted(e.to_string())),
         }
     }
 
     /// Returns an iterator over the `AttributesParameters` and parameters.
     /// If the dimension is ordered, the attributes are returned in order.
-    #[must_use]
     pub fn attributes(&self) -> Box<dyn '_ + Iterator<Item = &AttributeParameters>> {
         match self {
             Self::Unordered(attributes) => Box::new(attributes.values()),
             Self::Ordered(attributes) => Box::new(attributes.values()),
+        }
+    }
+}
+
+mod serialization {
+    use cosmian_crypto_core::bytes_ser_de::{
+        to_leb128_len, Deserializer, Serializable, Serializer,
+    };
+
+    use super::*;
+
+    impl Serializable for AttributeParameters {
+        type Error = Error;
+
+        fn length(&self) -> usize {
+            2 + to_leb128_len(self.id)
+        }
+
+        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+            let mut n = ser.write_leb128_u64(self.id as u64)?;
+            n += ser.write_leb128_u64(<bool>::from(self.encryption_hint) as u64)?;
+            n += ser.write_leb128_u64(<bool>::from(self.write_status) as u64)?;
+            Ok(n)
+        }
+
+        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+            let id = de.read_leb128_u64()?.try_into()?;
+            let hint = de.read_leb128_u64()?;
+            let encryption_hint = if 0 == hint {
+                EncryptionHint::Classic
+            } else if 1 == hint {
+                EncryptionHint::Hybridized
+            } else {
+                return Err(Error::ConversionFailed(format!(
+                    "erroneous hint value {hint}"
+                )));
+            };
+
+            let status = de.read_leb128_u64()?;
+            let write_status = if 0 == status {
+                AttributeStatus::DecryptOnly
+            } else if 1 == status {
+                AttributeStatus::EncryptDecrypt
+            } else {
+                return Err(Error::ConversionFailed(format!(
+                    "erroneous status value {hint}"
+                )));
+            };
+
+            Ok(Self {
+                id,
+                encryption_hint,
+                write_status,
+            })
+        }
+    }
+
+    impl Serializable for Dimension {
+        type Error = Error;
+
+        fn length(&self) -> usize {
+            let f = |attributes: Box<dyn Iterator<Item = (&String, &AttributeParameters)>>| {
+                attributes
+                    .map(|(name, attribute)| {
+                        let l = name.len();
+                        to_leb128_len(l) + l + attribute.length()
+                    })
+                    .sum::<usize>()
+            };
+            1 + match self {
+                Dimension::Unordered(attributes) => {
+                    to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
+                }
+                Dimension::Ordered(attributes) => {
+                    to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
+                }
+            }
+        }
+
+        fn write(
+            &self,
+            ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+        ) -> Result<usize, Self::Error> {
+            let write_attributes =
+                |mut attributes: Box<dyn Iterator<Item = (&String, &AttributeParameters)>>,
+                 ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer|
+                 -> Result<usize, Error> {
+                    attributes.try_fold(0, |mut n, (name, attribute)| {
+                        n += ser.write_vec(name.as_bytes())?;
+                        n += ser.write(attribute)?;
+                        Ok(n)
+                    })
+                };
+
+            let mut n = ser.write_leb128_u64(self.is_ordered() as u64)?;
+            match self {
+                Dimension::Unordered(attributes) => {
+                    n += ser.write_leb128_u64(attributes.len() as u64)?;
+                    n += write_attributes(Box::new(attributes.iter()), ser)?;
+                }
+                Dimension::Ordered(attributes) => {
+                    n += ser.write_leb128_u64(attributes.len() as u64)?;
+                    n += write_attributes(Box::new(attributes.iter()), ser)?;
+                }
+            };
+
+            Ok(n)
+        }
+
+        fn read(
+            de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+        ) -> Result<Self, Self::Error> {
+            let is_ordered = de.read_leb128_u64()?;
+            let l = de.read_leb128_u64()?;
+            let attributes = (0..l).map(|_| {
+                let name = String::from_utf8(de.read_vec()?)
+                    .map_err(|e| Error::ConversionFailed(e.to_string()))?;
+                let attribute = de.read::<AttributeParameters>()?;
+                Ok::<_, Error>((name, attribute))
+            });
+
+            if 0 == is_ordered {
+                attributes.collect::<Result<_, _>>().map(Self::Ordered)
+            } else if 1 == is_ordered {
+                attributes.collect::<Result<_, _>>().map(Self::Unordered)
+            } else {
+                Err(Error::ConversionFailed(format!(
+                    "invalid boolean value {is_ordered}"
+                )))
+            }
         }
     }
 }

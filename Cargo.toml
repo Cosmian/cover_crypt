@@ -21,18 +21,17 @@ name = "cosmian_cover_crypt"
 
 [[example]]
 name = "encrypt"
-required-features = ["serialization", "test-utils"]
+required-features = ["test-utils"]
 
 [[example]]
 name = "decrypt"
-required-features = ["serialization", "test-utils"]
+required-features = ["test-utils"]
 
 [[example]]
 name = "runme"
 required-features = ["test-utils"]
 
 [features]
-serialization = []
 test-utils = []
 
 [dependencies]

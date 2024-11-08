@@ -1,7 +1,5 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
-use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Serializable};
-
 use crate::{
     abe_policy::{
         AccessPolicy, AttributeParameters, AttributeStatus, Coordinate, Dimension, EncryptionHint,
@@ -129,13 +127,17 @@ impl PolicyV3 {
     /// Changes the name of an attribute.
     pub fn rename_attribute(
         &mut self,
-        attr: &QualifiedAttribute,
+        attribute: &QualifiedAttribute,
         new_name: String,
     ) -> Result<(), Error> {
-        match self.dimensions.get_mut(&attr.dimension) {
-            Some(policy_dim) => policy_dim.rename_attribute(&attr.name, new_name),
-            None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
+        match self.dimensions.get_mut(&attribute.dimension) {
+            Some(policy_dim) => policy_dim.rename_attribute(&attribute.name, new_name),
+            None => Err(Error::DimensionNotFound(attribute.dimension.to_string())),
         }
+    }
+
+    pub fn dimensions(&self) -> impl Iterator<Item = &str> {
+        self.dimensions.keys().map(|d| d.as_str())
     }
 
     pub fn attributes(&'_ self) -> impl '_ + Iterator<Item = QualifiedAttribute> {
@@ -143,10 +145,6 @@ impl PolicyV3 {
             d.get_attributes_name()
                 .map(move |name| QualifiedAttribute::new(dimension, name.as_str()))
         })
-    }
-
-    pub fn dimensions(&self) -> impl Iterator<Item = &str> {
-        self.dimensions.keys().map(|d| d.as_str())
     }
 
     /// Marks an attribute as read only.
@@ -161,7 +159,7 @@ impl PolicyV3 {
 
     /// Generates all coordinates defined by this policy and return their hybridization and
     /// activation status.
-    pub fn generate_universal_coordinates(
+    pub(crate) fn generate_universal_coordinates(
         &self,
     ) -> Result<HashMap<Coordinate, (EncryptionHint, AttributeStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
@@ -347,62 +345,6 @@ impl PolicyV3 {
     }
 }
 
-impl Serializable for PolicyV3 {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        1 + to_leb128_len(self.dimensions.len())
-            + self
-                .dimensions
-                .iter()
-                .map(|(name, dimension)| {
-                    let l = name.len();
-                    to_leb128_len(l) + l + dimension.length()
-                })
-                .sum::<usize>()
-    }
-
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        let mut n = ser.write_leb128_u64(self.version as u64)?;
-        n += ser.write_leb128_u64(self.dimensions.len() as u64)?;
-        self.dimensions.iter().try_for_each(|(name, attributes)| {
-            n += ser.write_vec(name.as_bytes())?;
-            n += ser.write_leb128_u64(attributes.nb_attributes() as u64)?;
-            attributes.attributes().try_for_each(|a| {
-                n += ser.write(a)?;
-                Ok::<_, Self::Error>(())
-            })?;
-            Ok::<_, Self::Error>(())
-        })?;
-        Ok(n)
-    }
-
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let version = de.read_leb128_u64()?;
-        let dimensions = if version == PolicyVersion::V3 as u64 {
-            (0..de.read_leb128_u64()?)
-                .map(|_| {
-                    let name = String::from_utf8(de.read_vec()?)
-                        .map_err(|e| Error::ConversionFailed(e.to_string()))?;
-                    let dimension = de.read::<Dimension>()?;
-                    Ok((name, dimension))
-                })
-                .collect::<Result<HashMap<_, _>, Error>>()
-        } else {
-            Err(Error::ConversionFailed(
-                "unable to deserialize versions prior to V3".to_string(),
-            ))
-        }?;
-        Ok(Self {
-            version: PolicyVersion::V3,
-            dimensions,
-        })
-    }
-}
-
 /// Combines all attributes IDs from the given dimensions using at most one attribute for each
 /// dimensions. Returns the disjunction of the associated hybridization and activation status.
 ///
@@ -435,6 +377,66 @@ fn combine(
             }
         }
         [partial_combinations.clone(), res].concat()
+    }
+}
+
+mod serialization {
+    use super::*;
+    use cosmian_crypto_core::bytes_ser_de::{
+        to_leb128_len, Deserializer, Serializable, Serializer,
+    };
+
+    impl Serializable for PolicyV3 {
+        type Error = Error;
+
+        fn length(&self) -> usize {
+            1 + to_leb128_len(self.dimensions.len())
+                + self
+                    .dimensions
+                    .iter()
+                    .map(|(name, dimension)| {
+                        let l = name.len();
+                        to_leb128_len(l) + l + dimension.length()
+                    })
+                    .sum::<usize>()
+        }
+
+        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+            let mut n = ser.write_leb128_u64(self.version as u64)?;
+            n += ser.write_leb128_u64(self.dimensions.len() as u64)?;
+            self.dimensions.iter().try_for_each(|(name, attributes)| {
+                n += ser.write_vec(name.as_bytes())?;
+                n += ser.write_leb128_u64(attributes.nb_attributes() as u64)?;
+                attributes.attributes().try_for_each(|a| {
+                    n += ser.write(a)?;
+                    Ok::<_, Self::Error>(())
+                })?;
+                Ok::<_, Self::Error>(())
+            })?;
+            Ok(n)
+        }
+
+        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+            let version = de.read_leb128_u64()?;
+            let dimensions = if version == PolicyVersion::V3 as u64 {
+                (0..de.read_leb128_u64()?)
+                    .map(|_| {
+                        let name = String::from_utf8(de.read_vec()?)
+                            .map_err(|e| Error::ConversionFailed(e.to_string()))?;
+                        let dimension = de.read::<Dimension>()?;
+                        Ok((name, dimension))
+                    })
+                    .collect::<Result<HashMap<_, _>, Error>>()
+            } else {
+                Err(Error::ConversionFailed(
+                    "unable to deserialize versions prior to V3".to_string(),
+                ))
+            }?;
+            Ok(Self {
+                version: PolicyVersion::V3,
+                dimensions,
+            })
+        }
     }
 }
 

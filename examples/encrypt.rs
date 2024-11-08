@@ -10,7 +10,6 @@ fn generate_new(cc: &Covercrypt, _msk: &mut MasterSecretKey, mpk: &MasterPublicK
     let (_, _header) = EncryptedHeader::generate(cc, mpk, &access_policy, None, None)
         .expect("cannot encrypt header");
 
-    #[cfg(feature = "serialization")]
     {
         use base64::{
             alphabet::STANDARD,

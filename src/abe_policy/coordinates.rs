@@ -1,6 +1,5 @@
+use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer};
 use std::{hash::Hash, ops::Deref};
-
-use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Serializable, Serializer};
 
 use crate::Error;
 
@@ -9,7 +8,7 @@ use crate::Error;
 /// It is a representation of a given combination of one attribute per
 /// dimension.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct Coordinate(Vec<u8>);
+pub struct Coordinate(pub(crate) Vec<u8>);
 
 impl Coordinate {
     /// Computes the coordinate associated to the given list of IDs of dimension
@@ -99,7 +98,7 @@ impl Serializable for Coordinate {
         ser.write_vec(self).map_err(Self::Error::from)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let bytes = de.read_vec()?;
         Ok(Self(bytes))
     }
