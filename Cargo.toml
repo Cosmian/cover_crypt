@@ -27,6 +27,10 @@ required-features = ["serialization", "test-utils"]
 name = "decrypt"
 required-features = ["serialization", "test-utils"]
 
+[[example]]
+name = "runme"
+required-features = ["test-utils"]
+
 [features]
 serialization = []
 test-utils = []

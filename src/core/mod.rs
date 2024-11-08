@@ -350,7 +350,7 @@ pub struct MasterSecretKey {
     tsk: TracingSecretKey,
     coordinate_secrets: RevisionMap<Coordinate, (bool, CoordinateSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
-    pub(crate) policy: Policy,
+    pub policy: Policy,
 }
 
 impl MasterSecretKey {

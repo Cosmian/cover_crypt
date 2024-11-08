@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod dictionary;
 pub mod error;
 mod revision_map;
