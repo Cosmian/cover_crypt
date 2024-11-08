@@ -99,8 +99,8 @@ impl Covercrypt {
     // TODO document error cases.
     pub fn rekey(
         &self,
-        ap: &AccessPolicy,
         msk: &mut MasterSecretKey,
+        ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
         rekey(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
@@ -117,8 +117,8 @@ impl Covercrypt {
     // TODO document error cases.
     pub fn prune_master_secret_key(
         &self,
-        ap: &AccessPolicy,
         msk: &mut MasterSecretKey,
+        ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
         prune(msk, &msk.policy.ap_to_usk_rights(ap)?);
         msk.mpk()
@@ -132,12 +132,12 @@ impl Covercrypt {
     pub fn generate_user_secret_key(
         &self,
         msk: &mut MasterSecretKey,
-        access_policy: &AccessPolicy,
+        ap: &AccessPolicy,
     ) -> Result<UserSecretKey, Error> {
         usk_keygen(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
-            msk.policy.ap_to_usk_rights(access_policy)?,
+            msk.policy.ap_to_usk_rights(ap)?,
         )
     }
 
@@ -152,8 +152,8 @@ impl Covercrypt {
     // TODO document error cases.
     pub fn refresh_usk(
         &self,
-        usk: &mut UserSecretKey,
         msk: &mut MasterSecretKey,
+        usk: &mut UserSecretKey,
         keep_old_rights: bool,
     ) -> Result<(), Error> {
         refresh(
@@ -206,9 +206,9 @@ impl CovercryptKEM for Covercrypt {
     fn decaps(
         &self,
         usk: &UserSecretKey,
-        encapsulation: &Encapsulation,
+        enc: &Encapsulation,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-        decaps(usk, encapsulation)
+        decaps(usk, enc)
     }
 }
 
@@ -225,7 +225,7 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
         &self,
         mpk: &MasterPublicKey,
         ap: &AccessPolicy,
-        plaintext: &[u8],
+        ptx: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error>;
 
     /// Attempts decrypting the given ciphertext using the Covercrypt KEM and the DEM.
@@ -240,8 +240,8 @@ pub trait CovercryptPKE<Aead, const KEY_LENGTH: usize> {
     fn decrypt(
         &self,
         usk: &UserSecretKey,
-        ciphertext: &[u8],
         enc: &Encapsulation,
+        ctx: &[u8],
     ) -> Result<Option<Zeroizing<Vec<u8>>>, Error>;
 }
 
@@ -250,7 +250,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         &self,
         mpk: &MasterPublicKey,
         ap: &AccessPolicy,
-        plaintext: &[u8],
+        ptx: &[u8],
     ) -> Result<(Encapsulation, Vec<u8>), Error> {
         if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
@@ -262,15 +262,15 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         let mut sym_key = SymmetricKey::default();
         kdf256!(&mut *sym_key, &*seed);
         let mut rng = self.rng.lock().expect("poisoned lock");
-        let res = E::encrypt(&mut *rng, &sym_key, plaintext)?;
+        let res = E::encrypt(&mut *rng, &sym_key, ptx)?;
         Ok((enc, res))
     }
 
     fn decrypt(
         &self,
         usk: &UserSecretKey,
-        ciphertext: &[u8],
         enc: &Encapsulation,
+        ctx: &[u8],
     ) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
         if SHARED_SECRET_LENGTH < KEY_LENGTH {
             return Err(Error::ConversionFailed(format!(
@@ -282,7 +282,7 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> CovercryptPKE<E, KEY_LENGTH> fo
         seed.map(|seed| {
             let mut sym_key = SymmetricKey::<KEY_LENGTH>::default();
             kdf256!(&mut *sym_key, &*seed);
-            E::decrypt(&sym_key, ciphertext)
+            E::decrypt(&sym_key, ctx)
         })
         .transpose()
     }

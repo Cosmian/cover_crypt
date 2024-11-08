@@ -281,8 +281,8 @@ fn test_covercrypt_pke() {
     let ptx1 = CovercryptPKE::<Aes256Gcm, { Aes256Gcm::KEY_LENGTH }>::decrypt(
         &cc,
         &usk,
-        ctx.as_slice(),
         &enc,
+        ctx.as_slice(),
     )
     .expect("cannot decrypt the ciphertext");
     assert_eq!(ptx, &*ptx1.unwrap());

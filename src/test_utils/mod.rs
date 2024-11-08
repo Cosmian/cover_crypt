@@ -46,7 +46,7 @@ mod tests {
             .unwrap()
             .is_none());
 
-        cc.refresh_usk(&mut low_secret_usk, &mut msk, false)?;
+        cc.refresh_usk(&mut msk, &mut low_secret_usk, false)?;
 
         assert!(encrypted_header
             .decrypt(&cc, &low_secret_usk, None)
@@ -90,7 +90,7 @@ mod tests {
 
         // refreshing the user key will remove access to removed coordinates even if we
         // keep old rotations
-        cc.refresh_usk(&mut top_secret_fin_usk, &mut msk, true)?;
+        cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, true)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
             .unwrap()
@@ -135,14 +135,14 @@ mod tests {
         assert!(EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None).is_err());
 
         // refresh the user key and preserve access to old coordinates
-        cc.refresh_usk(&mut top_secret_fin_usk, &mut msk, true)?;
+        cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, true)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
             .unwrap()
             .is_some());
 
         // refresh the user key and remove access to old coordinates should still work
-        cc.refresh_usk(&mut top_secret_fin_usk, &mut msk, false)?;
+        cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
             .unwrap()
@@ -183,7 +183,7 @@ mod tests {
         // refresh the user key and preserve access to old coordinates
         let _new_decryption_policy =
             AccessPolicy::parse("Security Level::Top Secret && Department::Finance")?;
-        cc.refresh_usk(&mut top_secret_fin_usk, &mut msk, false)?;
+        cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
             .unwrap()
@@ -252,7 +252,7 @@ mod tests {
         // Rotate argument (must update master keys)
         let rekey_ap =
             AccessPolicy::Attr(QualifiedAttribute::from(("Security Level", "Top Secret")));
-        let mpk = cc.rekey(&rekey_ap, &mut msk)?;
+        let mpk = cc.rekey(&mut msk, &rekey_ap)?;
 
         //
         // Encrypt with new attribute
@@ -265,7 +265,7 @@ mod tests {
             .unwrap()
             .is_none());
 
-        cc.refresh_usk(&mut top_secret_fin_usk, &mut msk, false)?;
+        cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
 
         // The refreshed key can decrypt the header
         assert!(encrypted_header

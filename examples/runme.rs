@@ -25,7 +25,7 @@ fn main() {
 
     //
     // Rekey the user access policy.
-    let mpk = cc.rekey(&access_policy, &mut msk).unwrap();
+    let mpk = cc.rekey(&mut msk, &access_policy).unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
@@ -39,7 +39,7 @@ fn main() {
         .is_none());
 
     // refresh user secret key, do not grant old encryption access
-    cc.refresh_usk(&mut usk, &mut msk, false).unwrap();
+    cc.refresh_usk(&mut msk, &mut usk, false).unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
     assert!(new_encrypted_header
