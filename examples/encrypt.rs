@@ -43,7 +43,7 @@ fn main() {
 
     let cc = Covercrypt::default();
     let (mut msk, _) = cc.setup().expect("cannot generate master keys");
-    let mpk = cc.gen_mpk(&msk).expect("cannot update master keys");
+    let mpk = msk.mpk().unwrap();
 
     generate_new(&cc, &mut msk, &mpk);
 

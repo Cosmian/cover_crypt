@@ -92,11 +92,6 @@ impl Covercrypt {
         msk.mpk()
     }
 
-    /// Generates a new MPK holding the latest public information of each universal coordinate.
-    pub fn gen_mpk(&self, msk: &MasterSecretKey) -> Result<MasterPublicKey, Error> {
-        msk.mpk()
-    }
-
     /// Generates new keys for each coordinate in the semantic space of the
     /// given access policy and update the given master keys.
     ///
