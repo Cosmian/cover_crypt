@@ -13,9 +13,6 @@ use crate::{
     Error,
 };
 
-pub mod ae;
-pub mod api;
-mod encrypted_header;
 mod kem;
 pub mod primitives;
 #[cfg(feature = "serialization")]
@@ -26,7 +23,6 @@ mod tests;
 
 mod nike;
 
-pub use encrypted_header::{CleartextHeader, EncryptedHeader};
 use nike::{EcPoint, Scalar};
 
 use self::{
@@ -411,7 +407,7 @@ impl MasterSecretKey {
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     coordinate_keys: HashMap<Coordinate, CoordinatePublicKey>,
-    policy: Policy,
+    pub(crate) policy: Policy,
 }
 
 impl MasterPublicKey {

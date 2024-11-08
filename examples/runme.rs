@@ -1,7 +1,7 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
 use cosmian_cover_crypt::{
-    abe_policy::AccessPolicy, api::Covercrypt, core::EncryptedHeader, test_utils::cc_keygen,
+    abe_policy::AccessPolicy, api::Covercrypt, test_utils::cc_keygen, EncryptedHeader,
 };
 
 fn main() {

@@ -15,7 +15,12 @@ pub mod core;
 pub mod data_struct;
 pub use error::Error;
 
+pub mod ae;
+pub mod api;
+mod encrypted_header;
+
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
-pub use self::core::{api, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
+pub use self::core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
+pub use encrypted_header::{CleartextHeader, EncryptedHeader};

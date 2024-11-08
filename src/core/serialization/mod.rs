@@ -14,11 +14,10 @@ use super::{
 use crate::{
     abe_policy::{Coordinate, Policy},
     core::{
-        CleartextHeader, Encapsulation, EncryptedHeader, MasterPublicKey, MasterSecretKey,
-        UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
+        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
-    Error,
+    CleartextHeader, EncryptedHeader, Error,
 };
 
 impl Serializable for TracingPublicKey {
@@ -491,7 +490,6 @@ impl Serializable for EncryptedHeader {
             }
     }
 
-    /// Tries to serialize the encrypted header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.encapsulation.write(ser)?;
         match &self.encrypted_metadata {
@@ -501,7 +499,6 @@ impl Serializable for EncryptedHeader {
         Ok(n)
     }
 
-    /// Tries to deserialize the encrypted header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let encapsulation = de.read::<XEnc>()?;
         let ciphertext = de.read_vec()?;
@@ -535,7 +532,6 @@ impl Serializable for CleartextHeader {
                 .unwrap_or_default()
     }
 
-    /// Tries to serialize the cleartext header.
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_array(&self.secret[..SHARED_SECRET_LENGTH])?;
         match &self.metadata {
@@ -545,7 +541,6 @@ impl Serializable for CleartextHeader {
         Ok(n)
     }
 
-    /// Tries to deserialize the cleartext header.
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let seed = Secret::from_unprotected_bytes(&mut de.read_array::<SHARED_SECRET_LENGTH>()?);
         let metadata = de.read_vec()?;

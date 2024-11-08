@@ -5,8 +5,8 @@ use zeroize::Zeroizing;
 
 use super::{
     ae::AE,
-    primitives::{prune, update_coordinate_keys, usk_keygen},
-    MIN_TRACING_LEVEL,
+    core::primitives::{prune, update_coordinate_keys, usk_keygen},
+    core::MIN_TRACING_LEVEL,
 };
 use crate::{
     abe_policy::AccessPolicy,
