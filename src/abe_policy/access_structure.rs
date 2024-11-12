@@ -11,7 +11,7 @@ use crate::{
 
 use super::Version;
 
-#[derive(Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AccessStructure {
     version: Version,
     // Use a hash-map to efficiently find dimensions by name.
@@ -19,6 +19,13 @@ pub struct AccessStructure {
 }
 
 impl AccessStructure {
+    pub fn new() -> Self {
+        Self {
+            version: Version::V1,
+            dimensions: HashMap::new(),
+        }
+    }
+
     /// Generate the set of USK rights described by the given access policy.
     pub fn ap_to_usk_rights(&self, ap: &AccessPolicy) -> Result<HashSet<Right>, Error> {
         self.generate_complementary_rights(ap)
@@ -330,6 +337,15 @@ fn combine(
     }
 }
 
+impl Default for AccessStructure {
+    fn default() -> Self {
+        Self {
+            version: Version::V1,
+            dimensions: HashMap::new(),
+        }
+    }
+}
+
 mod serialization {
 
     use super::*;
@@ -365,7 +381,7 @@ mod serialization {
 
         fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
             let version = de.read_leb128_u64()?;
-            let dimensions = if version == Version::V3 as u64 {
+            let dimensions = if version == Version::V1 as u64 {
                 (0..de.read_leb128_u64()?)
                     .map(|_| {
                         let name = String::from_utf8(de.read_vec()?)
@@ -380,7 +396,7 @@ mod serialization {
                 ))
             }?;
             Ok(Self {
-                version: Version::V3,
+                version: Version::V1,
                 dimensions,
             })
         }
@@ -391,7 +407,7 @@ mod serialization {
         use crate::abe_policy::gen_structure;
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
-        let mut structure = Default::default();
+        let mut structure = AccessStructure::new();
         gen_structure(&mut structure).unwrap();
         test_serialization(&structure).unwrap();
     }
@@ -404,7 +420,7 @@ mod tests {
 
     #[test]
     fn test_combine() {
-        let mut structure = AccessStructure::default();
+        let mut structure = AccessStructure::new();
         gen_structure(&mut structure).unwrap();
 
         // There should be `Prod_dim(|dim| + 1)` rights.
@@ -442,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_generate_complementary_rights() -> Result<(), Error> {
-        let mut structure = AccessStructure::default();
+        let mut structure = AccessStructure::new();
         gen_structure(&mut structure).unwrap();
 
         {
