@@ -53,7 +53,7 @@ type Tag = [u8; TAG_LENGTH];
 /// Number of colluding users needed to escape tracing.
 pub const MIN_TRACING_LEVEL: usize = 1;
 
-/// The Covercrypt subkeys hold the DH secret key associated to a coordinate.
+/// The Covercrypt subkeys hold the DH secret key associated to a right.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightSecretKey {
@@ -62,8 +62,8 @@ enum RightSecretKey {
 }
 
 impl RightSecretKey {
-    /// Generates a new random coordinate keypair cryptographically bound to the
-    /// Covercrypt binding point `h`.
+    /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
+    /// point `h`.
     fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
         let sk = Scalar::new(rng);
         if hybridize {
@@ -74,19 +74,19 @@ impl RightSecretKey {
         }
     }
 
-    /// Generates the associated coordinate public key.
+    /// Generates the associated right public key.
     #[must_use]
-    fn cpk(&self, h: &EcPoint) -> CoordinatePublicKey {
+    fn cpk(&self, h: &EcPoint) -> RightPublicKey {
         match self {
-            Self::Hybridized { sk, dk } => CoordinatePublicKey::Hybridized {
+            Self::Hybridized { sk, dk } => RightPublicKey::Hybridized {
                 H: h * sk,
                 ek: dk.ek(),
             },
-            Self::Classic { sk } => CoordinatePublicKey::Classic { H: h * sk },
+            Self::Classic { sk } => RightPublicKey::Classic { H: h * sk },
         }
     }
 
-    /// Returns true if this coordinate keypair is hybridized.
+    /// Returns true if this right secret key is hybridized.
     fn is_hybridized(&self) -> bool {
         match self {
             Self::Hybridized { .. } => true,
@@ -102,10 +102,10 @@ impl RightSecretKey {
     }
 }
 
-/// The Covercrypt public keys hold the DH secret public key associated to a coordinate.
+/// The Covercrypt public keys hold the DH secret public key associated to a right.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
 #[derive(Clone, Debug, PartialEq)]
-enum CoordinatePublicKey {
+enum RightPublicKey {
     Hybridized {
         H: EcPoint,
         ek: kem::EncapsulationKey512,
@@ -115,7 +115,7 @@ enum CoordinatePublicKey {
     },
 }
 
-impl CoordinatePublicKey {
+impl RightPublicKey {
     pub fn is_hybridized(&self) -> bool {
         match self {
             Self::Hybridized { .. } => true,
@@ -212,7 +212,7 @@ impl TracingSecretKey {
         }
     }
 
-    /// Set the level of the tracing keypair to the target level.
+    /// Set the level of the tracing secret key to the target level.
     pub fn _set_tracing_level(
         &mut self,
         rng: &mut impl CryptoRngCore,
@@ -350,27 +350,25 @@ pub struct MasterSecretKey {
 }
 
 impl MasterSecretKey {
-    /// Returns the most recent secret key associated to each given coordinate.
+    /// Returns the most recent secret key associated to each given right.
     ///
     /// # Error
     ///
-    /// Returns an error if some coordinate is missing from the MSK.
-    fn get_latest_coordinate_sk<'a>(
+    /// Returns an error if some right is missing from the MSK.
+    fn get_latest_right_sk<'a>(
         &'a self,
-        coordinates: impl Iterator<Item = Right> + 'a,
+        rs: impl Iterator<Item = Right> + 'a,
     ) -> impl Iterator<Item = Result<(Right, RightSecretKey), Error>> + 'a {
-        coordinates.map(|coordinate| {
+        rs.map(|r| {
             self.secrets
-                .get_latest(&coordinate)
-                .ok_or(Error::KeyError(format!(
-                    "MSK has no key for coordinate {coordinate:?}"
-                )))
+                .get_latest(&r)
+                .ok_or(Error::KeyError(format!("MSK has no key for right {r:?}")))
                 .cloned()
-                .map(|(_, key)| (coordinate, key))
+                .map(|(_, key)| (r, key))
         })
     }
 
-    /// Generates a new MPK holding the latest public information of each universal coordinate.
+    /// Generates a new MPK holding the latest public information of each right in Omega.
     pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
         let h = self.tsk.binding_point();
         Ok(MasterPublicKey {
@@ -378,10 +376,10 @@ impl MasterSecretKey {
             encryption_keys: self
                 .secrets
                 .iter()
-                .filter_map(|(coordinate, secrets)| {
+                .filter_map(|(r, secrets)| {
                     secrets.front().and_then(|(is_activated, csk)| {
                         if *is_activated {
-                            Some((coordinate.clone(), csk.cpk(&h)))
+                            Some((r.clone(), csk.cpk(&h)))
                         } else {
                             None
                         }
@@ -402,7 +400,7 @@ impl MasterSecretKey {
 #[derive(Debug, PartialEq)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
-    encryption_keys: HashMap<Right, CoordinatePublicKey>,
+    encryption_keys: HashMap<Right, RightPublicKey>,
     pub(crate) access_structure: AccessStructure,
 }
 
@@ -419,16 +417,16 @@ impl MasterPublicKey {
         self.tpk.0.iter().map(|gi| gi * r).collect()
     }
 
-    fn select_subkeys(&self, targets: &HashSet<Right>) -> Result<Vec<&CoordinatePublicKey>, Error> {
+    fn select_subkeys(&self, targets: &HashSet<Right>) -> Result<Vec<&RightPublicKey>, Error> {
         let subkeys = targets
             .iter()
-            .map(|coordinate| {
-                self.encryption_keys.get(coordinate).ok_or_else(|| {
-                    Error::KeyError(format!("no public key for coordinate '{coordinate:#?}'"))
-                })
+            .map(|r| {
+                self.encryption_keys
+                    .get(r)
+                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        CoordinatePublicKey::assert_homogeneity(&subkeys)?;
+        RightPublicKey::assert_homogeneity(&subkeys)?;
         Ok(subkeys)
     }
 }
@@ -437,20 +435,19 @@ impl MasterPublicKey {
 ///
 /// It is composed of:
 /// - a user ID (pair of scalars);
-/// - the keys of the coordinates derived from the user decryption policy;
+/// - the keys of the rights derived from the user decryption policy;
 /// - a signature from the MSK that guarantees its integrity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
     id: UserId,
-    coordinate_keys: RevisionVec<Right, RightSecretKey>,
+    secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
 
-/// Encapsulation of a `SHARED_SECRET_LENGTH`-byte secret for a given coordinate.
+/// Encapsulation of a `SHARED_SECRET_LENGTH`-byte secret for a given right.
 ///
-/// In case the security level of the associated coordinate was set to
-/// post-quantum secure, the key encapsulation is hybridized. This implies a
-/// significant size overhead.
+/// In case the security level of the associated right was set to post-quantum secure, the key
+/// encapsulation is hybridized. This implies a significant size overhead.
 #[derive(Debug, Clone, Hash, PartialEq)]
 enum Encapsulation {
     Classic {
@@ -464,13 +461,12 @@ enum Encapsulation {
 
 /// Covercrypt encapsulation.
 ///
-/// It is created for a subset of universal coordinates. One key encapsulation
-/// is created per associated coordinate.
+/// It is created for a subset of rights from Omega.
 ///
 /// It is composed of:
 /// - the early abort tag;
 /// - the traps used to select users that can open this encapsulation;
-/// - the coordinate encapsulations.
+/// - the right encapsulations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct XEnc {
     tag: Tag,

@@ -57,7 +57,7 @@ fn test_encapsulation() {
             HashSet::from_iter([target_coordinate.clone()]),
         )
         .unwrap();
-        assert_eq!(usk.coordinate_keys.len(), 1);
+        assert_eq!(usk.secrets.len(), 1);
         assert_eq!(Some(&key), decaps(&usk, &enc).unwrap().as_ref());
     }
 
@@ -67,7 +67,7 @@ fn test_encapsulation() {
         HashSet::from_iter([other_coordinate.clone()]),
     )
     .unwrap();
-    assert_eq!(usk.coordinate_keys.len(), 1);
+    assert_eq!(usk.secrets.len(), 1);
     assert_eq!(None, decaps(&usk, &enc).unwrap().as_ref());
 }
 
@@ -233,14 +233,14 @@ fn test_integrity_check() {
 
     // Here we are trying to get access to both USK1 and USK2 rights.
     let mut old_forged_usk = usk_1.clone();
-    for (key, chain) in usk_2.coordinate_keys.iter() {
+    for (key, chain) in usk_2.secrets.iter() {
         old_forged_usk
-            .coordinate_keys
+            .secrets
             .insert_new_chain(key.clone(), chain.clone());
     }
     assert_eq!(
-        old_forged_usk.coordinate_keys.count_elements(),
-        usk_1.coordinate_keys.count_elements() + usk_2.coordinate_keys.count_elements()
+        old_forged_usk.secrets.count_elements(),
+        usk_1.secrets.count_elements() + usk_2.secrets.count_elements()
     );
 
     // The forged key refresh is rejected: no modification is performed on it.

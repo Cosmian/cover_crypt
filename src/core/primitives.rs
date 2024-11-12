@@ -14,8 +14,8 @@ use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
 use super::{
-    kem::MlKem512, nike::R25519, CoordinatePublicKey, EcPoint, KmacSignature, RightSecretKey,
-    Scalar, TracingSecretKey, UserId, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
+    kem::MlKem512, nike::R25519, EcPoint, KmacSignature, RightPublicKey, RightSecretKey, Scalar,
+    TracingSecretKey, UserId, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
     SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
@@ -93,7 +93,7 @@ fn sign(
 
 /// Verifies the integrity of the given USK using the MSK.
 fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
-    let fresh_signature = sign(msk, &usk.id, &usk.coordinate_keys)?;
+    let fresh_signature = sign(msk, &usk.id, &usk.secrets)?;
     if fresh_signature != usk.signature {
         Err(Error::KeyError(
             "USK failed the integrity check".to_string(),
@@ -182,14 +182,14 @@ pub fn usk_keygen(
 ) -> Result<UserSecretKey, Error> {
     // Extract keys first to avoid unnecessary computation in case those cannot be found.
     let coordinate_keys = msk
-        .get_latest_coordinate_sk(coordinates.into_iter())
+        .get_latest_right_sk(coordinates.into_iter())
         .collect::<Result<RevisionVec<_, _>, Error>>()?;
     let id = msk.tsk.generate_user_id(rng)?;
     let signature = sign(msk, &id, &coordinate_keys)?;
 
     Ok(UserSecretKey {
         id,
-        coordinate_keys,
+        secrets: coordinate_keys,
         signature,
     })
 }
@@ -218,14 +218,14 @@ pub fn encaps(
         .into_iter()
         .map(|subkey| -> Result<Encapsulation, _> {
             match subkey {
-                CoordinatePublicKey::Hybridized { H, ek } => {
+                RightPublicKey::Hybridized { H, ek } => {
                     let mut K1 = h_hash(R25519::session_key(&r, H)?);
                     let (K2, E) = MlKem512::enc(ek, rng)?;
                     let F = xor_3(&S, &K1, &K2);
                     K1.zeroize();
                     Ok(Encapsulation::Hybridized { E, F })
                 }
-                CoordinatePublicKey::Classic { H } => {
+                RightPublicKey::Classic { H } => {
                     let K1 = h_hash(R25519::session_key(&r, H)?);
                     let F = xor_2(&S, &K1);
                     Ok(Encapsulation::Classic { F })
@@ -267,7 +267,7 @@ pub fn decaps(
 
     for enc in &encapsulation.encapsulations {
         // The breadth-first search tries all coordinate subkeys in a chronological order.
-        for key in usk.coordinate_keys.bfs() {
+        for key in usk.secrets.bfs() {
             let S = match (key, enc) {
                 (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
                     let mut K1 = h_hash(R25519::session_key(sk, &A)?);
@@ -382,18 +382,18 @@ pub fn refresh(
     let usk_id = take(&mut usk.id);
     let new_id = msk.tsk.refresh_id(rng, usk_id)?;
 
-    let usk_rights = take(&mut usk.coordinate_keys);
+    let usk_rights = take(&mut usk.secrets);
     let new_rights = if keep_old_rights {
         refresh_coordinate_keys(msk, usk_rights)
     } else {
-        msk.get_latest_coordinate_sk(usk_rights.into_keys())
+        msk.get_latest_right_sk(usk_rights.into_keys())
             .collect::<Result<RevisionVec<Right, RightSecretKey>, Error>>()?
     };
 
     let signature = sign(msk, &new_id, &new_rights)?;
 
     usk.id = new_id;
-    usk.coordinate_keys = new_rights;
+    usk.secrets = new_rights;
     usk.signature = signature;
 
     Ok(())

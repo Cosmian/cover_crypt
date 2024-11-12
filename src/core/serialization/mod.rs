@@ -8,7 +8,7 @@ use cosmian_crypto_core::{
 };
 
 use super::{
-    nike::EcPoint, CoordinatePublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
+    nike::EcPoint, RightPublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
     SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
@@ -46,7 +46,7 @@ impl Serializable for TracingPublicKey {
     }
 }
 
-impl Serializable for CoordinatePublicKey {
+impl Serializable for RightPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
@@ -120,7 +120,7 @@ impl Serializable for MasterPublicKey {
         let mut coordinate_keys = HashMap::with_capacity(n_coordinates);
         for _ in 0..n_coordinates {
             let coordinate = de.read::<Right>()?;
-            let pk = de.read::<CoordinatePublicKey>()?;
+            let pk = de.read::<RightPublicKey>()?;
             coordinate_keys.insert(coordinate, pk);
         }
         let access_structure = de.read::<AccessStructure>()?;
@@ -331,9 +331,9 @@ impl Serializable for UserSecretKey {
 
     fn length(&self) -> usize {
         self.id.length()
-            + to_leb128_len(self.coordinate_keys.len())
+            + to_leb128_len(self.secrets.len())
             + self
-                .coordinate_keys
+                .secrets
                 .iter()
                 .map(|(coordinate, chain)| {
                     coordinate.length()
@@ -346,8 +346,8 @@ impl Serializable for UserSecretKey {
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write(&self.id)?;
-        n += ser.write_leb128_u64(self.coordinate_keys.len() as u64)?;
-        for (coordinate, chain) in self.coordinate_keys.iter() {
+        n += ser.write_leb128_u64(self.secrets.len() as u64)?;
+        for (coordinate, chain) in self.secrets.iter() {
             n += ser.write(coordinate)?;
             n += ser.write_leb128_u64(chain.len() as u64)?;
             for sk in chain {
@@ -379,7 +379,7 @@ impl Serializable for UserSecretKey {
         };
         Ok(Self {
             id,
-            coordinate_keys,
+            secrets: coordinate_keys,
             signature: msk_signature,
         })
     }
