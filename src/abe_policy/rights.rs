@@ -8,8 +8,11 @@ use crate::Error;
 pub struct Right(pub(crate) Vec<u8>);
 
 impl Right {
-    /// Computes the representation of the right associated to the given list of attribute IDs.
-    pub fn from_attribute_ids(mut attribute_ids: Vec<usize>) -> Result<Self, Error> {
+    /// Returns the right associated to the given point.
+    ///
+    /// A point is defined as a sequence of attribute IDs while a right is some compact
+    /// representation of it, that is a fixed-point for the permutation.
+    pub fn from_point(mut attribute_ids: Vec<usize>) -> Result<Self, Error> {
         // A set of attribute has no order. Enforcing an order here allows having a unique
         // representation for all permutations.
         attribute_ids.sort_unstable();
@@ -76,7 +79,7 @@ mod tests {
     #[test]
     fn test_rights() -> Result<(), Error> {
         let mut values: Vec<usize> = vec![12, 0, usize::MAX, 1];
-        let r = Right::from_attribute_ids(values.clone())?;
+        let r = Right::from_point(values.clone())?;
         values.sort_unstable();
         let mut de = Deserializer::new(&r);
         for v in values {

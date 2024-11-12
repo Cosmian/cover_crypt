@@ -60,7 +60,6 @@ pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
     /// Encrypts the given plaintext under the given access policy.
     ///
     /// # Error
-    ///
     /// Returns an error if the access policy is not valid.
     fn encrypt(
         &self,
@@ -71,8 +70,6 @@ pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
 
     /// Attempts decrypting the given ciphertext with the given key. Returns the plaintext upon
     /// success, or `None` if this key was not authorized to decrypt this ciphertext.
-    //
-    // TODO: document error cases.
     fn decrypt(
         &self,
         usk: &Self::DecryptionKey,
@@ -87,15 +84,20 @@ pub trait Kem {
     type Encapsulation;
     type Error: std::error::Error;
 
+    /// Generates a new random keypair.
     fn keygen(
         rng: &mut impl CryptoRngCore,
     ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error>;
 
+    /// Generates an encapsulation of a random session key, and returns both the key and its
+    /// encapsulation.
     fn enc(
         ek: &Self::EncapsulationKey,
         rng: &mut impl CryptoRngCore,
     ) -> Result<(Self::SessionKey, Self::Encapsulation), Self::Error>;
 
+    /// Attempts opening the given encapsulation. Upon failure to decapsulate, returns a random
+    /// session key.
     fn dec(
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
@@ -108,7 +110,7 @@ pub trait Nike {
     type SessionKey;
     type Error: std::error::Error;
 
-    /// Generates a new keypair.
+    /// Generates a new random keypair.
     fn keygen(
         rng: &mut impl CryptoRngCore,
     ) -> Result<(Self::SecretKey, Self::PublicKey), Self::Error>;
