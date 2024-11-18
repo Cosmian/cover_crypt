@@ -3,6 +3,8 @@ use std::ops::Add;
 use std::ops::Mul;
 use zeroize::Zeroizing;
 
+use crate::abe_policy::Right;
+use crate::core::RightSecretKey;
 use crate::AccessPolicy;
 
 pub trait KemAc<const LENGTH: usize> {
@@ -29,6 +31,12 @@ pub trait KemAc<const LENGTH: usize> {
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<LENGTH>>, Self::Error>;
+
+    fn full_decaps(
+        &self,
+        dk: &Self::DecapsulationKey,
+        enc: &Self::Encapsulation,
+    ) -> Result<Option<Vec<(Right, RightSecretKey)>>, Self::Error>;
 }
 
 pub trait AE<const KEY_LENGTH: usize> {

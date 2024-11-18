@@ -451,3 +451,65 @@ fn refresh_coordinate_keys(
         })
         .collect::<RevisionVec<_, _>>()
 }
+
+/// Attempts opening the Covercrypt encapsulation using the given USK. Returns
+/// the encapsulated key upon success, otherwise returns `None`.
+pub fn full_decaps(
+    usk: &UserSecretKey,
+    encapsulation: &XEnc,
+) -> Result<Option<Vec<(Right, RightSecretKey)>>, Error> {
+    // A = ⊙ _i (α_i. c_i)
+    let A = usk
+        .id
+        .iter()
+        .zip(encapsulation.c.iter())
+        .map(|(marker, trap)| trap * marker)
+        .fold(EcPoint::identity(), |mut acc, elt| {
+            acc = &acc + &elt;
+            acc
+        });
+
+    let mut rights_list = Vec::new();
+
+    for enc in &encapsulation.encapsulations {
+        println!("enc:{:?}", enc);
+
+        for  (right, key) in usk.secrets.clone().into_iter() {
+            println!("right:{:?}", right);
+            println!("key:{:?}", key.clone());
+
+            let mut usk_secret_key = key.clone().into_iter();
+            let secret_key = usk_secret_key.next().unwrap();
+            println!("secret_key:{:?}", secret_key);
+
+            let S = match (secret_key.clone(), enc) {
+                (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
+                    let mut K1 = h_hash(R25519::session_key(&sk, &A)?);
+                    let K2 = MlKem512::dec(&dk, E)?;
+                    let S = xor_3(F, &K1, &K2);
+                    K1.zeroize();
+                    S
+                }
+                (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
+                    let K1 = h_hash(R25519::session_key(&sk, &A)?);
+                    xor_2(F, &K1)
+                }
+                (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
+                | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => {
+                    continue;
+                }
+            };
+
+            let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
+            println!("tag:{:?}", tag);
+            println!("ss:{:?}", ss);
+
+            if tag == encapsulation.tag {
+                rights_list.push((right, secret_key));
+            }
+        }
+        println!("rights_list:{:?}", rights_list);
+        return Ok(Some(rights_list))
+    }
+    Ok(None)
+}
