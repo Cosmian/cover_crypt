@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     abe_policy::{AccessPolicy, Right}, core::{
-        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup}, MasterPublicKey, MasterSecretKey, RightSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH
+        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup}, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH
     }, traits::{KemAc, PkeAc}, Error
 };
 
@@ -168,7 +168,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         &self,
         usk: &UserSecretKey,
         enc: &XEnc,
-    ) -> Result<Option<Vec<(Right, RightSecretKey)>>, Error>{
+    ) -> Result<Option<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>>, Error>{
         full_decaps(usk, enc)
     }
 }

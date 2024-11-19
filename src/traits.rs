@@ -4,7 +4,6 @@ use std::ops::Mul;
 use zeroize::Zeroizing;
 
 use crate::abe_policy::Right;
-use crate::core::RightSecretKey;
 use crate::AccessPolicy;
 
 pub trait KemAc<const LENGTH: usize> {
@@ -36,7 +35,7 @@ pub trait KemAc<const LENGTH: usize> {
         &self,
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
-    ) -> Result<Option<Vec<(Right, RightSecretKey)>>, Self::Error>;
+    ) -> Result<Option<Vec<(Right, Secret<LENGTH>)>>, Self::Error>;
 }
 
 pub trait AE<const KEY_LENGTH: usize> {

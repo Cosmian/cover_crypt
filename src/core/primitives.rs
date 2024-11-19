@@ -453,11 +453,11 @@ fn refresh_coordinate_keys(
 }
 
 /// Attempts opening the Covercrypt encapsulation using the given USK. Returns
-/// the encapsulated key upon success, otherwise returns `None`.
+/// the encapsulated key and associated rights upon success, otherwise returns `None`.
 pub fn full_decaps(
     usk: &UserSecretKey,
     encapsulation: &XEnc,
-) -> Result<Option<Vec<(Right, RightSecretKey)>>, Error> {
+) -> Result<Option<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>>, Error> {
     // A = ⊙ _i (α_i. c_i)
     let A = usk
         .id
@@ -469,20 +469,10 @@ pub fn full_decaps(
             acc
         });
 
-    let mut rights_list = Vec::new();
-
     for enc in &encapsulation.encapsulations {
-        println!("enc:{:?}", enc);
-
-        for  (right, key) in usk.secrets.clone().into_iter() {
-            println!("right:{:?}", right);
-            println!("key:{:?}", key.clone());
-
-            let mut usk_secret_key = key.clone().into_iter();
-            let secret_key = usk_secret_key.next().unwrap();
-            println!("secret_key:{:?}", secret_key);
-
-            let S = match (secret_key.clone(), enc) {
+        let mut rights_list: Vec<(Right, Secret<SHARED_SECRET_LENGTH>)> = Vec::new();
+        for secret in usk.secrets.flat_iter() {
+            let S = match (secret.1, enc) {
                 (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
                     let mut K1 = h_hash(R25519::session_key(&sk, &A)?);
                     let K2 = MlKem512::dec(&dk, E)?;
@@ -501,15 +491,12 @@ pub fn full_decaps(
             };
 
             let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
-            println!("tag:{:?}", tag);
-            println!("ss:{:?}", ss);
 
             if tag == encapsulation.tag {
-                rights_list.push((right, secret_key));
+                rights_list.push((secret.0.clone(), ss));
             }
         }
-        println!("rights_list:{:?}", rights_list);
-        return Ok(Some(rights_list))
+        return Ok(Some(rights_list));
     }
     Ok(None)
 }
