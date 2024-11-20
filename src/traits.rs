@@ -10,6 +10,7 @@ pub trait KemAc<const LENGTH: usize> {
     type EncapsulationKey;
     type DecapsulationKey;
     type Encapsulation;
+    type FullDecapsulationKey;
     type Error: std::error::Error;
 
     /// Generates a new encapsulation for the given access policy.
@@ -33,9 +34,9 @@ pub trait KemAc<const LENGTH: usize> {
 
     fn full_decaps(
         &self,
-        dk: &Self::DecapsulationKey,
+        fdk: &Self::FullDecapsulationKey,
         enc: &Self::Encapsulation,
-    ) -> Result<Option<Vec<(Right, Secret<LENGTH>)>>, Self::Error>;
+    ) -> Result<Vec<(Right, Secret<LENGTH>)>, Self::Error>;
 }
 
 pub trait AE<const KEY_LENGTH: usize> {

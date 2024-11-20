@@ -261,7 +261,8 @@ fn test_covercrypt_kem() {
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
-    let full = cc.full_decaps(&usk, &enc).unwrap().unwrap();
+    let full = cc.full_decaps(&msk, &enc).unwrap();
+    println!("{:?}", full);
     assert_eq!(full[0].1, secret);
 }
 

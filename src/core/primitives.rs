@@ -7,7 +7,7 @@ use std::{
 use cosmian_crypto_core::{
     bytes_ser_de::Serializable,
     reexport::rand_core::{CryptoRngCore, RngCore},
-    RandomFixedSizeCBytes, Secret, SymmetricKey,
+    R25519CurvePoint, RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
@@ -268,24 +268,7 @@ pub fn decaps(
     for enc in &encapsulation.encapsulations {
         // The breadth-first search tries all coordinate subkeys in a chronological order.
         for key in usk.secrets.bfs() {
-            let S = match (key, enc) {
-                (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
-                    let mut K1 = h_hash(R25519::session_key(sk, &A)?);
-                    let K2 = MlKem512::dec(dk, E)?;
-                    let S = xor_3(F, &K1, &K2);
-                    K1.zeroize();
-                    S
-                }
-                (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
-                    let K1 = h_hash(R25519::session_key(sk, &A)?);
-                    xor_2(F, &K1)
-                }
-                (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
-                | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => {
-                    continue;
-                }
-            };
-
+            let S = S(key, enc, A.clone());
             let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
 
             if tag == encapsulation.tag {
@@ -455,48 +438,42 @@ fn refresh_coordinate_keys(
 /// Attempts opening the Covercrypt encapsulation using the given USK. Returns
 /// the encapsulated key and associated rights upon success, otherwise returns `None`.
 pub fn full_decaps(
-    usk: &UserSecretKey,
     encapsulation: &XEnc,
-) -> Result<Option<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>>, Error> {
+    msk: &MasterSecretKey,
+) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
     // A = ⊙ _i (α_i. c_i)
-    let A = usk
-        .id
-        .iter()
-        .zip(encapsulation.c.iter())
-        .map(|(marker, trap)| trap * marker)
-        .fold(EcPoint::identity(), |mut acc, elt| {
-            acc = &acc + &elt;
-            acc
-        });
+    let A = msk.tsk.binding_point();
+
+    let mut rights_list: Vec<(Right, Secret<SHARED_SECRET_LENGTH>)> = Vec::new();
 
     for enc in &encapsulation.encapsulations {
-        let mut rights_list: Vec<(Right, Secret<SHARED_SECRET_LENGTH>)> = Vec::new();
-        for secret in usk.secrets.flat_iter() {
-            let S = match (secret.1, enc) {
-                (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
-                    let mut K1 = h_hash(R25519::session_key(&sk, &A)?);
-                    let K2 = MlKem512::dec(&dk, E)?;
-                    let S = xor_3(F, &K1, &K2);
-                    K1.zeroize();
-                    S
-                }
-                (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
-                    let K1 = h_hash(R25519::session_key(&sk, &A)?);
-                    xor_2(F, &K1)
-                }
-                (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
-                | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => {
-                    continue;
-                }
-            };
+        for (right,mut key) in msk.secrets.iter() {
 
+            let S = S(key, enc, A.clone());
             let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
 
             if tag == encapsulation.tag {
-                rights_list.push((secret.0.clone(), ss));
+                rights_list.push((right.clone(), ss));
             }
         }
-        return Ok(Some(rights_list));
     }
-    Ok(None)
+    Ok(rights_list)
+}
+
+fn S(key: &RightSecretKey, enc: &Encapsulation, A: R25519CurvePoint) -> [u8; 32] {
+    return match (key, enc) {
+        (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
+            let mut K1 = h_hash(R25519::session_key(&sk, &A).unwrap());
+            let K2 = MlKem512::dec(&dk, &E).unwrap();
+            let S = xor_3(&F, &K1, &K2);
+            K1.zeroize();
+            S
+        }
+        (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
+            let K1 = h_hash(R25519::session_key(&sk, &A).unwrap());
+            xor_2(&F, &K1)
+        }
+        (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
+        | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => todo! {},
+    };
 }
