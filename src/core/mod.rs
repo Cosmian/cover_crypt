@@ -444,6 +444,18 @@ pub struct UserSecretKey {
     signature: Option<KmacSignature>,
 }
 
+impl UserSecretKey {
+    /// Returns the tracing level of this user secret key.
+    pub fn tracing_level(&self) -> usize {
+        self.id.tracing_level()
+    }
+
+    #[cfg(feature = "test-utils")]
+    pub fn count(&self) -> usize {
+        self.secrets.len()
+    }
+}
+
 /// Encapsulation of a `SHARED_SECRET_LENGTH`-byte secret for a given right.
 ///
 /// In case the security level of the associated right was set to post-quantum secure, the key
@@ -478,5 +490,10 @@ impl XEnc {
     /// Returns the tracing level of this encapsulation.
     pub fn tracing_level(&self) -> usize {
         self.c.len() - 1
+    }
+
+    #[cfg(feature = "test-utils")]
+    pub fn count(&self) -> usize {
+        self.encapsulations.len()
     }
 }

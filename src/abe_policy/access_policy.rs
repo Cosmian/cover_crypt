@@ -75,19 +75,19 @@ impl AccessPolicy {
     ///
     /// The following expressions define valid access policies:
     ///
-    /// - "Department::MKG && (Country::FR || Country::DE)"
+    /// - "DPT::MKG && (CTR::FR || CTR::DE)"
     /// - ""
-    /// - "Security Level::Low Secret && Country::FR"
+    /// - "SEC::Low Secret && CTR::FR"
     ///
     /// Notice that the arity of the operators is two. Therefore the following
     /// access policy is *invalid*:
     ///
-    /// - "Department::MKG (&& Country::FR || Country::DE)"
+    /// - "DPT::MKG (&& CTR::FR || CTR::DE)"
     ///
     /// It is not possible to concatenate attributes. Therefore the following
     /// access policy is *invalid*:
     ///
-    /// - "Department::MKG Department::FIN"
+    /// - "DPT::MKG DPT::FIN"
     pub fn parse(mut e: &str) -> Result<Self, Error> {
         let seeker = |c: &char| !"()|&".contains(*c);
         let mut q = LinkedList::<Self>::new();

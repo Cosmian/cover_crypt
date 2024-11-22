@@ -540,15 +540,12 @@ mod tests {
 
         {
             let cc = Covercrypt::default();
-            let (mut msk, mpk) = cc_keygen(&cc).unwrap();
+            let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
             let usk = cc
-                .generate_user_secret_key(
-                    &mut msk,
-                    &AccessPolicy::parse("Security Level::Top Secret").unwrap(),
-                )
+                .generate_user_secret_key(&mut msk, &AccessPolicy::parse("SEC::TOP").unwrap())
                 .unwrap();
             let (_, enc) = cc
-                .encaps(&mpk, &AccessPolicy::parse("Department::MKG").unwrap())
+                .encaps(&mpk, &AccessPolicy::parse("DPT::MKG").unwrap())
                 .unwrap();
 
             test_serialization(&msk).unwrap();

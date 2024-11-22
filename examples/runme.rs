@@ -4,7 +4,7 @@ use cosmian_cover_crypt::{api::Covercrypt, test_utils::cc_keygen, AccessPolicy, 
 
 fn main() {
     let cc = Covercrypt::default();
-    let (mut msk, mpk) = cc_keygen(&cc).unwrap();
+    let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).

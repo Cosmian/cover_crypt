@@ -13,14 +13,14 @@ use cosmian_crypto_core::{
 use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
-use super::{
-    kem::MlKem512, nike::R25519, EcPoint, KmacSignature, RightPublicKey, RightSecretKey, Scalar,
-    TracingSecretKey, UserId, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
-    SIGNING_KEY_LENGTH, TAG_LENGTH,
-};
 use crate::{
     abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
-    core::{Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
+    core::{
+        kem::MlKem512, nike::R25519, EcPoint, Encapsulation, KmacSignature, MasterPublicKey,
+        MasterSecretKey, RightPublicKey, RightSecretKey, Scalar, TracingSecretKey, UserId,
+        UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
+        SIGNING_KEY_LENGTH, TAG_LENGTH,
+    },
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
     Error,

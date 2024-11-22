@@ -22,6 +22,12 @@ pub mod traits;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
+#[cfg(feature = "test-utils")]
+pub use abe_policy::gen_structure;
+
+#[cfg(feature = "test-utils")]
+pub use test_utils::cc_keygen;
+
 pub use self::core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
 pub use abe_policy::AccessPolicy;
 pub use encrypted_header::{CleartextHeader, EncryptedHeader};

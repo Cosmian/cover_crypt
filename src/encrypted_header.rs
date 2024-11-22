@@ -196,12 +196,9 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc).unwrap();
+        let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
 
-        let ap = AccessPolicy::parse(
-            "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        )
-        .unwrap();
+        let ap = AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
         let usk = cc.generate_user_secret_key(&mut msk, &ap).unwrap();
 
         //
@@ -230,19 +227,19 @@ mod serialization {
             );
         };
 
-        test_encrypted_header(AccessPolicy::parse("Department::MKG").unwrap(), None, None);
+        test_encrypted_header(AccessPolicy::parse("DPT::MKG").unwrap(), None, None);
         test_encrypted_header(
-            AccessPolicy::parse("Department::MKG").unwrap(),
+            AccessPolicy::parse("DPT::MKG").unwrap(),
             Some("metadata".as_bytes()),
             None,
         );
         test_encrypted_header(
-            AccessPolicy::parse("Department::MKG").unwrap(),
+            AccessPolicy::parse("DPT::MKG").unwrap(),
             Some("metadata".as_bytes()),
             Some("authentication data".as_bytes()),
         );
         test_encrypted_header(
-            AccessPolicy::parse("Department::MKG").unwrap(),
+            AccessPolicy::parse("DPT::MKG").unwrap(),
             None,
             Some("authentication data".as_bytes()),
         );

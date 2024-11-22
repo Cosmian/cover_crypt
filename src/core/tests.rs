@@ -251,9 +251,9 @@ fn test_integrity_check() {
 
 #[test]
 fn test_covercrypt_kem() {
-    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let cc = Covercrypt::default();
-    let (mut msk, _mpk) = cc_keygen(&cc).unwrap();
+    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
     let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
     let usk = cc
         .generate_user_secret_key(&mut msk, &ap)
@@ -265,9 +265,9 @@ fn test_covercrypt_kem() {
 
 #[test]
 fn test_covercrypt_pke() {
-    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let cc = Covercrypt::default();
-    let (mut msk, mpk) = cc_keygen(&cc).unwrap();
+    let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
 
     let ptx = "testing encryption/decryption".as_bytes();
 

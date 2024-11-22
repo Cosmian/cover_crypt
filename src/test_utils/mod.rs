@@ -3,9 +3,12 @@ use crate::{abe_policy::gen_structure, api::Covercrypt, Error, MasterPublicKey, 
 //pub mod non_regression;
 
 /// Creates the test access structure.
-pub fn cc_keygen(cc: &Covercrypt) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+pub fn cc_keygen(
+    cc: &Covercrypt,
+    complete: bool,
+) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
     let (mut msk, _) = cc.setup()?;
-    gen_structure(&mut msk.access_structure)?;
+    gen_structure(&mut msk.access_structure, complete)?;
     let mpk = cc.update_msk(&mut msk)?;
     Ok((msk, mpk))
 }
@@ -24,20 +27,19 @@ mod tests {
     #[test]
     fn test_add_attribute() -> Result<(), Error> {
         let cc = Covercrypt::default();
-        let (mut msk, _mpk) = cc_keygen(&cc)?;
+        let (mut msk, _mpk) = cc_keygen(&cc, false)?;
 
-        let decryption_policy = AccessPolicy::parse("Security Level::Low Secret")?;
+        let decryption_policy = AccessPolicy::parse("SEC::LOW")?;
         let mut low_secret_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         let _ = &mut msk.access_structure.add_attribute(
-            QualifiedAttribute::new("Department", "Sales"),
+            QualifiedAttribute::new("DPT", "Sales"),
             EncryptionHint::Classic,
             None,
         )?;
         let mpk = cc.update_msk(&mut msk)?;
 
-        let secret_sales_ap =
-            AccessPolicy::parse("Security Level::Low Secret && Department::Sales")?;
+        let secret_sales_ap = AccessPolicy::parse("SEC::LOW && DPT::Sales")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cc, &mpk, &secret_sales_ap, None, None)?;
 
@@ -60,22 +62,20 @@ mod tests {
     #[test]
     fn test_delete_attribute() -> Result<(), Error> {
         let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc)?;
+        let (mut msk, mpk) = cc_keygen(&cc, false)?;
 
         // New user secret key
-        let decryption_policy = AccessPolicy::parse(
-            "Security Level::Top Secret && (Department::FIN || Department::HR)",
-        )?;
+        let decryption_policy = AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?;
         let mut top_secret_fin_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         // Encrypt
-        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
         msk.access_structure
-            .del_attribute(&QualifiedAttribute::new("Department", "FIN"))?;
+            .del_attribute(&QualifiedAttribute::new("DPT", "FIN"))?;
 
         // update the master keys
         let _ = cc.update_msk(&mut msk)?;
@@ -85,8 +85,7 @@ mod tests {
             .unwrap()
             .is_some());
 
-        let _new_decryption_policy =
-            AccessPolicy::parse("Security Level::Top Secret && Department::HR")?;
+        let _new_decryption_policy = AccessPolicy::parse("SEC::TOP && DPT::HR")?;
 
         // Refreshing the USK removes the keys associated to rights that do not exist anymore in
         // the MSK, even if it is asked to preserve the old secrets.
@@ -102,24 +101,22 @@ mod tests {
     #[test]
     fn test_deactivate_attribute() -> Result<(), Error> {
         let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc)?;
+        let (mut msk, mpk) = cc_keygen(&cc, false)?;
 
         //
         // New user secret key
-        let decryption_policy = AccessPolicy::parse(
-            "Security Level::Top Secret && (Department::FIN || Department::HR)",
-        )?;
+        let decryption_policy = AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?;
         let mut top_secret_fin_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         //
         // Encrypt
-        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
         msk.access_structure
-            .disable_attribute(&QualifiedAttribute::new("Department", "FIN"))?;
+            .disable_attribute(&QualifiedAttribute::new("DPT", "FIN"))?;
 
         // update the master keys
         let mpk = cc.update_msk(&mut msk)?;
@@ -130,7 +127,7 @@ mod tests {
             .is_some());
 
         // Can not encrypt using deactivated attribute
-        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
 
         assert!(EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None).is_err());
 
@@ -154,21 +151,20 @@ mod tests {
     #[test]
     fn test_rename_attribute() -> Result<(), Error> {
         let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc)?;
+        let (mut msk, mpk) = cc_keygen(&cc, false)?;
 
         // New user secret key
-        let decryption_policy =
-            AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
+        let decryption_policy = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
         let mut top_secret_fin_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         // Encrypt
-        let top_secret_ap = AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?;
+        let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
         let (_, encrypted_header) =
             EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)?;
 
         // remove the FIN department
         msk.access_structure.rename_attribute(
-            &QualifiedAttribute::new("Department", "FIN"),
+            &QualifiedAttribute::new("DPT", "FIN"),
             "Finance".to_string(),
         )?;
 
@@ -181,8 +177,7 @@ mod tests {
             .is_some());
 
         // refresh the user key and preserve old secrets
-        let _new_decryption_policy =
-            AccessPolicy::parse("Security Level::Top Secret && Department::Finance")?;
+        let _new_decryption_policy = AccessPolicy::parse("SEC::TOP && DPT::Finance")?;
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
         assert!(encrypted_header
             .decrypt(&cc, &top_secret_fin_usk, None)
@@ -194,13 +189,10 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        let access_policy = AccessPolicy::parse(
-            "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        )
-        .unwrap();
+        let access_policy = AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
         let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc)?;
-        let ap = AccessPolicy::parse("Department::MKG && Security Level::Top Secret")?;
+        let (mut msk, mpk) = cc_keygen(&cc, false)?;
+        let ap = AccessPolicy::parse("DPT::MKG && SEC::TOP")?;
         let (sym_key, encrypted_key) = cc.encaps(&mpk, &ap)?;
         let usk = cc.generate_user_secret_key(&mut msk, &access_policy)?;
         let recovered_key = cc.decaps(&usk, &encrypted_key)?;
@@ -211,31 +203,26 @@ mod tests {
     #[test]
     fn test_single_attribute_in_access_policy() -> Result<(), Error> {
         let cc = Covercrypt::default();
-        let (mut msk, _mpk) = cc_keygen(&cc)?;
+        let (mut msk, _mpk) = cc_keygen(&cc, false)?;
 
         //
         // New user secret key
-        let _user_key = cc.generate_user_secret_key(
-            &mut msk,
-            &AccessPolicy::parse("Security Level::Top Secret")?,
-        )?;
+        let _user_key = cc.generate_user_secret_key(&mut msk, &AccessPolicy::parse("SEC::TOP")?)?;
 
         Ok(())
     }
 
     #[test]
     fn test_rotate_then_encrypt() -> Result<(), Error> {
-        let top_secret_ap = &AccessPolicy::parse("Security Level::Top Secret")?;
+        let top_secret_ap = &AccessPolicy::parse("SEC::TOP")?;
 
         let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc)?;
+        let (mut msk, mpk) = cc_keygen(&cc, false)?;
 
         //
         // New user secret key
-        let mut top_secret_fin_usk = cc.generate_user_secret_key(
-            &mut msk,
-            &AccessPolicy::parse("Security Level::Top Secret && Department::FIN")?,
-        )?;
+        let mut top_secret_fin_usk =
+            cc.generate_user_secret_key(&mut msk, &AccessPolicy::parse("SEC::TOP && DPT::FIN")?)?;
 
         //
         // Encrypt
@@ -248,8 +235,7 @@ mod tests {
 
         //
         // Rotate argument (must update master keys)
-        let rekey_ap =
-            AccessPolicy::Term(QualifiedAttribute::from(("Security Level", "Top Secret")));
+        let rekey_ap = AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP")));
         let mpk = cc.rekey(&mut msk, &rekey_ap)?;
 
         //

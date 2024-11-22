@@ -408,7 +408,7 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut structure = AccessStructure::new();
-        gen_structure(&mut structure).unwrap();
+        gen_structure(&mut structure, false).unwrap();
         test_serialization(&structure).unwrap();
     }
 }
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn test_combine() {
         let mut structure = AccessStructure::new();
-        gen_structure(&mut structure).unwrap();
+        gen_structure(&mut structure, false).unwrap();
 
         // There should be `Prod_dim(|dim| + 1)` rights.
         assert_eq!(
@@ -459,126 +459,116 @@ mod tests {
     #[test]
     fn test_generate_complementary_rights() -> Result<(), Error> {
         let mut structure = AccessStructure::new();
-        gen_structure(&mut structure).unwrap();
+        gen_structure(&mut structure, false).unwrap();
 
         {
-            let ap = "(Department::HR || Department::FIN) && Security Level::Low Secret";
+            let ap = "(DPT::HR || DPT::FIN) && SEC::TOP";
             let comp_points = structure.generate_complementary_rights(&AccessPolicy::parse(ap)?)?;
 
             // Check the rights are the same as the ones manually generated, i.e.:
             // - rights()
-            // - rights(HR, Protected)
-            // - rights(HR, Low Secret)
-            // - rights(FIN, Protected)
-            // - rights(FIN, Low Secret)
+            // - rights(HR, TOP)
+            // - rights(HR, LOW)
+            // - rights(FIN, TOP)
+            // - rights(FIN, LOW)
             let mut rights = HashSet::new();
 
             rights.insert(Right::from_point(vec![])?);
 
             rights.insert(Right::from_point(vec![structure.get_attribute_id(
                 &QualifiedAttribute {
-                    dimension: "Department".to_string(),
+                    dimension: "DPT".to_string(),
                     name: "FIN".to_string(),
                 },
             )?])?);
             rights.insert(Right::from_point(vec![structure.get_attribute_id(
                 &QualifiedAttribute {
-                    dimension: "Department".to_string(),
+                    dimension: "DPT".to_string(),
                     name: "HR".to_string(),
                 },
             )?])?);
             rights.insert(Right::from_point(vec![structure.get_attribute_id(
                 &QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Protected".to_string(),
+                    dimension: "SEC".to_string(),
+                    name: "LOW".to_string(),
                 },
             )?])?);
             rights.insert(Right::from_point(vec![structure.get_attribute_id(
                 &QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Low Secret".to_string(),
+                    dimension: "SEC".to_string(),
+                    name: "TOP".to_string(),
                 },
             )?])?);
 
             rights.insert(Right::from_point(vec![
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Department".to_string(),
+                    dimension: "DPT".to_string(),
                     name: "FIN".to_string(),
                 })?,
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Protected".to_string(),
+                    dimension: "SEC".to_string(),
+                    name: "LOW".to_string(),
                 })?,
             ])?);
             rights.insert(Right::from_point(vec![
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Department".to_string(),
+                    dimension: "DPT".to_string(),
                     name: "HR".to_string(),
                 })?,
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Protected".to_string(),
+                    dimension: "SEC".to_string(),
+                    name: "LOW".to_string(),
                 })?,
             ])?);
 
             rights.insert(Right::from_point(vec![
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Department".to_string(),
+                    dimension: "DPT".to_string(),
                     name: "HR".to_string(),
                 })?,
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Low Secret".to_string(),
+                    dimension: "SEC".to_string(),
+                    name: "TOP".to_string(),
                 })?,
             ])?);
 
             rights.insert(Right::from_point(vec![
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Department".to_string(),
+                    dimension: "DPT".to_string(),
                     name: "FIN".to_string(),
                 })?,
                 structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Protected".to_string(),
+                    dimension: "SEC".to_string(),
+                    name: "TOP".to_string(),
                 })?,
             ])?);
 
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Department".to_string(),
-                    name: "FIN".to_string(),
-                })?,
-                structure.get_attribute_id(&QualifiedAttribute {
-                    dimension: "Security Level".to_string(),
-                    name: "Low Secret".to_string(),
-                })?,
-            ])?);
             assert_eq!(comp_points, rights);
         }
 
         // Check the number of rights generated by some other access policies.
         {
-            let ap = "Department::HR";
+            let ap = "DPT::HR";
             assert_eq!(
                 structure
                     .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // There are 5 rights in the security dimension, plus the broadcast for this
+                // There are 2 rights in the security dimension, plus the broadcast for this
                 // dimension. This is the restricted space. There is only one projection of
                 // DPT::HR, which is the universal broadcast. The complementary space is generated
                 // by extending these two points with the restricted space.
-                2 * (1 + 5)
+                2 * (1 + 2)
             );
 
-            let ap = "Security Level::Low Secret";
+            let ap = "SEC::LOW";
             assert_eq!(
                 structure
                     .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
                 // The restricted space is the department dimension, and the lower points are the
-                // associated point, the point associated to "Security Level::Protected" and the
+                // associated point, the point associated to "SEC::LOW" and the
                 // universal broadcast.
-                3 * (1 + 4)
+                2 * (1 + 5)
             );
         }
         Ok(())
