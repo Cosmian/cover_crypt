@@ -1,7 +1,9 @@
 use std::{
+    any::type_name,
     cmp::Ordering,
     collections::{HashMap, HashSet, LinkedList},
     mem::take,
+    u8,
 };
 
 use cosmian_crypto_core::{
@@ -269,10 +271,13 @@ pub fn decaps(
         // The breadth-first search tries all coordinate subkeys in a chronological order.
         for key in usk.secrets.bfs() {
             let S = S(key, enc, A.clone());
-            let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
+            if S.is_some() {
+                let unwrap_S = S.unwrap();
+                let (tag, ss) = j_hash(&unwrap_S, &encapsulation.c, &encapsulation.encapsulations)?;
 
-            if tag == encapsulation.tag {
-                return Ok(Some(ss));
+                if tag == encapsulation.tag {
+                    return Ok(Some(ss));
+                }
             }
         }
     }
@@ -442,38 +447,51 @@ pub fn full_decaps(
     msk: &MasterSecretKey,
 ) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
     // A = ⊙ _i (α_i. c_i)
-    let A = msk.tsk.binding_point();
+    let A: R25519CurvePoint = msk.tsk.s.clone().into();
 
     let mut rights_list: Vec<(Right, Secret<SHARED_SECRET_LENGTH>)> = Vec::new();
 
     for enc in &encapsulation.encapsulations {
-        for (right,mut key) in msk.secrets.iter() {
+        for (right, key) in msk.secrets.iter() {
+            for k in key {
+                let S = S(&k.1, enc, A.clone());
+                if S.is_some() {
+                    println!("SOME");
+                    let unwrap_S = S.unwrap();
+                    println!("{:?}", unwrap_S);
 
-            let S = S(key, enc, A.clone());
-            let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
+                    let (tag, ss) =
+                        j_hash(&unwrap_S, &encapsulation.c, &encapsulation.encapsulations)?;
+                        println!("SS: {:?}", ss);
+                        println!("TAG: {:?}", tag);
 
-            if tag == encapsulation.tag {
-                rights_list.push((right.clone(), ss));
+                    if tag == encapsulation.tag {
+                        rights_list.push((right.clone(), ss));
+                    }
+                } else {
+                    println!("NONE");
+                    continue;
+                }
             }
         }
     }
     Ok(rights_list)
 }
 
-fn S(key: &RightSecretKey, enc: &Encapsulation, A: R25519CurvePoint) -> [u8; 32] {
-    return match (key, enc) {
+fn S(key: &RightSecretKey, enc: &Encapsulation, A: R25519CurvePoint) -> Option<[u8; 32]> {
+    match (key, enc) {
         (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
             let mut K1 = h_hash(R25519::session_key(&sk, &A).unwrap());
             let K2 = MlKem512::dec(&dk, &E).unwrap();
             let S = xor_3(&F, &K1, &K2);
             K1.zeroize();
-            S
+            return Some(S);
         }
         (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
             let K1 = h_hash(R25519::session_key(&sk, &A).unwrap());
-            xor_2(&F, &K1)
+            return Some(xor_2(&F, &K1));
         }
         (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
-        | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => todo! {},
+        | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => return None,
     };
 }
