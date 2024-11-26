@@ -26,7 +26,7 @@ use crate::{
     traits::{Kem, Nike},
     Error,
 };
-use std::ops::Add;
+
 fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
     let mut out = [0; LENGTH];
     for pos in 0..LENGTH {
@@ -446,30 +446,24 @@ pub fn full_decaps(
     msk: &MasterSecretKey,
 ) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
     // A = ⊙ _i (α_i. c_i)
-    let A :R25519CurvePoint= msk.tsk.s.clone().into();
-
+    let A = encapsulation.c.first().unwrap() * &(&msk.tsk.s / &msk.tsk.tracers.front().unwrap().0);
     let mut rights_list: Vec<(Right, Secret<SHARED_SECRET_LENGTH>)> = Vec::new();
-
     for enc in &encapsulation.encapsulations {
         for (right, key) in msk.secrets.iter() {
             for k in key {
-                let S = S(&k.1, enc, A.clone());
-                if S.is_some() {
-                    println!("SOME");
-                    let unwrap_S = S.unwrap();
-                    println!("{:?}", unwrap_S);
-
-                    let (tag, ss) =
-                        j_hash(&unwrap_S, &encapsulation.c, &encapsulation.encapsulations)?;
-                    println!("SS: {:?}", ss);
-                    println!("TAG: {:?}", tag);
-
-                    if tag == encapsulation.tag {
-                        rights_list.push((right.clone(), ss));
-                    }
+                let list: Vec<Right> = rights_list.clone().into_iter().map(|r| r.0).collect();
+                if list.contains(right) {
+                    break;
                 } else {
-                    println!("NONE");
-                    continue;
+                    if let Some(S) = S(&k.1, enc, A.clone()) {
+                        let (tag, ss) =
+                            j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
+                        if tag == encapsulation.tag {
+                            rights_list.push((right.clone(), ss));
+                        }
+                    } else {
+                        continue;
+                    }
                 }
             }
         }
