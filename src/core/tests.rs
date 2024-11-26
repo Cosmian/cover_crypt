@@ -250,6 +250,19 @@ fn test_integrity_check() {
 }
 
 #[test]
+fn test_full_decaps() {
+        let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _mpk) = cc_keygen(&cc).unwrap();
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
+    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    println!("{:?}", secret);
+    let full = cc.full_decaps(&msk, &enc).unwrap();
+    println!("{:?}", full);
+    assert_eq!(full[0].1, secret);
+}
+
+#[test]
 fn test_covercrypt_kem() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let cc = Covercrypt::default();
@@ -259,13 +272,8 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    println!("{:?}", secret);
     let res = cc.decaps(&usk, &enc).unwrap();
-    println!("{:?}", res);
     assert_eq!(secret, res.unwrap());
-    let full = cc.full_decaps(&msk, &enc).unwrap();
-    println!("{:?}", full);
-    //assert_eq!(full[0].1, secret);
 }
 
 #[test]

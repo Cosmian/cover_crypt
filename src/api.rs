@@ -17,7 +17,6 @@ use crate::{
     traits::{KemAc, PkeAc},
     Error,
 };
-
 #[derive(Debug)]
 pub struct Covercrypt {
     rng: Mutex<CsRng>,
@@ -140,13 +139,20 @@ impl Covercrypt {
             keep_old_secrets,
         )
     }
+
+    pub fn full_decaps(
+        &self,
+        msk: &MasterSecretKey,
+        enc: &XEnc,
+    ) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
+        full_decaps( enc, msk)
+    }
 }
 
 impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     type EncapsulationKey = MasterPublicKey;
     type DecapsulationKey = UserSecretKey;
     type Encapsulation = XEnc;
-    type FullDecapsulationKey = MasterSecretKey;
     type Error = Error;
 
     fn encaps(
@@ -169,13 +175,6 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         decaps(usk, enc)
     }
 
-    fn full_decaps(
-        &self,
-        msk: &MasterSecretKey,
-        enc: &XEnc,
-    ) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
-        full_decaps( enc, msk)
-    }
 }
 
 impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH, Error = Error>> PkeAc<KEY_LENGTH, E>

@@ -1,5 +1,4 @@
 use std::{
-    any::type_name,
     cmp::Ordering,
     collections::{HashMap, HashSet, LinkedList},
     mem::take,
@@ -27,7 +26,7 @@ use crate::{
     traits::{Kem, Nike},
     Error,
 };
-
+use std::ops::Add;
 fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
     let mut out = [0; LENGTH];
     for pos in 0..LENGTH {
@@ -447,7 +446,7 @@ pub fn full_decaps(
     msk: &MasterSecretKey,
 ) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
     // A = ⊙ _i (α_i. c_i)
-    let A: R25519CurvePoint = msk.tsk.s.clone().into();
+    let A :R25519CurvePoint= msk.tsk.s.clone().into();
 
     let mut rights_list: Vec<(Right, Secret<SHARED_SECRET_LENGTH>)> = Vec::new();
 
@@ -462,8 +461,8 @@ pub fn full_decaps(
 
                     let (tag, ss) =
                         j_hash(&unwrap_S, &encapsulation.c, &encapsulation.encapsulations)?;
-                        println!("SS: {:?}", ss);
-                        println!("TAG: {:?}", tag);
+                    println!("SS: {:?}", ss);
+                    println!("TAG: {:?}", tag);
 
                     if tag == encapsulation.tag {
                         rights_list.push((right.clone(), ss));

@@ -56,7 +56,7 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 /// The Covercrypt subkeys hold the DH secret key associated to a right.
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
-pub enum RightSecretKey {
+enum RightSecretKey {
     Hybridized { sk: Scalar, dk: DecapsulationKey512 },
     Classic { sk: Scalar },
 }
