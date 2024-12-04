@@ -139,13 +139,15 @@ impl Covercrypt {
         )
     }
 
-    pub fn reencrypt(
+    /// Returns a new encapsulation with the same rights as the one given, along with a freshly
+    /// generated shared secret.
+    pub fn recaps(
         &self,
         msk: &MasterSecretKey,
         mpk: &MasterPublicKey,
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
-        let (_secret, rights) = full_decaps(msk, encapsulation)?;
+        let (_ss, rights) = full_decaps(msk, encapsulation)?;
         encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,

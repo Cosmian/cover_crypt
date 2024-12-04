@@ -265,7 +265,7 @@ fn test_reencrypt_with_msk() {
 
     cc.rekey(&mut msk, &ap).unwrap();
     let new_mpk = msk.mpk().unwrap();
-    let (new_key, new_enc) = cc.reencrypt(&msk, &new_mpk, &old_enc).unwrap();
+    let (new_key, new_enc) = cc.recaps(&msk, &new_mpk, &old_enc).unwrap();
     cc.refresh_usk(&mut msk, &mut usk, true).unwrap();
     assert_eq!(Some(new_key), decaps(&usk, &new_enc).unwrap());
     assert_ne!(Some(old_key), decaps(&usk, &new_enc).unwrap());
