@@ -445,8 +445,7 @@ pub fn reencrypt(
     Ok(new_encaps)
 }
 
-/// Attempts opening the Covercrypt encapsulation using the given MSK. Returns
-/// the encapsulated key and the list of given rights.
+/// Recover the encapsulated shared secret and set of rights used in the encapsulation.
 fn full_decaps(
     msk: &MasterSecretKey,
     encapsulation: &XEnc,
