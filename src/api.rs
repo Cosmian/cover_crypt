@@ -12,7 +12,7 @@ use crate::{
     AccessPolicy, Error,
     core::{
         MasterPublicKey, MasterSecretKey, SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
-        primitives::{decaps, encaps, reencrypt, refresh, rekey, setup},
+        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup},
     },
     traits::{KemAc, PkeAc},
 };
@@ -145,11 +145,11 @@ impl Covercrypt {
         mpk: &MasterPublicKey,
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
-        reencrypt(
+        let (_secret, rights) = full_decaps(msk, encapsulation)?;
+        encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
             mpk,
-            encapsulation,
+            &rights,
         )
     }
 }

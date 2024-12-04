@@ -432,48 +432,38 @@ fn refresh_coordinate_keys(
         .collect::<RevisionVec<_, _>>()
 }
 
-/// Refreshes the encapsulation with the given MSK.
-pub fn reencrypt(
-    rng: &mut impl CryptoRngCore,
-    msk: &MasterSecretKey,
-    mpk: &MasterPublicKey,
-    encapsulation: &XEnc,
-) -> Result<(Secret<32>, XEnc), Error> {
-    let (_secret, rights) = full_decaps(msk, encapsulation)?;
-    let vec_to_hashset = HashSet::from_iter(rights);
-    let new_encaps = encaps(rng, mpk, &vec_to_hashset)?;
-    Ok(new_encaps)
-}
-
 /// Recover the encapsulated shared secret and set of rights used in the encapsulation.
-fn full_decaps(
+pub fn full_decaps(
     msk: &MasterSecretKey,
     encapsulation: &XEnc,
-) -> Result<(Secret<SHARED_SECRET_LENGTH>, Vec<Right>), Error> {
-    let A = encapsulation.c.first().unwrap() * &(&msk.tsk.s / &msk.tsk.tracers.front().unwrap().0);
-    let mut rights = Vec::with_capacity(encapsulation.encapsulations.len());
-    let mut ss = Secret::new();
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+    let A;
+    if let Some(c) = encapsulation.c.first() {
+        A = c * &(&msk.tsk.s / &msk.tsk.tracers.front().unwrap().0);
+    } else {
+        return Err(Error::InvalidBooleanExpression(
+            "empty encapsulation dose not allow to go further".to_string(),
+        ));
+    }
+    let mut rights = HashSet::with_capacity(encapsulation.encapsulations.len());
+    let ss = Secret::new();
     for enc in &encapsulation.encapsulations {
         for (right, secrets) in msk.secrets.iter() {
             for (_, secret) in secrets {
-                if let Some(S) = match_right_and_encapsulation(secret, enc, &A) {
+                if let Some(S) = try_decaps(secret, enc, &A) {
                     let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
                     if tag == encapsulation.tag {
-                        shared_secret = ss;
-                        right_to_secrets.push(right.clone());
+                        drop(ss);
+                        rights.insert(right.clone());
                     }
                 }
             }
         }
     }
-    Ok((shared_secret, right_to_secrets))
+    Ok((ss, rights))
 }
 
-fn match_right_and_encapsulation(
-    secret: &RightSecretKey,
-    enc: &Encapsulation,
-    A: &EcPoint,
-) -> Option<[u8; 32]> {
+fn try_decaps(secret: &RightSecretKey, enc: &Encapsulation, A: &EcPoint) -> Option<[u8; 32]> {
     match (secret, enc) {
         (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
             let mut K1 = h_hash(R25519::session_key(sk, A).unwrap());
