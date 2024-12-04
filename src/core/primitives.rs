@@ -452,7 +452,7 @@ fn full_decaps(
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Vec<Right>), Error> {
     let A = encapsulation.c.first().unwrap() * &(&msk.tsk.s / &msk.tsk.tracers.front().unwrap().0);
     let mut rights = Vec::with_capacity(encapsulation.encapsulations.len());
-    let mut shared_secret = Secret::new();
+    let mut ss = Secret::new();
     for enc in &encapsulation.encapsulations {
         for (right, secrets) in msk.secrets.iter() {
             for (_, secret) in secrets {
