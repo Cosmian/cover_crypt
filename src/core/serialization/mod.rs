@@ -3,21 +3,21 @@
 use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
-    bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
     FixedSizeCBytes, SymmetricKey,
+    bytes_ser_de::{Deserializer, Serializable, Serializer, to_leb128_len},
 };
 
 use super::{
-    nike::EcPoint, RightPublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
-    SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    RightPublicKey, RightSecretKey, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    TracingPublicKey, TracingSecretKey, UserId, nike::EcPoint,
 };
 use crate::{
+    Error,
     abe_policy::{AccessStructure, Right},
     core::{
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
+        Encapsulation, MasterPublicKey, MasterSecretKey, SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
     },
     data_struct::{RevisionMap, RevisionVec},
-    Error,
 };
 
 impl Serializable for TracingPublicKey {
@@ -140,20 +140,15 @@ impl Serializable for TracingSecretKey {
             + to_leb128_len(self.users.len())
             + self.users.iter().map(Serializable::length).sum::<usize>()
             + to_leb128_len(self.tracers.len())
-            + self
-                .tracers
-                .iter()
-                .map(|(sk, pk)| sk.length() + pk.length())
-                .sum::<usize>()
+            + self.tracers.iter().map(|sk| sk.length()).sum::<usize>()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.s.write(ser)?;
 
         n += ser.write_leb128_u64(self.tracers.len() as u64)?;
-        for (sk, pk) in &self.tracers {
+        for sk in &self.tracers {
             n += ser.write(sk)?;
-            n += ser.write(pk)?;
         }
 
         n = ser.write_leb128_u64(self.users.len() as u64)?;
@@ -171,8 +166,7 @@ impl Serializable for TracingSecretKey {
         let mut tracers = LinkedList::new();
         for _ in 0..n_tracers {
             let sk = de.read()?;
-            let pk = de.read()?;
-            tracers.push_back((sk, pk));
+            tracers.push_back(sk);
         }
 
         let n_users = <usize>::try_from(de.read_leb128_u64()?)?;
@@ -483,20 +477,20 @@ mod tests {
     use std::collections::HashMap;
 
     use cosmian_crypto_core::{
-        bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng, CsRng,
+        CsRng, bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng,
     };
 
     use super::*;
     use crate::{
+        AccessPolicy,
         abe_policy::{AttributeStatus, EncryptionHint},
         api::Covercrypt,
         core::{
-            primitives::{encaps, setup, update_msk, usk_keygen},
             MIN_TRACING_LEVEL,
+            primitives::{encaps, setup, update_msk, usk_keygen},
         },
         test_utils::cc_keygen,
         traits::KemAc,
-        AccessPolicy,
     };
 
     #[test]

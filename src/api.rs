@@ -1,23 +1,21 @@
 use std::sync::{Mutex, MutexGuard};
 
-use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
+use cosmian_crypto_core::{CsRng, Secret, SymmetricKey, kdf256, reexport::rand_core::SeedableRng};
 use zeroize::Zeroizing;
 
 use super::{
-    core::primitives::{prune, update_msk, usk_keygen},
     core::MIN_TRACING_LEVEL,
+    core::primitives::{prune, update_msk, usk_keygen},
     traits::AE,
 };
 use crate::{
-    abe_policy::AccessPolicy,
+    AccessPolicy, Error,
     core::{
-        primitives::{decaps, encaps, refresh, rekey, setup},
-        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
+        MasterPublicKey, MasterSecretKey, SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
+        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup},
     },
     traits::{KemAc, PkeAc},
-    Error,
 };
-
 #[derive(Debug)]
 pub struct Covercrypt {
     rng: Mutex<CsRng>,
@@ -138,6 +136,22 @@ impl Covercrypt {
             msk,
             usk,
             keep_old_secrets,
+        )
+    }
+
+    /// Returns a new encapsulation with the same rights as the one given, along with a freshly
+    /// generated shared secret.
+    pub fn recaps(
+        &self,
+        msk: &MasterSecretKey,
+        mpk: &MasterPublicKey,
+        encapsulation: &XEnc,
+    ) -> Result<(Secret<32>, XEnc), Error> {
+        let (_ss, rights) = full_decaps(msk, encapsulation)?;
+        encaps(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            mpk,
+            &rights,
         )
     }
 }

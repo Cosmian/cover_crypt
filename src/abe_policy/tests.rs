@@ -1,4 +1,4 @@
-use crate::{abe_policy::AccessStructure, Error};
+use crate::{Error, abe_policy::AccessStructure};
 
 use super::EncryptionHint;
 
@@ -77,17 +77,21 @@ fn test_edit_anarchic_attributes() {
     assert_eq!(structure.attributes().count(), 7);
 
     // Try renaming Research to already used name MKG
-    assert!(structure
-        .rename_attribute(&QualifiedAttribute::new("DPT", "RD"), "MKG".to_string(),)
-        .is_err());
+    assert!(
+        structure
+            .rename_attribute(&QualifiedAttribute::new("DPT", "RD"), "MKG".to_string(),)
+            .is_err()
+    );
 
     // Rename RD to Research
-    assert!(structure
-        .rename_attribute(
-            &QualifiedAttribute::new("DPT", "RD"),
-            "Research".to_string(),
-        )
-        .is_ok());
+    assert!(
+        structure
+            .rename_attribute(
+                &QualifiedAttribute::new("DPT", "RD"),
+                "Research".to_string(),
+            )
+            .is_ok()
+    );
 
     let order: Vec<_> = structure
         .attributes()
@@ -99,22 +103,28 @@ fn test_edit_anarchic_attributes() {
 
     // Add new attribute Sales
     let new_attr = QualifiedAttribute::new("DPT", "Sales");
-    assert!(structure
-        .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
-        .is_ok());
+    assert!(
+        structure
+            .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
+            .is_ok()
+    );
     assert_eq!(structure.attributes().count(), 8);
 
     // Try adding already existing attribute HR
     let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
-    assert!(structure
-        .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
-        .is_err());
+    assert!(
+        structure
+            .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
+            .is_err()
+    );
 
     // Try adding attribute to non existing dimension
     let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
-    assert!(structure
-        .add_attribute(missing_dimension.clone(), EncryptionHint::Classic, None)
-        .is_err());
+    assert!(
+        structure
+            .add_attribute(missing_dimension.clone(), EncryptionHint::Classic, None)
+            .is_err()
+    );
 
     // Remove research attribute
     let delete_attr = QualifiedAttribute::new("DPT", "Research");
@@ -191,9 +201,11 @@ fn test_edit_hierarchic_attributes() {
     );
 
     // Rename ordered dimension
-    assert!(structure
-        .rename_attribute(&QualifiedAttribute::new("SEC", "LOW"), "WOL".to_string(),)
-        .is_ok());
+    assert!(
+        structure
+            .rename_attribute(&QualifiedAttribute::new("SEC", "LOW"), "WOL".to_string(),)
+            .is_ok()
+    );
 
     let order = structure.attributes().map(|q| q.name).collect::<Vec<_>>();
     assert!(order.contains(&"WOL".to_string()));

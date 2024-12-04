@@ -10,7 +10,7 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use crate::{abe_policy::QualifiedAttribute, Error};
+use crate::{Error, abe_policy::QualifiedAttribute};
 
 /// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,7 +143,7 @@ impl AccessPolicy {
                     ")" => {
                         return Err(Error::InvalidBooleanExpression(format!(
                             "unmatched closing parenthesis in '{e}'"
-                        )))
+                        )));
                     }
                     _ => {
                         let attr: String = e.chars().take_while(seeker).collect();

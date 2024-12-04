@@ -5,13 +5,13 @@ use std::{
     hash::Hash,
 };
 
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
+use cosmian_crypto_core::{SymmetricKey, reexport::rand_core::CryptoRngCore};
 
 use crate::{
+    Error,
     abe_policy::{AccessStructure, Right},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
-    Error,
 };
 
 mod kem;
@@ -172,7 +172,7 @@ impl UserId {
 #[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
     s: Scalar,
-    tracers: LinkedList<(Scalar, EcPoint)>,
+    tracers: LinkedList<Scalar>,
     users: HashSet<UserId>,
 }
 
@@ -180,7 +180,7 @@ impl TracingSecretKey {
     fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
         let s = nike::Scalar::new(rng);
         let tracers = (0..=level)
-            .map(|_| R25519::keygen(rng))
+            .map(|_| R25519::keygen(rng).map(|kp| kp.0))
             .collect::<Result<_, _>>()?;
         let users = HashSet::new();
 
@@ -194,12 +194,12 @@ impl TracingSecretKey {
 
     /// Generates a new tracer. Returns the associated trap.
     fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
-        self.tracers.push_back(R25519::keygen(rng)?);
+        self.tracers.push_back(R25519::keygen(rng)?.0);
         Ok(())
     }
 
     /// Drops the oldest tracer and returns it.
-    fn _decrease_tracing(&mut self) -> Result<(Scalar, EcPoint), Error> {
+    fn _decrease_tracing(&mut self) -> Result<Scalar, Error> {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -250,7 +250,7 @@ impl TracingSecretKey {
     /// Generates the associated tracing public key.
     #[must_use]
     fn tpk(&self) -> TracingPublicKey {
-        TracingPublicKey(self.tracers.iter().map(|(_, p)| p).cloned().collect())
+        TracingPublicKey(self.tracers.iter().map(|s| s.into()).collect())
     }
 
     /// Returns the binding points.
@@ -274,9 +274,9 @@ impl TracingSecretKey {
                     .tracers
                     .iter()
                     .zip(markers.iter())
-                    .map(|((sk_i, _), a_i)| sk_i * a_i)
+                    .map(|(sk_i, a_i)| sk_i * a_i)
                     .fold(Scalar::zero(), |acc, x_i| &acc + &x_i))
-                / &last_tracer.0;
+                / last_tracer;
 
             markers.push_back(last_marker);
             let id = UserId(markers);
@@ -293,7 +293,7 @@ impl TracingSecretKey {
             == id
                 .iter()
                 .zip(self.tracers.iter())
-                .map(|(identifier, tracer)| identifier * &tracer.0)
+                .map(|(identifier, tracer)| identifier * tracer)
                 .sum()
     }
 

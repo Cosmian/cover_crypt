@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
+use cosmian_crypto_core::{Aes256Gcm, CsRng, reexport::rand_core::SeedableRng};
 
 use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, EncryptionHint, Right},
@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    primitives::{setup, usk_keygen},
     MIN_TRACING_LEVEL,
+    primitives::{setup, usk_keygen},
 };
 
 /// This test asserts that it is possible to encapsulate a key for a given
@@ -247,6 +247,28 @@ fn test_integrity_check() {
     let mut new_forged_usk = old_forged_usk.clone();
     assert!(refresh(&mut rng, &mut msk, &mut new_forged_usk, true).is_err());
     assert_eq!(new_forged_usk, old_forged_usk);
+}
+
+#[test]
+fn test_reencrypt_with_msk() {
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
+    let cc = Covercrypt::default();
+
+    let (mut msk, _) = cc_keygen(&cc, false).unwrap();
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
+    let mut usk = cc
+        .generate_user_secret_key(&mut msk, &ap)
+        .expect("cannot generate usk");
+
+    let (old_key, old_enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(Some(&old_key), decaps(&usk, &old_enc).unwrap().as_ref());
+
+    cc.rekey(&mut msk, &ap).unwrap();
+    let new_mpk = msk.mpk().unwrap();
+    let (new_key, new_enc) = cc.recaps(&msk, &new_mpk, &old_enc).unwrap();
+    cc.refresh_usk(&mut msk, &mut usk, true).unwrap();
+    assert_eq!(Some(new_key), decaps(&usk, &new_enc).unwrap());
+    assert_ne!(Some(old_key), decaps(&usk, &new_enc).unwrap());
 }
 
 #[test]
