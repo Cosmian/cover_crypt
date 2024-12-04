@@ -3,9 +3,9 @@ use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
 pub use cosmian_crypto_core::R25519PrivateKey as Scalar;
 pub use cosmian_crypto_core::R25519PublicKey as EcPoint;
 
+use crate::Error;
 use crate::traits::KhNike;
 use crate::traits::Nike;
-use crate::Error;
 
 pub struct R25519;
 
@@ -36,7 +36,7 @@ impl KhNike<Scalar, EcPoint> for R25519 {}
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_core::{
-        bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng, CsRng,
+        CsRng, bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng,
     };
 
     use super::*;

@@ -1,12 +1,12 @@
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use crate::{
+    Error,
     abe_policy::{
         AccessPolicy, Attribute, AttributeStatus, Dimension, EncryptionHint, QualifiedAttribute,
         Right,
     },
     data_struct::Dict,
-    Error,
 };
 
 use super::Version;
@@ -350,7 +350,7 @@ mod serialization {
 
     use super::*;
     use cosmian_crypto_core::bytes_ser_de::{
-        to_leb128_len, Deserializer, Serializable, Serializer,
+        Deserializer, Serializable, Serializer, to_leb128_len,
     };
 
     impl Serializable for AccessStructure {

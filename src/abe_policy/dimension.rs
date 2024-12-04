@@ -1,12 +1,12 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::Debug,
 };
 
 use serde::{Deserialize, Serialize};
 
-use super::{attribute::EncryptionHint, AttributeStatus};
-use crate::{data_struct::Dict, Error};
+use super::{AttributeStatus, attribute::EncryptionHint};
+use crate::{Error, data_struct::Dict};
 
 type Name = String;
 
@@ -240,7 +240,7 @@ impl Dimension {
 
 mod serialization {
     use cosmian_crypto_core::bytes_ser_de::{
-        to_leb128_len, Deserializer, Serializable, Serializer,
+        Deserializer, Serializable, Serializer, to_leb128_len,
     };
 
     use super::*;

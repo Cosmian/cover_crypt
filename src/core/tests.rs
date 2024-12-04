@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
+use cosmian_crypto_core::{Aes256Gcm, CsRng, reexport::rand_core::SeedableRng};
 
 use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, EncryptionHint, Right},
@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    primitives::{setup, usk_keygen},
     MIN_TRACING_LEVEL,
+    primitives::{setup, usk_keygen},
 };
 
 /// This test asserts that it is possible to encapsulate a key for a given

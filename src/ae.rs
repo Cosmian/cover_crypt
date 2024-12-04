@@ -1,10 +1,10 @@
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore, Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
+    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::rand_core::CryptoRngCore,
 };
 use zeroize::Zeroizing;
 
-use crate::{traits::AE, Error};
+use crate::{Error, traits::AE};
 
 impl AE<{ Self::KEY_LENGTH }> for Aes256Gcm {
     type Error = Error;

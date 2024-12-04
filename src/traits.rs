@@ -1,4 +1,4 @@
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Secret, SymmetricKey};
+use cosmian_crypto_core::{Secret, SymmetricKey, reexport::rand_core::CryptoRngCore};
 use std::ops::Add;
 use std::ops::Mul;
 use zeroize::Zeroizing;

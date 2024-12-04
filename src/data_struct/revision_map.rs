@@ -1,8 +1,8 @@
 use std::{
     borrow::Borrow,
     collections::{
-        hash_map::{Entry, OccupiedEntry, VacantEntry},
         HashMap, LinkedList,
+        hash_map::{Entry, OccupiedEntry, VacantEntry},
     },
     fmt::Debug,
     hash::Hash,
