@@ -265,7 +265,7 @@ pub fn decaps(
     for enc in &encapsulation.encapsulations {
         // The breadth-first search tries all coordinate subkeys in a chronological order.
         for secret in usk.secrets.bfs() {
-            if let Some(S) = match_right_and_encapsulation(secret, enc, &A) {
+            if let Some(S) = try_decaps(secret, enc, &A) {
                 let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
                 if tag == encapsulation.tag {
                     return Ok(Some(ss));
