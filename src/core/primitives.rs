@@ -437,14 +437,20 @@ pub fn full_decaps(
     msk: &MasterSecretKey,
     encapsulation: &XEnc,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
-    let A;
-    if let Some(c) = encapsulation.c.first() {
-        A = c * &(&msk.tsk.s / &msk.tsk.tracers.front().unwrap().0);
-    } else {
-        return Err(Error::InvalidBooleanExpression(
-            "empty encapsulation dose not allow to go further".to_string(),
-        ));
-    }
+    let A = {
+        let c_0 = encapsulation
+            .c
+            .first()
+            .ok_or_else(|| Error::Kem("invalid encapsulation: C is empty".to_string()))?;
+        let t_0 = msk
+            .tsk
+            .tracers
+            .front()
+            .ok_or_else(|| Error::KeyError("MSK has no tracer".to_string()))?;
+
+        c_0 * &(&msk.tsk.s / t_0)
+    };
+
     let mut rights = HashSet::with_capacity(encapsulation.encapsulations.len());
     let ss = Secret::new();
     for enc in &encapsulation.encapsulations {
