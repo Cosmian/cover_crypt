@@ -5,7 +5,7 @@ use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 use crate::{
     abe_policy::{AccessPolicy, AttributeStatus, EncryptionHint, Right},
     api::Covercrypt,
-    core::primitives::{decaps, encaps, refresh, rekey, update_msk},
+    core::primitives::{decaps, encaps, reencrypt, refresh, rekey, update_msk},
     test_utils::cc_keygen,
     traits::{KemAc, PkeAc},
 };
@@ -250,14 +250,36 @@ fn test_integrity_check() {
 }
 
 #[test]
-fn test_full_decaps() {
-    let ap = AccessPolicy::parse("Department::FIN && Security Level::Top Secret").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, _mpk) = cc_keygen(&cc).unwrap();
-    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
-    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    let full = cc.full_decaps(&msk, &enc).unwrap();
-    assert_eq!(full[0].1, secret);
+fn test_reencrypt_with_msk() {
+    let mut rng = CsRng::from_entropy();
+    let coordinate = Right::random(&mut rng);
+    let subspace = HashSet::from_iter([coordinate.clone()]);
+    let universe = HashSet::from_iter([coordinate.clone()]);
+
+    let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
+    update_msk(
+        &mut rng,
+        &mut msk,
+        HashMap::from_iter([(
+            coordinate.clone(),
+            (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+        )]),
+    )
+    .unwrap();
+    let mpk = msk.mpk().unwrap();
+    let mut usk = usk_keygen(&mut rng, &mut msk, subspace.clone()).unwrap();
+
+    let (old_key, old_enc) = encaps(&mut rng, &mpk, &subspace).unwrap();
+    assert_eq!(Some(&old_key), decaps(&usk, &old_enc).unwrap().as_ref());
+
+    rekey(&mut rng, &mut msk, universe).unwrap();
+    let new_mpk = msk.mpk().unwrap();
+
+    let (new_key, new_enc) = reencrypt(&mut rng, &msk, &new_mpk, &old_enc).unwrap();
+
+    refresh(&mut rng, &mut msk, &mut usk, true).unwrap();
+    assert_eq!(Some(new_key), decaps(&usk, &new_enc).unwrap());
+    assert_ne!(Some(old_key), decaps(&usk, &new_enc).unwrap());
 }
 
 #[test]

@@ -29,7 +29,6 @@ pub trait KemAc<const LENGTH: usize> {
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<LENGTH>>, Self::Error>;
-
 }
 
 pub trait AE<const KEY_LENGTH: usize> {

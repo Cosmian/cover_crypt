@@ -9,13 +9,12 @@ use super::{
     traits::AE,
 };
 use crate::{
-    abe_policy::{AccessPolicy, Right},
     core::{
-        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup},
+        primitives::{decaps, encaps, reencrypt, refresh, rekey, setup},
         MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     traits::{KemAc, PkeAc},
-    Error,
+    AccessPolicy, Error,
 };
 #[derive(Debug)]
 pub struct Covercrypt {
@@ -140,12 +139,18 @@ impl Covercrypt {
         )
     }
 
-    pub fn full_decaps(
+    pub fn reencrypt(
         &self,
         msk: &MasterSecretKey,
-        enc: &XEnc,
-    ) -> Result<Vec<(Right, Secret<SHARED_SECRET_LENGTH>)>, Error> {
-        full_decaps( enc, msk)
+        mpk: &MasterPublicKey,
+        encapsulation: &XEnc,
+    ) -> Result<(Secret<32>, XEnc), Error> {
+        reencrypt(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            msk,
+            mpk,
+            encapsulation,
+        )
     }
 }
 
@@ -174,7 +179,6 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
         decaps(usk, enc)
     }
-
 }
 
 impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH, Error = Error>> PkeAc<KEY_LENGTH, E>
