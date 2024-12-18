@@ -14,6 +14,7 @@ pub trait KemAc<const LENGTH: usize> {
     /// Generates a new encapsulation for the given access policy.
     ///
     /// # Error
+    ///
     /// Returns an error if the access policy is not valid.
     fn encaps(
         &self,
@@ -23,7 +24,6 @@ pub trait KemAc<const LENGTH: usize> {
 
     /// Attempts opening the given encapsulation with the given key. Returns the encapsulated
     /// secret upon success or `None` if this key was not authorized to open this encapsulation.
-    // TODO: document error cases.
     fn decaps(
         &self,
         dk: &Self::DecapsulationKey,
@@ -44,6 +44,7 @@ pub trait AE<const KEY_LENGTH: usize> {
     /// Decrypts the given ciphertext using the given key.
     ///
     /// # Error
+    ///
     /// Returns an error if the integrity of the ciphertext could not be verified.
     fn decrypt(
         key: &SymmetricKey<KEY_LENGTH>,
@@ -60,6 +61,7 @@ pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
     /// Encrypts the given plaintext under the given access policy.
     ///
     /// # Error
+    ///
     /// Returns an error if the access policy is not valid.
     fn encrypt(
         &self,
@@ -122,6 +124,7 @@ pub trait Nike {
     ) -> Result<Self::SessionKey, Self::Error>;
 }
 
+/// Key-homomorphic NIKE.
 pub trait KhNike<S, G>: Nike<SecretKey = S, PublicKey = G, SessionKey = G>
 where
     for<'a> &'a G: Mul<&'a S, Output = G> + Add<&'a G, Output = G>,
