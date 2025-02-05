@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use cosmian_cover_crypt::{AccessPolicy, api::Covercrypt, cc_keygen, traits::KemAc};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
@@ -87,8 +85,7 @@ macro_rules! gen_usk {
 
 fn bench_encapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
-
-    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+    let (_, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
         let mut group = c.benchmark_group("Classic encapsulation");
@@ -100,6 +97,11 @@ fn bench_encapsulation(c: &mut Criterion) {
             });
         }
     }
+}
+
+fn bench_decapsulation(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
         let mut group = c.benchmark_group("Decapsulation");
@@ -130,6 +132,11 @@ fn bench_encapsulation(c: &mut Criterion) {
             }
         }
     }
+}
+
+fn bench_hybridized_encapsulation(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (_, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
         let mut group = c.benchmark_group("Hybridized encapsulation");
@@ -141,10 +148,12 @@ fn bench_encapsulation(c: &mut Criterion) {
             });
         }
     }
+}
 
-    // Note that there should be no more attempt to decapsulate the encapsulation than is performed
-    // for classic ones since the classic secrets should be ignored (thus only a test and
-    // negligible in front of the decapsulation time of hybridized secrets).
+fn bench_hybridized_decapsulation(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+
     {
         let mut group = c.benchmark_group("Hybridiezd Decapsulation");
         for (enc_ap, cnt_enc) in H_ENC_APS {
@@ -179,7 +188,11 @@ fn bench_encapsulation(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
-    targets = bench_encapsulation,
+    targets =
+    bench_encapsulation,
+    bench_decapsulation,
+    bench_hybridized_encapsulation,
+    bench_hybridized_decapsulation
 );
 
 criterion_main!(benches);

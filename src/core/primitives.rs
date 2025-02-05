@@ -128,11 +128,12 @@ fn j_hash(
     encapsulations: &[Encapsulation],
 ) -> Result<([u8; TAG_LENGTH], Secret<SHARED_SECRET_LENGTH>), Error> {
     let mut hasher = Shake::v256();
-
     hasher.update(seed);
-    for (c_i, seed_encapsulation) in c.iter().zip(encapsulations) {
+    for c_i in c.iter() {
         hasher.update(&c_i.to_bytes());
-        match seed_encapsulation {
+    }
+    for enc in encapsulations {
+        match enc {
             Encapsulation::Classic { F: F_i } => hasher.update(F_i),
             Encapsulation::Hybridized { E: E_i, F: F_i } => {
                 hasher.update(&E_i.serialize()?);
@@ -189,6 +190,7 @@ pub fn usk_keygen(
 
     Ok(UserSecretKey {
         id,
+        ps: msk.tsk.tracers.iter().map(EcPoint::from).collect(),
         secrets: coordinate_keys,
         signature,
     })
@@ -268,7 +270,12 @@ pub fn decaps(
             if let Some(S) = try_decaps(secret, enc, &A) {
                 let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
                 if tag == encapsulation.tag {
-                    return Ok(Some(ss));
+                    // Fujisaki-Okamoto
+                    let r = g_hash(&S)?;
+                    let c = usk.set_traps(&r);
+                    if c == encapsulation.c {
+                        return Ok(Some(ss));
+                    }
                 }
             }
         }
@@ -469,18 +476,23 @@ pub fn full_decaps(
     Ok((ss, rights))
 }
 
-fn try_decaps(secret: &RightSecretKey, enc: &Encapsulation, A: &EcPoint) -> Option<[u8; 32]> {
+fn try_decaps(
+    secret: &RightSecretKey,
+    enc: &Encapsulation,
+    A: &EcPoint,
+) -> Option<Secret<SHARED_SECRET_LENGTH>> {
     match (secret, enc) {
         (RightSecretKey::Hybridized { sk, dk }, Encapsulation::Hybridized { E, F }) => {
             let mut K1 = h_hash(R25519::session_key(sk, A).unwrap());
             let K2 = MlKem512::dec(dk, E).unwrap();
-            let S = xor_3(F, &K1, &K2);
+            let S = Secret::from_unprotected_bytes(&mut xor_3(F, &K1, &K2));
             K1.zeroize();
             Some(S)
         }
         (RightSecretKey::Classic { sk }, Encapsulation::Classic { F }) => {
             let K1 = h_hash(R25519::session_key(sk, A).unwrap());
-            Some(xor_2(F, &K1))
+            let S = Secret::from_unprotected_bytes(&mut xor_2(F, &K1));
+            Some(S)
         }
         (RightSecretKey::Hybridized { .. }, Encapsulation::Classic { .. })
         | (RightSecretKey::Classic { .. }, Encapsulation::Hybridized { .. }) => None,

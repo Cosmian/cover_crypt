@@ -325,6 +325,8 @@ impl Serializable for UserSecretKey {
 
     fn length(&self) -> usize {
         self.id.length()
+            + to_leb128_len(self.ps.len())
+            + self.ps.len() * 32
             + to_leb128_len(self.secrets.len())
             + self
                 .secrets
@@ -340,6 +342,12 @@ impl Serializable for UserSecretKey {
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write(&self.id)?;
+
+        n += ser.write_leb128_u64(self.ps.len() as u64)?;
+        for p in &self.ps {
+            n += ser.write(p)?;
+        }
+
         n += ser.write_leb128_u64(self.secrets.len() as u64)?;
         for (coordinate, chain) in self.secrets.iter() {
             n += ser.write(coordinate)?;
@@ -356,6 +364,15 @@ impl Serializable for UserSecretKey {
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let id = de.read::<UserId>()?;
+
+        let n_ps = usize::try_from(de.read_leb128_u64()?)?;
+
+        let mut ps = Vec::with_capacity(n_ps);
+        for _ in 0..n_ps {
+            let p = de.read()?;
+            ps.push(p);
+        }
+
         let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut coordinate_keys = RevisionVec::with_capacity(n_coordinates);
         for _ in 0..n_coordinates {
@@ -366,13 +383,16 @@ impl Serializable for UserSecretKey {
                 .collect::<Result<_, _>>()?;
             coordinate_keys.insert_new_chain(coordinate, new_chain);
         }
+
         let msk_signature = if de.value().len() < SIGNATURE_LENGTH {
             None
         } else {
             Some(de.read_array::<SIGNATURE_LENGTH>()?)
         };
+
         Ok(Self {
             id,
+            ps,
             secrets: coordinate_keys,
             signature: msk_signature,
         })
