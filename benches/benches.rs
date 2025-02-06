@@ -155,18 +155,17 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
     let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
-        let mut group = c.benchmark_group("Hybridiezd Decapsulation");
-        for (enc_ap, cnt_enc) in H_ENC_APS {
+        let mut group = c.benchmark_group("Hybridized Decapsulation");
+        for (enc_ap, enc_cnt) in H_ENC_APS {
             let eap = AccessPolicy::parse(enc_ap).unwrap();
-            for (usk_ap, cnt_secret) in H_USK_APS {
+            for (usk_ap, usk_cnt) in H_USK_APS {
                 let uap = AccessPolicy::parse(usk_ap).unwrap();
-
-                let usk = gen_usk!(cc, msk, usk_ap, cnt_secret);
-                let (k, enc) = gen_enc!(cc, mpk, enc_ap, cnt_enc);
+                let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
+                let (k, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
                 assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
 
                 group.bench_function(
-                    format!("{:?} encs vs {:?} secrets", cnt_enc, cnt_secret),
+                    format!("{:?} encapsulations vs {:?} secrets", enc_cnt, usk_cnt),
                     |b| {
                         b.iter_batched(
                             || {
