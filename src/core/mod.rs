@@ -122,20 +122,6 @@ impl RightPublicKey {
             Self::Classic { .. } => false,
         }
     }
-
-    pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
-        let is_homogeneous = subkeys
-            .iter()
-            .all(|cpk| cpk.is_hybridized() == subkeys[0].is_hybridized());
-
-        if is_homogeneous {
-            Ok(())
-        } else {
-            Err(Error::OperationNotPermitted(
-                "classic and hybridized access policies cannot be mixed".to_string(),
-            ))
-        }
-    }
 }
 
 /// Covercrypt user IDs are used to make user keys unique and traceable.
@@ -265,7 +251,7 @@ impl TracingSecretKey {
             let mut markers: LinkedList<Scalar> = self
                 .tracers
                 .iter()
-                .zip(0..self.tracers.len() - 1)
+                .take(self.tracers.len() - 1)
                 .map(|_| Scalar::new(rng))
                 .collect();
 
@@ -417,17 +403,31 @@ impl MasterPublicKey {
         self.tpk.0.iter().map(|gi| gi * r).collect()
     }
 
-    fn select_subkeys(&self, targets: &HashSet<Right>) -> Result<Vec<&RightPublicKey>, Error> {
+    /// Returns the subkeys associated with the given rights in this public key,
+    /// alongside a boolean value that is true if all of them are hybridized.
+    fn select_subkeys(
+        &self,
+        targets: &HashSet<Right>,
+    ) -> Result<(bool, Vec<&RightPublicKey>), Error> {
+        // This mutable variable is set to false if at least one sub-key is not
+        // hybridized.
+        let mut is_hybridized = true;
+
         let subkeys = targets
             .iter()
             .map(|r| {
-                self.encryption_keys
+                let subkey = self
+                    .encryption_keys
                     .get(r)
-                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))
+                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))?;
+                if !subkey.is_hybridized() {
+                    is_hybridized = false;
+                }
+                Ok(subkey)
             })
-            .collect::<Result<Vec<_>, _>>()?;
-        RightPublicKey::assert_homogeneity(&subkeys)?;
-        Ok(subkeys)
+            .collect::<Result<_, Error>>()?;
+
+        Ok((is_hybridized, subkeys))
     }
 }
 
@@ -461,19 +461,10 @@ impl UserSecretKey {
     }
 }
 
-/// Encapsulation of a `SHARED_SECRET_LENGTH`-byte secret for a given right.
-///
-/// In case the security level of the associated right was set to post-quantum secure, the key
-/// encapsulation is hybridized. This implies a significant size overhead.
-#[derive(Debug, Clone, Hash, PartialEq)]
-enum Encapsulation {
-    Classic {
-        F: [u8; SHARED_SECRET_LENGTH],
-    },
-    Hybridized {
-        E: kem::Encapsulation512,
-        F: [u8; SHARED_SECRET_LENGTH],
-    },
+#[derive(Debug, Clone, PartialEq)]
+enum Encapsulations {
+    HEncs(Vec<(kem::Encapsulation512, [u8; SHARED_SECRET_LENGTH])>),
+    CEncs(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
 /// Covercrypt encapsulation.
@@ -488,7 +479,7 @@ enum Encapsulation {
 pub struct XEnc {
     tag: Tag,
     c: Vec<EcPoint>,
-    encapsulations: Vec<Encapsulation>,
+    encapsulations: Encapsulations,
 }
 
 impl XEnc {
@@ -497,8 +488,11 @@ impl XEnc {
         self.c.len() - 1
     }
 
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn count(&self) -> usize {
-        self.encapsulations.len()
+        match &self.encapsulations {
+            Encapsulations::HEncs(vec) => vec.len(),
+            Encapsulations::CEncs(vec) => vec.len(),
+        }
     }
 }
