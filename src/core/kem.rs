@@ -1,14 +1,14 @@
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
-use cosmian_crypto_core::{Secret, reexport::rand_core::CryptoRngCore};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Secret};
 use ml_kem::{
-    EncodedSizeUser, KemCore,
     array::Array,
     kem::{Decapsulate, Encapsulate},
+    EncodedSizeUser, KemCore,
 };
 use zeroize::Zeroize;
 
 use crate::traits::Kem;
-use crate::{Error, core::SHARED_SECRET_LENGTH};
+use crate::{core::SHARED_SECRET_LENGTH, Error};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct EncapsulationKey512(Box<<ml_kem::MlKem512 as KemCore>::EncapsulationKey>);
@@ -135,7 +135,7 @@ impl Kem for MlKem512 {
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_core::{
-        CsRng, bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng,
+        bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng, CsRng,
     };
 
     use super::*;

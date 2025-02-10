@@ -10,7 +10,7 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use crate::{Error, abe_policy::QualifiedAttribute};
+use crate::{abe_policy::QualifiedAttribute, Error};
 
 /// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]

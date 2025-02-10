@@ -5,25 +5,25 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    RandomFixedSizeCBytes, Secret, SymmetricKey,
     bytes_ser_de::Serializable,
     reexport::rand_core::{CryptoRngCore, RngCore},
+    RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
 use zeroize::Zeroize;
 
 use crate::{
-    Error,
     abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
     core::{
-        EcPoint, Encapsulation, KmacSignature, MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
-        RightPublicKey, RightSecretKey, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH,
-        Scalar, TAG_LENGTH, TracingSecretKey, UserId, UserSecretKey, XEnc, kem::MlKem512,
-        nike::R25519,
+        kem::MlKem512, nike::R25519, EcPoint, Encapsulation, KmacSignature, MasterPublicKey,
+        MasterSecretKey, RightPublicKey, RightSecretKey, Scalar, TracingSecretKey, UserId,
+        UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
+        SIGNING_KEY_LENGTH, TAG_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
+    Error,
 };
 
 fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
@@ -240,11 +240,14 @@ pub fn encaps(
 
     let (tag, ss) = j_hash(&S, &c, &coordinate_encapsulations)?;
 
-    Ok((ss, XEnc {
-        tag,
-        c,
-        encapsulations: coordinate_encapsulations,
-    }))
+    Ok((
+        ss,
+        XEnc {
+            tag,
+            c,
+            encapsulations: coordinate_encapsulations,
+        },
+    ))
 }
 
 /// Attempts opening the Covercrypt encapsulation using the given USK. Returns

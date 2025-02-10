@@ -5,13 +5,13 @@ use std::{
     hash::Hash,
 };
 
-use cosmian_crypto_core::{SymmetricKey, reexport::rand_core::CryptoRngCore};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
 
 use crate::{
-    Error,
     abe_policy::{AccessStructure, Right},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike},
+    Error,
 };
 
 mod kem;
