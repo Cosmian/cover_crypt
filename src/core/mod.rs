@@ -440,6 +440,7 @@ impl MasterPublicKey {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
     id: UserId,
+    ps: Vec<EcPoint>,
     secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
@@ -453,6 +454,10 @@ impl UserSecretKey {
     #[cfg(feature = "test-utils")]
     pub fn count(&self) -> usize {
         self.secrets.len()
+    }
+
+    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+        self.ps.iter().map(|gi| gi * r).collect()
     }
 }
 

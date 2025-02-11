@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use cosmian_cover_crypt::{AccessPolicy, api::Covercrypt, cc_keygen, traits::KemAc};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
@@ -87,8 +85,7 @@ macro_rules! gen_usk {
 
 fn bench_encapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
-
-    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+    let (_, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
         let mut group = c.benchmark_group("Classic encapsulation");
@@ -100,6 +97,11 @@ fn bench_encapsulation(c: &mut Criterion) {
             });
         }
     }
+}
+
+fn bench_decapsulation(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
         let mut group = c.benchmark_group("Decapsulation");
@@ -130,6 +132,11 @@ fn bench_encapsulation(c: &mut Criterion) {
             }
         }
     }
+}
+
+fn bench_hybridized_encapsulation(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (_, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
         let mut group = c.benchmark_group("Hybridized encapsulation");
@@ -141,23 +148,24 @@ fn bench_encapsulation(c: &mut Criterion) {
             });
         }
     }
+}
 
-    // Note that there should be no more attempt to decapsulate the encapsulation than is performed
-    // for classic ones since the classic secrets should be ignored (thus only a test and
-    // negligible in front of the decapsulation time of hybridized secrets).
+fn bench_hybridized_decapsulation(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+
     {
-        let mut group = c.benchmark_group("Hybridiezd Decapsulation");
-        for (enc_ap, cnt_enc) in H_ENC_APS {
+        let mut group = c.benchmark_group("Hybridized Decapsulation");
+        for (enc_ap, enc_cnt) in H_ENC_APS {
             let eap = AccessPolicy::parse(enc_ap).unwrap();
-            for (usk_ap, cnt_secret) in H_USK_APS {
+            for (usk_ap, usk_cnt) in H_USK_APS {
                 let uap = AccessPolicy::parse(usk_ap).unwrap();
-
-                let usk = gen_usk!(cc, msk, usk_ap, cnt_secret);
-                let (k, enc) = gen_enc!(cc, mpk, enc_ap, cnt_enc);
+                let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
+                let (k, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
                 assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
 
                 group.bench_function(
-                    format!("{:?} encs vs {:?} secrets", cnt_enc, cnt_secret),
+                    format!("{:?} encapsulations vs {:?} secrets", enc_cnt, usk_cnt),
                     |b| {
                         b.iter_batched(
                             || {
@@ -179,7 +187,11 @@ fn bench_encapsulation(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
-    targets = bench_encapsulation,
+    targets =
+    bench_encapsulation,
+    bench_decapsulation,
+    bench_hybridized_encapsulation,
+    bench_hybridized_decapsulation
 );
 
 criterion_main!(benches);
