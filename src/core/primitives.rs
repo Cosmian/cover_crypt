@@ -191,12 +191,13 @@ fn h_encaps(
     subkeys: &[&RightPublicKey],
     rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
-    let pq_encs = subkeys
+    let encs = subkeys
         .iter()
         .map(|subkey| match subkey {
-            RightPublicKey::Hybridized { H: _, ek } => {
+            RightPublicKey::Hybridized { H, ek } => {
+                let K1 = R25519::session_key(&r, H)?;
                 let (K2, E) = MlKem512::enc(ek, rng)?;
-                Ok((K2, E))
+                Ok((K1, K2, E))
             }
             RightPublicKey::Classic { .. } => {
                 Err(Error::Kem("all subkeys should be hybridized".to_string()))
@@ -209,24 +210,15 @@ fn h_encaps(
     let T = {
         let mut T = Shake::v256();
         c.iter().for_each(|ck| T.update(&ck.to_bytes()));
-        pq_encs.iter().try_fold(T, |mut T, (E, _)| {
+        encs.iter().try_fold(T, |mut T, (_, _, E)| {
             T.update(&E.serialize()?);
             Ok::<_, Error>(T)
         })?
     };
 
-    let encs = subkeys
-        .iter()
-        .zip(pq_encs)
-        .map(|(subkey, (K2, E))| -> Result<_, _> {
-            println!("key: {:?}", subkey);
-            let H = match subkey {
-                RightPublicKey::Hybridized { H, ek: _ } => Ok(H),
-                RightPublicKey::Classic { .. } => {
-                    Err(Error::Kem("all subkeys should be hybridized".to_string()))
-                }
-            }?;
-            let mut K1 = R25519::session_key(&r, H)?;
+    let encs = encs
+        .into_iter()
+        .map(|(mut K1, K2, E)| -> Result<_, _> {
             let F = xor_2(&S, &H_hash(T.clone(), &K1, Some(&K2)));
             K1.zeroize();
             Ok((E, F))
@@ -307,18 +299,17 @@ pub fn encaps(
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let (is_hybridized, mut coordinate_keys) = mpk.select_subkeys(encryption_set)?;
 
-    let S = Secret::<SHARED_SECRET_LENGTH>::random(rng);
-    let r = G_hash(&S)?;
-    let c = mpk.set_traps(&r);
-
     // Shuffling must be performed *before* generating the encapsulations since
     // rights are hashed in-order. If shuffling is performed after generating
     // the encapsulations, there would be no way to know in which order to
     // perform hashing upon decapsulation.
     shuffle(&mut coordinate_keys, rng);
 
+    let S = Secret::<SHARED_SECRET_LENGTH>::random(rng);
+    let r = G_hash(&S)?;
+    let c = mpk.set_traps(&r);
+
     if is_hybridized {
-        println!("Hybridized encapsulation");
         h_encaps(S, c, r, &coordinate_keys, rng)
     } else {
         c_encaps(S, c, r, coordinate_keys)
@@ -350,20 +341,16 @@ fn h_decaps(
         // The breadth-first search tries all coordinate subkeys in a chronological
         // order.
         for secret in usk.secrets.bfs() {
-            println!("Try");
             if let RightSecretKey::Hybridized { sk, dk } = secret {
-                println!("with key");
                 let mut K1 = R25519::session_key(sk, A)?;
                 let K2 = MlKem512::dec(dk, E)?;
                 let S_ij = xor_in_place(H_hash(T.clone(), &K1, Some(&K2)), F);
                 let (tag_ij, ss) = J_hash(J.clone(), &S_ij);
                 if tag == &tag_ij {
-                    println!("HERE");
                     // Fujisaki-Okamoto
                     let r = G_hash(&S_ij)?;
                     let c_ij = usk.set_traps(&r);
-                    if c == &c_ij {
-                        println!("THERE");
+                    if c == c_ij {
                         K1.zeroize();
                         return Ok(Some(ss));
                     }
