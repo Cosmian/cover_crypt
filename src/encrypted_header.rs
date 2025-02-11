@@ -1,11 +1,11 @@
 use cosmian_crypto_core::{
-    Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes,
-    Secret, SymmetricKey, kdf256,
+    kdf256, Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce,
+    RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
 use crate::{
-    Error, MasterPublicKey, UserSecretKey, XEnc, abe_policy::AccessPolicy, api::Covercrypt,
-    core::SHARED_SECRET_LENGTH, traits::KemAc,
+    abe_policy::AccessPolicy, api::Covercrypt, core::SHARED_SECRET_LENGTH, traits::KemAc, Error,
+    MasterPublicKey, UserSecretKey, XEnc,
 };
 
 /// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte secret, and metadata
@@ -46,10 +46,13 @@ impl EncryptedHeader {
         let mut secret = Secret::default();
         kdf256!(&mut *secret, &*seed, &[1u8]);
 
-        Ok((secret, Self {
-            encapsulation,
-            encrypted_metadata,
-        }))
+        Ok((
+            secret,
+            Self {
+                encapsulation,
+                encrypted_metadata,
+            },
+        ))
     }
 
     /// Decrypts the header with the given user secret key.
@@ -105,7 +108,7 @@ mod serialization {
 
     use super::*;
     use cosmian_crypto_core::bytes_ser_de::{
-        Deserializer, Serializable, Serializer, to_leb128_len,
+        to_leb128_len, Deserializer, Serializable, Serializer,
     };
 
     impl Serializable for EncryptedHeader {

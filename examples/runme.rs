@@ -1,6 +1,6 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
-use cosmian_cover_crypt::{AccessPolicy, EncryptedHeader, api::Covercrypt, test_utils::cc_keygen};
+use cosmian_cover_crypt::{api::Covercrypt, test_utils::cc_keygen, AccessPolicy, EncryptedHeader};
 
 fn main() {
     let cc = Covercrypt::default();
@@ -31,23 +31,19 @@ fn main() {
         EncryptedHeader::generate(&cc, &mpk, &enc_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
-    assert!(
-        new_encrypted_header
-            .decrypt(&cc, &usk, None)
-            .unwrap()
-            .is_none()
-    );
+    assert!(new_encrypted_header
+        .decrypt(&cc, &usk, None)
+        .unwrap()
+        .is_none());
 
     // refresh user secret key, do not grant old encryption access
     cc.refresh_usk(&mut msk, &mut usk, false).unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
-    assert!(
-        new_encrypted_header
-            .decrypt(&cc, &usk, None)
-            .unwrap()
-            .is_some()
-    );
+    assert!(new_encrypted_header
+        .decrypt(&cc, &usk, None)
+        .unwrap()
+        .is_some());
 
     // But it cannot decrypt old ciphertexts
     assert!(encrypted_header.decrypt(&cc, &usk, None).unwrap().is_none());

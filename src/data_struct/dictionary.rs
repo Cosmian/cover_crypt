@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    collections::{HashMap, hash_map::Entry},
+    collections::{hash_map::Entry, HashMap},
     fmt::{self, Debug},
     hash::Hash,
     marker::PhantomData,
@@ -8,9 +8,9 @@ use std::{
 };
 
 use serde::{
-    Deserialize, Deserializer, Serialize,
     de::{MapAccess, Visitor},
     ser::SerializeMap,
+    Deserialize, Deserializer, Serialize,
 };
 
 use super::error::Error;
@@ -307,11 +307,14 @@ mod tests {
         // Iterators
         assert_eq!(d.values().collect::<Vec<_>>(), vec!["Foox", "Bar", "Baz"]);
 
-        assert_eq!(d.iter().collect::<Vec<_>>(), vec![
-            (&String::from("ID1"), &String::from("Foox")),
-            (&String::from("ID2_bis"), &String::from("Bar")),
-            (&String::from("ID3"), &String::from("Baz")),
-        ]);
+        assert_eq!(
+            d.iter().collect::<Vec<_>>(),
+            vec![
+                (&String::from("ID1"), &String::from("Foox")),
+                (&String::from("ID2_bis"), &String::from("Bar")),
+                (&String::from("ID3"), &String::from("Baz")),
+            ]
+        );
 
         // Remove
         assert!(d.remove(&String::from("Missing")).is_none());

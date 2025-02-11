@@ -1,5 +1,5 @@
-use cosmian_cover_crypt::{AccessPolicy, api::Covercrypt, cc_keygen, traits::KemAc};
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use cosmian_cover_crypt::{api::Covercrypt, cc_keygen, traits::KemAc, AccessPolicy};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 const C_ENC_APS: [(&str, usize); 5] = [
     ("SEC::LOW && (DPT::MKG) ", 1),

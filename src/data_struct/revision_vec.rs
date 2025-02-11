@@ -1,4 +1,4 @@
-use std::collections::{LinkedList, VecDeque, linked_list};
+use std::collections::{linked_list, LinkedList, VecDeque};
 
 /// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
@@ -208,24 +208,30 @@ mod tests {
 
         // Iterators
         let depth_iter: Vec<_> = revision_vec.flat_iter().collect();
-        assert_eq!(depth_iter, vec![
-            (&1, &"a\"".to_string()),
-            (&1, &"a'".to_string()),
-            (&1, &"a".to_string()),
-            (&2, &"b".to_string()),
-            (&3, &"c'".to_string()),
-            (&3, &"c".to_string()),
-        ]);
+        assert_eq!(
+            depth_iter,
+            vec![
+                (&1, &"a\"".to_string()),
+                (&1, &"a'".to_string()),
+                (&1, &"a".to_string()),
+                (&2, &"b".to_string()),
+                (&3, &"c'".to_string()),
+                (&3, &"c".to_string()),
+            ]
+        );
 
         let breadth_iter: Vec<_> = revision_vec.bfs().collect();
-        assert_eq!(breadth_iter, vec![
-            &"a\"".to_string(),
-            &"b".to_string(),
-            &"c'".to_string(),
-            &"a'".to_string(),
-            &"c".to_string(),
-            &"a".to_string(),
-        ]);
+        assert_eq!(
+            breadth_iter,
+            vec![
+                &"a\"".to_string(),
+                &"b".to_string(),
+                &"c'".to_string(),
+                &"a'".to_string(),
+                &"c".to_string(),
+                &"a".to_string(),
+            ]
+        );
 
         // Retain
         revision_vec.retain(|key| key == &1);

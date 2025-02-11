@@ -1,20 +1,20 @@
 use std::sync::{Mutex, MutexGuard};
 
-use cosmian_crypto_core::{CsRng, Secret, SymmetricKey, kdf256, reexport::rand_core::SeedableRng};
+use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
 use zeroize::Zeroizing;
 
 use super::{
-    core::MIN_TRACING_LEVEL,
     core::primitives::{prune, update_msk, usk_keygen},
+    core::MIN_TRACING_LEVEL,
     traits::AE,
 };
 use crate::{
-    AccessPolicy, Error,
     core::{
-        MasterPublicKey, MasterSecretKey, SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
         primitives::{decaps, encaps, full_decaps, refresh, rekey, setup},
+        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     traits::{KemAc, PkeAc},
+    AccessPolicy, Error,
 };
 #[derive(Debug)]
 pub struct Covercrypt {

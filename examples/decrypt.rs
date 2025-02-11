@@ -6,12 +6,12 @@ const HEADER: &str = "/m73Gzm5LhMZmNEpFubAuQJUu3QzyOH1fJCrJynNWprMuzGViQ1nlE6v11
 
 fn main() {
     use base64::{
-        Engine,
         alphabet::STANDARD,
         engine::{GeneralPurpose, GeneralPurposeConfig},
+        Engine,
     };
-    use cosmian_cover_crypt::UserSecretKey;
     use cosmian_cover_crypt::api::Covercrypt;
+    use cosmian_cover_crypt::UserSecretKey;
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     let config: GeneralPurposeConfig = GeneralPurposeConfig::default();

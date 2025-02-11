@@ -1,5 +1,5 @@
 use cosmian_cover_crypt::{
-    AccessPolicy, EncryptedHeader, MasterPublicKey, MasterSecretKey, api::Covercrypt,
+    api::Covercrypt, AccessPolicy, EncryptedHeader, MasterPublicKey, MasterSecretKey,
 };
 
 /// Generates a new USK and encrypted header and prints them.
@@ -12,9 +12,9 @@ fn generate_new(cc: &Covercrypt, _msk: &mut MasterSecretKey, mpk: &MasterPublicK
 
     {
         use base64::{
-            Engine,
             alphabet::STANDARD,
             engine::{GeneralPurpose, GeneralPurposeConfig},
+            Engine,
         };
 
         use cosmian_crypto_core::bytes_ser_de::Serializable;
