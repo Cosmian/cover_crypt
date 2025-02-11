@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     core::{
-        primitives::{decaps, encaps, refresh, rekey, setup},
+        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup},
         MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     traits::{KemAc, PkeAc},
@@ -147,21 +147,21 @@ impl Covercrypt {
         )
     }
 
-    // /// Returns a new encapsulation with the same rights as the one given, along
-    // /// with a freshly generated shared secret.
-    // pub fn recaps(
-    //     &self,
-    //     msk: &MasterSecretKey,
-    //     mpk: &MasterPublicKey,
-    //     encapsulation: &XEnc,
-    // ) -> Result<(Secret<32>, XEnc), Error> {
-    //     let (_ss, rights) = full_decaps(msk, encapsulation)?;
-    //     encaps(
-    //         &mut *self.rng.lock().expect("Mutex lock failed!"),
-    //         mpk,
-    //         &rights,
-    //     )
-    // }
+    /// Returns a new encapsulation with the same rights as the one given, along
+    /// with a freshly generated shared secret.
+    pub fn recaps(
+        &self,
+        msk: &MasterSecretKey,
+        mpk: &MasterPublicKey,
+        encapsulation: &XEnc,
+    ) -> Result<(Secret<32>, XEnc), Error> {
+        let (_ss, rights) = full_decaps(msk, encapsulation)?;
+        encaps(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            mpk,
+            &rights,
+        )
+    }
 }
 
 impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {

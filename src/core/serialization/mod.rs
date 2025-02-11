@@ -138,15 +138,20 @@ impl Serializable for TracingSecretKey {
             + to_leb128_len(self.users.len())
             + self.users.iter().map(Serializable::length).sum::<usize>()
             + to_leb128_len(self.tracers.len())
-            + self.tracers.iter().map(|sk| sk.length()).sum::<usize>()
+            + self
+                .tracers
+                .iter()
+                .map(|(sk, pk)| sk.length() + pk.length())
+                .sum::<usize>()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.s.write(ser)?;
 
         n += ser.write_leb128_u64(self.tracers.len() as u64)?;
-        for sk in &self.tracers {
+        for (sk, pk) in &self.tracers {
             n += ser.write(sk)?;
+            n += ser.write(pk)?;
         }
 
         n = ser.write_leb128_u64(self.users.len() as u64)?;
@@ -164,7 +169,8 @@ impl Serializable for TracingSecretKey {
         let mut tracers = LinkedList::new();
         for _ in 0..n_tracers {
             let sk = de.read()?;
-            tracers.push_back(sk);
+            let pk = de.read()?;
+            tracers.push_back((sk, pk));
         }
 
         let n_users = <usize>::try_from(de.read_leb128_u64()?)?;

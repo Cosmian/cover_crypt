@@ -12,6 +12,7 @@ use cosmian_crypto_core::{
     Aes256Gcm,
 };
 
+#[allow(dead_code)]
 /// Generates a new USK and encrypted header and prints them.
 fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKey) {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();

@@ -158,7 +158,7 @@ impl UserId {
 #[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
     s: Scalar,
-    tracers: LinkedList<Scalar>,
+    tracers: LinkedList<(Scalar, EcPoint)>,
     users: HashSet<UserId>,
 }
 
@@ -166,7 +166,7 @@ impl TracingSecretKey {
     fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
         let s = nike::Scalar::new(rng);
         let tracers = (0..=level)
-            .map(|_| R25519::keygen(rng).map(|kp| kp.0))
+            .map(|_| R25519::keygen(rng))
             .collect::<Result<_, _>>()?;
         let users = HashSet::new();
 
@@ -178,14 +178,18 @@ impl TracingSecretKey {
         self.tracers.len() - 1
     }
 
+    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+        self.tracers.iter().map(|(_, Pi)| Pi * r).collect()
+    }
+
     /// Generates a new tracer. Returns the associated trap.
     fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
-        self.tracers.push_back(R25519::keygen(rng)?.0);
+        self.tracers.push_back(R25519::keygen(rng)?);
         Ok(())
     }
 
     /// Drops the oldest tracer and returns it.
-    fn _decrease_tracing(&mut self) -> Result<Scalar, Error> {
+    fn _decrease_tracing(&mut self) -> Result<(Scalar, EcPoint), Error> {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -236,7 +240,7 @@ impl TracingSecretKey {
     /// Generates the associated tracing public key.
     #[must_use]
     fn tpk(&self) -> TracingPublicKey {
-        TracingPublicKey(self.tracers.iter().map(|s| s.into()).collect())
+        TracingPublicKey(self.tracers.iter().map(|(_, Pi)| Pi).cloned().collect())
     }
 
     /// Returns the binding points.
@@ -246,7 +250,7 @@ impl TracingSecretKey {
 
     /// Generates a new ID and adds it to the list of known user IDs.
     fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
-        if let Some(last_tracer) = self.tracers.back() {
+        if let Some((last_tracer, _)) = self.tracers.back() {
             // Generate all but the last marker at random.
             let mut markers: LinkedList<Scalar> = self
                 .tracers
@@ -260,7 +264,7 @@ impl TracingSecretKey {
                     .tracers
                     .iter()
                     .zip(markers.iter())
-                    .map(|(sk_i, a_i)| sk_i * a_i)
+                    .map(|((sk_i, _), a_i)| sk_i * a_i)
                     .fold(Scalar::zero(), |acc, x_i| &acc + &x_i))
                 / last_tracer;
 
@@ -279,7 +283,7 @@ impl TracingSecretKey {
             == id
                 .iter()
                 .zip(self.tracers.iter())
-                .map(|(identifier, tracer)| identifier * tracer)
+                .map(|(identifier, (tracer, _))| identifier * tracer)
                 .sum()
     }
 
@@ -488,7 +492,6 @@ impl XEnc {
         self.c.len() - 1
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
     pub fn count(&self) -> usize {
         match &self.encapsulations {
             Encapsulations::HEncs(vec) => vec.len(),

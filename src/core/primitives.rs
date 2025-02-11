@@ -178,7 +178,7 @@ pub fn usk_keygen(
 
     Ok(UserSecretKey {
         id,
-        ps: msk.tsk.tracers.iter().map(EcPoint::from).collect(),
+        ps: msk.tsk.tracers.iter().map(|(_, gi)| gi).cloned().collect(),
         secrets: coordinate_keys,
         signature,
     })
@@ -432,58 +432,108 @@ pub fn decaps(
     }
 }
 
-// /// Recover the encapsulated shared secret and set of rights used in the
-// /// encapsulation.
-// pub fn full_decaps(
-//     msk: &MasterSecretKey,
-//     encapsulation: &XEnc,
-// ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
-//     let A = {
-//         let c_0 = encapsulation
-//             .c
-//             .first()
-//             .ok_or_else(|| Error::Kem("invalid encapsulation: C is empty".to_string()))?;
-//         let t_0 = msk
-//             .tsk
-//             .tracers
-//             .front()
-//             .ok_or_else(|| Error::KeyError("MSK has no tracer".to_string()))?;
+/// Recover the encapsulated shared secret and set of rights used in the
+/// encapsulation.
+pub fn full_decaps(
+    msk: &MasterSecretKey,
+    encapsulation: &XEnc,
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+    let A = {
+        let c_0 = encapsulation
+            .c
+            .first()
+            .ok_or_else(|| Error::Kem("invalid encapsulation: C is empty".to_string()))?;
+        let t_0 = msk
+            .tsk
+            .tracers
+            .front()
+            .map(|(si, _)| si)
+            .ok_or_else(|| Error::KeyError("MSK has no tracer".to_string()))?;
 
-//         c_0 * &(&msk.tsk.s / t_0)
-//     };
+        c_0 * &(&msk.tsk.s / t_0)
+    };
 
-//     let T = {
-//         let mut hasher = Shake::v256();
-//         for c in encapsulation.c.iter() {
-//             hasher.update(&c.to_bytes());
-//         }
-//         for enc in encapsulation.encapsulations.iter() {
-//             if let Encapsulation::Hybridized { E, F: _ } = enc {
-//                 hasher.update(&E.serialize()?)
-//             }
-//         }
-//         let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-//         hasher.finalize(&mut *T);
-//         T
-//     };
+    let T = {
+        let mut hasher = Shake::v256();
+        encapsulation
+            .c
+            .iter()
+            .for_each(|c| hasher.update(&c.to_bytes()));
 
-//     let mut rights = HashSet::with_capacity(encapsulation.encapsulations.len());
-//     let ss = Secret::new();
-//     for enc in &encapsulation.encapsulations {
-//         for (right, secrets) in msk.secrets.iter() {
-//             for (_, secret) in secrets {
-//                 if let Some(S) = try_decaps(secret, enc, &A, &T)? {
-//                     let (tag, ss) = j_hash(&S, &encapsulation.c, &encapsulation.encapsulations)?;
-//                     if tag == encapsulation.tag {
-//                         drop(ss);
-//                         rights.insert(right.clone());
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     Ok((ss, rights))
-// }
+        if let Encapsulations::HEncs(encs) = &encapsulation.encapsulations {
+            encs.iter().try_for_each(|(E, _)| {
+                hasher.update(&E.serialize()?);
+                Ok::<_, Error>(())
+            })?;
+        }
+        hasher
+    };
+
+    let J = {
+        let mut hasher = T.clone();
+        match &encapsulation.encapsulations {
+            Encapsulations::HEncs(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
+            Encapsulations::CEncs(encs) => encs.iter().for_each(|F| hasher.update(F)),
+        }
+        hasher
+    };
+
+    let mut enc_ss = None;
+    let mut rights = HashSet::with_capacity(encapsulation.count());
+    let mut try_decaps =
+        |right: &Right, K1: &mut EcPoint, K2: Option<Secret<SHARED_SECRET_LENGTH>>, F| {
+            let S_ij = xor_in_place(H_hash(T.clone(), K1, K2.as_ref()), F);
+            let (tag_ij, ss) = J_hash(J.clone(), &S_ij);
+            if encapsulation.tag == tag_ij {
+                // Fujisaki-Okamoto
+                let r = G_hash(&S_ij)?;
+                let c_ij = msk.tsk.set_traps(&r);
+                if encapsulation.c == c_ij {
+                    K1.zeroize();
+                    enc_ss = Some(ss);
+                    rights.insert(right.clone());
+                }
+            }
+            Ok::<_, Error>(())
+        };
+
+    match &encapsulation.encapsulations {
+        Encapsulations::HEncs(encs) => {
+            for (E, F) in encs {
+                for (right, secret_set) in msk.secrets.iter() {
+                    for (is_activated, secret) in secret_set {
+                        if *is_activated {
+                            if let RightSecretKey::Hybridized { sk, dk } = secret {
+                                let mut K1 = R25519::session_key(sk, &A)?;
+                                let K2 = MlKem512::dec(dk, E)?;
+                                try_decaps(right, &mut K1, Some(K2), F)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Encapsulations::CEncs(encs) => {
+            for F in encs {
+                for (right, secret_set) in msk.secrets.iter() {
+                    for (is_activated, secret) in secret_set {
+                        if *is_activated {
+                            let sk = match secret {
+                                RightSecretKey::Hybridized { sk, .. } => sk,
+                                RightSecretKey::Classic { sk } => sk,
+                            };
+                            let mut K1 = R25519::session_key(sk, &A)?;
+                            try_decaps(right, &mut K1, None, F)?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    enc_ss
+        .map(|ss| (ss, rights))
+        .ok_or_else(|| Error::Kem("could not open the encapsulation".to_string()))
+}
 
 /// Updates the MSK such that it has at least one secret per right given, and no
 /// secret for rights that are not given. Updates hybridization of the remaining
