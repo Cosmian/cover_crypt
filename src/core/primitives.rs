@@ -184,6 +184,8 @@ pub fn usk_keygen(
     })
 }
 
+/// Generates a hybridized encapsulation of the given secret S with the given
+/// marker c, ElGamal random r and subkeys.
 fn h_encaps(
     S: Secret<SHARED_SECRET_LENGTH>,
     c: Vec<EcPoint>,
@@ -242,12 +244,15 @@ fn h_encaps(
     ))
 }
 
+/// Generates a classic encapsulation of the given secret S with the given
+/// marker c, ElGamal random r and subkeys.
 fn c_encaps(
     S: Secret<SHARED_SECRET_LENGTH>,
     c: Vec<EcPoint>,
     r: Scalar,
     subkeys: Vec<&RightPublicKey>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
+    // In classic mode, T is only updated with c.
     let T = c.iter().fold(Shake::v256(), |mut T, c| {
         T.update(&c.to_bytes());
         T
@@ -316,6 +321,8 @@ pub fn encaps(
     }
 }
 
+/// Attempts to open the given hybridized encapsulations with this user secret
+/// key.
 fn h_decaps(
     usk: &UserSecretKey,
     A: &EcPoint,
@@ -362,6 +369,7 @@ fn h_decaps(
     Ok(None)
 }
 
+/// Attempts to open the given classic encapsulations with this user secret key.
 fn c_decaps(
     usk: &UserSecretKey,
     A: &EcPoint,
