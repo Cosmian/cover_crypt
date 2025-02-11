@@ -178,7 +178,7 @@ pub fn usk_keygen(
 
     Ok(UserSecretKey {
         id,
-        ps: msk.tsk.tracers.iter().map(|(_, gi)| gi).cloned().collect(),
+        ps: msk.tsk.tracers.iter().map(|(_, Pi)| Pi).cloned().collect(),
         secrets: coordinate_keys,
         signature,
     })

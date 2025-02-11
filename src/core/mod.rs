@@ -404,7 +404,7 @@ impl MasterPublicKey {
     /// Generates traps for the given scalar.
     // TODO: find a better concept.
     fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
-        self.tpk.0.iter().map(|gi| gi * r).collect()
+        self.tpk.0.iter().map(|Pi| Pi * r).collect()
     }
 
     /// Returns the subkeys associated with the given rights in this public key,
@@ -461,7 +461,7 @@ impl UserSecretKey {
     }
 
     fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
-        self.ps.iter().map(|gi| gi * r).collect()
+        self.ps.iter().map(|Pi| Pi * r).collect()
     }
 }
 
