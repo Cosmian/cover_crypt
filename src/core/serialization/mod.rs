@@ -8,14 +8,12 @@ use cosmian_crypto_core::{
 };
 
 use super::{
-    nike::EcPoint, RightPublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
-    SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    nike::EcPoint, Encapsulations, RightPublicKey, RightSecretKey, TracingPublicKey,
+    TracingSecretKey, UserId, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::{AccessStructure, Right},
-    core::{
-        Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
-    },
+    core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH},
     data_struct::{RevisionMap, RevisionVec},
     Error,
 };
@@ -140,15 +138,20 @@ impl Serializable for TracingSecretKey {
             + to_leb128_len(self.users.len())
             + self.users.iter().map(Serializable::length).sum::<usize>()
             + to_leb128_len(self.tracers.len())
-            + self.tracers.iter().map(|sk| sk.length()).sum::<usize>()
+            + self
+                .tracers
+                .iter()
+                .map(|(sk, pk)| sk.length() + pk.length())
+                .sum::<usize>()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = self.s.write(ser)?;
 
         n += ser.write_leb128_u64(self.tracers.len() as u64)?;
-        for sk in &self.tracers {
+        for (sk, pk) in &self.tracers {
             n += ser.write(sk)?;
+            n += ser.write(pk)?;
         }
 
         n = ser.write_leb128_u64(self.users.len() as u64)?;
@@ -166,7 +169,8 @@ impl Serializable for TracingSecretKey {
         let mut tracers = LinkedList::new();
         for _ in 0..n_tracers {
             let sk = de.read()?;
-            tracers.push_back(sk);
+            let pk = de.read()?;
+            tracers.push_back((sk, pk));
         }
 
         let n_users = <usize>::try_from(de.read_leb128_u64()?)?;
@@ -399,41 +403,64 @@ impl Serializable for UserSecretKey {
     }
 }
 
-impl Serializable for Encapsulation {
+impl Serializable for Encapsulations {
     type Error = Error;
 
     fn length(&self) -> usize {
         1 + match self {
-            Self::Classic { .. } => SHARED_SECRET_LENGTH,
-            Self::Hybridized { E, .. } => E.length() + SHARED_SECRET_LENGTH,
+            Encapsulations::HEncs(vec) => {
+                to_leb128_len(vec.len())
+                    + vec.iter().map(|(E, F)| E.length() + F.len()).sum::<usize>()
+            }
+            Encapsulations::CEncs(vec) => {
+                to_leb128_len(vec.len()) + vec.iter().map(|F| F.len()).sum::<usize>()
+            }
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = 0;
         match self {
-            Self::Classic { F } => {
-                n += ser.write_leb128_u64(0)?;
-                n += ser.write_array(F)?;
+            Encapsulations::HEncs(vec) => {
+                let mut n = ser.write_leb128_u64(1)?;
+                n += ser.write_leb128_u64(vec.len() as u64)?;
+                for (E, F) in vec.iter() {
+                    n += ser.write(E)?;
+                    n += ser.write_array(F)?;
+                }
+                Ok(n)
             }
-            Self::Hybridized { E, F } => {
-                n += ser.write_leb128_u64(1)?;
-                n += ser.write(E)?;
-                n += ser.write_array(F)?;
+            Encapsulations::CEncs(vec) => {
+                let mut n = ser.write_leb128_u64(0)?;
+                n += ser.write_leb128_u64(vec.len() as u64)?;
+                for F in vec.iter() {
+                    n += ser.write_array(F)?;
+                }
+                Ok(n)
             }
         }
-        Ok(n)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read_leb128_u64()?;
         if is_hybridized == 1 {
-            let E = de.read()?;
-            let F = de.read_array::<SHARED_SECRET_LENGTH>()?;
-            Ok(Self::Hybridized { E, F })
+            let len = usize::try_from(de.read_leb128_u64()?)?;
+            let vec = (0..len)
+                .map(|_| {
+                    let E = de.read()?;
+                    let F = de.read_array::<SHARED_SECRET_LENGTH>()?;
+                    Ok::<_, Error>((E, F))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Self::HEncs(vec))
         } else if 0 == is_hybridized {
-            let F = de.read_array()?;
-            Ok(Self::Classic { F })
+            let len = usize::try_from(de.read_leb128_u64()?)?;
+            let vec = (0..len)
+                .map(|_| {
+                    let F = de.read_array::<SHARED_SECRET_LENGTH>()?;
+                    Ok::<_, Error>(F)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Self::CEncs(vec))
         } else {
             Err(Error::ConversionFailed(format!(
                 "invalid hybridization flag {is_hybridized}"
@@ -449,12 +476,7 @@ impl Serializable for XEnc {
         TAG_LENGTH
             + to_leb128_len(self.c.len())
             + self.c.iter().map(Serializable::length).sum::<usize>()
-            + to_leb128_len(self.encapsulations.len())
-            + self
-                .encapsulations
-                .iter()
-                .map(Serializable::length)
-                .sum::<usize>()
+            + self.encapsulations.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -463,10 +485,7 @@ impl Serializable for XEnc {
         for trap in &self.c {
             n += ser.write(trap)?;
         }
-        n += ser.write_leb128_u64(self.encapsulations.len() as u64)?;
-        for enc in &self.encapsulations {
-            n += ser.write(enc)?;
-        }
+        n += ser.write(&self.encapsulations)?;
         Ok(n)
     }
 
@@ -478,16 +497,11 @@ impl Serializable for XEnc {
             let trap = de.read::<EcPoint>()?;
             traps.push(trap);
         }
-        let n_encapsulations = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut coordinate_encapsulations = Vec::with_capacity(n_encapsulations);
-        for _ in 0..n_encapsulations {
-            let enc = de.read::<Encapsulation>()?;
-            coordinate_encapsulations.push(enc);
-        }
+        let encapsulations = Encapsulations::read(de)?;
         Ok(Self {
             tag,
             c: traps,
-            encapsulations: coordinate_encapsulations,
+            encapsulations,
         })
     }
 }

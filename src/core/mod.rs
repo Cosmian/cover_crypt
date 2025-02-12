@@ -122,20 +122,6 @@ impl RightPublicKey {
             Self::Classic { .. } => false,
         }
     }
-
-    pub fn assert_homogeneity(subkeys: &[&Self]) -> Result<(), Error> {
-        let is_homogeneous = subkeys
-            .iter()
-            .all(|cpk| cpk.is_hybridized() == subkeys[0].is_hybridized());
-
-        if is_homogeneous {
-            Ok(())
-        } else {
-            Err(Error::OperationNotPermitted(
-                "classic and hybridized access policies cannot be mixed".to_string(),
-            ))
-        }
-    }
 }
 
 /// Covercrypt user IDs are used to make user keys unique and traceable.
@@ -172,7 +158,7 @@ impl UserId {
 #[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
     s: Scalar,
-    tracers: LinkedList<Scalar>,
+    tracers: LinkedList<(Scalar, EcPoint)>,
     users: HashSet<UserId>,
 }
 
@@ -180,7 +166,7 @@ impl TracingSecretKey {
     fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
         let s = nike::Scalar::new(rng);
         let tracers = (0..=level)
-            .map(|_| R25519::keygen(rng).map(|kp| kp.0))
+            .map(|_| R25519::keygen(rng))
             .collect::<Result<_, _>>()?;
         let users = HashSet::new();
 
@@ -192,14 +178,18 @@ impl TracingSecretKey {
         self.tracers.len() - 1
     }
 
+    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+        self.tracers.iter().map(|(_, Pi)| Pi * r).collect()
+    }
+
     /// Generates a new tracer. Returns the associated trap.
     fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
-        self.tracers.push_back(R25519::keygen(rng)?.0);
+        self.tracers.push_back(R25519::keygen(rng)?);
         Ok(())
     }
 
     /// Drops the oldest tracer and returns it.
-    fn _decrease_tracing(&mut self) -> Result<Scalar, Error> {
+    fn _decrease_tracing(&mut self) -> Result<(Scalar, EcPoint), Error> {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -250,7 +240,7 @@ impl TracingSecretKey {
     /// Generates the associated tracing public key.
     #[must_use]
     fn tpk(&self) -> TracingPublicKey {
-        TracingPublicKey(self.tracers.iter().map(|s| s.into()).collect())
+        TracingPublicKey(self.tracers.iter().map(|(_, Pi)| Pi).cloned().collect())
     }
 
     /// Returns the binding points.
@@ -260,12 +250,12 @@ impl TracingSecretKey {
 
     /// Generates a new ID and adds it to the list of known user IDs.
     fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
-        if let Some(last_tracer) = self.tracers.back() {
+        if let Some((last_tracer, _)) = self.tracers.back() {
             // Generate all but the last marker at random.
             let mut markers: LinkedList<Scalar> = self
                 .tracers
                 .iter()
-                .zip(0..self.tracers.len() - 1)
+                .take(self.tracers.len() - 1)
                 .map(|_| Scalar::new(rng))
                 .collect();
 
@@ -274,7 +264,7 @@ impl TracingSecretKey {
                     .tracers
                     .iter()
                     .zip(markers.iter())
-                    .map(|(sk_i, a_i)| sk_i * a_i)
+                    .map(|((sk_i, _), a_i)| sk_i * a_i)
                     .fold(Scalar::zero(), |acc, x_i| &acc + &x_i))
                 / last_tracer;
 
@@ -293,7 +283,7 @@ impl TracingSecretKey {
             == id
                 .iter()
                 .zip(self.tracers.iter())
-                .map(|(identifier, tracer)| identifier * tracer)
+                .map(|(identifier, (tracer, _))| identifier * tracer)
                 .sum()
     }
 
@@ -414,20 +404,34 @@ impl MasterPublicKey {
     /// Generates traps for the given scalar.
     // TODO: find a better concept.
     fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
-        self.tpk.0.iter().map(|gi| gi * r).collect()
+        self.tpk.0.iter().map(|Pi| Pi * r).collect()
     }
 
-    fn select_subkeys(&self, targets: &HashSet<Right>) -> Result<Vec<&RightPublicKey>, Error> {
+    /// Returns the subkeys associated with the given rights in this public key,
+    /// alongside a boolean value that is true if all of them are hybridized.
+    fn select_subkeys(
+        &self,
+        targets: &HashSet<Right>,
+    ) -> Result<(bool, Vec<&RightPublicKey>), Error> {
+        // This mutable variable is set to false if at least one sub-key is not
+        // hybridized.
+        let mut is_hybridized = true;
+
         let subkeys = targets
             .iter()
             .map(|r| {
-                self.encryption_keys
+                let subkey = self
+                    .encryption_keys
                     .get(r)
-                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))
+                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))?;
+                if !subkey.is_hybridized() {
+                    is_hybridized = false;
+                }
+                Ok(subkey)
             })
-            .collect::<Result<Vec<_>, _>>()?;
-        RightPublicKey::assert_homogeneity(&subkeys)?;
-        Ok(subkeys)
+            .collect::<Result<_, Error>>()?;
+
+        Ok((is_hybridized, subkeys))
     }
 }
 
@@ -457,23 +461,14 @@ impl UserSecretKey {
     }
 
     fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
-        self.ps.iter().map(|gi| gi * r).collect()
+        self.ps.iter().map(|Pi| Pi * r).collect()
     }
 }
 
-/// Encapsulation of a `SHARED_SECRET_LENGTH`-byte secret for a given right.
-///
-/// In case the security level of the associated right was set to post-quantum secure, the key
-/// encapsulation is hybridized. This implies a significant size overhead.
-#[derive(Debug, Clone, Hash, PartialEq)]
-enum Encapsulation {
-    Classic {
-        F: [u8; SHARED_SECRET_LENGTH],
-    },
-    Hybridized {
-        E: kem::Encapsulation512,
-        F: [u8; SHARED_SECRET_LENGTH],
-    },
+#[derive(Debug, Clone, PartialEq)]
+enum Encapsulations {
+    HEncs(Vec<(kem::Encapsulation512, [u8; SHARED_SECRET_LENGTH])>),
+    CEncs(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
 /// Covercrypt encapsulation.
@@ -488,7 +483,7 @@ enum Encapsulation {
 pub struct XEnc {
     tag: Tag,
     c: Vec<EcPoint>,
-    encapsulations: Vec<Encapsulation>,
+    encapsulations: Encapsulations,
 }
 
 impl XEnc {
@@ -497,8 +492,10 @@ impl XEnc {
         self.c.len() - 1
     }
 
-    #[cfg(feature = "test-utils")]
     pub fn count(&self) -> usize {
-        self.encapsulations.len()
+        match &self.encapsulations {
+            Encapsulations::HEncs(vec) => vec.len(),
+            Encapsulations::CEncs(vec) => vec.len(),
+        }
     }
 }
