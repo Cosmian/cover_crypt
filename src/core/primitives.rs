@@ -238,6 +238,7 @@ fn h_encaps(
     let U = {
         let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
         let mut hasher = Sha3::v256();
+        hasher.update(&*T);
         encs.iter().for_each(|(_, F)| hasher.update(F));
         hasher.finalize(&mut *U);
         U
@@ -288,6 +289,7 @@ fn c_encaps(
     let U = {
         let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
         let mut hasher = Sha3::v256();
+        hasher.update(&*T);
         encs.iter().for_each(|F| hasher.update(F));
         hasher.finalize(&mut *U);
         U
@@ -362,6 +364,7 @@ fn h_decaps(
     let U = {
         let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
         let mut hasher = Sha3::v256();
+        hasher.update(&*T);
         encs.iter().for_each(|(_, F)| hasher.update(F));
         hasher.finalize(&mut *U);
         U
@@ -411,6 +414,7 @@ fn c_decaps(
     let U = {
         let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
         let mut hasher = Sha3::v256();
+        hasher.update(&*T);
         encs.iter().for_each(|F| hasher.update(F));
         hasher.finalize(&mut *U);
         U
@@ -511,6 +515,7 @@ pub fn full_decaps(
     let U = {
         let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
         let mut hasher = Sha3::v256();
+        hasher.update(&*T);
         match &encapsulation.encapsulations {
             Encapsulations::HEncs(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
             Encapsulations::CEncs(encs) => encs.iter().for_each(|F| hasher.update(F)),
