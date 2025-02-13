@@ -102,8 +102,8 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
 }
 
 fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<Scalar, Error> {
-    let mut bytes = [0; 64];
-    let mut hasher = Sha3::v256();
+    let mut hasher = Sha3::v512();
+    let mut bytes = [0; 512 / 8];
     hasher.update(&**seed);
     hasher.finalize(&mut bytes);
     let s = Scalar::from_raw_bytes(&bytes);
@@ -117,6 +117,7 @@ fn H_hash(
     T: &Secret<SHARED_SECRET_LENGTH>,
 ) -> Secret<SHARED_SECRET_LENGTH> {
     let mut hasher = Sha3::v256();
+    // SHARED_SECRET_LENGTH = 32 = 256 / 8
     let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
     hasher.update(&K1.to_bytes());
     if let Some(K2) = K2 {
@@ -132,7 +133,7 @@ fn J_hash(
     U: &Secret<SHARED_SECRET_LENGTH>,
 ) -> ([u8; TAG_LENGTH], Secret<SHARED_SECRET_LENGTH>) {
     let mut hasher = Sha3::v384();
-    let mut bytes = [0; 48];
+    let mut bytes = [0; 384 / 8];
     hasher.update(&**S);
     hasher.update(&**U);
     hasher.finalize(&mut bytes);
