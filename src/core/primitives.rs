@@ -16,7 +16,7 @@ use zeroize::Zeroize;
 use crate::{
     abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
     core::{
-        kem, kem::MlKem512, nike::R25519, EcPoint, Encapsulations, KmacSignature, MasterPublicKey,
+        kem, kem::MlKem, nike::R25519, EcPoint, Encapsulations, KmacSignature, MasterPublicKey,
         MasterSecretKey, RightPublicKey, RightSecretKey, Scalar, TracingSecretKey, UserId,
         UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
         SIGNING_KEY_LENGTH, TAG_LENGTH,
@@ -206,7 +206,7 @@ fn h_encaps(
         .map(|subkey| match subkey {
             RightPublicKey::Hybridized { H, ek } => {
                 let K1 = R25519::session_key(&r, H)?;
-                let (K2, E) = MlKem512::enc(ek, rng)?;
+                let (K2, E) = MlKem::enc(ek, rng)?;
                 Ok((K1, K2, E))
             }
             RightPublicKey::Classic { .. } => {
@@ -348,7 +348,10 @@ fn h_decaps(
     A: &EcPoint,
     c: &[EcPoint],
     tag: &[u8; TAG_LENGTH],
-    encs: &[(kem::Encapsulation512, [u8; SHARED_SECRET_LENGTH])],
+    encs: &[(
+        <kem::MlKem as Kem>::Encapsulation,
+        [u8; SHARED_SECRET_LENGTH],
+    )],
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
     let T = {
         let mut hasher = Sha3::v256();
@@ -377,7 +380,7 @@ fn h_decaps(
         for secret in usk.secrets.bfs() {
             if let RightSecretKey::Hybridized { sk, dk } = secret {
                 let mut K1 = R25519::session_key(sk, A)?;
-                let K2 = MlKem512::dec(dk, E)?;
+                let K2 = MlKem::dec(dk, E)?;
                 let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T), F);
                 let (tag_ij, ss) = J_hash(&S_ij, &U);
                 if tag == &tag_ij {
@@ -552,7 +555,7 @@ pub fn full_decaps(
                         if *is_activated {
                             if let RightSecretKey::Hybridized { sk, dk } = secret {
                                 let mut K1 = R25519::session_key(sk, &A)?;
-                                let K2 = MlKem512::dec(dk, E)?;
+                                let K2 = MlKem::dec(dk, E)?;
                                 try_decaps(right, &mut K1, Some(K2), F)?;
                             }
                         }

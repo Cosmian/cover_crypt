@@ -70,8 +70,9 @@ pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
         ptx: &[u8],
     ) -> Result<Self::Ciphertext, Self::Error>;
 
-    /// Attempts decrypting the given ciphertext with the given key. Returns the plaintext upon
-    /// success, or `None` if this key was not authorized to decrypt this ciphertext.
+    /// Attempts decrypting the given ciphertext with the given key. Returns the
+    /// plaintext upon success, or `None` if this key was not authorized to
+    /// decrypt this ciphertext.
     fn decrypt(
         &self,
         usk: &Self::DecryptionKey,
@@ -91,15 +92,15 @@ pub trait Kem {
         rng: &mut impl CryptoRngCore,
     ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error>;
 
-    /// Generates an encapsulation of a random session key, and returns both the key and its
-    /// encapsulation.
+    /// Generates an encapsulation of a random session key, and returns both the
+    /// key and its encapsulation.
     fn enc(
         ek: &Self::EncapsulationKey,
         rng: &mut impl CryptoRngCore,
     ) -> Result<(Self::SessionKey, Self::Encapsulation), Self::Error>;
 
-    /// Attempts opening the given encapsulation. Upon failure to decapsulate, returns a random
-    /// session key.
+    /// Attempts opening the given encapsulation. Upon failure to decapsulate,
+    /// returns a random session key.
     fn dec(
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,

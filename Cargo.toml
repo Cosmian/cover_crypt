@@ -38,6 +38,7 @@ required-features = ["test-utils"]
 
 [features]
 test-utils = []
+mlkem768 = []
 
 [dependencies]
 cosmian_crypto_core = { version = "10.0.0", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
