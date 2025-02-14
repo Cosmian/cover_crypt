@@ -41,7 +41,7 @@ test-utils = []
 mlkem768 = []
 
 [dependencies]
-cosmian_crypto_core = { version = "10.0.0", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
+cosmian_crypto_core = {git = "https://github.com/Cosmian/crypto_core.git", branch = "fix/expose-R25519PublicKey-generator", default-features = false, features = ["ser", "sha3", "aes", "curve25519"]}
 ml-kem = { version =  "0.2.1", features = ["zeroize"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }

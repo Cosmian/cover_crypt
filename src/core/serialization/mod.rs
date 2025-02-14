@@ -8,8 +8,8 @@ use cosmian_crypto_core::{
 };
 
 use super::{
-    nike::EcPoint, Encapsulations, RightPublicKey, RightSecretKey, TracingPublicKey,
-    TracingSecretKey, UserId, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    Encapsulations, RightPublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
+    SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
     abe_policy::{AccessStructure, Right},
@@ -28,7 +28,7 @@ impl Serializable for TracingPublicKey {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         let mut n = ser.write_leb128_u64(self.0.len() as u64)?;
         for pk in self.0.iter() {
-            n += ser.write_array(&pk.to_bytes())?;
+            n += pk.write(ser)?;
         }
         Ok(n)
     }
@@ -37,7 +37,7 @@ impl Serializable for TracingPublicKey {
         let n_pk = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut tracers = LinkedList::new();
         for _ in 0..n_pk {
-            let tracer = EcPoint::try_from_bytes(de.read_array::<{ EcPoint::LENGTH }>()?)?;
+            let tracer = de.read()?;
             tracers.push_back(tracer);
         }
         Ok(Self(tracers))
@@ -494,7 +494,7 @@ impl Serializable for XEnc {
         let n_traps = <usize>::try_from(de.read_leb128_u64()?)?;
         let mut traps = Vec::with_capacity(n_traps);
         for _ in 0..n_traps {
-            let trap = de.read::<EcPoint>()?;
+            let trap = de.read()?;
             traps.push(trap);
         }
         let encapsulations = Encapsulations::read(de)?;

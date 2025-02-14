@@ -16,15 +16,17 @@ use zeroize::Zeroize;
 use crate::{
     abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
     core::{
-        kem, kem::MlKem, nike::R25519, EcPoint, Encapsulations, KmacSignature, MasterPublicKey,
-        MasterSecretKey, RightPublicKey, RightSecretKey, Scalar, TracingSecretKey, UserId,
-        UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH,
-        SIGNING_KEY_LENGTH, TAG_LENGTH,
+        kem::{self, MlKem},
+        Encapsulations, KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey,
+        RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
+        SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
-    traits::{Kem, Nike},
+    traits::{Kem, Nike, Sampling},
     Error,
 };
+
+use super::nike::ElGamal;
 
 fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
     let mut out = [0; LENGTH];
@@ -63,7 +65,7 @@ fn sign(
     if let Some(kmac_key) = &msk.signing_key {
         let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
         for marker in id.iter() {
-            kmac.update(marker.as_bytes())
+            kmac.update(marker)
         }
         // Subkeys ordering needs to be deterministic to allow deterministic
         // signatures. This explains why a hash-map is not used in USK.
@@ -72,11 +74,11 @@ fn sign(
             for subkey in keys.iter() {
                 match subkey {
                     RightSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
-                        kmac.update(s_i.as_bytes());
+                        kmac.update(s_i);
                         kmac.update(&dk_i.serialize()?);
                     }
                     RightSecretKey::Classic { sk: s_i } => {
-                        kmac.update(s_i.as_bytes());
+                        kmac.update(s_i);
                     }
                 }
             }
@@ -101,31 +103,25 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
     }
 }
 
-fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<Scalar, Error> {
-    let mut hasher = Sha3::v512();
-    let mut bytes = [0; 512 / 8];
-    hasher.update(&**seed);
-    hasher.finalize(&mut bytes);
-    let s = Scalar::from_raw_bytes(&bytes);
-    bytes.zeroize();
-    Ok(s)
+fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as Nike>::SecretKey, Error> {
+    Ok(<<ElGamal as Nike>::SecretKey as Sampling>::hash(&**seed))
 }
 
 fn H_hash(
-    K1: &EcPoint,
+    K1: &<ElGamal as Nike>::PublicKey,
     K2: Option<&Secret<SHARED_SECRET_LENGTH>>,
     T: &Secret<SHARED_SECRET_LENGTH>,
-) -> Secret<SHARED_SECRET_LENGTH> {
+) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
     let mut hasher = Sha3::v256();
     // SHARED_SECRET_LENGTH = 32 = 256 / 8
     let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
-    hasher.update(&K1.to_bytes());
+    hasher.update(&K1.serialize()?);
     if let Some(K2) = K2 {
         hasher.update(&**K2);
     }
     hasher.update(&**T);
     hasher.finalize(&mut *H);
-    H
+    Ok(H)
 }
 
 fn J_hash(
@@ -196,8 +192,8 @@ pub fn usk_keygen(
 /// marker c, ElGamal random r and subkeys.
 fn h_encaps(
     S: Secret<SHARED_SECRET_LENGTH>,
-    c: Vec<EcPoint>,
-    r: Scalar,
+    c: Vec<<ElGamal as Nike>::PublicKey>,
+    r: <ElGamal as Nike>::SecretKey,
     subkeys: &[&RightPublicKey],
     rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
@@ -205,7 +201,7 @@ fn h_encaps(
         .iter()
         .map(|subkey| match subkey {
             RightPublicKey::Hybridized { H, ek } => {
-                let K1 = R25519::session_key(&r, H)?;
+                let K1 = ElGamal::session_key(&r, H)?;
                 let (K2, E) = MlKem::enc(ek, rng)?;
                 Ok((K1, K2, E))
             }
@@ -218,7 +214,10 @@ fn h_encaps(
     let T = {
         let mut hasher = Sha3::v256();
         let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
         encs.iter().try_for_each(|(_, _, E)| {
             hasher.update(&E.serialize()?);
             Ok::<_, Error>(())
@@ -230,7 +229,7 @@ fn h_encaps(
     let encs = encs
         .into_iter()
         .map(|(mut K1, K2, E)| -> Result<_, _> {
-            let F = xor_2(&S, &H_hash(&K1, Some(&K2), &T));
+            let F = xor_2(&S, &*H_hash(&K1, Some(&K2), &T)?);
             K1.zeroize();
             Ok((E, F))
         })
@@ -261,15 +260,18 @@ fn h_encaps(
 /// marker c, ElGamal random r and subkeys.
 fn c_encaps(
     S: Secret<SHARED_SECRET_LENGTH>,
-    c: Vec<EcPoint>,
-    r: Scalar,
+    c: Vec<<ElGamal as Nike>::PublicKey>,
+    r: <ElGamal as Nike>::SecretKey,
     subkeys: Vec<&RightPublicKey>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     // In classic mode, T is only updated with c.
     let T = {
         let mut hasher = Sha3::v256();
         let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
         hasher.finalize(&mut *T);
         T
     };
@@ -281,8 +283,8 @@ fn c_encaps(
                 RightPublicKey::Hybridized { H, .. } => H,
                 RightPublicKey::Classic { H } => H,
             };
-            let K1 = R25519::session_key(&r, H)?;
-            let F = xor_2(&S, &H_hash(&K1, None, &T));
+            let K1 = ElGamal::session_key(&r, H)?;
+            let F = xor_2(&S, &*H_hash(&K1, None, &T)?);
             Ok(F)
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -345,8 +347,8 @@ pub fn encaps(
 /// key.
 fn h_decaps(
     usk: &UserSecretKey,
-    A: &EcPoint,
-    c: &[EcPoint],
+    A: &<ElGamal as Nike>::PublicKey,
+    c: &[<ElGamal as Nike>::PublicKey],
     tag: &[u8; TAG_LENGTH],
     encs: &[(
         <kem::MlKem as Kem>::Encapsulation,
@@ -356,7 +358,10 @@ fn h_decaps(
     let T = {
         let mut hasher = Sha3::v256();
         let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
         encs.iter().try_for_each(|(E, _)| {
             hasher.update(&E.serialize()?);
             Ok::<_, Error>(())
@@ -379,9 +384,9 @@ fn h_decaps(
         // order.
         for secret in usk.secrets.bfs() {
             if let RightSecretKey::Hybridized { sk, dk } = secret {
-                let mut K1 = R25519::session_key(sk, A)?;
+                let mut K1 = ElGamal::session_key(sk, A)?;
                 let K2 = MlKem::dec(dk, E)?;
-                let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T), F);
+                let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T)?, F);
                 let (tag_ij, ss) = J_hash(&S_ij, &U);
                 if tag == &tag_ij {
                     // Fujisaki-Okamoto
@@ -402,15 +407,18 @@ fn h_decaps(
 /// Attempts to open the given classic encapsulations with this user secret key.
 fn c_decaps(
     usk: &UserSecretKey,
-    A: &EcPoint,
-    c: &Vec<EcPoint>,
+    A: &<ElGamal as Nike>::PublicKey,
+    c: &[<ElGamal as Nike>::PublicKey],
     tag: &[u8; TAG_LENGTH],
     encs: &Vec<[u8; SHARED_SECRET_LENGTH]>,
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
     let T = {
         let mut hasher = Sha3::v256();
         let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
         hasher.finalize(&mut *T);
         T
     };
@@ -432,15 +440,15 @@ fn c_decaps(
                 RightSecretKey::Hybridized { sk, .. } => sk,
                 RightSecretKey::Classic { sk } => sk,
             };
-            let mut K1 = R25519::session_key(sk, A)?;
-            let S = xor_in_place(H_hash(&K1, None, &T), F);
+            let mut K1 = ElGamal::session_key(sk, A)?;
+            let S = xor_in_place(H_hash(&K1, None, &T)?, F);
             K1.zeroize();
             let (tag_ij, ss) = J_hash(&S, &U);
             if tag == &tag_ij {
                 // Fujisaki-Okamoto
                 let r = G_hash(&S)?;
                 let c_ij = usk.set_traps(&r);
-                if c == &c_ij {
+                if c == c_ij {
                     return Ok(Some(ss));
                 }
             }
@@ -462,10 +470,7 @@ pub fn decaps(
         .iter()
         .zip(encapsulation.c.iter())
         .map(|(marker, trap)| trap * marker)
-        .fold(EcPoint::identity(), |mut acc, elt| {
-            acc = &acc + &elt;
-            acc
-        });
+        .sum();
 
     match &encapsulation.encapsulations {
         Encapsulations::HEncs(encs) => {
@@ -501,10 +506,10 @@ pub fn full_decaps(
     let T = {
         let mut hasher = Sha3::v256();
         let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        encapsulation
-            .c
-            .iter()
-            .for_each(|ck| hasher.update(&ck.to_bytes()));
+        encapsulation.c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
 
         if let Encapsulations::HEncs(encs) = &encapsulation.encapsulations {
             encs.iter().try_for_each(|(E, _)| {
@@ -530,22 +535,24 @@ pub fn full_decaps(
 
     let mut enc_ss = None;
     let mut rights = HashSet::with_capacity(encapsulation.count());
-    let mut try_decaps =
-        |right: &Right, K1: &mut EcPoint, K2: Option<Secret<SHARED_SECRET_LENGTH>>, F| {
-            let S_ij = xor_in_place(H_hash(K1, K2.as_ref(), &T), F);
-            let (tag_ij, ss) = J_hash(&S_ij, &U);
-            if encapsulation.tag == tag_ij {
-                // Fujisaki-Okamoto
-                let r = G_hash(&S_ij)?;
-                let c_ij = msk.tsk.set_traps(&r);
-                if encapsulation.c == c_ij {
-                    K1.zeroize();
-                    enc_ss = Some(ss);
-                    rights.insert(right.clone());
-                }
+    let mut try_decaps = |right: &Right,
+                          K1: &mut <ElGamal as Nike>::PublicKey,
+                          K2: Option<Secret<SHARED_SECRET_LENGTH>>,
+                          F| {
+        let S_ij = xor_in_place(H_hash(K1, K2.as_ref(), &T)?, F);
+        let (tag_ij, ss) = J_hash(&S_ij, &U);
+        if encapsulation.tag == tag_ij {
+            // Fujisaki-Okamoto
+            let r = G_hash(&S_ij)?;
+            let c_ij = msk.tsk.set_traps(&r);
+            if encapsulation.c == c_ij {
+                K1.zeroize();
+                enc_ss = Some(ss);
+                rights.insert(right.clone());
             }
-            Ok::<_, Error>(())
-        };
+        }
+        Ok::<_, Error>(())
+    };
 
     match &encapsulation.encapsulations {
         Encapsulations::HEncs(encs) => {
@@ -554,7 +561,7 @@ pub fn full_decaps(
                     for (is_activated, secret) in secret_set {
                         if *is_activated {
                             if let RightSecretKey::Hybridized { sk, dk } = secret {
-                                let mut K1 = R25519::session_key(sk, &A)?;
+                                let mut K1 = ElGamal::session_key(sk, &A)?;
                                 let K2 = MlKem::dec(dk, E)?;
                                 try_decaps(right, &mut K1, Some(K2), F)?;
                             }
@@ -572,7 +579,7 @@ pub fn full_decaps(
                                 RightSecretKey::Hybridized { sk, .. } => sk,
                                 RightSecretKey::Classic { sk } => sk,
                             };
-                            let mut K1 = R25519::session_key(sk, &A)?;
+                            let mut K1 = ElGamal::session_key(sk, &A)?;
                             try_decaps(right, &mut K1, None, F)?;
                         }
                     }
