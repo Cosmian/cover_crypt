@@ -5,16 +5,16 @@ on: push
 
 jobs:
   cargo-lint:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v1
-    - uses: dtolnay/rust-toolchain@master
-      with:
-	toolchain: ${{ inputs.toolchain }}
-	components: rustfmt, clippy
-    - name: Build
-      run: |
-	bash .github/scripts/cargo.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+	  toolchain: ${{ inputs.toolchain }}
+	  components: rustfmt, clippy
+      - name: Build
+        run: |
+	  bash .github/scripts/cargo.sh
   cargo-publish:
     needs:
       - cargo-lint
