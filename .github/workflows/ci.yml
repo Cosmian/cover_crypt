@@ -4,20 +4,21 @@ name: CI checks
 on: push
 
 jobs:
-  cargo-lint:
+  cargo-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
       - uses: dtolnay/rust-toolchain@master
         with:
-	  toolchain: ${{ inputs.toolchain }}
+	  toolchain: stable
 	  components: rustfmt, clippy
-      - name: Build
+      - name: Run test script
         run: |
-	  bash .github/scripts/cargo.sh
+	  chmod +x .github/scripts/cargo.sh
+	  .github/scripts/cargo.sh
   cargo-publish:
     needs:
-      - cargo-lint
+      - cargo-test
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish.yml@develop
     if: startsWith(github.ref, 'refs/tags/')
     with:
