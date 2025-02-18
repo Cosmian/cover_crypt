@@ -2,7 +2,6 @@ use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Secret, SymmetricK
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Div;
-use std::ops::DivAssign;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Sub;
@@ -166,16 +165,16 @@ pub trait Ring:
     + Zero
     + Mul<Output = Self>
     + MulAssign
-    + Div<Output = Self>
-    + DivAssign
+    + Div<Output = Result<Self, Self::DivError>>
     + for<'a> Mul<&'a Self, Output = Self>
-    + for<'a> Div<&'a Self, Output = Self>
+    + for<'a> Div<&'a Self, Output = Result<Self, Self::DivError>>
 where
     for<'a, 'b> &'a Self: Add<&'b Self, Output = Self>,
     for<'a, 'b> &'a Self: Sub<&'b Self, Output = Self>,
     for<'a, 'b> &'a Self: Mul<&'b Self, Output = Self>,
-    for<'a, 'b> &'a Self: Div<&'b Self, Output = Self>,
+    for<'a, 'b> &'a Self: Div<&'b Self, Output = Result<Self, Self::DivError>>,
 {
+    type DivError;
 }
 
 pub trait KeyHomomorphicNike: Nike
@@ -189,6 +188,9 @@ where
     for<'a, 'b> &'a Self::SecretKey: Add<&'b Self::SecretKey, Output = Self::SecretKey>,
     for<'a, 'b> &'a Self::SecretKey: Sub<&'b Self::SecretKey, Output = Self::SecretKey>,
     for<'a, 'b> &'a Self::SecretKey: Mul<&'b Self::SecretKey, Output = Self::SecretKey>,
-    for<'a, 'b> &'a Self::SecretKey: Div<&'b Self::SecretKey, Output = Self::SecretKey>,
+    for<'a, 'b> &'a Self::SecretKey: Div<
+        &'b Self::SecretKey,
+        Output = Result<Self::SecretKey, <Self::SecretKey as Ring>::DivError>,
+    >,
 {
 }

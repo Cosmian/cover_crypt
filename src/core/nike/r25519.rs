@@ -3,7 +3,6 @@ use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Deref;
 use std::ops::Div;
-use std::ops::DivAssign;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Sub;
@@ -14,6 +13,7 @@ use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::bytes_ser_de::Serializer;
 use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
 
+use cosmian_crypto_core::CryptoCoreError;
 pub use cosmian_crypto_core::R25519PrivateKey as Scalar;
 pub use cosmian_crypto_core::R25519PublicKey as EcPoint;
 use tiny_keccak::Hasher;
@@ -258,32 +258,26 @@ impl Mul<&R25519Scalar> for &R25519Scalar {
 }
 
 impl Div for R25519Scalar {
-    type Output = Self;
+    type Output = Result<Self, CryptoCoreError>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        Self(&self.0 / &rhs.0)
-    }
-}
-
-impl DivAssign for R25519Scalar {
-    fn div_assign(&mut self, rhs: Self) {
-        self.0 = &self.0 / &rhs.0
+        &self / &rhs
     }
 }
 
 impl Div<&R25519Scalar> for R25519Scalar {
-    type Output = Self;
+    type Output = Result<Self, CryptoCoreError>;
 
     fn div(self, rhs: &R25519Scalar) -> Self::Output {
-        Self(&self.0 / &rhs.0)
+        &self / rhs
     }
 }
 
 impl Div<&R25519Scalar> for &R25519Scalar {
-    type Output = R25519Scalar;
+    type Output = Result<R25519Scalar, CryptoCoreError>;
 
     fn div(self, rhs: &R25519Scalar) -> Self::Output {
-        R25519Scalar(&self.0 / &rhs.0)
+        (&self.0 / &rhs.0).map(R25519Scalar)
     }
 }
 
@@ -295,7 +289,9 @@ impl Sum for R25519Scalar {
 
 impl Group for R25519Scalar {}
 
-impl Ring for R25519Scalar {}
+impl Ring for R25519Scalar {
+    type DivError = CryptoCoreError;
+}
 
 impl Serializable for R25519Scalar {
     type Error = Error;

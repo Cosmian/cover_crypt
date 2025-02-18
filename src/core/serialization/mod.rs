@@ -330,7 +330,7 @@ impl Serializable for UserSecretKey {
     fn length(&self) -> usize {
         self.id.length()
             + to_leb128_len(self.ps.len())
-            + self.ps.len() * 32
+            + self.ps.iter().map(|p| p.length()).sum::<usize>()
             + to_leb128_len(self.secrets.len())
             + self
                 .secrets

@@ -65,7 +65,7 @@ fn sign(
     if let Some(kmac_key) = &msk.signing_key {
         let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
         for marker in id.iter() {
-            kmac.update(marker)
+            kmac.update(&marker.serialize()?)
         }
         // Subkeys ordering needs to be deterministic to allow deterministic
         // signatures. This explains why a hash-map is not used in USK.
@@ -74,11 +74,11 @@ fn sign(
             for subkey in keys.iter() {
                 match subkey {
                     RightSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
-                        kmac.update(s_i);
+                        kmac.update(&s_i.serialize()?);
                         kmac.update(&dk_i.serialize()?);
                     }
                     RightSecretKey::Classic { sk: s_i } => {
-                        kmac.update(s_i);
+                        kmac.update(&s_i.serialize()?);
                     }
                 }
             }
@@ -500,7 +500,7 @@ pub fn full_decaps(
             .map(|(si, _)| si)
             .ok_or_else(|| Error::KeyError("MSK has no tracer".to_string()))?;
 
-        c_0 * &(&msk.tsk.s / t_0)
+        c_0 * &(&msk.tsk.s / t_0)?
     };
 
     let T = {

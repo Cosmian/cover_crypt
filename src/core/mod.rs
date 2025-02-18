@@ -265,14 +265,14 @@ impl TracingSecretKey {
                 .map(|_| <ElGamal as Nike>::SecretKey::random(rng))
                 .collect::<LinkedList<_>>();
 
-            let last_marker = &(&self.s
+            let last_marker = ((&self.s
                 - &self
                     .tracers
                     .iter()
                     .zip(markers.iter())
                     .map(|((sk_i, _), a_i)| sk_i * a_i)
-                    .fold(<ElGamal as Nike>::SecretKey::zero(), |acc, x_i| &acc + &x_i))
-                / last_tracer;
+                    .fold(<ElGamal as Nike>::SecretKey::zero(), |acc, x_i| acc + x_i))
+                / last_tracer)?;
 
             markers.push_back(last_marker);
             let id = UserId(markers);
