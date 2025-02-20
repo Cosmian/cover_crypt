@@ -34,16 +34,6 @@ use crate::Error;
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize)]
 pub struct P256Point(ProjectivePoint);
 
-impl One for P256Point {
-    fn one() -> Self {
-        Self(ProjectivePoint::GENERATOR)
-    }
-
-    fn is_one(&self) -> bool {
-        self.0.ct_eq(&ProjectivePoint::GENERATOR).into()
-    }
-}
-
 impl Zero for P256Point {
     fn zero() -> Self {
         Self(ProjectivePoint::IDENTITY)
@@ -354,7 +344,7 @@ impl Sampling for P256Scalar {
 
 impl From<&P256Scalar> for P256Point {
     fn from(s: &P256Scalar) -> Self {
-        P256Point::one() * s
+        P256Point(ProjectivePoint::GENERATOR * s.0)
     }
 }
 

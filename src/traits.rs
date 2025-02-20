@@ -147,7 +147,7 @@ pub trait One {
 
 pub trait Group:
     Sized
-    + One
+    + Zero
     + Add<Output = Self>
     + AddAssign
     + Sub<Output = Self>

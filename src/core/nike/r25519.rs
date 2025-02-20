@@ -32,16 +32,6 @@ use crate::Error;
 #[derive(Clone, Debug, PartialEq, Eq, Zeroize)]
 pub struct R25519Point(EcPoint);
 
-impl One for R25519Point {
-    fn one() -> Self {
-        Self(EcPoint::generator())
-    }
-
-    fn is_one(&self) -> bool {
-        self.0 == EcPoint::generator()
-    }
-}
-
 impl Zero for R25519Point {
     fn zero() -> Self {
         Self(EcPoint::identity())
