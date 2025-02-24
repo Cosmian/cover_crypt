@@ -397,7 +397,7 @@ impl MasterSecretKey {
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     encryption_keys: HashMap<Right, RightPublicKey>,
-    pub access_structure: AccessStructure,
+    access_structure: AccessStructure,
 }
 
 impl MasterPublicKey {
