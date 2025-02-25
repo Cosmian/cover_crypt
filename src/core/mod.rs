@@ -7,11 +7,12 @@ use std::{
 
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
 use kem::MlKem;
+use nike::ElGamal;
 
 use crate::{
     abe_policy::{AccessStructure, Right},
     data_struct::{RevisionMap, RevisionVec},
-    traits::{Kem, Nike},
+    traits::{Kem, Nike, Sampling, Zero},
     Error,
 };
 
@@ -23,9 +24,6 @@ mod serialization;
 mod tests;
 
 pub mod primitives;
-
-use self::nike::R25519;
-use nike::{EcPoint, Scalar};
 
 /// The length of the secret encapsulated by Covercrypt.
 pub const SHARED_SECRET_LENGTH: usize = 32;
@@ -59,11 +57,11 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 #[derive(Clone, Debug, PartialEq)]
 enum RightSecretKey {
     Hybridized {
-        sk: Scalar,
+        sk: <ElGamal as Nike>::SecretKey,
         dk: <MlKem as Kem>::DecapsulationKey,
     },
     Classic {
-        sk: Scalar,
+        sk: <ElGamal as Nike>::SecretKey,
     },
 }
 
@@ -71,7 +69,7 @@ impl RightSecretKey {
     /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
     /// point `h`.
     fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
-        let sk = Scalar::new(rng);
+        let sk = <ElGamal as Nike>::SecretKey::random(rng);
         if hybridize {
             let (dk, _) = MlKem::keygen(rng)?;
             Ok(Self::Hybridized { sk, dk })
@@ -82,7 +80,7 @@ impl RightSecretKey {
 
     /// Generates the associated right public key.
     #[must_use]
-    fn cpk(&self, h: &EcPoint) -> RightPublicKey {
+    fn cpk(&self, h: &<ElGamal as Nike>::PublicKey) -> RightPublicKey {
         match self {
             Self::Hybridized { sk, dk } => RightPublicKey::Hybridized {
                 H: h * sk,
@@ -113,11 +111,11 @@ impl RightSecretKey {
 #[derive(Clone, Debug, PartialEq)]
 enum RightPublicKey {
     Hybridized {
-        H: EcPoint,
+        H: <ElGamal as Nike>::PublicKey,
         ek: <MlKem as Kem>::EncapsulationKey,
     },
     Classic {
-        H: EcPoint,
+        H: <ElGamal as Nike>::PublicKey,
     },
 }
 
@@ -134,7 +132,7 @@ impl RightPublicKey {
 ///
 /// They are composed of a sequence of `LENGTH` scalars.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-struct UserId(LinkedList<Scalar>);
+struct UserId(LinkedList<<ElGamal as Nike>::SecretKey>);
 
 impl UserId {
     /// Returns the tracing level of the USK.
@@ -142,7 +140,7 @@ impl UserId {
         self.0.len() - 1
     }
 
-    fn iter(&self) -> impl Iterator<Item = &Scalar> {
+    fn iter(&self) -> impl Iterator<Item = &<ElGamal as Nike>::SecretKey> {
         self.0.iter()
     }
 }
@@ -163,16 +161,16 @@ impl UserId {
 /// - the set of known user IDs.
 #[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
-    s: Scalar,
-    tracers: LinkedList<(Scalar, EcPoint)>,
+    s: <ElGamal as Nike>::SecretKey,
+    tracers: LinkedList<(<ElGamal as Nike>::SecretKey, <ElGamal as Nike>::PublicKey)>,
     users: HashSet<UserId>,
 }
 
 impl TracingSecretKey {
     fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
-        let s = nike::Scalar::new(rng);
+        let s = <ElGamal as Nike>::SecretKey::random(rng);
         let tracers = (0..=level)
-            .map(|_| R25519::keygen(rng))
+            .map(|_| ElGamal::keygen(rng))
             .collect::<Result<_, _>>()?;
         let users = HashSet::new();
 
@@ -184,18 +182,20 @@ impl TracingSecretKey {
         self.tracers.len() - 1
     }
 
-    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
         self.tracers.iter().map(|(_, Pi)| Pi * r).collect()
     }
 
     /// Generates a new tracer. Returns the associated trap.
     fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
-        self.tracers.push_back(R25519::keygen(rng)?);
+        self.tracers.push_back(ElGamal::keygen(rng)?);
         Ok(())
     }
 
     /// Drops the oldest tracer and returns it.
-    fn _decrease_tracing(&mut self) -> Result<(Scalar, EcPoint), Error> {
+    fn _decrease_tracing(
+        &mut self,
+    ) -> Result<(<ElGamal as Nike>::SecretKey, <ElGamal as Nike>::PublicKey), Error> {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -250,29 +250,29 @@ impl TracingSecretKey {
     }
 
     /// Returns the binding points.
-    fn binding_point(&self) -> EcPoint {
-        EcPoint::from(&self.s)
+    fn binding_point(&self) -> <ElGamal as Nike>::PublicKey {
+        (&self.s).into()
     }
 
     /// Generates a new ID and adds it to the list of known user IDs.
     fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
         if let Some((last_tracer, _)) = self.tracers.back() {
             // Generate all but the last marker at random.
-            let mut markers: LinkedList<Scalar> = self
+            let mut markers = self
                 .tracers
                 .iter()
                 .take(self.tracers.len() - 1)
-                .map(|_| Scalar::new(rng))
-                .collect();
+                .map(|_| <ElGamal as Nike>::SecretKey::random(rng))
+                .collect::<LinkedList<_>>();
 
-            let last_marker = &(&self.s
+            let last_marker = ((&self.s
                 - &self
                     .tracers
                     .iter()
                     .zip(markers.iter())
                     .map(|((sk_i, _), a_i)| sk_i * a_i)
-                    .fold(Scalar::zero(), |acc, x_i| &acc + &x_i))
-                / last_tracer;
+                    .fold(<ElGamal as Nike>::SecretKey::zero(), |acc, x_i| acc + x_i))
+                / last_tracer)?;
 
             markers.push_back(last_marker);
             let id = UserId(markers);
@@ -320,7 +320,7 @@ impl TracingSecretKey {
 
 /// Covercrypt tracing public key.
 #[derive(Debug, PartialEq, Eq, Default)]
-struct TracingPublicKey(LinkedList<EcPoint>);
+struct TracingPublicKey(LinkedList<<ElGamal as Nike>::PublicKey>);
 
 impl TracingPublicKey {
     /// Returns the tracing level tracing of this key.
@@ -409,7 +409,7 @@ impl MasterPublicKey {
 
     /// Generates traps for the given scalar.
     // TODO: find a better concept.
-    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
         self.tpk.0.iter().map(|Pi| Pi * r).collect()
     }
 
@@ -450,7 +450,7 @@ impl MasterPublicKey {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
     id: UserId,
-    ps: Vec<EcPoint>,
+    ps: Vec<<ElGamal as Nike>::PublicKey>,
     secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
@@ -466,7 +466,7 @@ impl UserSecretKey {
         self.secrets.len()
     }
 
-    fn set_traps(&self, r: &Scalar) -> Vec<EcPoint> {
+    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
         self.ps.iter().map(|Pi| Pi * r).collect()
     }
 }
@@ -488,7 +488,7 @@ enum Encapsulations {
 #[derive(Debug, Clone, PartialEq)]
 pub struct XEnc {
     tag: Tag,
-    c: Vec<EcPoint>,
+    c: Vec<<ElGamal as Nike>::PublicKey>,
     encapsulations: Encapsulations,
 }
 
