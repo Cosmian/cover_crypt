@@ -1,40 +1,36 @@
-//! This crate implements the `Covercrypt` cryptographic scheme which allows to:
-//! - encrypt messages for a given set of policy attributes;
-//! - decrypt messages if the decryptor has been assigned one of these policy
-//! attributes;
-//! - "rotate" policy attributes;
-//! - "refresh" user keys.
+//! This instantiation of Covercrypt is based on Curve25519 and Kyber512, and as such delivers 128
+//! bits of both pre- and post-quantum CCA security.
 //!
-//! A rotations prevents decryption of pre-rotation ciphertexts by a
-//! post-rotation key and decryption of post-rotation ciphertexts by a
-//! pre-rotation key. A pre-rotation key can be refreshed to be granted
-//! decryption rights for the post-rotation ciphertexts. A post-rotation key
-//! cannot be granted decryption rights for the pre-rotation ciphertexts.
+//! The KEMAC defined in [1] is extended by a PKE interface using AES256-GCM as DEM in the KEM/DEM
+//! framework described in [2].
 //!
-//! Covercrypt encryption offers 128 bits of both pre- and post-quantum
-//! security.
-//!
-//! The `api` module exposes the generic definition of `Covercrypt`.
-//!
-//! The `interface::statics` module exposes instantiates `Covercrypt`
-//! using a DEM scheme build on top of AES256-GCM and a asymmetric key pair
-//! built on top of Curve25519.
-//!
-//! # Example
-//!
-//! See `examples/runme.rs`.
+//! [1] "Covercrypt: an Efficient Early-Abort KEM for Hidden Access Policies with Traceability from
+//! the DDH and LWE", T. Brézot, P. de Perthuis and D. Pointcheval 2023.
+//! [2] "A Proposal for an ISO Standard for Public Key Encryption (version 2.1)", Shoup 2001.
 
 mod error;
 
-pub mod abe_policy;
-pub mod core;
-pub mod data_struct;
-#[cfg(any(test, feature = "test_utils"))]
+mod abe_policy;
+mod ae;
+mod core;
+mod data_struct;
+mod encrypted_header;
+
+pub mod api;
+pub mod traits;
+
+pub use abe_policy::EncryptionHint;
+
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
-pub use error::Error;
+#[cfg(feature = "test-utils")]
+pub use abe_policy::gen_structure;
 
-pub use self::core::{
-    api::{CleartextHeader, Covercrypt, EncryptedHeader},
-    Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
-};
+#[cfg(feature = "test-utils")]
+pub use test_utils::cc_keygen;
+
+pub use self::core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
+pub use abe_policy::AccessPolicy;
+pub use encrypted_header::{CleartextHeader, EncryptedHeader};
+pub use error::Error;

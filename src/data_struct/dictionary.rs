@@ -5,7 +5,6 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     mem::swap,
-    usize,
 };
 
 use serde::{
@@ -47,12 +46,10 @@ where
         }
     }
 
-    #[must_use]
     pub fn len(&self) -> usize {
         self.indices.len()
     }
 
-    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -83,7 +80,6 @@ where
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let entry_index = self.indices.remove(key)?;
 
-        // shift indices over entry_index by one
         self.indices
             .iter_mut()
             .filter(|(_, index)| **index > entry_index)
@@ -151,7 +147,6 @@ where
     }
 
     /// Returns an iterator over keys and values in insertion order.
-    #[allow(clippy::map_identity)] // unpack &(x, y) to (&x, &y)
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.entries.iter().map(|(k, v)| (k, v))
     }
