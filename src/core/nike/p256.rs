@@ -64,13 +64,13 @@ impl Add<&P256Point> for &P256Point {
     type Output = P256Point;
 
     fn add(self, rhs: &P256Point) -> Self::Output {
-        P256Point(&self.0 + &rhs.0)
+        P256Point(self.0 + rhs.0)
     }
 }
 
 impl AddAssign for P256Point {
     fn add_assign(&mut self, rhs: Self) {
-        self.0 = &self.0 + &rhs.0;
+        self.0 = self.0 + rhs.0;
     }
 }
 
@@ -84,7 +84,7 @@ impl Sub for P256Point {
 
 impl SubAssign for P256Point {
     fn sub_assign(&mut self, rhs: Self) {
-        self.0 = &self.0 - &rhs.0
+        self.0 = self.0 - rhs.0
     }
 }
 
@@ -100,7 +100,7 @@ impl Sub<&P256Point> for &P256Point {
     type Output = P256Point;
 
     fn sub(self, rhs: &P256Point) -> Self::Output {
-        P256Point(&self.0 - &rhs.0)
+        P256Point(self.0 - rhs.0)
     }
 }
 
@@ -203,7 +203,7 @@ impl Sub for P256Scalar {
 
 impl SubAssign for P256Scalar {
     fn sub_assign(&mut self, rhs: Self) {
-        self.0 = &self.0 - &rhs.0
+        self.0 = self.0 - rhs.0
     }
 }
 
@@ -219,7 +219,7 @@ impl Sub<&P256Scalar> for &P256Scalar {
     type Output = P256Scalar;
 
     fn sub(self, rhs: &P256Scalar) -> Self::Output {
-        P256Scalar(&self.0 - &rhs.0)
+        P256Scalar(self.0 - rhs.0)
     }
 }
 
@@ -233,7 +233,7 @@ impl Mul for P256Scalar {
 
 impl MulAssign for P256Scalar {
     fn mul_assign(&mut self, rhs: Self) {
-        self.0 = &self.0 * &rhs.0
+        self.0 = self.0 * rhs.0
     }
 }
 
@@ -249,7 +249,7 @@ impl Mul<&P256Scalar> for &P256Scalar {
     type Output = P256Scalar;
 
     fn mul(self, rhs: &P256Scalar) -> Self::Output {
-        P256Scalar(&self.0 * &rhs.0)
+        P256Scalar(self.0 * rhs.0)
     }
 }
 
@@ -358,7 +358,7 @@ impl Mul<P256Scalar> for P256Point {
 
 impl MulAssign<P256Scalar> for P256Point {
     fn mul_assign(&mut self, rhs: P256Scalar) {
-        self.0 = &self.0 * &rhs.0
+        self.0 = self.0 * rhs.0
     }
 }
 
@@ -374,7 +374,7 @@ impl Mul<&P256Scalar> for &P256Point {
     type Output = P256Point;
 
     fn mul(self, rhs: &P256Scalar) -> Self::Output {
-        P256Point(&self.0 * &rhs.0)
+        P256Point(self.0 * rhs.0)
     }
 }
 
