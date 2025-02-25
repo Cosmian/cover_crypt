@@ -1,8 +1,4 @@
-use std::{
-    convert::TryFrom,
-    fmt::Debug,
-    ops::{BitOr, Deref},
-};
+use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
 use serde::{Deserialize, Serialize};
 
@@ -66,27 +62,22 @@ impl BitOr for AttributeStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Attribute representation used to create an attribute and add it to a dimension.
-pub struct AttributeBuilder {
-    pub name: String,
-    pub encryption_hint: EncryptionHint,
+impl From<AttributeStatus> for bool {
+    fn from(val: AttributeStatus) -> Self {
+        val == AttributeStatus::EncryptDecrypt
+    }
 }
 
-/// A policy attribute is composed of a dimension name and a component
-/// name.
+/// A qualified attribute is composed of a dimension an attribute name.
 #[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
-pub struct Attribute {
+pub struct QualifiedAttribute {
     pub dimension: String,
     pub name: String,
 }
 
-impl Attribute {
-    /// Create a Policy Attribute.
-    ///
-    /// - `dimension`    : policy dimension the attributes belongs to
-    /// - `name`         : unique attribute name within this dimension
+impl QualifiedAttribute {
+    /// Creates a qualified attribute with the given dimension and attribute names.
     #[must_use]
     pub fn new(dimension: &str, name: &str) -> Self {
         Self {
@@ -96,13 +87,25 @@ impl Attribute {
     }
 }
 
-impl Debug for Attribute {
+impl Debug for QualifiedAttribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}::{}", &self.dimension, &self.name))
     }
 }
 
-impl From<(&str, &str)> for Attribute {
+impl std::fmt::Display for QualifiedAttribute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}::{}", self.dimension, self.name)
+    }
+}
+
+impl From<QualifiedAttribute> for String {
+    fn from(attr: QualifiedAttribute) -> Self {
+        attr.to_string()
+    }
+}
+
+impl From<(&str, &str)> for QualifiedAttribute {
     fn from(input: (&str, &str)) -> Self {
         Self {
             dimension: input.0.to_owned(),
@@ -111,7 +114,7 @@ impl From<(&str, &str)> for Attribute {
     }
 }
 
-impl From<(String, String)> for Attribute {
+impl From<(String, String)> for QualifiedAttribute {
     fn from(input: (String, String)) -> Self {
         Self {
             dimension: input.0,
@@ -120,7 +123,7 @@ impl From<(String, String)> for Attribute {
     }
 }
 
-impl TryFrom<&str> for Attribute {
+impl TryFrom<&str> for QualifiedAttribute {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
@@ -141,59 +144,5 @@ impl TryFrom<&str> for Attribute {
         }
 
         Ok(Self::new(dimension.trim(), component.trim()))
-    }
-}
-
-impl std::fmt::Display for Attribute {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::{}", self.dimension, self.name)
-    }
-}
-
-impl From<Attribute> for String {
-    fn from(attr: Attribute) -> Self {
-        attr.to_string()
-    }
-}
-
-/// The `Attributes` struct is used to simplify the parsing of a list of
-/// `Attribute`s.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Attributes {
-    attributes: Vec<Attribute>,
-}
-
-impl Deref for Attributes {
-    type Target = Vec<Attribute>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.attributes
-    }
-}
-
-impl From<Vec<Attribute>> for Attributes {
-    fn from(attributes: Vec<Attribute>) -> Self {
-        Self { attributes }
-    }
-}
-
-impl TryFrom<&str> for Attributes {
-    type Error = Error;
-
-    fn try_from(attributes_str: &str) -> Result<Self, Self::Error> {
-        if attributes_str.is_empty() {
-            return Err(Error::InvalidAttribute(attributes_str.to_string()));
-        }
-
-        // Convert a Vec<Result<Attribute,FormatErr>> into a Result<Vec<Attribute>>
-        let attributes: Result<Vec<_>, _> = attributes_str
-            .trim()
-            .split(',')
-            .map(Attribute::try_from)
-            .collect();
-
-        Ok(Self {
-            attributes: attributes?,
-        })
     }
 }

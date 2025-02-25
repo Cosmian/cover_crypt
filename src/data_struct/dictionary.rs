@@ -46,12 +46,10 @@ where
         }
     }
 
-    #[must_use]
     pub fn len(&self) -> usize {
         self.indices.len()
     }
 
-    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -268,7 +266,6 @@ where
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
 

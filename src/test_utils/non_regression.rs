@@ -177,23 +177,23 @@ impl NonRegressionTestVector {
             top_secret_mkg_fin_key: UserSecretKeyTestVector::new(
                 &mut msk,
                 &policy,
-                "(Department::MKG || Department:: FIN) && Security Level::Top Secret",
+                "(DPT::MKG || DPT:: FIN) && SEC::TOP",
             )?,
             medium_secret_mkg_key: UserSecretKeyTestVector::new(
                 &mut msk,
                 &policy,
-                "Security Level::Medium Secret && Department::MKG",
+                "SEC::Medium Secret && DPT::MKG",
             )?,
             top_secret_fin_key: UserSecretKeyTestVector::new(
                 &mut msk,
                 &policy,
-                "Security Level::Top Secret && Department::FIN",
+                "SEC::TOP && DPT::FIN",
             )?,
             //
             // Generate ciphertexts
             top_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
-                "Department::MKG && Security Level::Top Secret",
+                "DPT::MKG && SEC::TOP",
                 "top_secret_mkg_plaintext",
                 Some(&header_metadata),
                 Some(&authentication_data),
@@ -201,7 +201,7 @@ impl NonRegressionTestVector {
 
             low_secret_mkg_test_vector: EncryptionTestVector::new(
                 &mpk,
-                "Department::MKG && Security Level::Low Secret",
+                "DPT::MKG && SEC::LOW",
                 "low_secret_mkg_plaintext",
                 Some(&header_metadata),
                 None,
@@ -209,7 +209,7 @@ impl NonRegressionTestVector {
 
             low_secret_fin_test_vector: EncryptionTestVector::new(
                 &mpk,
-                "Department::FIN && Security Level::Low Secret",
+                "DPT::FIN && SEC::LOW",
                 "low_secret_fin_plaintext",
                 None,
                 None,

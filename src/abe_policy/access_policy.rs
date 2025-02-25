@@ -1,9 +1,8 @@
 //! This module defines methods to parse and manipulate access policies.
 //!
-//! Access policies are boolean equations of *attributes*. Attributes are
+//! Access policies are boolean equations of *qualified attributes*. Attributes are
 //! defined as a combination of a dimension name and a component name (belonging
 //! to the named dimension).
-//!
 
 use std::{
     collections::LinkedList,
@@ -11,24 +10,19 @@ use std::{
     ops::{BitAnd, BitOr},
 };
 
-use crate::{abe_policy::Attribute, Error};
+use crate::{abe_policy::QualifiedAttribute, Error};
 
-/// An access policy is a boolean expression of attributes.
-///
-/// TODO: is this a subset-cover limitation? It seems possible to subtract
-/// coordinates from the set of positively generated ones.
-///
-/// Only `positive` literals are allowed (no negation).
+/// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessPolicy {
-    Attr(Attribute),
-    And(Box<AccessPolicy>, Box<AccessPolicy>),
-    Or(Box<AccessPolicy>, Box<AccessPolicy>),
-    Any,
+    Broadcast,
+    Term(QualifiedAttribute),
+    Conjunction(Box<AccessPolicy>, Box<AccessPolicy>),
+    Disjunction(Box<AccessPolicy>, Box<AccessPolicy>),
 }
 
 impl AccessPolicy {
-    /// Finds the corresponding closing parenthesis in the boolean expression
+    /// Find the corresponding closing parenthesis in the boolean expression
     /// given as a string.
     fn find_matching_closing_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
         let mut count = 0;
@@ -81,26 +75,35 @@ impl AccessPolicy {
     ///
     /// The following expressions define valid access policies:
     ///
-    /// - "Department::MKG && (Country::FR || Country::DE)"
+    /// - "DPT::MKG && (CTR::FR || CTR::DE)"
     /// - ""
-    /// - "Security Level::Low Secret && Country::FR"
+    /// - "SEC::Low Secret && CTR::FR"
     ///
     /// Notice that the arity of the operators is two. Therefore the following
     /// access policy is *invalid*:
     ///
-    /// - "Department::MKG (&& Country::FR || Country::DE)"
+    /// - "DPT::MKG (&& CTR::FR || CTR::DE)"
     ///
     /// It is not possible to concatenate attributes. Therefore the following
     /// access policy is *invalid*:
     ///
-    /// - "Department::MKG Department::FIN"
+    /// - "DPT::MKG DPT::FIN"
     pub fn parse(mut e: &str) -> Result<Self, Error> {
         let seeker = |c: &char| !"()|&".contains(*c);
         let mut q = LinkedList::<Self>::new();
         loop {
             e = e.trim();
+
             if e.is_empty() {
-                return Ok(Self::conjugate(Self::Any, q.into_iter()));
+                if let Some(first) = q.pop_front() {
+                    return Ok(Self::conjugate(first, q.into_iter()));
+                } else {
+                    return Err(Error::InvalidBooleanExpression(
+                        "empty string is not a valid access policy".to_string(),
+                    ));
+                }
+            } else if e == "*" {
+                return Ok(Self::conjugate(Self::Broadcast, q.into_iter()));
             } else {
                 match &e[..1] {
                     "(" => {
@@ -140,11 +143,11 @@ impl AccessPolicy {
                     ")" => {
                         return Err(Error::InvalidBooleanExpression(format!(
                             "unmatched closing parenthesis in '{e}'"
-                        )))
+                        )));
                     }
                     _ => {
                         let attr: String = e.chars().take_while(seeker).collect();
-                        q.push_back(Self::Attr(Attribute::try_from(attr.as_str())?));
+                        q.push_back(Self::Term(QualifiedAttribute::try_from(attr.as_str())?));
                         e = &e[attr.len()..];
                     }
                 }
@@ -164,10 +167,10 @@ impl AccessPolicy {
     /// attributes. Returns the DNF as the list of its conjunctions, themselves
     /// represented as the list of their attributes.
     #[must_use]
-    pub fn to_dnf(&self) -> Vec<Vec<Attribute>> {
+    pub fn to_dnf(&self) -> Vec<Vec<QualifiedAttribute>> {
         match self {
-            Self::Attr(attr) => vec![vec![attr.clone()]],
-            Self::And(lhs, rhs) => {
+            Self::Term(attr) => vec![vec![attr.clone()]],
+            Self::Conjunction(lhs, rhs) => {
                 let combinations_left = lhs.to_dnf();
                 let combinations_right = rhs.to_dnf();
                 let mut res =
@@ -179,8 +182,8 @@ impl AccessPolicy {
                 }
                 res
             }
-            Self::Or(lhs, rhs) => [lhs.to_dnf(), rhs.to_dnf()].concat(),
-            Self::Any => vec![vec![]],
+            Self::Disjunction(lhs, rhs) => [lhs.to_dnf(), rhs.to_dnf()].concat(),
+            Self::Broadcast => vec![vec![]],
         }
     }
 }
@@ -189,12 +192,12 @@ impl BitAnd for AccessPolicy {
     type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        if self == Self::Any {
+        if self == Self::Broadcast {
             rhs
-        } else if rhs == Self::Any {
+        } else if rhs == Self::Broadcast {
             self
         } else {
-            Self::And(Box::new(self), Box::new(rhs))
+            Self::Conjunction(Box::new(self), Box::new(rhs))
         }
     }
 }
@@ -203,12 +206,12 @@ impl BitOr for AccessPolicy {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        if self == Self::Any {
+        if self == Self::Broadcast {
             self
-        } else if rhs == Self::Any {
+        } else if rhs == Self::Broadcast {
             rhs
         } else {
-            Self::Or(Box::new(self), Box::new(rhs))
+            Self::Disjunction(Box::new(self), Box::new(rhs))
         }
     }
 }
@@ -228,7 +231,8 @@ mod tests {
         println!("{ap:#?}");
         let ap = AccessPolicy::parse("D1::A (D2::A || D2::B)").unwrap();
         println!("{ap:#?}");
-        assert_eq!(AccessPolicy::parse("").unwrap(), AccessPolicy::Any);
+        assert_eq!(AccessPolicy::parse("*").unwrap(), AccessPolicy::Broadcast);
+        assert!(AccessPolicy::parse("").is_err());
 
         // These are invalid access policies.
         // TODO: make this one valid (change the parsing rule of the attribute).

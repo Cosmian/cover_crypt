@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 
 type Key = String;
+
 #[derive(Debug)]
 pub enum Error {
     EntryNotFound(Key),
