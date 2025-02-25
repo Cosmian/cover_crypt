@@ -80,36 +80,18 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.7
-    hooks:
-      - id: cargo-update
-      - id: cargo-outdated
-      - id: clippy-autofix-all
-      - id: clippy-autofix-pedantic
-      - id: clippy-autofix-nursery
-      - id: clippy-autofix-others
-      - id: cargo-tests-all
-      - id: stable-cargo-format
-      - id: clippy-all-targets-all-features
-      - id: cargo-dry-publish
-        args: [--allow-dirty]
-      - id: dprint-toml-fix
-
-  - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.9
+    rev: v1.0.36
     hooks:
       - id: stable-cargo-format
-      - id: dprint-toml-fix
-      - id: cargo-update
-      - id: cargo-udeps
-      - id: cargo-tests-all
+      # - id: dprint-toml-fix
+      # - id: cargo-upgrade
+      # - id: cargo-update
+      - id: cargo-machete
+      - id: cargo-test
       - id: cargo-test-doc
-      - id: cargo-check-semver
-      - id: clippy-autofix-all
-      - id: clippy-autofix-pedantic
-      - id: clippy-autofix-nursery
-      - id: clippy-autofix-others
-      - id: clippy-all-targets-all-features
+      - id: clippy-autofix-all-targets
+      - id: clippy-all-targets
+      - id: stable-cargo-format
       - id: cargo-dry-publish
         args: [--allow-dirty]
 
