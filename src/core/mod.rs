@@ -6,6 +6,7 @@ use std::{
 };
 
 use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
+use kem::MlKem;
 
 use crate::{
     abe_policy::{AccessStructure, Right},
@@ -23,7 +24,7 @@ mod tests;
 
 pub mod primitives;
 
-use self::{kem::DecapsulationKey512, kem::MlKem512, nike::R25519};
+use self::nike::R25519;
 use nike::{EcPoint, Scalar};
 
 /// The length of the secret encapsulated by Covercrypt.
@@ -57,8 +58,13 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 /// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightSecretKey {
-    Hybridized { sk: Scalar, dk: DecapsulationKey512 },
-    Classic { sk: Scalar },
+    Hybridized {
+        sk: Scalar,
+        dk: <MlKem as Kem>::DecapsulationKey,
+    },
+    Classic {
+        sk: Scalar,
+    },
 }
 
 impl RightSecretKey {
@@ -67,7 +73,7 @@ impl RightSecretKey {
     fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
         let sk = Scalar::new(rng);
         if hybridize {
-            let (dk, _) = MlKem512::keygen(rng)?;
+            let (dk, _) = MlKem::keygen(rng)?;
             Ok(Self::Hybridized { sk, dk })
         } else {
             Ok(Self::Classic { sk })
@@ -108,7 +114,7 @@ impl RightSecretKey {
 enum RightPublicKey {
     Hybridized {
         H: EcPoint,
-        ek: kem::EncapsulationKey512,
+        ek: <MlKem as Kem>::EncapsulationKey,
     },
     Classic {
         H: EcPoint,
@@ -467,7 +473,7 @@ impl UserSecretKey {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Encapsulations {
-    HEncs(Vec<(kem::Encapsulation512, [u8; SHARED_SECRET_LENGTH])>),
+    HEncs(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
     CEncs(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
