@@ -10,7 +10,7 @@ use cosmian_crypto_core::{
     RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
-use tiny_keccak::{Hasher, IntoXof, Kmac, Shake, Xof};
+use tiny_keccak::{Hasher, Kmac, Sha3};
 use zeroize::Zeroize;
 
 use crate::{
@@ -82,7 +82,7 @@ fn sign(
             }
         }
         let mut res = [0; SIGNATURE_LENGTH];
-        kmac.into_xof().squeeze(&mut res);
+        kmac.finalize(&mut res);
         Ok(Some(res))
     } else {
         Ok(None)
@@ -102,38 +102,46 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
 }
 
 fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<Scalar, Error> {
-    let mut bytes = [0; 64];
-    let mut hasher = Shake::v256();
+    let mut hasher = Sha3::v512();
+    let mut bytes = [0; 512 / 8];
     hasher.update(&**seed);
-    hasher.squeeze(&mut bytes);
+    hasher.finalize(&mut bytes);
     let s = Scalar::from_raw_bytes(&bytes);
     bytes.zeroize();
     Ok(s)
 }
 
 fn H_hash(
-    mut hasher: Shake,
     K1: &EcPoint,
     K2: Option<&Secret<SHARED_SECRET_LENGTH>>,
+    T: &Secret<SHARED_SECRET_LENGTH>,
 ) -> Secret<SHARED_SECRET_LENGTH> {
+    let mut hasher = Sha3::v256();
+    // SHARED_SECRET_LENGTH = 32 = 256 / 8
     let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
     hasher.update(&K1.to_bytes());
     if let Some(K2) = K2 {
         hasher.update(&**K2);
     }
+    hasher.update(&**T);
     hasher.finalize(&mut *H);
     H
 }
 
 fn J_hash(
-    mut hasher: Shake,
     S: &Secret<SHARED_SECRET_LENGTH>,
+    U: &Secret<SHARED_SECRET_LENGTH>,
 ) -> ([u8; TAG_LENGTH], Secret<SHARED_SECRET_LENGTH>) {
+    let mut hasher = Sha3::v384();
+    let mut bytes = [0; 384 / 8];
+    hasher.update(&**S);
+    hasher.update(&**U);
+    hasher.finalize(&mut bytes);
+
     let mut tag = [0; TAG_LENGTH];
     let mut seed = Secret::<SHARED_SECRET_LENGTH>::default();
-    hasher.update(&**S);
-    hasher.squeeze(&mut tag);
-    hasher.squeeze(&mut *seed);
+    tag.copy_from_slice(&bytes[..TAG_LENGTH]);
+    seed.copy_from_slice(&bytes[TAG_LENGTH..]);
     (tag, seed)
 }
 
@@ -207,32 +215,37 @@ fn h_encaps(
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    // T is the hash of c and {E} in the paper. Here it is the state of a hasher
-    // updated with these elements.
     let T = {
-        let mut T = Shake::v256();
-        c.iter().for_each(|ck| T.update(&ck.to_bytes()));
-        encs.iter().try_fold(T, |mut T, (_, _, E)| {
-            T.update(&E.serialize()?);
-            Ok::<_, Error>(T)
-        })?
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        encs.iter().try_for_each(|(_, _, E)| {
+            hasher.update(&E.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+        hasher.finalize(&mut *T);
+        T
     };
 
     let encs = encs
         .into_iter()
         .map(|(mut K1, K2, E)| -> Result<_, _> {
-            let F = xor_2(&S, &H_hash(T.clone(), &K1, Some(&K2)));
+            let F = xor_2(&S, &H_hash(&K1, Some(&K2), &T));
             K1.zeroize();
             Ok((E, F))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    let J = encs.iter().fold(T, |mut J, (_, F)| {
-        J.update(F);
-        J
-    });
+    let U = {
+        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
+        encs.iter().for_each(|(_, F)| hasher.update(F));
+        hasher.finalize(&mut *U);
+        U
+    };
 
-    let (tag, ss) = J_hash(J, &S);
+    let (tag, ss) = J_hash(&S, &U);
 
     Ok((
         ss,
@@ -253,10 +266,13 @@ fn c_encaps(
     subkeys: Vec<&RightPublicKey>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     // In classic mode, T is only updated with c.
-    let T = c.iter().fold(Shake::v256(), |mut T, c| {
-        T.update(&c.to_bytes());
+    let T = {
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        hasher.finalize(&mut *T);
         T
-    });
+    };
 
     let encs = subkeys
         .into_iter()
@@ -266,17 +282,21 @@ fn c_encaps(
                 RightPublicKey::Classic { H } => H,
             };
             let K1 = R25519::session_key(&r, H)?;
-            let F = xor_2(&S, &H_hash(T.clone(), &K1, None));
+            let F = xor_2(&S, &H_hash(&K1, None, &T));
             Ok(F)
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    let J = encs.iter().fold(T, |mut J, F| {
-        J.update(F);
-        J
-    });
+    let U = {
+        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
+        encs.iter().for_each(|F| hasher.update(F));
+        hasher.finalize(&mut *U);
+        U
+    };
 
-    let (tag, ss) = J_hash(J, &S);
+    let (tag, ss) = J_hash(&S, &U);
 
     Ok((
         ss,
@@ -331,18 +351,25 @@ fn h_decaps(
     encs: &[(kem::Encapsulation512, [u8; SHARED_SECRET_LENGTH])],
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
     let T = {
-        let mut T = Shake::v256();
-        c.iter().for_each(|ck| T.update(&ck.to_bytes()));
-        encs.iter().try_fold(T, |mut T, (E, _)| {
-            T.update(&E.serialize()?);
-            Ok::<_, Error>(T)
-        })?
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        encs.iter().try_for_each(|(E, _)| {
+            hasher.update(&E.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+        hasher.finalize(&mut *T);
+        T
     };
 
-    let J = encs.iter().fold(T.clone(), |mut J, (_, F)| {
-        J.update(F);
-        J
-    });
+    let U = {
+        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
+        encs.iter().for_each(|(_, F)| hasher.update(F));
+        hasher.finalize(&mut *U);
+        U
+    };
 
     for (E, F) in encs {
         // The breadth-first search tries all coordinate subkeys in a chronological
@@ -351,8 +378,8 @@ fn h_decaps(
             if let RightSecretKey::Hybridized { sk, dk } = secret {
                 let mut K1 = R25519::session_key(sk, A)?;
                 let K2 = MlKem512::dec(dk, E)?;
-                let S_ij = xor_in_place(H_hash(T.clone(), &K1, Some(&K2)), F);
-                let (tag_ij, ss) = J_hash(J.clone(), &S_ij);
+                let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T), F);
+                let (tag_ij, ss) = J_hash(&S_ij, &U);
                 if tag == &tag_ij {
                     // Fujisaki-Okamoto
                     let r = G_hash(&S_ij)?;
@@ -377,15 +404,22 @@ fn c_decaps(
     tag: &[u8; TAG_LENGTH],
     encs: &Vec<[u8; SHARED_SECRET_LENGTH]>,
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-    let T = c.iter().fold(Shake::v256(), |mut T, c| {
-        T.update(&c.to_bytes());
+    let T = {
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+        c.iter().for_each(|ck| hasher.update(&ck.to_bytes()));
+        hasher.finalize(&mut *T);
         T
-    });
+    };
 
-    let J = encs.iter().fold(T.clone(), |mut J, F| {
-        J.update(F);
-        J
-    });
+    let U = {
+        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
+        encs.iter().for_each(|F| hasher.update(F));
+        hasher.finalize(&mut *U);
+        U
+    };
 
     for F in encs {
         // The breadth-first search tries all coordinate subkeys in a chronological
@@ -396,9 +430,9 @@ fn c_decaps(
                 RightSecretKey::Classic { sk } => sk,
             };
             let mut K1 = R25519::session_key(sk, A)?;
-            let S = xor_in_place(H_hash(T.clone(), &K1, None), F);
+            let S = xor_in_place(H_hash(&K1, None, &T), F);
             K1.zeroize();
-            let (tag_ij, ss) = J_hash(J.clone(), &S);
+            let (tag_ij, ss) = J_hash(&S, &U);
             if tag == &tag_ij {
                 // Fujisaki-Okamoto
                 let r = G_hash(&S)?;
@@ -462,11 +496,12 @@ pub fn full_decaps(
     };
 
     let T = {
-        let mut hasher = Shake::v256();
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
         encapsulation
             .c
             .iter()
-            .for_each(|c| hasher.update(&c.to_bytes()));
+            .for_each(|ck| hasher.update(&ck.to_bytes()));
 
         if let Encapsulations::HEncs(encs) = &encapsulation.encapsulations {
             encs.iter().try_for_each(|(E, _)| {
@@ -474,24 +509,28 @@ pub fn full_decaps(
                 Ok::<_, Error>(())
             })?;
         }
-        hasher
+        hasher.finalize(&mut *T);
+        T
     };
 
-    let J = {
-        let mut hasher = T.clone();
+    let U = {
+        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
         match &encapsulation.encapsulations {
             Encapsulations::HEncs(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
             Encapsulations::CEncs(encs) => encs.iter().for_each(|F| hasher.update(F)),
         }
-        hasher
+        hasher.finalize(&mut *U);
+        U
     };
 
     let mut enc_ss = None;
     let mut rights = HashSet::with_capacity(encapsulation.count());
     let mut try_decaps =
         |right: &Right, K1: &mut EcPoint, K2: Option<Secret<SHARED_SECRET_LENGTH>>, F| {
-            let S_ij = xor_in_place(H_hash(T.clone(), K1, K2.as_ref()), F);
-            let (tag_ij, ss) = J_hash(J.clone(), &S_ij);
+            let S_ij = xor_in_place(H_hash(K1, K2.as_ref(), &T), F);
+            let (tag_ij, ss) = J_hash(&S_ij, &U);
             if encapsulation.tag == tag_ij {
                 // Fujisaki-Okamoto
                 let r = G_hash(&S_ij)?;
