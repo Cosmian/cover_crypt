@@ -188,8 +188,8 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
-    bench_encapsulation,
-    bench_decapsulation,
+    bench_classical_encapsulation,
+    bench_classical_decapsulation,
     bench_hybridized_encapsulation,
     bench_hybridized_decapsulation
 );
