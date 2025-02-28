@@ -213,7 +213,7 @@ fn h_encaps(
 
     let T = {
         let mut hasher = Sha3::v256();
-        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut T = Secret::new();
         c.iter().try_for_each(|ck| {
             hasher.update(&ck.serialize()?);
             Ok::<_, Error>(())
@@ -236,7 +236,7 @@ fn h_encaps(
         .collect::<Result<Vec<_>, Error>>()?;
 
     let U = {
-        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut U = Secret::new();
         let mut hasher = Sha3::v256();
         hasher.update(&*T);
         encs.iter().for_each(|(_, F)| hasher.update(F));
@@ -317,8 +317,7 @@ fn c_encaps(
 ///
 /// # Error
 ///
-/// Returns an error in case the public key is missing for some coordinate or
-/// both classic and hybridized coordinate keys are targeted.
+/// Returns an error in case the public key is missing for some coordinate.
 pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
@@ -332,7 +331,7 @@ pub fn encaps(
     // perform hashing upon decapsulation.
     shuffle(&mut coordinate_keys, rng);
 
-    let S = Secret::<SHARED_SECRET_LENGTH>::random(rng);
+    let S = Secret::random(rng);
     let r = G_hash(&S)?;
     let c = mpk.set_traps(&r);
 
@@ -385,6 +384,7 @@ fn h_decaps(
     let mut encs = encs.iter().collect::<Vec<_>>();
     shuffle(&mut encs, rng);
 
+    // Loop order matters: this ordering is faster.
     for (E, F) in encs {
         // The breadth-first search tries all coordinate subkeys in a chronological
         // order.
@@ -444,6 +444,7 @@ fn c_decaps(
     let mut encs = encs.iter().collect::<Vec<_>>();
     shuffle(&mut encs, rng);
 
+    // Loop order matters: this ordering is faster.
     for F in encs {
         // The breadth-first search tries all coordinate subkeys in a chronological
         // order.
