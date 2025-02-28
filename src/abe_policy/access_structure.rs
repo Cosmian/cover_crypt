@@ -40,8 +40,9 @@ impl AccessStructure {
     ///
     /// Requires USK refresh
     /// ====================
-    /// Only refreshed keys can decrypt for an access policy belonging to the semantic space of the
-    /// new dimension.
+    ///
+    /// Only refreshed keys can decrypt for an access policy belonging to the
+    /// semantic space of the new dimension.
     pub fn add_anarchy(&mut self, dimension: String) -> Result<(), Error> {
         match self.dimensions.entry(dimension) {
             Entry::Occupied(e) => Err(Error::ExistingDimension(e.key().to_string())),
@@ -56,8 +57,9 @@ impl AccessStructure {
     ///
     /// Requires USK refresh
     /// ====================
-    /// Only refreshed keys can decrypt for an access policy belonging to the semantic space of the
-    /// new dimension.
+    ///
+    /// Only refreshed keys can decrypt for an access policy belonging to the
+    /// semantic space of the new dimension.
     pub fn add_hierarchy(&mut self, dimension: String) -> Result<(), Error> {
         match self.dimensions.entry(dimension) {
             Entry::Occupied(e) => Err(Error::ExistingDimension(e.key().to_string())),
@@ -72,8 +74,9 @@ impl AccessStructure {
     ///
     /// Requires USK refresh
     /// ====================
-    /// Refreshed keys loose the ability to decrypt for an access policy belonging to the semantic
-    /// space of the removed dimension.
+    ///
+    /// Refreshed keys loose the ability to decrypt for an access policy
+    /// belonging to the semantic space of the removed dimension.
     pub fn del_dimension(&mut self, dimension: &str) -> Result<(), Error> {
         self.dimensions
             .remove(dimension)
@@ -83,18 +86,21 @@ impl AccessStructure {
 
     /// Add the given qualified attribute to the access structure.
     ///
-    /// If the dimension if hierarchical, specifying `after` will set the rank of the new attribute
-    /// to be in-between the existing attribute which name is given as `after`, and before the
-    /// attribute directly higher that `after`. Gives the new attribute the lowest rank in case no
-    /// `after` attribute is specified.
+    /// If the dimension if hierarchical, specifying `after` will set the rank
+    /// of the new attribute to be in-between the existing attribute which name
+    /// is given as `after`, and before the attribute directly higher that
+    /// `after`. Gives the new attribute the lowest rank in case no `after`
+    /// attribute is specified.
     ///
-    /// If `after` does not match any valid attribute, an error is returned. Specifying `after`
-    /// when adding a new attribute to an anarchy has no effect.
+    /// If `after` does not match any valid attribute, an error is
+    /// returned. Specifying `after` when adding a new attribute to an anarchy
+    /// has no effect.
     ///
     /// Requires USK refresh
     /// ====================
-    /// Only refreshed keys will be able to decrypt for an associated access policy belonging to
-    /// the semantic space of the new attribute.
+    ///
+    /// Only refreshed keys will be able to decrypt for an associated access
+    /// policy belonging to the semantic space of the new attribute.
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
@@ -164,8 +170,8 @@ impl AccessStructure {
         }
     }
 
-    /// Generates all rights defined by this access structure and return their hybridization and
-    /// activation status.
+    /// Generates all rights defined by this access structure and return their
+    /// hybridization and activation status.
     pub(crate) fn omega(&self) -> Result<HashMap<Right, (EncryptionHint, AttributeStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
@@ -195,11 +201,11 @@ impl AccessStructure {
         self.get_attribute(attribute).map(Attribute::get_id)
     }
 
-    /// Generates the restriction of the semantic space of the given clause to the rights of lower
-    /// rank than its associated right.
+    /// Generates the restriction of the semantic space of the given clause to
+    /// the rights of lower rank than its associated right.
     ///
-    /// The semantic space is define as the smallest subspace of the universe in which the given
-    /// clause can be expressed.
+    /// The semantic space is define as the smallest subspace of the universe in
+    /// which the given clause can be expressed.
     ///
     /// # Error
     ///

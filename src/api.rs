@@ -187,7 +187,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         usk: &UserSecretKey,
         enc: &XEnc,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-        decaps(usk, enc)
+        decaps(&mut *self.rng.lock().expect("Mutex lock failed!"), usk, enc)
     }
 }
 

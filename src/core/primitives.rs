@@ -346,6 +346,7 @@ pub fn encaps(
 /// Attempts to open the given hybridized encapsulations with this user secret
 /// key.
 fn h_decaps(
+    rng: &mut impl CryptoRngCore,
     usk: &UserSecretKey,
     A: &<ElGamal as Nike>::PublicKey,
     c: &[<ElGamal as Nike>::PublicKey],
@@ -379,6 +380,11 @@ fn h_decaps(
         U
     };
 
+    // Shuffle encapsulation to counter timing attacks attempting to determine
+    // which right was used to open an encapsulation.
+    let mut encs = encs.iter().collect::<Vec<_>>();
+    shuffle(&mut encs, rng);
+
     for (E, F) in encs {
         // The breadth-first search tries all coordinate subkeys in a chronological
         // order.
@@ -406,6 +412,7 @@ fn h_decaps(
 
 /// Attempts to open the given classic encapsulations with this user secret key.
 fn c_decaps(
+    rng: &mut impl CryptoRngCore,
     usk: &UserSecretKey,
     A: &<ElGamal as Nike>::PublicKey,
     c: &[<ElGamal as Nike>::PublicKey],
@@ -431,6 +438,11 @@ fn c_decaps(
         hasher.finalize(&mut *U);
         U
     };
+
+    // Shuffle encapsulation to counter timing attacks attempting to determine
+    // which right was used to open an encapsulation.
+    let mut encs = encs.iter().collect::<Vec<_>>();
+    shuffle(&mut encs, rng);
 
     for F in encs {
         // The breadth-first search tries all coordinate subkeys in a chronological
@@ -461,6 +473,7 @@ fn c_decaps(
 /// Attempts opening the Covercrypt encapsulation using the given USK. Returns
 /// the encapsulated key upon success, otherwise returns `None`.
 pub fn decaps(
+    rng: &mut impl CryptoRngCore,
     usk: &UserSecretKey,
     encapsulation: &XEnc,
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
@@ -474,10 +487,10 @@ pub fn decaps(
 
     match &encapsulation.encapsulations {
         Encapsulations::HEncs(encs) => {
-            h_decaps(usk, &A, &encapsulation.c, &encapsulation.tag, encs)
+            h_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
         }
         Encapsulations::CEncs(encs) => {
-            c_decaps(usk, &A, &encapsulation.c, &encapsulation.tag, encs)
+            c_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
         }
     }
 }
