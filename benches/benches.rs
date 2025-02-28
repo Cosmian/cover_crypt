@@ -83,7 +83,7 @@ macro_rules! gen_usk {
     }};
 }
 
-fn bench_encapsulation(c: &mut Criterion) {
+fn bench_classical_encapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
     let (_, mpk) = cc_keygen(&cc, true).unwrap();
 
@@ -99,7 +99,7 @@ fn bench_encapsulation(c: &mut Criterion) {
     }
 }
 
-fn bench_decapsulation(c: &mut Criterion) {
+fn bench_classical_decapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
     let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
 

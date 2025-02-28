@@ -58,7 +58,7 @@ fn test_encapsulation() {
         )
         .unwrap();
         assert_eq!(usk.secrets.len(), 1);
-        assert_eq!(Some(&key), decaps(&usk, &enc).unwrap().as_ref());
+        assert_eq!(Some(&key), decaps(&mut rng, &usk, &enc).unwrap().as_ref());
     }
 
     let usk = usk_keygen(
@@ -68,7 +68,7 @@ fn test_encapsulation() {
     )
     .unwrap();
     assert_eq!(usk.secrets.len(), 1);
-    assert_eq!(None, decaps(&usk, &enc).unwrap().as_ref());
+    assert_eq!(None, decaps(&mut rng, &usk, &enc).unwrap().as_ref());
 }
 
 /// This test verifies that the correct number of keys is added/removed upon
@@ -166,11 +166,14 @@ fn test_rekey() {
     // Old USK can open encapsulations associated with their coordinate.
     assert_eq!(
         Some(&old_key_1),
-        decaps(&usk_1, &old_enc_1).unwrap().as_ref()
+        decaps(&mut rng, &usk_1, &old_enc_1).unwrap().as_ref()
     );
-    assert_eq!(None, decaps(&usk_1, &old_enc_2).unwrap());
-    assert_eq!(Some(old_key_2), decaps(&usk_2, &old_enc_2).unwrap());
-    assert_eq!(None, decaps(&usk_2, &old_enc_1).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_1, &old_enc_2).unwrap());
+    assert_eq!(
+        Some(old_key_2),
+        decaps(&mut rng, &usk_2, &old_enc_2).unwrap()
+    );
+    assert_eq!(None, decaps(&mut rng, &usk_2, &old_enc_1).unwrap());
 
     // Re-key all space coordinates.
     rekey(&mut rng, &mut msk, universe).unwrap();
@@ -180,10 +183,10 @@ fn test_rekey() {
     let (new_key_2, new_enc_2) = encaps(&mut rng, &mpk, &subspace_2).unwrap();
 
     // Old USK cannot open new encapsulations.
-    assert_eq!(None, decaps(&usk_1, &new_enc_1).unwrap());
-    assert_eq!(None, decaps(&usk_1, &new_enc_2).unwrap());
-    assert_eq!(None, decaps(&usk_2, &new_enc_2).unwrap());
-    assert_eq!(None, decaps(&usk_2, &new_enc_1).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_1, &new_enc_1).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_1, &new_enc_2).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_2, &new_enc_2).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_2, &new_enc_1).unwrap());
 
     // Refresh USK.
     // Only the first one keeps its old rights.
@@ -191,16 +194,25 @@ fn test_rekey() {
     refresh(&mut rng, &mut msk, &mut usk_2, false).unwrap();
 
     // Refreshed USK can open the new encapsulation.
-    assert_eq!(Some(new_key_1), decaps(&usk_1, &new_enc_1).unwrap());
-    assert_eq!(None, decaps(&usk_1, &new_enc_2).unwrap());
-    assert_eq!(Some(new_key_2), decaps(&usk_2, &new_enc_2).unwrap());
-    assert_eq!(None, decaps(&usk_2, &new_enc_1).unwrap());
+    assert_eq!(
+        Some(new_key_1),
+        decaps(&mut rng, &usk_1, &new_enc_1).unwrap()
+    );
+    assert_eq!(None, decaps(&mut rng, &usk_1, &new_enc_2).unwrap());
+    assert_eq!(
+        Some(new_key_2),
+        decaps(&mut rng, &usk_2, &new_enc_2).unwrap()
+    );
+    assert_eq!(None, decaps(&mut rng, &usk_2, &new_enc_1).unwrap());
 
     // Only USK 1 can still open the old encapsulation.
-    assert_eq!(Some(old_key_1), decaps(&usk_1, &old_enc_1).unwrap());
-    assert_eq!(None, decaps(&usk_1, &old_enc_2).unwrap());
-    assert_eq!(None, decaps(&usk_2, &old_enc_2).unwrap());
-    assert_eq!(None, decaps(&usk_2, &old_enc_1).unwrap());
+    assert_eq!(
+        Some(old_key_1),
+        decaps(&mut rng, &usk_1, &old_enc_1).unwrap()
+    );
+    assert_eq!(None, decaps(&mut rng, &usk_1, &old_enc_2).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_2, &old_enc_2).unwrap());
+    assert_eq!(None, decaps(&mut rng, &usk_2, &old_enc_1).unwrap());
 }
 
 /// This test asserts that forged USK cannot be refreshed.
@@ -254,6 +266,8 @@ fn test_reencrypt_with_msk() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let cc = Covercrypt::default();
 
+    let mut rng = CsRng::from_entropy();
+
     let (mut msk, _) = cc_keygen(&cc, false).unwrap();
     let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
     let mut usk = cc
@@ -261,14 +275,17 @@ fn test_reencrypt_with_msk() {
         .expect("cannot generate usk");
 
     let (old_key, old_enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(Some(&old_key), decaps(&usk, &old_enc).unwrap().as_ref());
+    assert_eq!(
+        Some(&old_key),
+        decaps(&mut rng, &usk, &old_enc).unwrap().as_ref()
+    );
 
     cc.rekey(&mut msk, &ap).unwrap();
     let new_mpk = msk.mpk().unwrap();
     let (new_key, new_enc) = cc.recaps(&msk, &new_mpk, &old_enc).unwrap();
     cc.refresh_usk(&mut msk, &mut usk, true).unwrap();
-    assert_eq!(Some(new_key), decaps(&usk, &new_enc).unwrap());
-    assert_ne!(Some(old_key), decaps(&usk, &new_enc).unwrap());
+    assert_eq!(Some(new_key), decaps(&mut rng, &usk, &new_enc).unwrap());
+    assert_ne!(Some(old_key), decaps(&mut rng, &usk, &new_enc).unwrap());
 }
 
 #[test]
