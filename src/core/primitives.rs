@@ -79,10 +79,10 @@ fn verify_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<()
 /// Returns newly generated public and private Kyber key pair.
 fn create_kyber_key_pair(rng: &mut impl CryptoRngCore) -> (KyberPublicKey, KyberSecretKey) {
     let (mut sk, mut pk) = (
-        KyberSecretKey([0; KYBER_INDCPA_SECRETKEYBYTES]),
-        KyberPublicKey([0; KYBER_INDCPA_PUBLICKEYBYTES]),
+        KyberSecretKey(Box::new([0; KYBER_INDCPA_SECRETKEYBYTES])),
+        KyberPublicKey(Box::new([0; KYBER_INDCPA_PUBLICKEYBYTES])),
     );
-    indcpa_keypair(&mut pk.0, &mut sk.0, None, rng);
+    indcpa_keypair(&mut *pk.0, &mut *sk.0, None, rng);
     (pk, sk)
 }
 

@@ -41,25 +41,25 @@ type Tag = [u8; TAG_LENGTH];
 
 /// Kyber public key length
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct KyberPublicKey([u8; KYBER_INDCPA_PUBLICKEYBYTES]);
+pub struct KyberPublicKey(Box<[u8; KYBER_INDCPA_PUBLICKEYBYTES]>);
 
 impl Deref for KyberPublicKey {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &*self.0
     }
 }
 
 /// Kyber secret key length
 #[derive(Debug, Clone, PartialEq, Eq, Hash, ZeroizeOnDrop)]
-pub struct KyberSecretKey([u8; KYBER_INDCPA_SECRETKEYBYTES]);
+pub struct KyberSecretKey(Box<[u8; KYBER_INDCPA_SECRETKEYBYTES]>);
 
 impl Deref for KyberSecretKey {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &*self.0
     }
 }
 
