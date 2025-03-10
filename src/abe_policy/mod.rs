@@ -12,7 +12,6 @@ pub use access_structure::AccessStructure;
 pub use attribute::{AttributeStatus, EncryptionHint, QualifiedAttribute};
 pub use dimension::{Attribute, Dimension};
 pub use rights::Right;
-
 #[cfg(any(test, feature = "test-utils"))]
 pub use tests::gen_structure;
 
