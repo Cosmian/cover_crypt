@@ -301,9 +301,7 @@ impl TracingSecretKey {
     ///
     /// Returns an error if the ID is unknown.
     fn refresh_id(&mut self, rng: &mut impl CryptoRngCore, id: UserId) -> Result<UserId, Error> {
-        if !self.is_known(&id) {
-            Err(Error::Tracing("unknown user".to_string()))
-        } else if id.tracing_level() != self.tracing_level() {
+        if id.tracing_level() != self.tracing_level() {
             let new_id = self.generate_user_id(rng)?;
             self.add_user(new_id.clone());
             self.del_user(&id);
