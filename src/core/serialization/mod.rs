@@ -207,7 +207,7 @@ impl Serializable for MasterSecretKey {
         n += ser.write_leb128_u64(self.secrets.len() as u64)?;
         for (coordinate, chain) in &self.secrets.map {
             n += ser.write(coordinate)?;
-            n += ser.write_leb128_u64(to_leb128_len(chain.len()) as u64)?;
+            n += ser.write_leb128_u64(chain.len() as u64)?;
             for (is_activated, sk) in chain {
                 n += ser.write_leb128_u64((*is_activated).into())?;
                 n += ser.write(sk)?;
@@ -519,7 +519,7 @@ mod tests {
         abe_policy::{AttributeStatus, EncryptionHint},
         api::Covercrypt,
         core::{
-            primitives::{encaps, setup, update_msk, usk_keygen},
+            primitives::{encaps, rekey, setup, update_msk, usk_keygen},
             MIN_TRACING_LEVEL,
         },
         test_utils::cc_keygen,
@@ -555,7 +555,7 @@ mod tests {
             let mut rng = CsRng::from_entropy();
 
             let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
-            update_msk(&mut rng, &mut msk, universe).unwrap();
+            update_msk(&mut rng, &mut msk, universe.clone()).unwrap();
             let mpk = msk.mpk().unwrap();
             let usk = usk_keygen(&mut rng, &mut msk, user_set).unwrap();
             let (_, enc) = encaps(&mut rng, &mpk, &target_set).unwrap();
@@ -564,6 +564,9 @@ mod tests {
             test_serialization(&mpk).unwrap();
             test_serialization(&usk).unwrap();
             test_serialization(&enc).unwrap();
+
+            rekey(&mut rng, &mut msk, universe.keys().cloned().collect()).unwrap();
+            test_serialization(&msk).unwrap();
         }
 
         {
