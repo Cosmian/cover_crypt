@@ -385,22 +385,25 @@ fn h_decaps(
     shuffle(&mut encs, rng);
 
     // Loop order matters: this ordering is faster.
-    for (E, F) in encs {
-        // The breadth-first search tries all coordinate subkeys in a chronological
-        // order.
-        for secret in usk.secrets.bfs() {
-            if let RightSecretKey::Hybridized { sk, dk } = secret {
-                let mut K1 = ElGamal::session_key(sk, A)?;
-                let K2 = MlKem::dec(dk, E)?;
-                let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T)?, F);
-                let (tag_ij, ss) = J_hash(&S_ij, &U);
-                if tag == &tag_ij {
-                    // Fujisaki-Okamoto
-                    let r = G_hash(&S_ij)?;
-                    let c_ij = usk.set_traps(&r);
-                    if c == c_ij {
-                        K1.zeroize();
-                        return Ok(Some(ss));
+    for mut revision in usk.secrets.revisions() {
+        shuffle(&mut revision, rng);
+        for (E, F) in &encs {
+            // The breadth-first search tries all coordinate subkeys in a chronological
+            // order.
+            for (_, secret) in &revision {
+                if let RightSecretKey::Hybridized { sk, dk } = secret {
+                    let mut K1 = ElGamal::session_key(sk, A)?;
+                    let K2 = MlKem::dec(dk, E)?;
+                    let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T)?, F);
+                    let (tag_ij, ss) = J_hash(&S_ij, &U);
+                    if tag == &tag_ij {
+                        // Fujisaki-Okamoto
+                        let r = G_hash(&S_ij)?;
+                        let c_ij = usk.set_traps(&r);
+                        if c == c_ij {
+                            K1.zeroize();
+                            return Ok(Some(ss));
+                        }
                     }
                 }
             }
@@ -445,24 +448,27 @@ fn c_decaps(
     shuffle(&mut encs, rng);
 
     // Loop order matters: this ordering is faster.
-    for F in encs {
-        // The breadth-first search tries all coordinate subkeys in a chronological
-        // order.
-        for secret in usk.secrets.bfs() {
-            let sk = match secret {
-                RightSecretKey::Hybridized { sk, .. } => sk,
-                RightSecretKey::Classic { sk } => sk,
-            };
-            let mut K1 = ElGamal::session_key(sk, A)?;
-            let S = xor_in_place(H_hash(&K1, None, &T)?, F);
-            K1.zeroize();
-            let (tag_ij, ss) = J_hash(&S, &U);
-            if tag == &tag_ij {
-                // Fujisaki-Okamoto
-                let r = G_hash(&S)?;
-                let c_ij = usk.set_traps(&r);
-                if c == c_ij {
-                    return Ok(Some(ss));
+    for mut revision in usk.secrets.revisions() {
+        shuffle(&mut revision, rng);
+        for F in &encs {
+            // The breadth-first search tries all coordinate subkeys in a chronological
+            // order.
+            for (_, secret) in &revision {
+                let sk = match secret {
+                    RightSecretKey::Hybridized { sk, .. } => sk,
+                    RightSecretKey::Classic { sk } => sk,
+                };
+                let mut K1 = ElGamal::session_key(sk, A)?;
+                let S = xor_in_place(H_hash(&K1, None, &T)?, F);
+                K1.zeroize();
+                let (tag_ij, ss) = J_hash(&S, &U);
+                if tag == &tag_ij {
+                    // Fujisaki-Okamoto
+                    let r = G_hash(&S)?;
+                    let c_ij = usk.set_traps(&r);
+                    if c == c_ij {
+                        return Ok(Some(ss));
+                    }
                 }
             }
         }
