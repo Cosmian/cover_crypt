@@ -19,7 +19,7 @@ mod encrypted_header;
 pub mod api;
 pub mod traits;
 
-pub use abe_policy::EncryptionHint;
+pub use abe_policy::{AccessStructure, EncryptionHint, QualifiedAttribute};
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
