@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [15.0.0] - 2025-03-13
+
+### 🚀 Features
+
+- Add partial coordinates:
+
+Partial coordinates allow ciphertexts created with an access policy "D1::A" not to be invalidated upon addition or deletion of another dimension/attribute.
+
+The number of coordinate derived from the policy ("universe") is the product of the cardinal of the dimensions, plus one:
+
+$$\prod_{dim}(|dim| + 1)$$
+
+#### Breaking changes
+
+1. The master keys hold the coordinates of all the subspaces.
+2. The user keys hold the coordinates of the semantic subspace of their associated access policy. A semantic subspace is defined as the envelop of the points of the conjunctions defined by the DNF of the associated policy. In other words, this is the smallest valid subspace in which the access policy can be expressed.
+3. Re-keying and pruning are performed using the semantic subspaces (so as to allow easily re-keying all coordinates associated to a leaked user key).
+4. Encapsulations are created for all the points defined by the conjunctions in the DNF of the associated access policy. This means that "D1::A && (D2::A || D2::B)" <=> "D1::A && D2::A || D1::A && D2::B" generates two coordinates and the access policy "" generates one coordinate (the 0 of the universe), which allow for an **efficient broadcast**.
+
+### Bug Fixes
+
+- [**breaking**] Rename `from_boolean_expression` into `parse`
+
 ## [14.0.0] - 2024-03-07
 
 ### Features
