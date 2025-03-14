@@ -6,20 +6,48 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
-- Add partial coordinates:
+- *Add partial coordinates*: Partial coordinates allow ciphertexts created with
+  an access policy "D1::A" not to be invalidated upon addition or deletion of
+  another dimension/attribute.
 
-Partial coordinates allow ciphertexts created with an access policy "D1::A" not to be invalidated upon addition or deletion of another dimension/attribute.
+- *Hardened cryptographic primitives*: Covercrypt is now CCA-secure, with an
+  improved resistance against timing attacks thanks to shuffling.
 
-The number of coordinate derived from the policy ("universe") is the product of the cardinal of the dimensions, plus one:
+- *Toward cryptographic agility*: elliptic curve (as of now only the Ristretto
+  form of the X25519 and P256 are available) and MLKEM security levels can be
+  selected using features. The modular architecture allows to easily add new
+  implementations. However the modularity is not trait-based but feature-based,
+  prohibiting the instantiation of several coexisting flavors of Covercrypt.
 
-$$\prod_{dim}(|dim| + 1)$$
+- *Lighter encapsulations*: we decided to optimize encapsulation sizes at the
+  cost of user-secret-key size since encapsulations are generally more numerous
+  than user secret keys. In particular, it is now possible to efficiently create
+  broadcast encapsulations for any valid combination of attributes
+
+- *Interface standardization*: Covercrypt now exposes both a KEM and a PKE
+  interface, both providing 128 bits of both pre- and post-quantum CCA security.
+
+- *Interface simplification*: the policy object is now an internal detail of the
+  MSK and needs not be passed to the Covercrypt API (which improves security by
+  preventing de-synchronization between the policy and the master keys).
 
 #### Breaking changes
 
-1. The master keys hold the coordinates of all the subspaces.
-2. The user keys hold the coordinates of the semantic subspace of their associated access policy. A semantic subspace is defined as the envelop of the points of the conjunctions defined by the DNF of the associated policy. In other words, this is the smallest valid subspace in which the access policy can be expressed.
-3. Re-keying and pruning are performed using the semantic subspaces (so as to allow easily re-keying all coordinates associated to a leaked user key).
-4. Encapsulations are created for all the points defined by the conjunctions in the DNF of the associated access policy. This means that "D1::A && (D2::A || D2::B)" <=> "D1::A && D2::A || D1::A && D2::B" generates two coordinates and the access policy "" generates one coordinate (the 0 of the universe), which allow for an **efficient broadcast**.
+1. Serialization of all Covercrypt objects has been modified, which makes
+   previous serialized objects *incompatible*.
+2. The policy was renamed access structure to avoid confusion with an access
+   policy.
+3. Access policies are parsed using a different set of rules:
+   - "\*" stands for *all* the rights when used to generate a USK and *any*
+     right when used to generate an encapsulation;
+   - "D::A" stands for any combination involving the "A" attribute from the
+     dimension "D";
+
+   Therefore an encapsulation generated under the "D1::A && D2::B" access policy
+   can be opened by user secret keys generated for the "D1::A || ...", "D2::B ||
+   ..." or "D1::A && D2::B || ..." (as was already the case), and an
+   encapsulation generated under the "D1::A" access policy can be opened by a
+   user secret keys generated for the "D1::A && ..." access policy.
 
 ### Bug Fixes
 
