@@ -1,4 +1,7 @@
-use std::collections::{linked_list, LinkedList, VecDeque};
+use std::collections::{
+    linked_list::{self, Iter},
+    LinkedList, VecDeque,
+};
 
 /// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
@@ -17,6 +20,23 @@ use std::collections::{linked_list, LinkedList, VecDeque};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, LinkedList<T>)>,
+}
+
+pub struct RevisionIterator<'a, K, T> {
+    ks: Vec<&'a K>,
+    ls: Vec<Iter<'a, T>>,
+}
+
+impl<'a, K, T> Iterator for RevisionIterator<'a, K, T> {
+    type Item = Vec<(&'a K, &'a T)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.ks
+            .iter()
+            .zip(self.ls.iter_mut())
+            .map(|(k, it)| it.next().map(|t| (*k, t)))
+            .collect()
+    }
 }
 
 impl<K, T> Default for RevisionVec<K, T> {
@@ -102,6 +122,11 @@ impl<K, T> RevisionVec<K, T> {
         self.chains
             .iter()
             .flat_map(|(key, chain)| chain.iter().map(move |val| (key, val)))
+    }
+
+    pub fn revisions(&self) -> impl Iterator<Item = Vec<(&K, &T)>> {
+        let (ks, ls) = self.chains.iter().map(|(k, l)| (k, l.iter())).unzip();
+        RevisionIterator { ks, ls }
     }
 
     /// Iterates through all versions of all entry in a breadth-first manner.
