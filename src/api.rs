@@ -1,6 +1,6 @@
 use std::sync::{Mutex, MutexGuard};
 
-use cosmian_crypto_core::{kdf256, reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
 use zeroize::Zeroizing;
 
 use super::{
@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     core::{
-        primitives::{decaps, encaps, full_decaps, refresh, rekey, setup},
+        primitives::{self, full_decaps, refresh, rekey, setup},
         MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
     },
     traits::{KemAc, PkeAc},
@@ -156,7 +156,7 @@ impl Covercrypt {
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
         let (_ss, rights) = full_decaps(msk, encapsulation)?;
-        encaps(
+        primitives::encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
             &rights,
@@ -172,22 +172,22 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
 
     fn encaps(
         &self,
-        mpk: &MasterPublicKey,
+        ek: &Self::EncapsulationKey,
         ap: &AccessPolicy,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error> {
-        encaps(
+        primitives::encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
-            mpk,
-            &mpk.access_structure.ap_to_enc_rights(ap)?,
+            ek,
+            &ek.access_structure.ap_to_enc_rights(ap)?,
         )
     }
 
     fn decaps(
         &self,
-        usk: &UserSecretKey,
-        enc: &XEnc,
+        dk: &Self::DecapsulationKey,
+        enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-        decaps(&mut *self.rng.lock().expect("Mutex lock failed!"), usk, enc)
+        primitives::decaps(&mut *self.rng.lock().expect("Mutex lock failed!"), dk, enc)
     }
 }
 
@@ -201,41 +201,28 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH, Error = Error>> PkeAc<KEY_LENGTH
 
     fn encrypt(
         &self,
-        mpk: &MasterPublicKey,
+        mpk: &Self::EncryptionKey,
         ap: &AccessPolicy,
         ptx: &[u8],
-    ) -> Result<(XEnc, Vec<u8>), Error> {
-        if SHARED_SECRET_LENGTH < KEY_LENGTH {
-            return Err(Error::ConversionFailed(format!(
-                "insufficient entropy to generate a {}-byte key from a {}-byte seed",
-                KEY_LENGTH, SHARED_SECRET_LENGTH
-            )));
-        }
+    ) -> Result<Self::Ciphertext, Self::Error> {
         let (seed, enc) = self.encaps(mpk, ap)?;
-        let mut sym_key = SymmetricKey::default();
-        kdf256!(&mut *sym_key, &*seed);
+        // Locking Covercrypt RNG must be performed after encapsulation since
+        // this encapsulation also requires locking the RNG.
         let mut rng = self.rng.lock().expect("poisoned lock");
-        let res = E::encrypt(&mut *rng, &sym_key, ptx)?;
-        Ok((enc, res))
+        let key = SymmetricKey::derive(&seed, b"Covercrypt AE key")?;
+        E::encrypt(&mut *rng, &key, ptx).map(|ctx| (enc, ctx))
     }
 
     fn decrypt(
         &self,
-        usk: &UserSecretKey,
-        ctx: &(XEnc, Vec<u8>),
-    ) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
-        if SHARED_SECRET_LENGTH < KEY_LENGTH {
-            return Err(Error::ConversionFailed(format!(
-                "insufficient entropy to generate a {}-byte key from a {}-byte seed",
-                KEY_LENGTH, SHARED_SECRET_LENGTH
-            )));
-        }
-        let seed = self.decaps(usk, &ctx.0)?;
-        seed.map(|seed| {
-            let mut sym_key = SymmetricKey::<KEY_LENGTH>::default();
-            kdf256!(&mut *sym_key, &*seed);
-            E::decrypt(&sym_key, &ctx.1)
-        })
-        .transpose()
+        usk: &Self::DecryptionKey,
+        ctx: &Self::Ciphertext,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+        self.decaps(usk, &ctx.0)?
+            .map(|seed| {
+                let key = SymmetricKey::derive(&seed, b"Covercrypt AE key")?;
+                E::decrypt(&key, &ctx.1)
+            })
+            .transpose()
     }
 }
