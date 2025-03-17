@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     collections::{HashMap, HashSet, LinkedList},
     mem::take,
 };
@@ -47,13 +46,10 @@ fn xor_in_place<const LENGTH: usize>(
 }
 
 fn shuffle<T>(xs: &mut [T], rng: &mut impl RngCore) {
-    xs.sort_by(|_, _| {
-        if rng.next_u32() & 1 == 0 {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    });
+    for i in 0..xs.len() {
+        let j = rng.next_u32() as usize % xs.len();
+        xs.swap(i, j);
+    }
 }
 
 /// Computes the signature of the given USK using the MSK.
@@ -386,10 +382,10 @@ fn h_decaps(
 
     // Loop order matters: this ordering is faster.
     for mut revision in usk.secrets.revisions() {
+        // Shuffle secrets to counter timing attacks attempting to determine
+        // whether successive encapsulations target the same user right.
         shuffle(&mut revision, rng);
         for (E, F) in &encs {
-            // The breadth-first search tries all coordinate subkeys in a chronological
-            // order.
             for (_, secret) in &revision {
                 if let RightSecretKey::Hybridized { sk, dk } = secret {
                     let mut K1 = ElGamal::session_key(sk, A)?;
@@ -449,10 +445,10 @@ fn c_decaps(
 
     // Loop order matters: this ordering is faster.
     for mut revision in usk.secrets.revisions() {
+        // Shuffle secrets to counter timing attacks attempting to determine
+        // whether successive encapsulations target the same user right.
         shuffle(&mut revision, rng);
         for F in &encs {
-            // The breadth-first search tries all coordinate subkeys in a chronological
-            // order.
             for (_, secret) in &revision {
                 let sk = match secret {
                     RightSecretKey::Hybridized { sk, .. } => sk,
