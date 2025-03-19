@@ -9,12 +9,5 @@ jobs:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@develop
     with:
       toolchain: stable
-      features: full_bench
-      force: true
-
-  bench-hybridized:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@develop
-    with:
-      toolchain: stable
-      features: full_bench,hybridized_bench
+      features: test-utils
       force: true
