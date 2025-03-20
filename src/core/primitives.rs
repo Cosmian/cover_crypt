@@ -4,8 +4,7 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    bytes_ser_de::Serializable,
-    reexport::rand_core::{CryptoRngCore, RngCore},
+    bytes_ser_de::Serializable, reexport::rand_core::CryptoRngCore, shuffle, shuffle_in_place,
     RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
 
@@ -43,13 +42,6 @@ fn xor_in_place<const LENGTH: usize>(
         lhs[pos] ^= rhs[pos];
     }
     lhs
-}
-
-fn shuffle<T>(xs: &mut [T], rng: &mut impl RngCore) {
-    for i in 0..xs.len() {
-        let j = rng.next_u32() as usize % xs.len();
-        xs.swap(i, j);
-    }
 }
 
 /// Computes the signature of the given USK using the MSK.
@@ -325,7 +317,7 @@ pub fn encaps(
     // rights are hashed in-order. If shuffling is performed after generating
     // the encapsulations, there would be no way to know in which order to
     // perform hashing upon decapsulation.
-    shuffle(&mut coordinate_keys, rng);
+    shuffle_in_place(&mut coordinate_keys, rng);
 
     let S = Secret::random(rng);
     let r = G_hash(&S)?;
@@ -377,14 +369,13 @@ fn h_decaps(
 
     // Shuffle encapsulation to counter timing attacks attempting to determine
     // which right was used to open an encapsulation.
-    let mut encs = encs.iter().collect::<Vec<_>>();
-    shuffle(&mut encs, rng);
+    let encs = shuffle(encs, rng);
 
     // Loop order matters: this ordering is faster.
     for mut revision in usk.secrets.revisions() {
         // Shuffle secrets to counter timing attacks attempting to determine
         // whether successive encapsulations target the same user right.
-        shuffle(&mut revision, rng);
+        shuffle_in_place(&mut revision, rng);
         for (E, F) in &encs {
             for (_, secret) in &revision {
                 if let RightSecretKey::Hybridized { sk, dk } = secret {
@@ -440,14 +431,13 @@ fn c_decaps(
 
     // Shuffle encapsulation to counter timing attacks attempting to determine
     // which right was used to open an encapsulation.
-    let mut encs = encs.iter().collect::<Vec<_>>();
-    shuffle(&mut encs, rng);
+    let encs = shuffle(encs, rng);
 
     // Loop order matters: this ordering is faster.
     for mut revision in usk.secrets.revisions() {
         // Shuffle secrets to counter timing attacks attempting to determine
         // whether successive encapsulations target the same user right.
-        shuffle(&mut revision, rng);
+        shuffle_in_place(&mut revision, rng);
         for F in &encs {
             for (_, secret) in &revision {
                 let sk = match secret {
