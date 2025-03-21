@@ -87,12 +87,12 @@ pub struct MasterSecretKey {
 pub struct UserSecretKey {
     a: R25519PrivateKey,
     b: R25519PrivateKey,
-    pub(crate) subkeys: RevisionVec<Partition, SecretSubkey>,
+    pub subkeys: RevisionVec<Partition, SecretSubkey>,
     kmac: Option<KmacSignature>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum KeyEncapsulation {
+pub enum KeyEncapsulation {
     ClassicEncapsulation(Box<[u8; SYM_KEY_LENGTH]>),
     HybridEncapsulation(Box<[u8; KYBER_INDCPA_BYTES]>),
 }
@@ -102,5 +102,5 @@ pub struct Encapsulation {
     c1: R25519PublicKey,
     c2: R25519PublicKey,
     tag: Tag,
-    encs: HashSet<KeyEncapsulation>,
+    pub encs: HashSet<KeyEncapsulation>,
 }
