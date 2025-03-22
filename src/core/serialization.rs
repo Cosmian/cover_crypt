@@ -3,20 +3,20 @@
 use std::collections::{HashMap, HashSet, LinkedList};
 
 use cosmian_crypto_core::{
-    bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
     FixedSizeCBytes, R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
+    bytes_ser_de::{Deserializer, Serializable, Serializer, to_leb128_len},
 };
 use pqc_kyber::{KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES};
 
-use super::{KyberPublicKey, KyberSecretKey, KMAC_KEY_LENGTH, KMAC_LENGTH, TAG_LENGTH};
+use super::{KMAC_KEY_LENGTH, KMAC_LENGTH, KyberPublicKey, KyberSecretKey, TAG_LENGTH};
 use crate::{
+    CleartextHeader, EncryptedHeader, Error,
     abe_policy::Partition,
     core::{
-        Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
-        SYM_KEY_LENGTH,
+        Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, SYM_KEY_LENGTH,
+        UserSecretKey,
     },
     data_struct::{RevisionMap, RevisionVec},
-    CleartextHeader, EncryptedHeader, Error,
 };
 
 /// Returns the byte length of a serialized option
@@ -48,11 +48,7 @@ macro_rules! serialize_option {
 macro_rules! deserialize_option {
     ($deserializer:expr, $method:expr) => {{
         let is_some = $deserializer.read_leb128_u64()?;
-        if is_some == 1 {
-            Some($method)
-        } else {
-            None
-        }
+        if is_some == 1 { Some($method) } else { None }
     }};
 }
 
@@ -133,7 +129,7 @@ impl Serializable for MasterSecretKey {
             }
         }
         if let Some(kmac_key) = &self.kmac_key {
-            n += ser.write_array(kmac_key)?;
+            n += ser.write_array(&**kmac_key)?;
         }
 
         Ok(n)
@@ -407,7 +403,7 @@ impl Serializable for CleartextHeader {
 mod tests {
     use std::collections::HashMap;
 
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cosmian_crypto_core::{CsRng, reexport::rand_core::SeedableRng};
 
     use super::*;
     use crate::{
@@ -486,7 +482,7 @@ mod tests {
         // Setup Covercrypt.
         #[cfg(feature = "test_utils")]
         {
-            use crate::{abe_policy::AccessPolicy, test_utils::policy, Covercrypt};
+            use crate::{Covercrypt, abe_policy::AccessPolicy, test_utils::policy};
 
             let cc = Covercrypt::default();
             let policy = policy()?;

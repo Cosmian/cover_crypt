@@ -47,7 +47,7 @@ fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
 /// The order of the sub keys will impact the resulting KMAC.
 fn compute_user_key_kmac(msk: &MasterSecretKey, usk: &UserSecretKey) -> Option<KmacSignature> {
     if let Some(kmac_key) = &msk.kmac_key {
-        let mut kmac = Kmac::v256(kmac_key, &usk.a.to_bytes());
+        let mut kmac = Kmac::v256(&**kmac_key, &usk.a.to_bytes());
         kmac.update(&usk.b.to_bytes());
 
         for (partition, (sk_i, x_i)) in usk.subkeys.flat_iter() {
@@ -218,7 +218,7 @@ pub fn keygen(
     decryption_set: &HashSet<Partition>,
 ) -> Result<UserSecretKey, Error> {
     let a = R25519PrivateKey::new(rng);
-    let b = &(&msk.s - &(&a * &msk.s1)) / &msk.s2;
+    let b = (&(&msk.s - &(&a * &msk.s1)) / &msk.s2)?;
     // Use the last key for each partitions in the decryption set
     let mut subkeys = RevisionVec::with_capacity(decryption_set.len());
     decryption_set.iter().try_for_each(|partition| {

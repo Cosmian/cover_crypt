@@ -23,7 +23,7 @@ macro_rules! eakem_hash {
             let mut tag = [0; $TAG_LENGTH];
             let mut key = $crate::core::macros::SymmetricKey::try_from_bytes([0; $KEY_LENGTH])?;
             <$crate::core::macros::Shake as $crate::core::macros::Xof>::squeeze(&mut hasher, &mut tag);
-            <$crate::core::macros::Shake as $crate::core::macros::Hasher>::finalize(hasher, &mut key);
+            <$crate::core::macros::Shake as $crate::core::macros::Hasher>::finalize(hasher, &mut *key);
             Ok((tag, key))
         }
     };
