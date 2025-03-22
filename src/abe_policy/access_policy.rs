@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
-    abe_policy::{Attribute, Policy},
     Error,
+    abe_policy::{Attribute, Policy},
 };
 
 /// An `AccessPolicy` is a boolean expression over attributes.
@@ -347,8 +347,7 @@ impl AccessPolicy {
     ///
     /// - `policy`                              : global policy
     /// - `include_lower_attributes_from_dim`   : set to `true` to combine lower
-    ///   attributes
-    /// from dimension with hierarchical order
+    ///   attributes from dimension with hierarchical order
     pub fn to_attribute_combinations(
         &self,
         policy: &Policy,

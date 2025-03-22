@@ -1,17 +1,16 @@
 use std::{
     borrow::Borrow,
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::{self, Debug},
     hash::Hash,
     marker::PhantomData,
     mem::swap,
-    usize,
 };
 
 use serde::{
+    Deserialize, Deserializer, Serialize,
     de::{MapAccess, Visitor},
     ser::SerializeMap,
-    Deserialize, Deserializer, Serialize,
 };
 
 use super::error::Error;

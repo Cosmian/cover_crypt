@@ -2,7 +2,7 @@ use cosmian_cover_crypt::{
     Covercrypt, EncryptedHeader, Error,
     abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
 };
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 // Policy settings
 fn policy() -> Result<Policy, Error> {
@@ -135,7 +135,6 @@ fn policy() -> Result<Policy, Error> {
 /// Access policies with hybridization hints are generated only if
 /// `--features hybridized_bench` is passed
 fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
-    // Access policy with 1 partition
     let access_policies = vec![
         AccessPolicy::from_boolean_expression("S::S1 && D::D1").unwrap(),
         AccessPolicy::from_boolean_expression("(S::S1 || S::S2) && D::D1").unwrap(),
@@ -148,8 +147,6 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
         .unwrap(),
     ];
 
-    // The intersection between the user access policies and the encryption
-    // policies is always "Department::FIN && Security Level::Protected" only.
     let user_access_policies = vec![
         AccessPolicy::from_boolean_expression(
             "S::S1 && (D::D1
@@ -280,53 +277,19 @@ fn bench_header_decryption(c: &mut Criterion) {
         .generate_master_keys(&policy)
         .expect("cannot generate master keys");
     let mut group = c.benchmark_group("Header encryption and decryption");
-    for (n_user, user_access_policy) in user_access_policies.iter().enumerate() {
-        for (n_partition_ct, access_policy) in access_policies.iter().enumerate() {
+    for user_access_policy in user_access_policies.iter() {
+        for access_policy in access_policies.iter() {
             let usk = cover_crypt
                 .generate_user_secret_key(&msk, user_access_policy, &policy)
                 .expect("cannot generate user private key");
             let (_, enc) = cover_crypt.encaps(&policy, &mpk, access_policy).unwrap();
             group.bench_function(
-                &format!(
+                format!(
                     "ciphertexts with {} partition(s), usk with {} partitions",
                     enc.encs.len(),
                     usk.subkeys.len()
                 ),
-                |b| {
-                    b.iter_batched(
-                        || {
-                            let usk = cover_crypt
-                                .generate_user_secret_key(&msk, user_access_policy, &policy)
-                                .expect("cannot generate user private key");
-                            let (_, enc) =
-                                cover_crypt.encaps(
-                                &policy,
-                                &mpk,
-                                access_policy,
-                            )
-                            .unwrap_or_else(|_| {
-                                panic!(
-                                    "cannot encrypt header for {} ciphertext partition(s), {} usk \
-                                     partition(s)",
-                                    n_partition_ct + 1,
-                                    n_user
-                                )
-                            });
-                            (usk, enc)
-                        },
-                        |(usk, enc)| {
-                            cover_crypt.decaps(&usk, &enc).unwrap_or_else(|_| {
-                                panic!(
-                                    "cannot decrypt header for {} ciphertext partition(s), {} \
-                                         usk partition(s)",
-                                    n_partition_ct + 1,
-                                    n_user
-                                )
-                            });
-                        },
-                        BatchSize::SmallInput,
-                    );
-                },
+                |b| b.iter(|| cover_crypt.decaps(&usk, &enc).unwrap()),
             );
         }
     }

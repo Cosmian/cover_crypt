@@ -7,21 +7,23 @@ use std::{
 };
 
 use cosmian_crypto_core::{
-    kdf256, reexport::rand_core::CryptoRngCore, FixedSizeCBytes, R25519CurvePoint,
-    R25519PrivateKey, R25519PublicKey, RandomFixedSizeCBytes, SymmetricKey,
+    CsRng, FixedSizeCBytes, R25519CurvePoint, R25519PrivateKey, R25519PublicKey,
+    RandomFixedSizeCBytes, SymmetricKey, kdf256,
+    reexport::rand_core::{CryptoRngCore, SeedableRng},
 };
 use pqc_kyber::{
-    indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
     KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
+    indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
 };
 use tiny_keccak::{Hasher, IntoXof, Kmac, Xof};
 use zeroize::Zeroizing;
 
 use super::{
-    KmacSignature, KyberPublicKey, KyberSecretKey, PublicSubkey, SecretSubkey, KMAC_KEY_LENGTH,
-    KMAC_LENGTH, SYM_KEY_LENGTH, TAG_LENGTH,
+    KMAC_KEY_LENGTH, KMAC_LENGTH, KmacSignature, KyberPublicKey, KyberSecretKey, PublicSubkey,
+    SYM_KEY_LENGTH, SecretSubkey, TAG_LENGTH,
 };
 use crate::{
+    Error,
     abe_policy::{
         AttributeStatus,
         AttributeStatus::{DecryptOnly, EncryptDecrypt},
@@ -29,7 +31,6 @@ use crate::{
     },
     core::{Encapsulation, KeyEncapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey},
     data_struct::{RevisionMap, RevisionVec},
-    Error,
 };
 
 /// Additional information to generate symmetric key using the KDF.
@@ -287,6 +288,21 @@ pub fn encaps(
     Ok((key, Encapsulation { c1, c2, tag, encs }))
 }
 
+/// Shuffles the given slice in a destructive way.
+pub fn shuffle_in_place<X>(xs: &mut [X], rng: &mut impl CryptoRngCore) {
+    for i in 0..xs.len() {
+        let j = rng.next_u32() as usize % xs.len();
+        xs.swap(i, j);
+    }
+}
+
+/// Returns a vector containing a shuffled copy of the given elements.
+pub fn shuffle<X: Clone>(xs: &[X], rng: &mut impl CryptoRngCore) -> Vec<X> {
+    let mut res = xs.to_vec();
+    shuffle_in_place(&mut res, rng);
+    res
+}
+
 /// Tries to decapsulate the given `Covercrypt` encapsulation.
 /// Returns the encapsulated symmetric key.
 ///
@@ -294,20 +310,27 @@ pub fn encaps(
 ///
 /// An error is returned if the user decryption set does not match the
 /// encryption set used to generate the given encapsulation.
-///
-/// # Parameters
-///
-/// - `usk`             : user secret key
-/// - `encapsulation`   : symmetric key encapsulation
 pub fn decaps(
     usk: &UserSecretKey,
     encapsulation: &Encapsulation,
 ) -> Result<SymmetricKey<SYM_KEY_LENGTH>, Error> {
+    let mut rng = CsRng::from_entropy();
     let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
-    for encapsulation_i in &encapsulation.encs {
+
+    let mut encs = encapsulation.encs.iter().collect::<Vec<_>>();
+    shuffle_in_place(&mut encs, &mut rng);
+    let mut subkeys = usk
+        .subkeys
+        .iter()
+        .map(|(x, y)| (x.clone(), y.clone()))
+        .collect::<RevisionVec<_, _>>();
+
+    subkeys.shuffle(&mut rng);
+
+    for encapsulation_i in &encs {
         // BFS search user subkeys to first try the most recent rotations of each
         // partitions.
-        for (sk_j, x_j) in usk.subkeys.bfs() {
+        for (sk_j, x_j) in subkeys.bfs() {
             let e_j = match encapsulation_i {
                 KeyEncapsulation::HybridEncapsulation(epq_i) => {
                     if let Some(sk_j) = sk_j {
@@ -511,7 +534,7 @@ pub fn refresh(
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_core::{
-        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
+        CsRng, bytes_ser_de::Serializable, reexport::rand_core::SeedableRng,
     };
 
     use super::*;
@@ -752,10 +775,11 @@ mod tests {
                 old_msk.subkeys.get_latest(&partition_1).unwrap(),
             )
         }));
-        assert!(usk
-            .subkeys
-            .flat_iter()
-            .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) }));
+        assert!(
+            usk.subkeys
+                .flat_iter()
+                .any(|x| { x == (&partition_2, msk.subkeys.get_latest(&partition_2).unwrap(),) })
+        );
         // user key kept the old hybrid key for partition 3
         assert!(!usk.subkeys.flat_iter().any(|x| {
             x == (

@@ -1,4 +1,6 @@
-use std::collections::{linked_list, LinkedList, VecDeque};
+use std::collections::{LinkedList, VecDeque, linked_list};
+
+use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
 
 /// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
@@ -37,6 +39,13 @@ impl<K, T> RevisionVec<K, T> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             chains: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn shuffle(&mut self, rng: &mut impl CryptoRngCore) {
+        for i in 0..self.chains.len() {
+            let j = rng.next_u32() as usize % self.chains.len();
+            self.chains.swap(i, j);
         }
     }
 

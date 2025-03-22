@@ -1,7 +1,7 @@
 //! This crate implements the `Covercrypt` cryptographic scheme which allows to:
 //! - encrypt messages for a given set of policy attributes;
 //! - decrypt messages if the decryptor has been assigned one of these policy
-//! attributes;
+//!   attributes;
 //! - "rotate" policy attributes;
 //! - "refresh" user keys.
 //!
@@ -35,6 +35,6 @@ pub mod test_utils;
 pub use error::Error;
 
 pub use self::core::{
-    api::{CleartextHeader, Covercrypt, EncryptedHeader},
     Encapsulation, MasterPublicKey, MasterSecretKey, UserSecretKey,
+    api::{CleartextHeader, Covercrypt, EncryptedHeader},
 };
