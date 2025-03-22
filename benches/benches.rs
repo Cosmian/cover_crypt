@@ -4,7 +4,7 @@ use cosmian_cover_crypt::{
     core::SYM_KEY_LENGTH,
 };
 use cosmian_crypto_core::{
-    CsRng, R25519PrivateKey, R25519PublicKey,
+    CsRng, FixedSizeCBytes, R25519PrivateKey, R25519PublicKey, kdf256,
     reexport::rand_core::{RngCore, SeedableRng},
 };
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -92,50 +92,6 @@ fn policy() -> Result<Policy, Error> {
     Ok(policy)
 }
 
-// fn bench_policy_editing(c: &mut Criterion) {
-//     let cover_crypt = Covercrypt::default();
-//     let new_dep_attr = Attribute::new("Department", "Tech");
-//     let new_dep_name = "IT".to_string();
-//     let remove_dep_attr = Attribute::new("Department", "FIN");
-//     let old_sl_attr = Attribute::new("Security Level", "Protected");
-//     let new_sl_name = "Open".to_string();
-//     let disable_sl_attr = Attribute::new("Security Level", "Confidential");
-
-//     let mut group = c.benchmark_group("Edit Policy");
-//     //for (n_partition, access_policy) in access_policies.iter().enumerate() {
-//     group.bench_function("edit policy", |b| {
-//         b.iter_batched(
-//             || {
-//                 let policy = policy().expect("cannot generate policy");
-
-//                 let (msk, mpk) = cover_crypt
-//                     .generate_master_keys(&policy)
-//                     .expect("cannot generate master keys");
-//                 (policy, msk, mpk)
-//             },
-//             |(mut policy, mut msk, mut mpk)| {
-//                 policy
-//                     .add_attribute(new_dep_attr.clone(), EncryptionHint::Classic)
-//                     .unwrap();
-//                 policy
-//                     .rename_attribute(&new_dep_attr, new_dep_name.clone())
-//                     .unwrap();
-//                 policy.remove_attribute(&remove_dep_attr).unwrap();
-
-//                 policy
-//                     .rename_attribute(&old_sl_attr, new_sl_name.clone())
-//                     .unwrap();
-//                 policy.disable_attribute(&disable_sl_attr).unwrap();
-
-//                 cover_crypt
-//                     .update_master_keys(&policy, &mut msk, &mut mpk)
-//                     .unwrap();
-//             },
-//             BatchSize::SmallInput,
-//         );
-//     });
-// }
-
 /// Generate access policies up to 5 partitions along with a user access policy
 /// that allows decrypting headers for all these access policies.
 ///
@@ -178,6 +134,41 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     (user_access_policies, access_policies)
 }
 
+fn xor_in_place<const LENGTH: usize>(a: &mut [u8; LENGTH], b: &[u8; LENGTH]) {
+    for (a_i, b_i) in a.iter_mut().zip(b.iter()) {
+        *a_i ^= b_i;
+    }
+}
+
+fn bench_hashing(c: &mut Criterion) {
+    const TAG_LENGTH: usize = 16;
+    const KEY_GEN_INFO: &[u8] = b"key generation info";
+
+    let mut rng = CsRng::from_entropy();
+    let a = R25519PrivateKey::new(&mut rng);
+    let g_a = R25519PublicKey::from(&a);
+    let mut e = [0; SYM_KEY_LENGTH];
+    rng.fill_bytes(&mut e);
+
+    c.bench_function("Hashing", |b| b.iter(||
+        {
+            let mut seed = Zeroizing::new([0; SYM_KEY_LENGTH]);
+            kdf256!(&mut *seed, &g_a.to_bytes());
+            xor_in_place(&mut seed, &e);
+            let mut hasher = cosmian_cover_crypt::core::macros::Shake::v256();
+            <cosmian_cover_crypt::core::macros::Shake as cosmian_cover_crypt::core::macros::Hasher>::update(&mut hasher,&*seed);
+            <cosmian_cover_crypt::core::macros::Shake as cosmian_cover_crypt::core::macros::Hasher>::update(&mut hasher,KEY_GEN_INFO);
+            let mut tag = [0; TAG_LENGTH];
+            let mut key =
+                cosmian_cover_crypt::core::macros::SymmetricKey::try_from_bytes([0; SYM_KEY_LENGTH])
+                    .unwrap();
+            <cosmian_cover_crypt::core::macros::Shake as cosmian_cover_crypt::core::macros::Xof>::squeeze(&mut hasher, &mut tag);
+            <cosmian_cover_crypt::core::macros::Shake as cosmian_cover_crypt::core::macros::Hasher>::finalize(hasher, &mut *key);
+            (tag, key)
+        }
+    ));
+}
+
 fn bench_elgamal(c: &mut Criterion) {
     let mut rng = CsRng::from_entropy();
     let a = R25519PrivateKey::new(&mut rng);
@@ -197,7 +188,7 @@ fn bench_kyber(c: &mut Criterion) {
     let mut coin = Zeroizing::new([0; KYBER_SYMBYTES]);
     rng.fill_bytes(&mut *coin);
     indcpa_enc(&mut enc, &sk, &pk, &*coin);
-    c.bench_function("ElGamal", |bencher| {
+    c.bench_function("Kyber", |bencher| {
         bencher.iter(|| {
             let mut ptx = [0; SYM_KEY_LENGTH];
             indcpa_dec(&mut ptx, &enc, &sk);
@@ -235,6 +226,7 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
+    bench_hashing,
     bench_elgamal,
     bench_kyber,
     bench_header_decryption,

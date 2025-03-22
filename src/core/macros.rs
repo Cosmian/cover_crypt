@@ -13,6 +13,7 @@ pub use tiny_keccak::{Hasher, Shake, Xof};
 /// # Parameters
 ///
 /// - `bytes`   : input bytes
+#[macro_export]
 macro_rules! eakem_hash {
     ($TAG_LENGTH: ident, $KEY_LENGTH: ident, $($bytes: expr),+) => {
         {
