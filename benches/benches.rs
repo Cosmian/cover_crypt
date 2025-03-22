@@ -1,8 +1,18 @@
 use cosmian_cover_crypt::{
-    Covercrypt, EncryptedHeader, Error,
+    Covercrypt, Error,
     abe_policy::{AccessPolicy, DimensionBuilder, EncryptionHint, Policy},
+    core::SYM_KEY_LENGTH,
+};
+use cosmian_crypto_core::{
+    CsRng, R25519PrivateKey, R25519PublicKey,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
 use criterion::{Criterion, criterion_group, criterion_main};
+use pqc_kyber::{
+    KYBER_INDCPA_BYTES, KYBER_INDCPA_PUBLICKEYBYTES, KYBER_INDCPA_SECRETKEYBYTES, KYBER_SYMBYTES,
+    indcpa::{indcpa_dec, indcpa_enc, indcpa_keypair},
+};
+use zeroize::Zeroizing;
 
 // Policy settings
 fn policy() -> Result<Policy, Error> {
@@ -168,106 +178,32 @@ fn get_access_policies() -> (Vec<AccessPolicy>, Vec<AccessPolicy>) {
     (user_access_policies, access_policies)
 }
 
-#[cfg(feature = "full_bench")]
-fn bench_serialization(c: &mut Criterion) {
-    use cosmian_crypto_core::bytes_ser_de::Serializable;
-
-    let policy = policy().expect("cannot generate policy");
-    let (user_access_policies, access_policies) = get_access_policies();
-    let cover_crypt = Covercrypt::default();
-    let (msk, mpk) = cover_crypt
-        .generate_master_keys(&policy)
-        .expect("cannot generate master keys");
-
-    println!("bench header encryption size: ");
-
-    for (i, access_policy) in access_policies.iter().enumerate() {
-        let (_, encrypted_header) =
-            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, access_policy, None, None)
-                .expect("cannot encrypt header 1");
-        println!(
-            "{} partition(s): {} bytes",
-            i + 1,
-            encrypted_header.serialize().unwrap().len(),
-        );
-    }
-
-    for (i, ap) in user_access_policies.iter().enumerate() {
-        let usk = cover_crypt
-            .generate_user_secret_key(&msk, ap, &policy)
-            .unwrap();
-        println!(
-            "{} usk partition(s): {} bytes",
-            i + 1,
-            usk.serialize().unwrap().len(),
-        );
-    }
-
-    {
-        let mut group = c.benchmark_group("Key serialization");
-        group.bench_function("MSK", |b| {
-            b.iter(|| msk.serialize().expect("cannot serialize msk"));
-        });
-        group.bench_function("MPK", |b| {
-            b.iter(|| mpk.serialize().expect("cannot serialize mpk"));
-        });
-
-        let usk = cover_crypt
-            .generate_user_secret_key(&msk, &user_access_policies[0], &policy)
-            .unwrap();
-        group.bench_function("USK 1 partition", |b| {
-            b.iter(|| usk.serialize().expect("cannot serialize usk"));
-        });
-    }
-
-    let mut group = c.benchmark_group("Header serialization");
-    for (n_partition, access_policy) in access_policies.iter().enumerate() {
-        let (_, encrypted_header) =
-            EncryptedHeader::generate(&cover_crypt, &policy, &mpk, access_policy, None, None)
-                .expect("cannot encrypt header 1");
-        group.bench_function(&format!("{} partition(s)", n_partition + 1), |b| {
-            b.iter(|| {
-                encrypted_header.serialize().unwrap_or_else(|_| {
-                    panic!(
-                        "cannot serialize header for {} partition(s)",
-                        n_partition + 1
-                    )
-                })
-            });
-        });
-    }
+fn bench_elgamal(c: &mut Criterion) {
+    let mut rng = CsRng::from_entropy();
+    let a = R25519PrivateKey::new(&mut rng);
+    let b = R25519PrivateKey::new(&mut rng);
+    let g_a = R25519PublicKey::from(&a);
+    c.bench_function("ElGamal", |bencher| bencher.iter(|| &g_a * &b));
 }
 
-// fn bench_header_encryption(c: &mut Criterion) {
-//     let policy = policy().expect("cannot generate policy");
-//     let (_, access_policies) = get_access_policies();
-//     let cover_crypt = Covercrypt::default();
-//     let (_, mpk) = cover_crypt
-//         .generate_master_keys(&policy)
-//         .expect("cannot generate master keys");
-
-//     let mut group = c.benchmark_group("Header encryption");
-//     for (n_partition, access_policy) in access_policies.iter().enumerate() {
-//         group.bench_function(
-//             &format!("{} partition(s), 1 access", n_partition + 1),
-//             |b| {
-//                 b.iter(|| {
-//                     EncryptedHeader::generate(
-//                         &cover_crypt,
-//                         &policy,
-//                         &mpk,
-//                         access_policy,
-//                         None,
-//                         None,
-//                     )
-//                     .unwrap_or_else(|_| {
-//                         panic!("cannot encrypt header for {} partition(s)", n_partition + 1)
-//                     })
-//                 });
-//             },
-//         );
-//     }
-// }
+fn bench_kyber(c: &mut Criterion) {
+    let mut rng = CsRng::from_entropy();
+    let (mut sk, mut pk) = (
+        [0; KYBER_INDCPA_SECRETKEYBYTES],
+        [0; KYBER_INDCPA_PUBLICKEYBYTES],
+    );
+    indcpa_keypair(&mut pk, &mut sk, None, &mut rng);
+    let mut enc = [0; KYBER_INDCPA_BYTES];
+    let mut coin = Zeroizing::new([0; KYBER_SYMBYTES]);
+    rng.fill_bytes(&mut *coin);
+    indcpa_enc(&mut enc, &sk, &pk, &*coin);
+    c.bench_function("ElGamal", |bencher| {
+        bencher.iter(|| {
+            let mut ptx = [0; SYM_KEY_LENGTH];
+            indcpa_dec(&mut ptx, &enc, &sk);
+        })
+    });
+}
 
 fn bench_header_decryption(c: &mut Criterion) {
     let policy = policy().expect("cannot generate policy");
@@ -299,20 +235,9 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
+    bench_elgamal,
+    bench_kyber,
     bench_header_decryption,
-        // bench_policy_editing,
-        // bench_header_encryption,
 );
 
-#[cfg(feature = "full_bench")]
-criterion_group!(
-name = benches_serialization;
-config = Criterion::default().sample_size(5000);
-targets = bench_serialization,
-);
-
-#[cfg(feature = "full_bench")]
-criterion_main!(benches, benches_serialization);
-
-#[cfg(not(feature = "full_bench"))]
 criterion_main!(benches);

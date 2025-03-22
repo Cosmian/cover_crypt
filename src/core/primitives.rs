@@ -318,7 +318,9 @@ pub fn decaps(
     let precomp = &(&encapsulation.c1 * &usk.a) + &(&encapsulation.c2 * &usk.b);
 
     let mut encs = encapsulation.encs.iter().collect::<Vec<_>>();
+
     shuffle_in_place(&mut encs, &mut rng);
+
     let mut subkeys = usk
         .subkeys
         .iter()
