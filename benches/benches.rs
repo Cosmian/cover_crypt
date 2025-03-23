@@ -1,7 +1,17 @@
 #![allow(non_snake_case)]
 
 use cosmian_cover_crypt::{
-    api::Covercrypt, core::{kem::MlKem, nike::{r25519::{R25519Point, R25519Scalar}, ElGamal}, Encapsulations}, traits::{Kem, KemAc, Nike, Sampling}, AccessPolicy, AccessStructure, EncryptionHint, Error, MasterPublicKey, MasterSecretKey
+    api::Covercrypt,
+    core::{
+        kem::MlKem,
+        nike::{
+            r25519::{R25519Point, R25519Scalar},
+            ElGamal,
+        },
+        Encapsulations,
+    },
+    traits::{Kem, KemAc, Nike, Sampling},
+    AccessPolicy, AccessStructure, EncryptionHint, Error, MasterPublicKey, MasterSecretKey,
 };
 use cosmian_crypto_core::{
     bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, shuffle, CsRng, Secret,
@@ -157,6 +167,7 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
 
     {
         let mut group = c.benchmark_group("Hybridized Decapsulation");
+        group.sample_size(10_000);
         for (enc_ap, enc_cnt) in H_ENC_APS {
             let eap = AccessPolicy::parse(enc_ap).unwrap();
             for (usk_ap, usk_cnt) in H_USK_APS {
@@ -190,19 +201,21 @@ fn bench_elgamal(c: &mut Criterion) {
     let sk = R25519Scalar::random(&mut rng);
     let (_, pt) = ElGamal::keygen(&mut rng).unwrap();
     let mut group = c.benchmark_group("ElGamal");
-    group.bench_function("Session Key", |b| b.iter(|| {
-        ElGamal::session_key(&sk, &pt).unwrap();
-    }));
+    group.bench_function("Session Key", |b| {
+        b.iter(|| {
+            ElGamal::session_key(&sk, &pt).unwrap();
+        })
+    });
 
     let cc = Covercrypt::default();
     let (mut msk, _) = cc_keygen(&cc, true).unwrap();
-
     let (usk_ap, usk_cnt) = H_USK_APS[0];
-
     let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
-    group.bench_function("Set traps", |b| b.iter(|| {
-        usk.set_traps(&sk);
-    }));
+    group.bench_function("Set traps", |b| {
+        b.iter(|| {
+            usk.set_traps(&sk);
+        })
+    });
 }
 
 fn bench_kyber(c: &mut Criterion) {
@@ -210,12 +223,10 @@ fn bench_kyber(c: &mut Criterion) {
     let (dk, ek) = MlKem::keygen(&mut rng).unwrap();
     let (_, E) = MlKem::enc(&ek, &mut rng).unwrap();
     let mut group = c.benchmark_group("Kyber");
-    group.bench_function("Encapsulation",|b| b.iter(|| {
-        MlKem::enc(&ek, &mut rng).unwrap()
-    }));
-    group.bench_function("Decapsulation",|b| b.iter(|| {
-        MlKem::dec(&dk, &E).unwrap()
-    }));
+    group.bench_function("Encapsulation", |b| {
+        b.iter(|| MlKem::enc(&ek, &mut rng).unwrap())
+    });
+    group.bench_function("Decapsulation", |b| b.iter(|| MlKem::dec(&dk, &E).unwrap()));
 }
 
 fn bench_decapsulation_constant_cost(c: &mut Criterion) {
@@ -231,12 +242,12 @@ fn bench_decapsulation_constant_cost(c: &mut Criterion) {
     let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
     let (_, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
 
+    let Encapsulations::HEncs(encs) = &enc.encapsulations else {
+        panic!("not an hybridized encapsulation")
+    };
+
     c.bench_function("Decapsulation constant cost", |b| {
         b.iter(|| {
-            let Encapsulations::HEncs(encs) = &enc.encapsulations else {
-                panic!("not an hybridized encapsulation")
-            };
-
             // A = ⊙ _i (α_i. c_i)
             let _A = usk
                 .id
