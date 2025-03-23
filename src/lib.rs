@@ -12,7 +12,7 @@ mod error;
 
 mod abe_policy;
 mod ae;
-mod core;
+pub mod core;
 mod data_struct;
 mod encrypted_header;
 

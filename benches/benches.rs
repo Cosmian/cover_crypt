@@ -1,5 +1,13 @@
-use cosmian_cover_crypt::{api::Covercrypt, cc_keygen, traits::KemAc, AccessPolicy};
+#![allow(non_snake_case)]
+
+use cosmian_cover_crypt::{
+    api::Covercrypt, cc_keygen, core::{kem::MlKem, nike::{r25519::{R25519Point, R25519Scalar}, ElGamal}, Encapsulations}, traits::{Kem, KemAc, Nike, Sampling}, AccessPolicy, Error,
+};
+use cosmian_crypto_core::{
+    bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, shuffle, CsRng, Secret,
+};
 use criterion::{criterion_group, criterion_main, Criterion};
+use tiny_keccak::{Hasher, Sha3};
 
 const C_ENC_APS: [(&str, usize); 5] = [
     ("SEC::LOW && (DPT::MKG) ", 1),
@@ -183,10 +191,96 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
     }
 }
 
+fn bench_elgamal(c: &mut Criterion) {
+    let mut rng = CsRng::from_entropy();
+    let sk = R25519Scalar::random(&mut rng);
+    let (_, pt) = ElGamal::keygen(&mut rng).unwrap();
+    c.bench_function("ElGamal", |b| b.iter(|| {
+        ElGamal::session_key(&sk, &pt).unwrap();
+    }));
+}
+
+fn bench_kyber(c: &mut Criterion) {
+    let mut rng = CsRng::from_entropy();
+    let (dk, ek) = MlKem::keygen(&mut rng).unwrap();
+    let (_, E) = MlKem::enc(&ek, &mut rng).unwrap();
+    c.bench_function("Kyber",|b| b.iter(|| {
+        MlKem::dec(&dk, &E).unwrap()
+
+    }));
+}
+
+fn bench_decapsulation_constant_cost(c: &mut Criterion) {
+    pub const SHARED_SECRET_LENGTH: usize = 32;
+
+    let mut rng = CsRng::from_entropy();
+    let cc = Covercrypt::default();
+    let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+
+    let (enc_ap, enc_cnt) = H_ENC_APS[0];
+    let (usk_ap, usk_cnt) = H_USK_APS[0];
+
+    let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
+    let (_, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
+
+    c.bench_function("Decapsulation constant cost", |b| {
+        b.iter(|| {
+            let Encapsulations::HEncs(encs) = &enc.encapsulations else {
+                panic!("not an hybridized encapsulation")
+            };
+
+            // A = ⊙ _i (α_i. c_i)
+            let _A = usk
+                .id
+                .iter()
+                .zip(enc.c.iter())
+                .map(|(marker, trap)| trap * marker)
+                .sum::<R25519Point>();
+
+            let T = {
+                let mut hasher = Sha3::v256();
+                let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+                enc.c
+                    .iter()
+                    .try_for_each(|ck| {
+                        hasher.update(&ck.serialize()?);
+                        Ok::<_, Error>(())
+                    })
+                    .unwrap();
+                encs.iter()
+                    .try_for_each(|(E, _)| {
+                        hasher.update(&E.serialize()?);
+                        Ok::<_, Error>(())
+                    })
+                    .unwrap();
+                hasher.finalize(&mut *T);
+                T
+            };
+
+            let _U = {
+                let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+                let mut hasher = Sha3::v256();
+                hasher.update(&*T);
+                encs.iter().for_each(|(_, F)| hasher.update(F));
+                hasher.finalize(&mut *U);
+                U
+            };
+
+            // Shuffle encapsulation to counter timing attacks attempting to determine
+            // which right was used to open an encapsulation.
+            let mut encs = encs.iter().collect::<Vec<_>>();
+            shuffle(&mut encs, &mut rng);
+        });
+    });
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
+    bench_elgamal,
+    bench_kyber,
+    bench_decapsulation_constant_cost,
     bench_hybridized_decapsulation,
     bench_hybridized_encapsulation,
     bench_classical_decapsulation,

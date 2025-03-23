@@ -16,8 +16,8 @@ use crate::{
     Error,
 };
 
-mod kem;
-mod nike;
+pub mod kem;
+pub mod nike;
 mod serialization;
 
 #[cfg(test)]
@@ -132,7 +132,7 @@ impl RightPublicKey {
 ///
 /// They are composed of a sequence of `LENGTH` scalars.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-struct UserId(LinkedList<<ElGamal as Nike>::SecretKey>);
+pub struct UserId(LinkedList<<ElGamal as Nike>::SecretKey>);
 
 impl UserId {
     /// Returns the tracing level of the USK.
@@ -140,7 +140,7 @@ impl UserId {
         self.0.len() - 1
     }
 
-    fn iter(&self) -> impl Iterator<Item = &<ElGamal as Nike>::SecretKey> {
+    pub fn iter(&self) -> impl Iterator<Item = &<ElGamal as Nike>::SecretKey> {
         self.0.iter()
     }
 }
@@ -449,7 +449,7 @@ impl MasterPublicKey {
 /// - a signature from the MSK that guarantees its integrity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
-    id: UserId,
+    pub id: UserId,
     ps: Vec<<ElGamal as Nike>::PublicKey>,
     secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
@@ -472,7 +472,7 @@ impl UserSecretKey {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Encapsulations {
+pub enum Encapsulations {
     HEncs(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
     CEncs(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
@@ -488,8 +488,8 @@ enum Encapsulations {
 #[derive(Debug, Clone, PartialEq)]
 pub struct XEnc {
     tag: Tag,
-    c: Vec<<ElGamal as Nike>::PublicKey>,
-    encapsulations: Encapsulations,
+    pub c: Vec<<ElGamal as Nike>::PublicKey>,
+    pub encapsulations: Encapsulations,
 }
 
 impl XEnc {
