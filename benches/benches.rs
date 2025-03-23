@@ -1,5 +1,5 @@
 use cosmian_cover_crypt::{api::Covercrypt, cc_keygen, traits::KemAc, AccessPolicy};
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 const C_ENC_APS: [(&str, usize); 5] = [
     ("SEC::LOW && (DPT::MKG) ", 1),
@@ -105,29 +105,28 @@ fn bench_classical_decapsulation(c: &mut Criterion) {
 
     {
         let mut group = c.benchmark_group("Decapsulation");
-        for (enc_ap, cnt_enc) in C_ENC_APS {
+        for (enc_ap, enc_cnt) in C_ENC_APS {
             let eap = AccessPolicy::parse(enc_ap).unwrap();
-            for (usk_ap, cnt_secret) in C_USK_APS {
+            for (usk_ap, usk_cnt) in C_USK_APS {
+                // Generate USK and encapsulation for later use in bench.
                 let uap = AccessPolicy::parse(usk_ap).unwrap();
-
-                let usk = gen_usk!(cc, msk, usk_ap, cnt_secret);
-                let (k, enc) = gen_enc!(cc, mpk, enc_ap, cnt_enc);
+                let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
+                let (k, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
                 assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
 
+                // Count the number of rights in common.
+                let usk_rights = msk.access_structure.ap_to_usk_rights(&uap).unwrap();
+                let enc_rights = msk.access_structure.ap_to_enc_rights(&eap).unwrap();
+                let common_rights = usk_rights.intersection(&enc_rights).count();
+
                 group.bench_function(
-                    format!("{:?} encs vs {:?} secrets", cnt_enc, cnt_secret),
-                    |b| {
-                        b.iter_batched(
-                            || {
-                                (
-                                    cc.generate_user_secret_key(&mut msk, &uap).unwrap(),
-                                    cc.encaps(&mpk, &eap).unwrap(),
-                                )
-                            },
-                            |(usk, (_, enc))| cc.decaps(&usk, &enc).unwrap(),
-                            BatchSize::SmallInput,
-                        )
-                    },
+                    format!(
+                        "{} encapsulations vs {} secrets, {} rights in common",
+                        enc.count(),
+                        usk.count(),
+                        common_rights
+                    ),
+                    |b| b.iter(|| cc.decaps(&usk, &enc).unwrap()),
                 );
             }
         }
@@ -159,25 +158,25 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
         for (enc_ap, enc_cnt) in H_ENC_APS {
             let eap = AccessPolicy::parse(enc_ap).unwrap();
             for (usk_ap, usk_cnt) in H_USK_APS {
+                // Generate USK and encapsulation for later use in bench.
                 let uap = AccessPolicy::parse(usk_ap).unwrap();
                 let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
                 let (k, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
                 assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
 
+                // Count the number of rights in common.
+                let usk_rights = msk.access_structure.ap_to_usk_rights(&uap).unwrap();
+                let enc_rights = msk.access_structure.ap_to_enc_rights(&eap).unwrap();
+                let common_rights = usk_rights.intersection(&enc_rights).count();
+
                 group.bench_function(
-                    format!("{:?} encapsulations vs {:?} secrets", enc_cnt, usk_cnt),
-                    |b| {
-                        b.iter_batched(
-                            || {
-                                (
-                                    cc.generate_user_secret_key(&mut msk, &uap).unwrap(),
-                                    cc.encaps(&mpk, &eap).unwrap(),
-                                )
-                            },
-                            |(usk, (_, enc))| cc.decaps(&usk, &enc).unwrap(),
-                            BatchSize::SmallInput,
-                        )
-                    },
+                    format!(
+                        "{} encapsulations vs {} secrets, {} rights in common",
+                        enc.count(),
+                        usk.count(),
+                        common_rights
+                    ),
+                    |b| b.iter(|| cc.decaps(&usk, &enc).unwrap()),
                 );
             }
         }
@@ -188,10 +187,10 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
-    bench_classical_encapsulation,
-    bench_classical_decapsulation,
+    bench_hybridized_decapsulation,
     bench_hybridized_encapsulation,
-    bench_hybridized_decapsulation
+    bench_classical_decapsulation,
+    bench_classical_encapsulation,
 );
 
 criterion_main!(benches);
