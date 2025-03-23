@@ -466,7 +466,7 @@ impl UserSecretKey {
         self.secrets.len()
     }
 
-    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
+    pub fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
         self.ps.iter().map(|Pi| Pi * r).collect()
     }
 }

@@ -193,6 +193,16 @@ fn bench_elgamal(c: &mut Criterion) {
     group.bench_function("Session Key", |b| b.iter(|| {
         ElGamal::session_key(&sk, &pt).unwrap();
     }));
+
+    let cc = Covercrypt::default();
+    let (mut msk, _) = cc_keygen(&cc, true).unwrap();
+
+    let (usk_ap, usk_cnt) = H_USK_APS[0];
+
+    let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
+    group.bench_function("Set traps", |b| b.iter(|| {
+        usk.set_traps(&sk);
+    }));
 }
 
 fn bench_kyber(c: &mut Criterion) {
