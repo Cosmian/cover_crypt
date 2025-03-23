@@ -10,7 +10,7 @@
 
 mod error;
 
-mod abe_policy;
+pub mod abe_policy;
 mod ae;
 pub mod core;
 mod data_struct;

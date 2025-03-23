@@ -480,7 +480,7 @@ pub fn decaps(
     usk: &UserSecretKey,
     encapsulation: &XEnc,
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-    // A = ⊙ _i (α_i. c_i)
+    // A = ⊙_i (α_i. c_i)
     let A = usk
         .id
         .iter()

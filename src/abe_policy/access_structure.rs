@@ -309,6 +309,44 @@ impl AccessStructure {
     }
 }
 
+impl TryFrom<&str> for AccessStructure {
+    type Error = Error;
+
+    fn try_from(json: &str) -> Result<Self, Self::Error> {
+        let json: HashMap<String, Vec<String>> = serde_json::from_str(json).map_err(|e| {
+            Error::ConversionFailed(format!("failed parsing the access structure as JSON: {e}"))
+        })?;
+
+        let mut structure = Self::new();
+        for (dimension, attributes) in &json {
+            if dimension.contains("::<") {
+                let trim_key_name = dimension.trim_end_matches("::<");
+                structure.add_hierarchy(trim_key_name.to_owned())?;
+            } else {
+                structure.add_anarchy(dimension.clone())?;
+            }
+
+            // Reversing the iterator is necessary because hierarchical
+            // attributes are declared in increasing order but inserted in
+            // decreasing order when `None` is passed as `after`.
+            for name in attributes.iter().rev() {
+                let attribute = QualifiedAttribute {
+                    dimension: dimension.trim_end_matches("::<").to_owned(),
+                    name: name.trim_end_matches("::+").to_owned(),
+                };
+                let encryption_hint = if name.contains("::+") {
+                    EncryptionHint::Hybridized
+                } else {
+                    EncryptionHint::Classic
+                };
+                structure.add_attribute(attribute, encryption_hint, None)?;
+            }
+        }
+
+        Ok(structure)
+    }
+}
+
 /// Combines all attributes IDs from the given dimensions using at most one attribute for each
 /// dimensions. Returns the disjunction of the associated hybridization and activation status.
 ///
