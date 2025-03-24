@@ -5,6 +5,7 @@ authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
+  "Emmanuel COSTE <emmanuel.coste@cosmian.com>",
 ]
 documentation = "https://docs.rs/cosmian_cover_crypt/"
 edition = "2021"
