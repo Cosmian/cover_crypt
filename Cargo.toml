@@ -1,10 +1,11 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "14.0.0"
+version = "15.0.0"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
+  "Emmanuel COSTE <emmanuel.coste@cosmian.com>",
 ]
 documentation = "https://docs.rs/cosmian_cover_crypt/"
 edition = "2021"
@@ -45,7 +46,11 @@ curve25519 = ["cosmian_crypto_core/curve25519"]
 test-utils = []
 
 [dependencies]
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "develop", default-features = false, features = ["ser", "sha3", "aes"] }
+cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
+  "ser",
+  "sha3",
+  "aes",
+] }
 elliptic-curve = { version = "0.13.8", optional = true }
 ml-kem = { version = "0.2.1", features = ["zeroize"] }
 p256 = { version = "0.13.2", optional = true }
@@ -57,4 +62,6 @@ zeroize = "1.6.0"
 
 [dev-dependencies]
 base64 = { version = "0.21.0" }
-criterion = { version = "0.5", features = ["html_reports"], default-features = false }
+criterion = { version = "0.5", features = [
+  "html_reports",
+], default-features = false }
