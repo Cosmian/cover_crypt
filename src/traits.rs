@@ -80,7 +80,7 @@ pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
     /// decrypt this ciphertext.
     fn decrypt(
         &self,
-        usk: &Self::DecryptionKey,
+        dk: &Self::DecryptionKey,
         ctx: &Self::Ciphertext,
     ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error>;
 }
