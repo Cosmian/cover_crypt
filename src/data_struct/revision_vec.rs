@@ -1,4 +1,7 @@
-use std::collections::{linked_list, LinkedList, VecDeque};
+use std::collections::{
+    linked_list::{self, Iter},
+    LinkedList, VecDeque,
+};
 
 /// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
@@ -14,9 +17,26 @@ use std::collections::{linked_list, LinkedList, VecDeque};
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RevisionVec<K, T> {
     chains: Vec<(K, LinkedList<T>)>,
+}
+
+pub struct RevisionIterator<'a, K, T> {
+    ks: Vec<&'a K>,
+    ls: Vec<Iter<'a, T>>,
+}
+
+impl<'a, K, T> Iterator for RevisionIterator<'a, K, T> {
+    type Item = Vec<(&'a K, &'a T)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.ks
+            .iter()
+            .zip(self.ls.iter_mut())
+            .map(|(k, it)| it.next().map(|t| (*k, t)))
+            .collect()
+    }
 }
 
 impl<K, T> Default for RevisionVec<K, T> {
@@ -87,13 +107,11 @@ impl<K, T> RevisionVec<K, T> {
     }
 
     /// Returns an iterator over each key-chains pair
-    #[allow(clippy::map_identity)] // unpack &(x, y) to (&x, &y)
     pub fn iter(&self) -> impl Iterator<Item = (&K, &LinkedList<T>)> {
         self.chains.iter().map(|(key, chain)| (key, chain))
     }
 
     /// Returns an iterator over each key-chains pair that allow modifying chain
-    #[allow(clippy::map_identity)] // unpack &mut (x, y) to (&x, &mut y)
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut LinkedList<T>)> {
         self.chains.iter_mut().map(|(ref key, chain)| (key, chain))
     }
@@ -106,10 +124,19 @@ impl<K, T> RevisionVec<K, T> {
             .flat_map(|(key, chain)| chain.iter().map(move |val| (key, val)))
     }
 
+    pub fn revisions(&self) -> impl Iterator<Item = Vec<(&K, &T)>> {
+        let (ks, ls) = self.chains.iter().map(|(k, l)| (k, l.iter())).unzip();
+        RevisionIterator { ks, ls }
+    }
+
     /// Iterates through all versions of all entry in a breadth-first manner.
     #[must_use]
     pub fn bfs(&self) -> BfsQueue<T> {
         BfsQueue::new(self)
+    }
+
+    pub fn into_keys(self) -> impl Iterator<Item = K> {
+        self.chains.into_iter().map(|(k, _)| k)
     }
 }
 
@@ -157,10 +184,20 @@ impl<'a, T> Iterator for BfsQueue<'a, T> {
 }
 
 impl<K, T> FromIterator<(K, LinkedList<T>)> for RevisionVec<K, T> {
-    /// Creates a `RevisionVec` from an iterator
     fn from_iter<I: IntoIterator<Item = (K, LinkedList<T>)>>(iter: I) -> Self {
         Self {
             chains: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
+    fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
+        Self {
+            chains: iter
+                .into_iter()
+                .map(|(k, v)| (k, LinkedList::from_iter([v])))
+                .collect(),
         }
     }
 }

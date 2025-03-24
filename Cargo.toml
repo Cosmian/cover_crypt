@@ -1,41 +1,67 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "14.0.0"
+version = "15.0.0"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
+  "Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>",
+  "Emmanuel COSTE <emmanuel.coste@cosmian.com>",
 ]
 documentation = "https://docs.rs/cosmian_cover_crypt/"
 edition = "2021"
-license-file = "LICENSE.md"
+license = "BUSL-1.1"
 repository = "https://github.com/Cosmian/cover_crypt"
 description = "Key Policy attribute encryption based on subset cover"
 
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
 name = "cosmian_cover_crypt"
+
 # The cdylib is only interesting if the `--features ffi` flag is set on build
 # This does not seem to be actionable conditionally https://github.com/rust-lang/cargo/issues/4881
 
 [[bench]]
 name = "benches"
 harness = false
+required-features = ["test-utils"]
+
+[[example]]
+name = "encrypt"
+required-features = ["test-utils"]
+
+[[example]]
+name = "decrypt"
+required-features = ["test-utils"]
+
+[[example]]
+name = "runme"
+required-features = ["test-utils"]
 
 [features]
-serialization = []
-test_utils = ["base64"]
-full_bench = ["serialization"]
-hybridized_bench = []
+default = ["mlkem-512", "curve25519"]
+mlkem-512 = []
+mlkem-768 = []
+p-256 = ["elliptic-curve", "p256", "subtle"]
+curve25519 = ["cosmian_crypto_core/curve25519"]
+test-utils = []
 
 [dependencies]
-base64 = { version = "0.21.0", optional = true }
-cosmian_crypto_core = { version = "9.2.0", default-features = false, features = ["ser", "sha3", "aes", "curve25519"] }
-pqc_kyber = { version = "0.4", features = ["std", "hazmat"] }
+cosmian_crypto_core = { version = "10.0.1", default-features = false, features = [
+  "ser",
+  "sha3",
+  "aes",
+] }
+elliptic-curve = { version = "0.13.8", optional = true }
+ml-kem = { version = "0.2.1", features = ["zeroize"] }
+p256 = { version = "0.13.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-tiny-keccak = { version = "2.0.2", features = ["shake", "kmac"] }
+subtle = { version = "2.6.1", optional = true }
+tiny-keccak = { version = "2.0.2", features = ["kmac", "sha3"] }
 zeroize = "1.6.0"
 
 [dev-dependencies]
 base64 = { version = "0.21.0" }
-criterion = { version = "0.5", features = ["html_reports"], default_features = false }
+criterion = { version = "0.5", features = [
+  "html_reports",
+], default-features = false }

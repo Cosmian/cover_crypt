@@ -1,80 +1,86 @@
-fn main() {
-    // create policy
-    #[cfg(all(feature = "serialization", feature = "test_utils"))]
-    {
-        use base64::{
-            alphabet::STANDARD,
-            engine::{GeneralPurpose, GeneralPurposeConfig},
-            Engine,
-        };
-        use cosmian_cover_crypt::{
-            abe_policy::{AccessPolicy, Policy},
-            test_utils::policy,
-            Covercrypt, EncryptedHeader, MasterPublicKey, MasterSecretKey,
-        };
-        use cosmian_crypto_core::bytes_ser_de::Serializable;
+use std::{
+    fs::File,
+    io::{Read, Write},
+};
 
-        fn generate_new(
-            cc: &Covercrypt,
-            policy: &Policy,
-            _msk: &MasterSecretKey,
-            mpk: &MasterPublicKey,
-        ) {
-            let access_policy = AccessPolicy::from_boolean_expression(
-                "Department::FIN && Security Level::Top Secret",
-            )
+use cosmian_cover_crypt::{
+    api::Covercrypt, cc_keygen, traits::PkeAc, AccessPolicy, MasterPublicKey, MasterSecretKey,
+    UserSecretKey, XEnc,
+};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    Aes256Gcm,
+};
+
+#[allow(dead_code)]
+/// Generates a new USK and encrypted header and prints them.
+fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKey) {
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
+
+    let usk = cc.generate_user_secret_key(msk, &ap).unwrap();
+    let ctx = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(cc, mpk, &ap, b"gotcha")
+        .expect("cannot encrypt!");
+
+    // Ensure decryption is OK
+    PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(cc, &usk, &ctx).unwrap();
+
+    {
+        File::create("./usk.txt")
+            .unwrap()
+            .write_all(&usk.serialize().unwrap())
             .unwrap();
 
-            let (_, _header) =
-                EncryptedHeader::generate(cc, policy, mpk, &access_policy, None, None)
-                    .expect("cannot encrypt header");
-
-            #[cfg(feature = "serialization")]
-            {
-                let config: GeneralPurposeConfig = GeneralPurposeConfig::default();
-                let transcoder: GeneralPurpose = GeneralPurpose::new(&STANDARD, config);
-
-                println!(
-                    "usk = {}",
-                    transcoder.encode(
-                        cc.generate_user_secret_key(_msk, &access_policy, policy)
-                            .unwrap()
-                            .serialize()
-                            .unwrap()
-                    )
-                );
-                println!(
-                    "header = {}",
-                    transcoder.encode(_header.serialize().unwrap())
-                );
-            }
-        }
-
-        let policy = policy().expect("cannot generate policy");
-
-        let cc = Covercrypt::default();
-        let (_msk, mpk) = cc
-            .generate_master_keys(&policy)
-            .expect("cannot generate master keys");
-
-        // Encryption of a hybridized ciphertext
-        let access_policy =
-            AccessPolicy::from_boolean_expression("Department::FIN && Security Level::Top Secret")
+        let usk = UserSecretKey::deserialize(&{
+            let mut bytes = Vec::new();
+            File::open("usk.txt")
+                .unwrap()
+                .read_to_end(&mut bytes)
                 .unwrap();
+            bytes
+        })
+        .unwrap();
 
-        //
-        // Use the following to update `examples/decrypt.rs` constants.
-        //
-        generate_new(&cc, &policy, &_msk, &mpk);
+        // Ensure decryption is OK
+        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(cc, &usk, &ctx).unwrap();
 
-        // encrypt header, use loop to add weight in the flamegraph on it
-        for _ in 0..1000 {
-            let _encrypted_header =
-                EncryptedHeader::generate(&cc, &policy, &mpk, &access_policy, None, None)
-                    .expect("cannot encrypt header");
-        }
+        File::create("./ctx.txt")
+            .unwrap()
+            .write_all(&{
+                let mut ser = Serializer::new();
+                ser.write(&ctx.0).unwrap();
+                ser.write_vec(&ctx.1).unwrap();
+                ser.finalize()
+            })
+            .unwrap();
+
+        let ctx = {
+            let mut bytes = Vec::new();
+            File::open("ctx.txt")
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            let mut de = Deserializer::new(&bytes);
+            (de.read::<XEnc>().unwrap(), de.read_vec().unwrap())
+        };
+
+        // Ensure decryption is OK
+        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(cc, &usk, &ctx).unwrap();
     }
+}
 
-    #[cfg(not(all(feature = "test_utils", feature = "serialization")))]
-    println!("Use the `serialization` feature to run this example")
+fn main() {
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
+    let cc = Covercrypt::default();
+    let (mut _msk, mpk) = cc_keygen(&cc, false).unwrap();
+
+    // Un-comment this line to generate new usk.txt and ctx.txt files.
+    //
+    // generate_new(&cc, &mut _msk, &mpk);
+
+    let ptx = "testing encryption/decryption".as_bytes();
+
+    for _ in 0..100 {
+        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(&cc, &mpk, &ap, ptx)
+            .expect("cannot encrypt!");
+    }
 }
