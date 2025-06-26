@@ -309,10 +309,12 @@ impl AccessStructure {
     }
 }
 
-/// Combines all attributes IDs from the given dimensions using at most one attribute for each
-/// dimensions. Returns the disjunction of the associated hybridization and activation status.
+/// Combines all attributes IDs from the given dimensions using at most one
+/// attribute for each dimensions. Returns the disjunction of the associated
+/// hybridization and activation status.
 ///
-/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following combinations will be created:
+/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following
+/// combinations will be created:
 /// - D1::A1
 /// - D1::A1 && D2::A2
 /// - D1::A1 && D2::B2

@@ -380,11 +380,12 @@ fn h_decaps(
     let mut encs = encs.iter().collect::<Vec<_>>();
     shuffle(&mut encs, rng);
 
-    // Loop order matters: this ordering is faster.
     for mut revision in usk.secrets.revisions() {
         // Shuffle secrets to counter timing attacks attempting to determine
         // whether successive encapsulations target the same user right.
         shuffle(&mut revision, rng);
+
+        // Loop order matters: this ordering is faster.
         for (E, F) in &encs {
             for (_, secret) in &revision {
                 if let RightSecretKey::Hybridized { sk, dk } = secret {
