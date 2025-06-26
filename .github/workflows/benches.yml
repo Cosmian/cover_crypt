@@ -15,5 +15,6 @@ jobs:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@develop
     with:
       toolchain: stable
+      default-features: false
       features: test-utils,mlkem-512,p-256
       force: true
