@@ -249,39 +249,20 @@ mod serialization {
         type Error = Error;
 
         fn length(&self) -> usize {
-            2 + to_leb128_len(self.id)
+            self.id.length() + 2
         }
 
         fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-            let mut n = ser.write_leb128_u64(self.id as u64)?;
-            n += ser.write_leb128_u64(<bool>::from(self.encryption_hint) as u64)?;
-            n += ser.write_leb128_u64(<bool>::from(self.write_status) as u64)?;
+            let mut n = ser.write(&self.id)?;
+            n += ser.write(&<bool>::from(self.encryption_hint))?;
+            n += ser.write(&<bool>::from(self.write_status))?;
             Ok(n)
         }
 
         fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-            let id = de.read_leb128_u64()?.try_into()?;
-            let hint = de.read_leb128_u64()?;
-            let encryption_hint = if 0 == hint {
-                EncryptionHint::Classic
-            } else if 1 == hint {
-                EncryptionHint::Hybridized
-            } else {
-                return Err(Error::ConversionFailed(format!(
-                    "erroneous hint value {hint}"
-                )));
-            };
-
-            let status = de.read_leb128_u64()?;
-            let write_status = if 0 == status {
-                AttributeStatus::DecryptOnly
-            } else if 1 == status {
-                AttributeStatus::EncryptDecrypt
-            } else {
-                return Err(Error::ConversionFailed(format!(
-                    "erroneous status value {hint}"
-                )));
-            };
+            let id = de.read()?;
+            let encryption_hint = de.read::<bool>()?.into();
+            let write_status = de.read::<bool>()?.into();
 
             Ok(Self {
                 id,

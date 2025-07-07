@@ -36,6 +36,16 @@ impl EncryptionHint {
     }
 }
 
+impl From<bool> for EncryptionHint {
+    fn from(b: bool) -> Self {
+        if b {
+            EncryptionHint::Hybridized
+        } else {
+            EncryptionHint::Classic
+        }
+    }
+}
+
 impl From<EncryptionHint> for bool {
     fn from(val: EncryptionHint) -> Self {
         val == EncryptionHint::Hybridized
@@ -58,6 +68,16 @@ impl BitOr for AttributeStatus {
             Self::DecryptOnly
         } else {
             Self::EncryptDecrypt
+        }
+    }
+}
+
+impl From<bool> for AttributeStatus {
+    fn from(b: bool) -> Self {
+        if b {
+            AttributeStatus::EncryptDecrypt
+        } else {
+            AttributeStatus::DecryptOnly
         }
     }
 }
