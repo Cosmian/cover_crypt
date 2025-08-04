@@ -5,9 +5,15 @@ name: Benches on demand
 on: workflow_dispatch
 
 jobs:
-  bench-classic:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@develop
+  bench-MLKEM512-Curve25519:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@fix/remove-default-features-in-benches
     with:
       toolchain: stable
-      features: test-utils
+      features: test-utils,mlkem-512,curve25519
+      force: true
+  bench-MLKEM512-P256:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@fix/remove-default-features-in-benches
+    with:
+      toolchain: stable
+      features: test-utils,mlkem-512,p-256
       force: true
