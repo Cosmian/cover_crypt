@@ -9,27 +9,22 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 
 use cosmian_crypto_core::bytes_ser_de::Deserializer;
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_crypto_core::bytes_ser_de::Serializer;
-use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
+use cosmian_crypto_core::{
+    bytes_ser_de::{Serializable, Serializer},
+    reexport::{
+        rand_core::CryptoRngCore,
+        tiny_keccak::{Hasher, Sha3},
+        zeroize::Zeroize,
+    },
+    CryptoCoreError, R25519PrivateKey as Scalar, R25519PublicKey as EcPoint,
+};
 
-use cosmian_crypto_core::CryptoCoreError;
-pub use cosmian_crypto_core::R25519PrivateKey as Scalar;
-pub use cosmian_crypto_core::R25519PublicKey as EcPoint;
-use tiny_keccak::Hasher;
-use tiny_keccak::Sha3;
-use zeroize::Zeroize;
+use crate::{
+    traits::{Group, KeyHomomorphicNike, Nike, One, Ring, Sampling, Zero},
+    Error,
+};
 
-use crate::traits::Group;
-use crate::traits::KeyHomomorphicNike;
-use crate::traits::Nike;
-use crate::traits::One;
-use crate::traits::Ring;
-use crate::traits::Sampling;
-use crate::traits::Zero;
-use crate::Error;
-
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R25519Point(EcPoint);
 
 impl Zero for R25519Point {
@@ -39,6 +34,13 @@ impl Zero for R25519Point {
 
     fn is_zero(&self) -> bool {
         self == &Self::zero()
+    }
+}
+
+// TODO: for some reason, the derive macro cannot be used.
+impl Zeroize for R25519Point {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
     }
 }
 

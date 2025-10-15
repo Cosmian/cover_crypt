@@ -1,14 +1,14 @@
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Secret};
+use crate::{core::SHARED_SECRET_LENGTH, traits::Kem, Error};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    reexport::{rand_core::CryptoRngCore, zeroize::Zeroize},
+    Secret,
+};
 use ml_kem::{
     array::Array,
     kem::{Decapsulate, Encapsulate},
     EncodedSizeUser, KemCore,
 };
-use zeroize::Zeroize;
-
-use crate::traits::Kem;
-use crate::{core::SHARED_SECRET_LENGTH, Error};
 
 macro_rules! make_mlkem {
     ($base: ident, $ek: ident, $ek_len: literal, $dk: ident, $dk_len: literal, $enc: ident, $enc_len:literal) => {
@@ -134,6 +134,7 @@ macro_rules! make_mlkem {
     };
 }
 
+#[cfg(feature = "mlkem-512")]
 make_mlkem!(
     MlKem512,
     EncapsulationKey512,
@@ -144,6 +145,7 @@ make_mlkem!(
     768
 );
 
+#[cfg(feature = "mlkem-768")]
 make_mlkem!(
     MlKem768,
     EncapsulationKey768,
@@ -178,6 +180,8 @@ mod tests {
         };
     }
 
+    #[cfg(feature = "mlkem-512")]
     test_mlkem!(MlKem512, test_mlkem512);
+    #[cfg(feature = "mlkem-768")]
     test_mlkem!(MlKem768, test_mlkem768);
 }

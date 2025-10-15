@@ -1,8 +1,7 @@
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore, Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce,
-    RandomFixedSizeCBytes, SymmetricKey,
+    reexport::{rand_core::CryptoRngCore, zeroize::Zeroizing},
+    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
-use zeroize::Zeroizing;
 
 use crate::{traits::AE, Error};
 

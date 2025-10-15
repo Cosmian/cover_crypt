@@ -131,7 +131,7 @@ impl<K, T> RevisionVec<K, T> {
 
     /// Iterates through all versions of all entry in a breadth-first manner.
     #[must_use]
-    pub fn bfs(&self) -> BfsQueue<T> {
+    pub fn bfs(&self) -> BfsQueue<'_, T> {
         BfsQueue::new(self)
     }
 

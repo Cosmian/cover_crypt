@@ -1,7 +1,9 @@
 use std::sync::{Mutex, MutexGuard};
 
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng, Secret, SymmetricKey};
-use zeroize::Zeroizing;
+use cosmian_crypto_core::{
+    reexport::{rand_core::SeedableRng, zeroize::Zeroizing},
+    CsRng, Secret, SymmetricKey,
+};
 
 use super::{
     core::primitives::{prune, update_msk, usk_keygen},
@@ -30,7 +32,7 @@ impl Default for Covercrypt {
 }
 
 impl Covercrypt {
-    pub fn rng(&self) -> MutexGuard<CsRng> {
+    pub fn rng(&self) -> MutexGuard<'_, CsRng> {
         self.rng.lock().expect("poisoned mutex")
     }
 
