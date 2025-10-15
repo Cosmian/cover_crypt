@@ -402,7 +402,6 @@ pub struct MasterPublicKey {
 
 impl MasterPublicKey {
     /// Returns the tracing level of this MPK.
-    #[inline(always)]
     pub fn tracing_level(&self) -> usize {
         self.tpk.tracing_level()
     }

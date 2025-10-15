@@ -1,5 +1,6 @@
 use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -144,5 +145,89 @@ impl TryFrom<&str> for QualifiedAttribute {
         }
 
         Ok(Self::new(dimension.trim(), component.trim()))
+    }
+}
+
+impl Serializable for EncryptionHint {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        1
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        match self {
+            EncryptionHint::Classic => ser.write(&0usize),
+            EncryptionHint::Hybridized => ser.write(&1usize),
+        }
+        .map_err(Error::from)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let hint = de.read::<usize>()?;
+        match hint {
+            0 => Ok(EncryptionHint::Classic),
+            1 => Ok(EncryptionHint::Hybridized),
+            n => Err(Error::ConversionFailed(format!(
+                "invalid encryption-hint value: {}",
+                n
+            ))),
+        }
+    }
+}
+
+impl Serializable for AttributeStatus {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        1
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        match self {
+            AttributeStatus::DecryptOnly => ser.write(&0usize),
+            AttributeStatus::EncryptDecrypt => ser.write(&1usize),
+        }
+        .map_err(Error::from)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let status = de.read::<usize>()?;
+        match status {
+            0 => Ok(AttributeStatus::DecryptOnly),
+            1 => Ok(AttributeStatus::EncryptDecrypt),
+            n => Err(Error::ConversionFailed(format!(
+                "invalid attribute-status value: {}",
+                n
+            ))),
+        }
+    }
+}
+
+impl Serializable for QualifiedAttribute {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        self.dimension.length() + self.name.length()
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        Ok(ser.write(&self.dimension)? + ser.write(&self.name)?)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        Ok(Self {
+            dimension: de.read()?,
+            name: de.read()?,
+        })
     }
 }

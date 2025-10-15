@@ -1,20 +1,12 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use std::collections::{HashMap, HashSet, LinkedList};
-
-use cosmian_crypto_core::{
-    bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer},
-    FixedSizeCBytes, SymmetricKey,
-};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
 use super::{
     Encapsulations, RightPublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
-    SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
 };
 use crate::{
-    abe_policy::{AccessStructure, Right},
-    core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH},
-    data_struct::{RevisionMap, RevisionVec},
+    core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
     Error,
 };
 
@@ -22,25 +14,15 @@ impl Serializable for TracingPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        to_leb128_len(self.0.len()) + self.0.iter().map(Serializable::length).sum::<usize>()
+        self.0.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_leb128_u64(self.0.len() as u64)?;
-        for pk in self.0.iter() {
-            n += pk.write(ser)?;
-        }
-        Ok(n)
+        self.0.write(ser)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let n_pk = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut tracers = LinkedList::new();
-        for _ in 0..n_pk {
-            let tracer = de.read()?;
-            tracers.push_back(tracer);
-        }
-        Ok(Self(tracers))
+        de.read().map(Self)
     }
 }
 
@@ -56,32 +38,22 @@ impl Serializable for RightPublicKey {
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Self::Hybridized { H, ek } => {
-                let mut n = ser.write_leb128_u64(1)?;
-                n += ser.write(H)?;
-                n += ser.write(ek)?;
-                Ok(n)
-            }
-            Self::Classic { H } => {
-                let mut n = ser.write_leb128_u64(0)?;
-                n += ser.write(H)?;
-                Ok(n)
-            }
+            Self::Classic { H } => Ok(0usize.write(ser)? + H.write(ser)?),
+            Self::Hybridized { H, ek } => Ok(1usize.write(ser)? + ser.write(H)? + ser.write(ek)?),
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let is_hybridized = de.read_leb128_u64()?;
-        let H = de.read()?;
-        if 1 == is_hybridized {
-            let ek = de.read()?;
-            Ok(Self::Hybridized { H, ek })
-        } else if 0 == is_hybridized {
-            Ok(Self::Classic { H })
-        } else {
-            Err(Error::ConversionFailed(format!(
-                "invalid hybridization flag {is_hybridized}"
-            )))
+        let is_hybridized = de.read::<usize>()?;
+        match is_hybridized {
+            0 => Ok(Self::Classic { H: de.read()? }),
+            1 => Ok(Self::Hybridized {
+                H: de.read()?,
+                ek: de.read()?,
+            }),
+            n => Err(Error::ConversionFailed(format!(
+                "invalid hybridization flag {n}"
+            ))),
         }
     }
 }
@@ -90,42 +62,20 @@ impl Serializable for MasterPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.tpk.length()
-            + to_leb128_len(self.encryption_keys.len())
-            + self
-                .encryption_keys
-                .iter()
-                .map(|(coordinate, pk)| coordinate.length() + pk.length())
-                .sum::<usize>()
-            + self.access_structure.length()
+        self.tpk.length() + self.encryption_keys.length() + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write(&self.tpk)?;
-        n += ser.write_leb128_u64(self.encryption_keys.len() as u64)?;
-        for (coordinate, pk) in &self.encryption_keys {
-            n += ser.write(coordinate)?;
-            n += ser.write(pk)?;
-        }
-        n += ser.write(&self.access_structure)?;
-
-        Ok(n)
+        Ok(self.tpk.write(ser)?
+            + self.encryption_keys.write(ser)?
+            + self.access_structure.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let tpk = de.read::<TracingPublicKey>()?;
-        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut coordinate_keys = HashMap::with_capacity(n_coordinates);
-        for _ in 0..n_coordinates {
-            let coordinate = de.read::<Right>()?;
-            let pk = de.read::<RightPublicKey>()?;
-            coordinate_keys.insert(coordinate, pk);
-        }
-        let access_structure = de.read::<AccessStructure>()?;
         Ok(Self {
-            tpk,
-            encryption_keys: coordinate_keys,
-            access_structure,
+            tpk: de.read()?,
+            encryption_keys: de.read()?,
+            access_structure: de.read()?,
         })
     }
 }
@@ -134,52 +84,19 @@ impl Serializable for TracingSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.s.length()
-            + to_leb128_len(self.users.len())
-            + self.users.iter().map(Serializable::length).sum::<usize>()
-            + to_leb128_len(self.tracers.len())
-            + self
-                .tracers
-                .iter()
-                .map(|(sk, pk)| sk.length() + pk.length())
-                .sum::<usize>()
+        self.s.length() + self.users.length() + self.tracers.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = self.s.write(ser)?;
-
-        n += ser.write_leb128_u64(self.tracers.len() as u64)?;
-        for (sk, pk) in &self.tracers {
-            n += ser.write(sk)?;
-            n += ser.write(pk)?;
-        }
-
-        n = ser.write_leb128_u64(self.users.len() as u64)?;
-        for id in &self.users {
-            n += ser.write(id)?;
-        }
-
-        Ok(n)
+        Ok(self.s.write(ser)? + self.tracers.write(ser)? + self.users.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let s = de.read()?;
-
-        let n_tracers = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut tracers = LinkedList::new();
-        for _ in 0..n_tracers {
-            let sk = de.read()?;
-            let pk = de.read()?;
-            tracers.push_back((sk, pk));
-        }
-
-        let n_users = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut users = HashSet::with_capacity(n_users);
-        for _ in 0..n_users {
-            let id = de.read()?;
-            users.insert(id);
-        }
-        Ok(Self { s, tracers, users })
+        Ok(Self {
+            s: de.read()?,
+            tracers: de.read()?,
+            users: de.read()?,
+        })
     }
 }
 
@@ -188,70 +105,24 @@ impl Serializable for MasterSecretKey {
 
     fn length(&self) -> usize {
         self.tsk.length()
-            + to_leb128_len(self.secrets.len())
-            + self
-                .secrets
-                .iter()
-                .map(|(coordinate, chain)| {
-                    coordinate.length()
-                        + to_leb128_len(chain.len())
-                        + chain.iter().map(|(_, k)| 1 + k.length()).sum::<usize>()
-                })
-                .sum::<usize>()
-            + self.signing_key.as_ref().map_or_else(|| 0, |key| key.len())
+            + self.secrets.length()
+            + self.signing_key.length()
             + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write(&self.tsk)?;
-        n += ser.write_leb128_u64(self.secrets.len() as u64)?;
-        for (coordinate, chain) in &self.secrets.map {
-            n += ser.write(coordinate)?;
-            n += ser.write_leb128_u64(chain.len() as u64)?;
-            for (is_activated, sk) in chain {
-                n += ser.write_leb128_u64((*is_activated).into())?;
-                n += ser.write(sk)?;
-            }
-        }
-        if let Some(kmac_key) = &self.signing_key {
-            n += ser.write_array(&**kmac_key)?;
-        }
-        n += ser.write(&self.access_structure)?;
-        Ok(n)
+        Ok(self.tsk.write(ser)?
+            + self.secrets.write(ser)?
+            + self.signing_key.write(ser)?
+            + self.access_structure.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let tsk = de.read::<TracingSecretKey>()?;
-        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut coordinate_keypairs = RevisionMap::with_capacity(n_coordinates);
-        for _ in 0..n_coordinates {
-            let coordinate = de.read()?;
-            let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let chain = (0..n_keys)
-                .map(|_| -> Result<_, Error> {
-                    let is_activated = de.read_leb128_u64()? == 1;
-                    let sk = de.read::<RightSecretKey>()?;
-                    Ok((is_activated, sk))
-                })
-                .collect::<Result<LinkedList<_>, _>>()?;
-            coordinate_keypairs.map.insert(coordinate, chain);
-        }
-
-        let signing_key = if de.value().len() < SIGNING_KEY_LENGTH {
-            None
-        } else {
-            Some(SymmetricKey::try_from_bytes(
-                de.read_array::<SIGNING_KEY_LENGTH>()?,
-            )?)
-        };
-
-        let access_structure = de.read()?;
-
         Ok(Self {
-            tsk,
-            secrets: coordinate_keypairs,
-            signing_key,
-            access_structure,
+            tsk: de.read()?,
+            secrets: de.read()?,
+            signing_key: de.read()?,
+            access_structure: de.read()?,
         })
     }
 }
@@ -260,25 +131,15 @@ impl Serializable for UserId {
     type Error = Error;
 
     fn length(&self) -> usize {
-        to_leb128_len(self.0.len()) + self.iter().map(|marker| marker.length()).sum::<usize>()
+        self.0.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_leb128_u64(self.0.len() as u64)?;
-        for marker in &self.0 {
-            n += ser.write(marker)?;
-        }
-        Ok(n)
+        self.0.write(ser)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let length = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut id = LinkedList::new();
-        for _ in 0..length {
-            let marker = de.read()?;
-            id.push_back(marker);
-        }
-        Ok(Self(id))
+        de.read().map(Self)
     }
 }
 
@@ -328,77 +189,22 @@ impl Serializable for UserSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.id.length()
-            + to_leb128_len(self.ps.len())
-            + self.ps.iter().map(|p| p.length()).sum::<usize>()
-            + to_leb128_len(self.secrets.len())
-            + self
-                .secrets
-                .iter()
-                .map(|(coordinate, chain)| {
-                    coordinate.length()
-                        + to_leb128_len(chain.len())
-                        + chain.iter().map(|sk| sk.length()).sum::<usize>()
-                })
-                .sum::<usize>()
-            + self.signature.as_ref().map_or_else(|| 0, |kmac| kmac.len())
+        self.id.length() + self.ps.length() + self.secrets.length() + self.signature.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write(&self.id)?;
-
-        n += ser.write_leb128_u64(self.ps.len() as u64)?;
-        for p in &self.ps {
-            n += ser.write(p)?;
-        }
-
-        n += ser.write_leb128_u64(self.secrets.len() as u64)?;
-        for (coordinate, chain) in self.secrets.iter() {
-            n += ser.write(coordinate)?;
-            n += ser.write_leb128_u64(chain.len() as u64)?;
-            for sk in chain {
-                n += ser.write(sk)?;
-            }
-        }
-        if let Some(kmac) = &self.signature {
-            n += ser.write_array(kmac)?;
-        }
-        Ok(n)
+        Ok(self.id.write(ser)?
+            + self.ps.write(ser)?
+            + self.secrets.write(ser)?
+            + self.signature.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let id = de.read::<UserId>()?;
-
-        let n_ps = usize::try_from(de.read_leb128_u64()?)?;
-
-        let mut ps = Vec::with_capacity(n_ps);
-        for _ in 0..n_ps {
-            let p = de.read()?;
-            ps.push(p);
-        }
-
-        let n_coordinates = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut coordinate_keys = RevisionVec::with_capacity(n_coordinates);
-        for _ in 0..n_coordinates {
-            let coordinate = de.read()?;
-            let n_keys = <usize>::try_from(de.read_leb128_u64()?)?;
-            let new_chain = (0..n_keys)
-                .map(|_| de.read::<RightSecretKey>())
-                .collect::<Result<_, _>>()?;
-            coordinate_keys.insert_new_chain(coordinate, new_chain);
-        }
-
-        let msk_signature = if de.value().len() < SIGNATURE_LENGTH {
-            None
-        } else {
-            Some(de.read_array::<SIGNATURE_LENGTH>()?)
-        };
-
         Ok(Self {
-            id,
-            ps,
-            secrets: coordinate_keys,
-            signature: msk_signature,
+            id: de.read()?,
+            ps: de.read()?,
+            secrets: de.read()?,
+            signature: de.read()?,
         })
     }
 }
@@ -408,63 +214,26 @@ impl Serializable for Encapsulations {
 
     fn length(&self) -> usize {
         1 + match self {
-            Encapsulations::HEncs(vec) => {
-                to_leb128_len(vec.len())
-                    + vec.iter().map(|(E, F)| E.length() + F.len()).sum::<usize>()
-            }
-            Encapsulations::CEncs(vec) => {
-                to_leb128_len(vec.len()) + vec.iter().map(|F| F.len()).sum::<usize>()
-            }
+            Encapsulations::HEncs(vec) => vec.length(),
+            Encapsulations::CEncs(vec) => vec.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Encapsulations::HEncs(vec) => {
-                let mut n = ser.write_leb128_u64(1)?;
-                n += ser.write_leb128_u64(vec.len() as u64)?;
-                for (E, F) in vec.iter() {
-                    n += ser.write(E)?;
-                    n += ser.write_array(F)?;
-                }
-                Ok(n)
-            }
-            Encapsulations::CEncs(vec) => {
-                let mut n = ser.write_leb128_u64(0)?;
-                n += ser.write_leb128_u64(vec.len() as u64)?;
-                for F in vec.iter() {
-                    n += ser.write_array(F)?;
-                }
-                Ok(n)
-            }
+            Encapsulations::CEncs(vec) => Ok(0usize.write(ser)? + vec.write(ser)?),
+            Encapsulations::HEncs(vec) => Ok(1usize.write(ser)? + vec.write(ser)?),
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read_leb128_u64()?;
-        if is_hybridized == 1 {
-            let len = usize::try_from(de.read_leb128_u64()?)?;
-            let vec = (0..len)
-                .map(|_| {
-                    let E = de.read()?;
-                    let F = de.read_array::<SHARED_SECRET_LENGTH>()?;
-                    Ok::<_, Error>((E, F))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Self::HEncs(vec))
-        } else if 0 == is_hybridized {
-            let len = usize::try_from(de.read_leb128_u64()?)?;
-            let vec = (0..len)
-                .map(|_| {
-                    let F = de.read_array::<SHARED_SECRET_LENGTH>()?;
-                    Ok::<_, Error>(F)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Self::CEncs(vec))
-        } else {
-            Err(Error::ConversionFailed(format!(
-                "invalid hybridization flag {is_hybridized}"
-            )))
+        match is_hybridized {
+            0 => Ok(Self::CEncs(de.read()?)),
+            1 => Ok(Self::HEncs(de.read()?)),
+            n => Err(Error::ConversionFailed(format!(
+                "invalid encapsulation type: {n}"
+            ))),
         }
     }
 }
@@ -473,50 +242,32 @@ impl Serializable for XEnc {
     type Error = Error;
 
     fn length(&self) -> usize {
-        TAG_LENGTH
-            + to_leb128_len(self.c.len())
-            + self.c.iter().map(Serializable::length).sum::<usize>()
-            + self.encapsulations.length()
+        self.tag.length() + self.c.length() + self.encapsulations.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        let mut n = ser.write_array(&self.tag)?;
-        n += ser.write_leb128_u64(self.c.len() as u64)?;
-        for trap in &self.c {
-            n += ser.write(trap)?;
-        }
-        n += ser.write(&self.encapsulations)?;
-        Ok(n)
+        Ok(self.tag.write(ser)? + self.c.write(ser)? + self.encapsulations.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let tag = de.read_array::<TAG_LENGTH>()?;
-        let n_traps = <usize>::try_from(de.read_leb128_u64()?)?;
-        let mut traps = Vec::with_capacity(n_traps);
-        for _ in 0..n_traps {
-            let trap = de.read()?;
-            traps.push(trap);
-        }
-        let encapsulations = Encapsulations::read(de)?;
         Ok(Self {
-            tag,
-            c: traps,
-            encapsulations,
+            tag: de.read()?,
+            c: de.read()?,
+            encapsulations: de.read()?,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use cosmian_crypto_core::{
         bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng, CsRng,
     };
 
-    use super::*;
     use crate::{
-        abe_policy::{AttributeStatus, EncryptionHint},
+        abe_policy::{AttributeStatus, EncryptionHint, Right},
         api::Covercrypt,
         core::{
             primitives::{encaps, rekey, setup, update_msk, usk_keygen},

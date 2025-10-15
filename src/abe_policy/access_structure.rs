@@ -356,55 +356,23 @@ impl Default for AccessStructure {
 mod serialization {
 
     use super::*;
-    use cosmian_crypto_core::bytes_ser_de::{
-        to_leb128_len, Deserializer, Serializable, Serializer,
-    };
+    use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
     impl Serializable for AccessStructure {
         type Error = Error;
 
         fn length(&self) -> usize {
-            1 + to_leb128_len(self.dimensions.len())
-                + self
-                    .dimensions
-                    .iter()
-                    .map(|(name, dimension)| {
-                        let l = name.len();
-                        to_leb128_len(l) + l + dimension.length()
-                    })
-                    .sum::<usize>()
+            self.version.length() + self.dimensions.length()
         }
 
         fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-            let mut n = ser.write_leb128_u64(self.version as u64)?;
-            n += ser.write_leb128_u64(self.dimensions.len() as u64)?;
-            self.dimensions.iter().try_for_each(|(name, dimension)| {
-                n += ser.write_vec(name.as_bytes())?;
-                n += ser.write(dimension)?;
-                Ok::<_, Self::Error>(())
-            })?;
-            Ok(n)
+            Ok(self.version.write(ser)? + self.dimensions.write(ser)?)
         }
 
         fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-            let version = de.read_leb128_u64()?;
-            let dimensions = if version == Version::V1 as u64 {
-                (0..de.read_leb128_u64()?)
-                    .map(|_| {
-                        let name = String::from_utf8(de.read_vec()?)
-                            .map_err(|e| Error::ConversionFailed(e.to_string()))?;
-                        let dimension = de.read::<Dimension>()?;
-                        Ok((name, dimension))
-                    })
-                    .collect::<Result<HashMap<_, _>, Error>>()
-            } else {
-                Err(Error::ConversionFailed(
-                    "unable to deserialize versions prior to V3".to_string(),
-                ))
-            }?;
             Ok(Self {
-                version: Version::V1,
-                dimensions,
+                version: de.read()?,
+                dimensions: de.read()?,
             })
         }
     }

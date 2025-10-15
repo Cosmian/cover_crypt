@@ -8,6 +8,10 @@ use std::{
     hash::Hash,
 };
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+
+use crate::Error;
+
 /// A `RevisionMap` is a `HashMap` which keys are mapped to sequences of values.
 /// Upon insertion for an existing key, the new value is prepended to the
 /// sequence of older values instead of replacing it.
@@ -173,6 +177,29 @@ where
     /// Retains only the elements with a key validating the given predicate.
     pub fn retain(&mut self, f: impl Fn(&K) -> bool) {
         self.map.retain(|key, _| f(key));
+    }
+}
+
+impl<K, V> Serializable for RevisionMap<K, V>
+where
+    K: Hash + PartialEq + Eq + Debug + Serializable,
+    V: Debug + Serializable,
+{
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        self.map.length()
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        Ok(self.map.write(ser)?)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        Ok(Self { map: de.read()? })
     }
 }
 
