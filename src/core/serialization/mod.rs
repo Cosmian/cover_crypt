@@ -18,11 +18,13 @@ impl Serializable for TracingPublicKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        self.0.write(ser)
+        #[allow(clippy::needless_question_mark)]
+        Ok(self.0.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        de.read().map(Self)
+        #[allow(clippy::needless_question_mark)]
+        Ok(Self(de.read()?))
     }
 }
 
@@ -135,11 +137,13 @@ impl Serializable for UserId {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        self.0.write(ser)
+        #[allow(clippy::needless_question_mark)]
+        Ok(self.0.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        de.read().map(Self)
+        #[allow(clippy::needless_question_mark)]
+        Ok(Self(de.read()?))
     }
 }
 
