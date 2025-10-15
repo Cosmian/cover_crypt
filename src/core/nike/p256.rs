@@ -11,6 +11,9 @@ use std::ops::SubAssign;
 use cosmian_crypto_core::bytes_ser_de::Deserializer;
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_crypto_core::bytes_ser_de::Serializer;
+use cosmian_crypto_core::reexport::tiny_keccak::Hasher;
+use cosmian_crypto_core::reexport::tiny_keccak::Sha3;
+use cosmian_crypto_core::reexport::zeroize::Zeroize;
 use cosmian_crypto_core::CryptoCoreError;
 use elliptic_curve::group::GroupEncoding;
 use elliptic_curve::rand_core::CryptoRngCore;
@@ -18,9 +21,6 @@ use elliptic_curve::Field;
 use elliptic_curve::PrimeField;
 use p256::{ProjectivePoint, Scalar};
 use subtle::ConstantTimeEq;
-use tiny_keccak::Hasher;
-use tiny_keccak::Sha3;
-use zeroize::Zeroize;
 
 use crate::traits::Group;
 use crate::traits::KeyHomomorphicNike;
@@ -31,7 +31,7 @@ use crate::traits::Sampling;
 use crate::traits::Zero;
 use crate::Error;
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct P256Point(ProjectivePoint);
 
 impl Zero for P256Point {
@@ -41,6 +41,12 @@ impl Zero for P256Point {
 
     fn is_zero(&self) -> bool {
         self.0.ct_eq(&ProjectivePoint::IDENTITY).into()
+    }
+}
+
+impl Zeroize for P256Point {
+    fn zeroize(&mut self) {
+        self.0.zeroize()
     }
 }
 
@@ -134,7 +140,7 @@ impl Sum for P256Point {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Zeroize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct P256Scalar(Scalar);
 
 impl Hash for P256Scalar {
