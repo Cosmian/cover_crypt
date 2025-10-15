@@ -2,11 +2,11 @@
 
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
-use super::{
-    Encapsulations, RightPublicKey, RightSecretKey, TracingPublicKey, TracingSecretKey, UserId,
-};
 use crate::{
-    core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc},
+    core::{
+        Encapsulations, MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
+        TracingPublicKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
+    },
     Error,
 };
 

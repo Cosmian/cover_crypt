@@ -16,17 +16,14 @@ use cosmian_crypto_core::{
 use crate::{
     abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
     core::{
-        kem::{self, MlKem},
-        Encapsulations, KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey,
-        RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
-        SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+        kem::MlKem, nike::ElGamal, Encapsulations, KmacSignature, MasterPublicKey, MasterSecretKey,
+        RightPublicKey, RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
+        MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike, Sampling},
     Error,
 };
-
-use super::nike::ElGamal;
 
 fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
     let mut out = [0; LENGTH];
@@ -347,10 +344,7 @@ fn h_decaps(
     A: &<ElGamal as Nike>::PublicKey,
     c: &[<ElGamal as Nike>::PublicKey],
     tag: &[u8; TAG_LENGTH],
-    encs: &[(
-        <kem::MlKem as Kem>::Encapsulation,
-        [u8; SHARED_SECRET_LENGTH],
-    )],
+    encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
     let T = {
         let mut hasher = Sha3::v256();
