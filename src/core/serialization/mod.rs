@@ -216,23 +216,26 @@ impl Serializable for Encapsulations {
 
     fn length(&self) -> usize {
         1 + match self {
-            Encapsulations::HEncs(vec) => vec.length(),
-            Encapsulations::CEncs(vec) => vec.length(),
+            Encapsulations::Hybridized(vec) => vec.length(),
+            Encapsulations::Quantum(vec) => vec.length(),
+            Encapsulations::Classic(vec) => vec.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Encapsulations::CEncs(vec) => Ok(0usize.write(ser)? + vec.write(ser)?),
-            Encapsulations::HEncs(vec) => Ok(1usize.write(ser)? + vec.write(ser)?),
+            Encapsulations::Classic(vec) => Ok(0usize.write(ser)? + vec.write(ser)?),
+            Encapsulations::Quantum(vec) => Ok(2usize.write(ser)? + vec.write(ser)?),
+            Encapsulations::Hybridized(vec) => Ok(1usize.write(ser)? + vec.write(ser)?),
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read_leb128_u64()?;
         match is_hybridized {
-            0 => Ok(Self::CEncs(de.read()?)),
-            1 => Ok(Self::HEncs(de.read()?)),
+            0 => Ok(Self::Classic(de.read()?)),
+            1 => Ok(Self::Hybridized(de.read()?)),
+            2 => Ok(Self::Quantum(de.read()?)),
             n => Err(Error::ConversionFailed(format!(
                 "invalid encapsulation type: {n}"
             ))),

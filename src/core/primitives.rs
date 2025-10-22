@@ -87,14 +87,15 @@ fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as Nike>::Secr
 }
 
 fn H_hash(
-    K1: &<ElGamal as Nike>::PublicKey,
+    K1: Option<&<ElGamal as Nike>::PublicKey>,
     K2: Option<&Secret<SHARED_SECRET_LENGTH>>,
     T: &Secret<SHARED_SECRET_LENGTH>,
 ) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
-    let mut hasher = Sha3::v256();
-    // SHARED_SECRET_LENGTH = 32 = 256 / 8
     let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
-    hasher.update(&K1.serialize()?);
+    let mut hasher = Sha3::v256();
+    if let Some(K1) = K1 {
+        hasher.update(&K1.serialize()?);
+    }
     if let Some(K2) = K2 {
         hasher.update(&**K2);
     }
@@ -208,7 +209,7 @@ fn h_encaps<'a>(
     let encs = encs
         .into_iter()
         .map(|(mut K1, K2, E)| -> Result<_, _> {
-            let F = xor_2(&S, &*H_hash(&K1, Some(&K2), &T)?);
+            let F = xor_2(&S, &*H_hash(Some(&K1), Some(&K2), &T)?);
             K1.zeroize();
             Ok((E, F))
         })
@@ -230,7 +231,64 @@ fn h_encaps<'a>(
         XEnc {
             tag,
             c,
-            encapsulations: Encapsulations::HEncs(encs),
+            encapsulations: Encapsulations::Hybridized(encs),
+        },
+    ))
+}
+
+/// Generates post-quantum encapsulation of the given secret S with the given
+/// marker c, ElGamal random r and subkeys.
+fn q_encaps<'a>(
+    S: Secret<SHARED_SECRET_LENGTH>,
+    c: Vec<<ElGamal as Nike>::PublicKey>,
+    subkeys: impl IntoIterator<Item = &'a <MlKem as Kem>::EncapsulationKey>,
+    rng: &mut impl CryptoRngCore,
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
+    let encs = subkeys
+        .into_iter()
+        .map(|ek| MlKem::enc(ek, rng))
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let T = {
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::new();
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+        encs.iter().try_for_each(|(_, E)| {
+            hasher.update(&E.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+        hasher.finalize(&mut *T);
+        T
+    };
+
+    let encs = encs
+        .into_iter()
+        .map(|(K2, E)| -> Result<_, _> {
+            let F = xor_2(&S, &*H_hash(None, Some(&K2), &T)?);
+            Ok((E, F))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let U = {
+        let mut U = Secret::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
+        encs.iter().for_each(|(_, F)| hasher.update(F));
+        hasher.finalize(&mut *U);
+        U
+    };
+
+    let (tag, ss) = J_hash(&S, &U);
+
+    Ok((
+        ss,
+        XEnc {
+            tag,
+            c,
+            encapsulations: Encapsulations::Hybridized(encs),
         },
     ))
 }
@@ -259,7 +317,7 @@ fn c_encaps<'a>(
         .into_iter()
         .map(|H| -> Result<_, _> {
             let K1 = ElGamal::session_key(&r, H)?;
-            let F = xor_2(&S, &*H_hash(&K1, None, &T)?);
+            let F = xor_2(&S, &*H_hash(Some(&K1), None, &T)?);
             Ok(F)
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -280,7 +338,7 @@ fn c_encaps<'a>(
         XEnc {
             tag,
             c,
-            encapsulations: Encapsulations::CEncs(encs),
+            encapsulations: Encapsulations::Classic(encs),
         },
     ))
 }
@@ -298,12 +356,12 @@ pub fn encaps(
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Right>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
+    // A typed key container would avoid the need for casting in the match arms
+    // but would also involve additional overhead.
     let (is_hybridized, mut coordinate_keys) = mpk.select_subkeys(encryption_set)?;
 
-    // Shuffling must be performed *before* generating the encapsulations since
-    // rights are hashed in-order. If shuffling is performed after generating
-    // the encapsulations, there would be no way to know in which order to
-    // perform hashing upon decapsulation.
+    // Shuffling must be performed *before* generating the final encapsulations
+    // in order to have a deterministic digest.
     shuffle(&mut coordinate_keys, rng);
 
     let S = Secret::random(rng);
@@ -314,31 +372,99 @@ pub fn encaps(
         SecurityMode::Classic => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::Classic { H } = subkey {
-                    Ok(H)
+                    H
                 } else {
-                    Err(Error::OperationNotPermitted(format!(
-                        "expected a classic right public key: {subkey:?}"
-                    )))
+                    panic!("select_subkeys already ensures homogeneity")
                 }
-                .unwrap()
             });
             c_encaps(S, c, r, subkeys)
         }
-        SecurityMode::PostQuantum => todo!(),
+        SecurityMode::PostQuantum => {
+            let subkeys = coordinate_keys.into_iter().map(|subkey| {
+                if let RightPublicKey::PostQuantum { ek } = subkey {
+                    ek
+                } else {
+                    panic!("select_subkeys already ensures homogeneity")
+                }
+            });
+            q_encaps(S, c, subkeys, rng)
+        }
         SecurityMode::Hybridized => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::Hybridized { H, ek } = subkey {
-                    Ok((H, ek))
+                    (H, ek)
                 } else {
-                    Err(Error::OperationNotPermitted(format!(
-                        "expected a classic right public key: {subkey:?}"
-                    )))
+                    panic!("select_subkeys already ensures homogeneity")
                 }
-                .unwrap()
             });
             h_encaps(S, c, r, subkeys, rng)
         }
     }
+}
+
+/// Attempts to open the given hybridized encapsulations with this user secret
+/// key.
+fn q_decaps(
+    rng: &mut impl CryptoRngCore,
+    usk: &UserSecretKey,
+    c: &[<ElGamal as Nike>::PublicKey],
+    tag: &[u8; TAG_LENGTH],
+    encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
+    let T = {
+        let mut hasher = Sha3::v256();
+        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+        encs.iter().try_for_each(|(E, _)| {
+            hasher.update(&E.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+        hasher.finalize(&mut *T);
+        T
+    };
+
+    let U = {
+        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+        let mut hasher = Sha3::v256();
+        hasher.update(&*T);
+        encs.iter().for_each(|(_, F)| hasher.update(F));
+        hasher.finalize(&mut *U);
+        U
+    };
+
+    // Shuffle encapsulation to counter timing attacks attempting to determine
+    // which right was used to open an encapsulation.
+    let mut encs = encs.iter().collect::<Vec<_>>();
+    shuffle(&mut encs, rng);
+
+    // Loop order matters: this ordering is faster.
+    for mut revision in usk.secrets.revisions() {
+        // Shuffle secrets to counter timing attacks attempting to determine
+        // whether successive encapsulations target the same user right.
+        shuffle(&mut revision, rng);
+        for (E, F) in &encs {
+            for (_, secret) in &revision {
+                if let RightSecretKey::PostQuantum { dk } = secret {
+                    let K2 = MlKem::dec(dk, E)?;
+                    let S_ij = xor_in_place(H_hash(None, Some(&K2), &T)?, F);
+                    let (tag_ij, ss) = J_hash(&S_ij, &U);
+                    if tag == &tag_ij {
+                        // Fujisaki-Okamoto
+                        let r = G_hash(&S_ij)?;
+                        let c_ij = usk.set_traps(&r);
+                        if c == c_ij {
+                            return Ok(Some(ss));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 /// Attempts to open the given hybridized encapsulations with this user secret
@@ -390,7 +516,7 @@ fn h_decaps(
                 if let RightSecretKey::Hybridized { sk, dk } = secret {
                     let mut K1 = ElGamal::session_key(sk, A)?;
                     let K2 = MlKem::dec(dk, E)?;
-                    let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T)?, F);
+                    let S_ij = xor_in_place(H_hash(Some(&K1), Some(&K2), &T)?, F);
                     let (tag_ij, ss) = J_hash(&S_ij, &U);
                     if tag == &tag_ij {
                         // Fujisaki-Okamoto
@@ -456,7 +582,7 @@ fn c_decaps(
                     RightSecretKey::PostQuantum { .. } => continue,
                 };
                 let mut K1 = ElGamal::session_key(sk, A)?;
-                let S = xor_in_place(H_hash(&K1, None, &T)?, F);
+                let S = xor_in_place(H_hash(Some(&K1), None, &T)?, F);
                 K1.zeroize();
                 let (tag_ij, ss) = J_hash(&S, &U);
                 if tag == &tag_ij {
@@ -490,10 +616,13 @@ pub fn decaps(
         .sum();
 
     match &encapsulation.encapsulations {
-        Encapsulations::HEncs(encs) => {
+        Encapsulations::Hybridized(encs) => {
             h_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
         }
-        Encapsulations::CEncs(encs) => {
+        Encapsulations::Quantum(encs) => {
+            q_decaps(rng, usk, &encapsulation.c, &encapsulation.tag, encs)
+        }
+        Encapsulations::Classic(encs) => {
             c_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
         }
     }
@@ -528,7 +657,7 @@ pub fn full_decaps(
             Ok::<_, Error>(())
         })?;
 
-        if let Encapsulations::HEncs(encs) = &encapsulation.encapsulations {
+        if let Encapsulations::Hybridized(encs) = &encapsulation.encapsulations {
             encs.iter().try_for_each(|(E, _)| {
                 hasher.update(&E.serialize()?);
                 Ok::<_, Error>(())
@@ -543,8 +672,9 @@ pub fn full_decaps(
         let mut hasher = Sha3::v256();
         hasher.update(&*T);
         match &encapsulation.encapsulations {
-            Encapsulations::HEncs(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
-            Encapsulations::CEncs(encs) => encs.iter().for_each(|F| hasher.update(F)),
+            Encapsulations::Hybridized(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
+            Encapsulations::Quantum(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
+            Encapsulations::Classic(encs) => encs.iter().for_each(|F| hasher.update(F)),
         }
         hasher.finalize(&mut *U);
         U
@@ -553,17 +683,19 @@ pub fn full_decaps(
     let mut enc_ss = None;
     let mut rights = HashSet::with_capacity(encapsulation.count());
     let mut try_decaps = |right: &Right,
-                          K1: &mut <ElGamal as Nike>::PublicKey,
+                          K1: Option<<ElGamal as Nike>::PublicKey>,
                           K2: Option<Secret<SHARED_SECRET_LENGTH>>,
                           F| {
-        let S_ij = xor_in_place(H_hash(K1, K2.as_ref(), &T)?, F);
+        let S_ij = xor_in_place(H_hash(K1.as_ref(), K2.as_ref(), &T)?, F);
         let (tag_ij, ss) = J_hash(&S_ij, &U);
         if encapsulation.tag == tag_ij {
             // Fujisaki-Okamoto
             let r = G_hash(&S_ij)?;
             let c_ij = msk.tsk.set_traps(&r);
             if encapsulation.c == c_ij {
-                K1.zeroize();
+                if let Some(mut K1) = K1 {
+                    K1.zeroize();
+                }
                 enc_ss = Some(ss);
                 rights.insert(right.clone());
             }
@@ -572,22 +704,36 @@ pub fn full_decaps(
     };
 
     match &encapsulation.encapsulations {
-        Encapsulations::HEncs(encs) => {
+        Encapsulations::Hybridized(encs) => {
             for (E, F) in encs {
                 for (right, secret_set) in msk.secrets.iter() {
                     for (status, secret) in secret_set {
                         if &EncryptionStatus::EncryptDecrypt == status {
                             if let RightSecretKey::Hybridized { sk, dk } = secret {
-                                let mut K1 = ElGamal::session_key(sk, &A)?;
+                                let K1 = ElGamal::session_key(sk, &A)?;
                                 let K2 = MlKem::dec(dk, E)?;
-                                try_decaps(right, &mut K1, Some(K2), F)?;
+                                try_decaps(right, Some(K1), Some(K2), F)?;
                             }
                         }
                     }
                 }
             }
         }
-        Encapsulations::CEncs(encs) => {
+        Encapsulations::Quantum(encs) => {
+            for (E, F) in encs {
+                for (right, secret_set) in msk.secrets.iter() {
+                    for (status, secret) in secret_set {
+                        if &EncryptionStatus::EncryptDecrypt == status {
+                            if let RightSecretKey::PostQuantum { dk } = secret {
+                                let K2 = MlKem::dec(dk, E)?;
+                                try_decaps(right, None, Some(K2), F)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Encapsulations::Classic(encs) => {
             for F in encs {
                 for (right, secret_set) in msk.secrets.iter() {
                     for (status, secret) in secret_set {
@@ -597,14 +743,15 @@ pub fn full_decaps(
                                 RightSecretKey::Classic { sk } => sk,
                                 RightSecretKey::PostQuantum { .. } => continue,
                             };
-                            let mut K1 = ElGamal::session_key(sk, &A)?;
-                            try_decaps(right, &mut K1, None, F)?;
+                            let K1 = ElGamal::session_key(sk, &A)?;
+                            try_decaps(right, Some(K1), None, F)?;
                         }
                     }
                 }
             }
         }
     }
+
     enc_ss
         .map(|ss| (ss, rights))
         .ok_or_else(|| Error::Kem("could not open the encapsulation".to_string()))

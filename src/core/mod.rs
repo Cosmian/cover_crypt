@@ -457,6 +457,11 @@ impl MasterPublicKey {
 
     /// Returns the subkeys associated with the given rights in this public key,
     /// alongside a boolean value that is true if all of them are hybridized.
+    ///
+    /// # Error
+    ///
+    /// Returns an error in case a key is missing for one of the target rights
+    /// or these rights do not define an homogeneous set of keys.
     fn select_subkeys(
         &self,
         targets: &HashSet<Right>,
@@ -526,8 +531,9 @@ impl UserSecretKey {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Encapsulations {
-    HEncs(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
-    CEncs(Vec<[u8; SHARED_SECRET_LENGTH]>),
+    Hybridized(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
+    Quantum(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
+    Classic(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
 /// Covercrypt encapsulation.
@@ -553,8 +559,9 @@ impl XEnc {
 
     pub fn count(&self) -> usize {
         match &self.encapsulations {
-            Encapsulations::HEncs(vec) => vec.len(),
-            Encapsulations::CEncs(vec) => vec.len(),
+            Encapsulations::Hybridized(vec) => vec.len(),
+            Encapsulations::Quantum(vec) => vec.len(),
+            Encapsulations::Classic(vec) => vec.len(),
         }
     }
 }
