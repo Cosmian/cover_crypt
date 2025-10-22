@@ -408,7 +408,7 @@ pub fn encaps(
     }
 }
 
-/// Attempts to open the given hybridized encapsulations with this user secret
+/// Attempts to open the given post-quantum encapsulations with this user secret
 /// key.
 fn q_decaps(
     rng: &mut impl CryptoRngCore,
