@@ -335,7 +335,7 @@ fn combine(
             for (ids, security_mode, is_activated) in partial_combinations.clone() {
                 res.push((
                     [vec![component.get_id()], ids.clone()].concat(),
-                    security_mode.min(component.get_security_mode()),
+                    security_mode.max(component.get_security_mode()),
                     is_activated | component.get_status(),
                 ));
             }

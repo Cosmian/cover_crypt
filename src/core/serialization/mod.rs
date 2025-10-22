@@ -157,14 +157,14 @@ impl Serializable for RightSecretKey {
         1 + match self {
             Self::Hybridized { sk, dk } => sk.length() + dk.length(),
             Self::Classic { sk } => sk.length(),
-            Self::PostQuantum { dk } => dk.length(),
+            Self::Quantic { dk } => dk.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
             Self::Classic { sk } => Ok(0usize.write(ser)? + sk.write(ser)?),
-            Self::PostQuantum { dk } => Ok(2usize.write(ser)? + dk.write(ser)?),
+            Self::Quantic { dk } => Ok(2usize.write(ser)? + dk.write(ser)?),
             Self::Hybridized { sk, dk } => {
                 Ok(1usize.write(ser)? + sk.write(ser)? + dk.write(ser)?)
             }
@@ -179,7 +179,7 @@ impl Serializable for RightSecretKey {
                 sk: de.read()?,
                 dk: de.read()?,
             }),
-            2 => Ok(Self::PostQuantum { dk: de.read()? }),
+            2 => Ok(Self::Quantic { dk: de.read()? }),
             _ => Err(Error::ConversionFailed(format!(
                 "invalid hybridization flag {mode}"
             ))),
@@ -217,7 +217,7 @@ impl Serializable for Encapsulations {
     fn length(&self) -> usize {
         1 + match self {
             Encapsulations::Hybridized(vec) => vec.length(),
-            Encapsulations::Quantum(vec) => vec.length(),
+            Encapsulations::Quantic(vec) => vec.length(),
             Encapsulations::Classic(vec) => vec.length(),
         }
     }
@@ -225,7 +225,7 @@ impl Serializable for Encapsulations {
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
             Encapsulations::Classic(vec) => Ok(0usize.write(ser)? + vec.write(ser)?),
-            Encapsulations::Quantum(vec) => Ok(2usize.write(ser)? + vec.write(ser)?),
+            Encapsulations::Quantic(vec) => Ok(2usize.write(ser)? + vec.write(ser)?),
             Encapsulations::Hybridized(vec) => Ok(1usize.write(ser)? + vec.write(ser)?),
         }
     }
@@ -235,7 +235,7 @@ impl Serializable for Encapsulations {
         match is_hybridized {
             0 => Ok(Self::Classic(de.read()?)),
             1 => Ok(Self::Hybridized(de.read()?)),
-            2 => Ok(Self::Quantum(de.read()?)),
+            2 => Ok(Self::Quantic(de.read()?)),
             n => Err(Error::ConversionFailed(format!(
                 "invalid encapsulation type: {n}"
             ))),

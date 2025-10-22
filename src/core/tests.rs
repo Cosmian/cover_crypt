@@ -20,8 +20,8 @@ use super::{
 
 #[test]
 fn security_mode_ordering() {
-    assert!(SecurityMode::Classic < SecurityMode::PostQuantum);
-    assert!(SecurityMode::PostQuantum < SecurityMode::Hybridized);
+    assert!(SecurityMode::Classic < SecurityMode::Quantic);
+    assert!(SecurityMode::Quantic < SecurityMode::Hybridized);
 }
 
 /// This test asserts that it is possible to encapsulate a key for a given
@@ -299,6 +299,33 @@ fn test_reencrypt_with_msk() {
 
 #[test]
 fn test_covercrypt_kem() {
+    // Classic encapsulations.
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::LOW").unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
+    let usk = cc
+        .generate_user_secret_key(&mut msk, &ap)
+        .expect("cannot generate usk");
+    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(enc.security_mode(), SecurityMode::Classic);
+    let res = cc.decaps(&usk, &enc).unwrap();
+    assert_eq!(secret, res.unwrap());
+
+    // Post-quantum encapsulations.
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::MED").unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
+    let usk = cc
+        .generate_user_secret_key(&mut msk, &ap)
+        .expect("cannot generate usk");
+    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(enc.security_mode(), SecurityMode::Quantic);
+    let res = cc.decaps(&usk, &enc).unwrap();
+    assert_eq!(secret, res.unwrap());
+
+    // Hybridized encapsulation.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let cc = Covercrypt::default();
     let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
@@ -307,6 +334,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(enc.security_mode(), SecurityMode::Hybridized);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 }

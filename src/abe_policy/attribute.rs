@@ -5,11 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SecurityMode {
-    // Due the derivation of `Ord`, definition order matters.
     Classic,
-    PostQuantum,
+    Quantic,
     Hybridized,
 }
 
@@ -26,7 +25,7 @@ impl Serializable for SecurityMode {
     ) -> Result<usize, Self::Error> {
         match self {
             Self::Classic => ser.write(&0usize),
-            Self::PostQuantum => ser.write(&1usize),
+            Self::Quantic => ser.write(&1usize),
             Self::Hybridized => ser.write(&2usize),
         }
         .map_err(Error::from)
@@ -36,7 +35,7 @@ impl Serializable for SecurityMode {
         let status = de.read::<usize>()?;
         match status {
             0 => Ok(Self::Classic),
-            1 => Ok(Self::PostQuantum),
+            1 => Ok(Self::Quantic),
             2 => Ok(Self::Hybridized),
             n => Err(Error::ConversionFailed(format!(
                 "invalid security-mode value: {}",
