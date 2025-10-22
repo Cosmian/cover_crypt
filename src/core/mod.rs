@@ -61,7 +61,7 @@ enum RightSecretKey {
     Classic {
         sk: <ElGamal as Nike>::SecretKey,
     },
-    Quantic {
+    Quantum {
         dk: <MlKem as Kem>::DecapsulationKey,
     },
     Hybridized {
@@ -79,9 +79,9 @@ impl RightSecretKey {
                 let sk = <ElGamal as Nike>::SecretKey::random(rng);
                 Ok(Self::Classic { sk })
             }
-            SecurityMode::Quantic => {
+            SecurityMode::Quantum => {
                 let (dk, _) = MlKem::keygen(rng)?;
-                Ok(Self::Quantic { dk })
+                Ok(Self::Quantum { dk })
             }
             SecurityMode::Hybridized => {
                 let sk = <ElGamal as Nike>::SecretKey::random(rng);
@@ -99,7 +99,7 @@ impl RightSecretKey {
                 H: h * sk,
                 ek: dk.ek(),
             },
-            Self::Quantic { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
+            Self::Quantum { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
             Self::Classic { sk } => RightPublicKey::Classic { H: h * sk },
         }
     }
@@ -108,7 +108,7 @@ impl RightSecretKey {
     fn security_mode(&self) -> SecurityMode {
         match self {
             Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::Quantic { .. } => SecurityMode::Quantic,
+            Self::Quantum { .. } => SecurityMode::Quantum,
             Self::Classic { .. } => SecurityMode::Classic,
         }
     }
@@ -121,18 +121,18 @@ impl RightSecretKey {
     ) -> Result<Self, Error> {
         Ok(match (self, security_mode) {
             (Self::Hybridized { sk, .. }, SecurityMode::Classic) => Self::Classic { sk },
-            (Self::Hybridized { dk, .. }, SecurityMode::Quantic) => Self::Quantic { dk },
+            (Self::Hybridized { dk, .. }, SecurityMode::Quantum) => Self::Quantum { dk },
             (Self::Hybridized { sk, dk }, SecurityMode::Hybridized) => Self::Hybridized { sk, dk },
-            (Self::Quantic { .. }, SecurityMode::Classic) => Self::Quantic {
+            (Self::Quantum { .. }, SecurityMode::Classic) => Self::Quantum {
                 dk: <MlKem as Kem>::keygen(rng)?.0,
             },
-            (Self::Quantic { dk }, SecurityMode::Quantic) => Self::Quantic { dk },
-            (Self::Quantic { dk }, SecurityMode::Hybridized) => Self::Hybridized {
+            (Self::Quantum { dk }, SecurityMode::Quantum) => Self::Quantum { dk },
+            (Self::Quantum { dk }, SecurityMode::Hybridized) => Self::Hybridized {
                 sk: <ElGamal as Nike>::keygen(rng)?.0,
                 dk,
             },
             (Self::Classic { sk }, SecurityMode::Classic) => Self::Classic { sk },
-            (Self::Classic { .. }, SecurityMode::Quantic) => Self::Quantic {
+            (Self::Classic { .. }, SecurityMode::Quantum) => Self::Quantum {
                 dk: <MlKem as Kem>::keygen(rng)?.0,
             },
             (Self::Classic { sk }, SecurityMode::Hybridized) => Self::Hybridized {
@@ -167,7 +167,7 @@ impl RightPublicKey {
     pub fn security_mode(&self) -> SecurityMode {
         match self {
             Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::PostQuantum { .. } => SecurityMode::Quantic,
+            Self::PostQuantum { .. } => SecurityMode::Quantum,
             Self::Classic { .. } => SecurityMode::Classic,
         }
     }
@@ -532,7 +532,7 @@ impl UserSecretKey {
 #[derive(Debug, Clone, PartialEq)]
 enum Encapsulations {
     Hybridized(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
-    Quantic(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
+    Quantum(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
     Classic(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
@@ -560,7 +560,7 @@ impl XEnc {
     pub fn count(&self) -> usize {
         match &self.encapsulations {
             Encapsulations::Hybridized(vec) => vec.len(),
-            Encapsulations::Quantic(vec) => vec.len(),
+            Encapsulations::Quantum(vec) => vec.len(),
             Encapsulations::Classic(vec) => vec.len(),
         }
     }
@@ -568,7 +568,7 @@ impl XEnc {
     pub fn security_mode(&self) -> SecurityMode {
         match self.encapsulations {
             Encapsulations::Hybridized(_) => SecurityMode::Hybridized,
-            Encapsulations::Quantic(_) => SecurityMode::Quantic,
+            Encapsulations::Quantum(_) => SecurityMode::Quantum,
             Encapsulations::Classic(_) => SecurityMode::Classic,
         }
     }

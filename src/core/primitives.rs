@@ -288,7 +288,7 @@ fn q_encaps<'a>(
         XEnc {
             tag,
             c,
-            encapsulations: Encapsulations::Quantic(encs),
+            encapsulations: Encapsulations::Quantum(encs),
         },
     ))
 }
@@ -379,7 +379,7 @@ pub fn encaps(
             });
             c_encaps(S, c, r, subkeys)
         }
-        SecurityMode::Quantic => {
+        SecurityMode::Quantum => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::PostQuantum { ek } = subkey {
                     ek
@@ -447,7 +447,7 @@ fn q_decaps(
         shuffle(&mut revision, rng);
         for (E, F) in &encs {
             for (_, secret) in &revision {
-                if let RightSecretKey::Quantic { dk } = secret {
+                if let RightSecretKey::Quantum { dk } = secret {
                     let K2 = MlKem::dec(dk, E)?;
                     let S_ij = xor_in_place(H_hash(None, Some(&K2), &T)?, F);
                     let (tag_ij, ss) = J_hash(&S_ij, &U);
@@ -579,7 +579,7 @@ fn c_decaps(
                 let sk = match secret {
                     RightSecretKey::Hybridized { sk, .. } => sk,
                     RightSecretKey::Classic { sk } => sk,
-                    RightSecretKey::Quantic { .. } => continue,
+                    RightSecretKey::Quantum { .. } => continue,
                 };
                 let mut K1 = ElGamal::session_key(sk, A)?;
                 let S = xor_in_place(H_hash(Some(&K1), None, &T)?, F);
@@ -619,7 +619,7 @@ pub fn decaps(
         Encapsulations::Hybridized(encs) => {
             h_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
         }
-        Encapsulations::Quantic(encs) => {
+        Encapsulations::Quantum(encs) => {
             q_decaps(rng, usk, &encapsulation.c, &encapsulation.tag, encs)
         }
         Encapsulations::Classic(encs) => {
@@ -673,7 +673,7 @@ pub fn full_decaps(
         hasher.update(&*T);
         match &encapsulation.encapsulations {
             Encapsulations::Hybridized(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
-            Encapsulations::Quantic(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
+            Encapsulations::Quantum(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
             Encapsulations::Classic(encs) => encs.iter().for_each(|F| hasher.update(F)),
         }
         hasher.finalize(&mut *U);
@@ -719,12 +719,12 @@ pub fn full_decaps(
                 }
             }
         }
-        Encapsulations::Quantic(encs) => {
+        Encapsulations::Quantum(encs) => {
             for (E, F) in encs {
                 for (right, secret_set) in msk.secrets.iter() {
                     for (status, secret) in secret_set {
                         if &EncryptionStatus::EncryptDecrypt == status {
-                            if let RightSecretKey::Quantic { dk } = secret {
+                            if let RightSecretKey::Quantum { dk } = secret {
                                 let K2 = MlKem::dec(dk, E)?;
                                 try_decaps(right, None, Some(K2), F)?;
                             }
@@ -741,7 +741,7 @@ pub fn full_decaps(
                             let sk = match secret {
                                 RightSecretKey::Hybridized { sk, .. } => sk,
                                 RightSecretKey::Classic { sk } => sk,
-                                RightSecretKey::Quantic { .. } => continue,
+                                RightSecretKey::Quantum { .. } => continue,
                             };
                             let K1 = ElGamal::session_key(sk, &A)?;
                             try_decaps(right, Some(K1), None, F)?;

@@ -16,7 +16,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "MED".to_string(),
         },
-        SecurityMode::Quantic,
+        SecurityMode::Quantum,
         Some("LOW"),
     )?;
     policy.add_attribute(

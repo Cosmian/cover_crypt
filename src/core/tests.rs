@@ -20,8 +20,8 @@ use super::{
 
 #[test]
 fn security_mode_ordering() {
-    assert!(SecurityMode::Classic < SecurityMode::Quantic);
-    assert!(SecurityMode::Quantic < SecurityMode::Hybridized);
+    assert!(SecurityMode::Classic < SecurityMode::Quantum);
+    assert!(SecurityMode::Quantum < SecurityMode::Hybridized);
 }
 
 /// This test asserts that it is possible to encapsulate a key for a given
@@ -321,7 +321,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), SecurityMode::Quantic);
+    assert_eq!(enc.security_mode(), SecurityMode::Quantum);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
