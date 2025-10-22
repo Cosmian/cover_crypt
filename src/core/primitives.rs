@@ -91,8 +91,14 @@ fn H_hash(
     K2: Option<&Secret<SHARED_SECRET_LENGTH>>,
     T: &Secret<SHARED_SECRET_LENGTH>,
 ) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
-    let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
+    // Additional check to enforce the constraint on the SHARED_SECRET_LENGTH
+    // constant that is defined in another file.
+    //
+    // NOTE: it would be nice to perform this check at compile-time instead.
+    assert_eq!(SHARED_SECRET_LENGTH, 32);
+
     let mut hasher = Sha3::v256();
+    let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
     if let Some(K1) = K1 {
         hasher.update(&K1.serialize()?);
     }
