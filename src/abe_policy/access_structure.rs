@@ -2,8 +2,8 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
     abe_policy::{
-        AccessPolicy, Attribute, AttributeStatus, Dimension, EncryptionHint, QualifiedAttribute,
-        Right,
+        attribute::SecurityMode, AccessPolicy, Attribute, Dimension, EncryptionStatus,
+        QualifiedAttribute, Right,
     },
     data_struct::Dict,
     Error,
@@ -104,7 +104,7 @@ impl AccessStructure {
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
-        encryption_hint: EncryptionHint,
+        security_mode: SecurityMode,
         after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
@@ -116,7 +116,7 @@ impl AccessStructure {
         self.dimensions
             .get_mut(&attribute.dimension)
             .ok_or_else(|| Error::DimensionNotFound(attribute.dimension.clone()))?
-            .add_attribute(attribute.name, encryption_hint, after, cnt)?;
+            .add_attribute(attribute.name, security_mode, after, cnt)?;
 
         Ok(())
     }
@@ -172,7 +172,7 @@ impl AccessStructure {
 
     /// Generates all rights defined by this access structure and return their
     /// hybridization and activation status.
-    pub(crate) fn omega(&self) -> Result<HashMap<Right, (EncryptionHint, AttributeStatus)>, Error> {
+    pub(crate) fn omega(&self) -> Result<HashMap<Right, (SecurityMode, EncryptionStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
             .into_iter()
@@ -320,27 +320,27 @@ impl AccessStructure {
 /// - D2::B2
 fn combine(
     dimensions: &[(&String, &Dimension)],
-) -> Vec<(Vec<usize>, EncryptionHint, AttributeStatus)> {
+) -> Vec<(Vec<usize>, SecurityMode, EncryptionStatus)> {
     if dimensions.is_empty() {
         vec![(
             vec![],
-            EncryptionHint::Classic,
-            AttributeStatus::EncryptDecrypt,
+            SecurityMode::Classic,
+            EncryptionStatus::EncryptDecrypt,
         )]
     } else {
         let (_, current_dimension) = &dimensions[0];
         let partial_combinations = combine(&dimensions[1..]);
         let mut res = vec![];
         for component in current_dimension.attributes() {
-            for (ids, is_hybridized, is_activated) in &partial_combinations {
+            for (ids, security_mode, is_activated) in partial_combinations.clone() {
                 res.push((
                     [vec![component.get_id()], ids.clone()].concat(),
-                    *is_hybridized | component.get_encryption_hint(),
-                    *is_activated | component.get_status(),
+                    security_mode.min(component.get_security_mode()),
+                    is_activated | component.get_status(),
                 ));
             }
         }
-        [partial_combinations.clone(), res].concat()
+        [partial_combinations, res].concat()
     }
 }
 
@@ -410,9 +410,9 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", EncryptionHint::Classic),
-            ("Germany", EncryptionHint::Classic),
-            ("Spain", EncryptionHint::Classic),
+            ("France", SecurityMode::Classic),
+            ("Germany", SecurityMode::Classic),
+            ("Spain", SecurityMode::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, hint)| {

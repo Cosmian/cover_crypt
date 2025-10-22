@@ -18,10 +18,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        abe_policy::{AccessPolicy, EncryptionHint, QualifiedAttribute},
+        abe_policy::{AccessPolicy, QualifiedAttribute},
         api::Covercrypt,
         traits::KemAc,
-        EncryptedHeader,
+        EncryptedHeader, SecurityMode,
     };
 
     #[test]
@@ -34,7 +34,7 @@ mod tests {
 
         let _ = &mut msk.access_structure.add_attribute(
             QualifiedAttribute::new("DPT", "Sales"),
-            EncryptionHint::Classic,
+            SecurityMode::Classic,
             None,
         )?;
         let mpk = cc.update_msk(&mut msk)?;

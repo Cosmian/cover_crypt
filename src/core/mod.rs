@@ -10,10 +10,10 @@ use kem::MlKem;
 use nike::ElGamal;
 
 use crate::{
-    abe_policy::{AccessStructure, Right},
+    abe_policy::{AccessStructure, EncryptionStatus, Right},
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike, Sampling, Zero},
-    Error,
+    Error, SecurityMode,
 };
 
 mod kem;
@@ -53,28 +53,41 @@ type Tag = [u8; TAG_LENGTH];
 pub const MIN_TRACING_LEVEL: usize = 1;
 
 /// The Covercrypt subkeys hold the DH secret key associated to a right.
-/// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
+///
+/// Subkeys can be hybridized in which case they also hold a PQ-KEM secret key,
+/// or post-quantum in which case they only hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightSecretKey {
+    Classic {
+        sk: <ElGamal as Nike>::SecretKey,
+    },
+    PostQuantum {
+        dk: <MlKem as Kem>::DecapsulationKey,
+    },
     Hybridized {
         sk: <ElGamal as Nike>::SecretKey,
         dk: <MlKem as Kem>::DecapsulationKey,
-    },
-    Classic {
-        sk: <ElGamal as Nike>::SecretKey,
     },
 }
 
 impl RightSecretKey {
     /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
     /// point `h`.
-    fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
-        let sk = <ElGamal as Nike>::SecretKey::random(rng);
-        if hybridize {
-            let (dk, _) = MlKem::keygen(rng)?;
-            Ok(Self::Hybridized { sk, dk })
-        } else {
-            Ok(Self::Classic { sk })
+    fn random(rng: &mut impl CryptoRngCore, security_mode: SecurityMode) -> Result<Self, Error> {
+        match security_mode {
+            SecurityMode::Classic => {
+                let sk = <ElGamal as Nike>::SecretKey::random(rng);
+                Ok(Self::Classic { sk })
+            }
+            SecurityMode::PostQuantum => {
+                let (dk, _) = MlKem::keygen(rng)?;
+                Ok(Self::PostQuantum { dk })
+            }
+            SecurityMode::Hybridized => {
+                let sk = <ElGamal as Nike>::SecretKey::random(rng);
+                let (dk, _) = MlKem::keygen(rng)?;
+                Ok(Self::Hybridized { sk, dk })
+            }
         }
     }
 
@@ -86,51 +99,81 @@ impl RightSecretKey {
                 H: h * sk,
                 ek: dk.ek(),
             },
+            Self::PostQuantum { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
             Self::Classic { sk } => RightPublicKey::Classic { H: h * sk },
         }
     }
 
-    /// Returns true if this right secret key is hybridized.
-    fn is_hybridized(&self) -> bool {
+    /// Returns the security mode of this right secret key.
+    fn security_mode(&self) -> SecurityMode {
         match self {
-            Self::Hybridized { .. } => true,
-            Self::Classic { .. } => false,
+            Self::Hybridized { .. } => SecurityMode::Hybridized,
+            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
+            Self::Classic { .. } => SecurityMode::Classic,
         }
     }
 
-    fn drop_hybridization(&self) -> Self {
-        match self {
-            Self::Hybridized { sk: x_i, .. } => Self::Classic { sk: x_i.clone() },
-            Self::Classic { .. } => self.clone(),
-        }
+    /// Sets the security mode of this right secret key.
+    fn set_security_mode(
+        self,
+        security_mode: SecurityMode,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<Self, Error> {
+        Ok(match (self, security_mode) {
+            (Self::Hybridized { sk, .. }, SecurityMode::Classic) => Self::Classic { sk },
+            (Self::Hybridized { dk, .. }, SecurityMode::PostQuantum) => Self::PostQuantum { dk },
+            (Self::Hybridized { sk, dk }, SecurityMode::Hybridized) => Self::Hybridized { sk, dk },
+            (Self::PostQuantum { .. }, SecurityMode::Classic) => Self::PostQuantum {
+                dk: <MlKem as Kem>::keygen(rng)?.0,
+            },
+            (Self::PostQuantum { dk }, SecurityMode::PostQuantum) => Self::PostQuantum { dk },
+            (Self::PostQuantum { dk }, SecurityMode::Hybridized) => Self::Hybridized {
+                sk: <ElGamal as Nike>::keygen(rng)?.0,
+                dk,
+            },
+            (Self::Classic { sk }, SecurityMode::Classic) => Self::Classic { sk },
+            (Self::Classic { .. }, SecurityMode::PostQuantum) => Self::PostQuantum {
+                dk: <MlKem as Kem>::keygen(rng)?.0,
+            },
+            (Self::Classic { sk }, SecurityMode::Hybridized) => Self::Hybridized {
+                sk,
+                dk: <MlKem as Kem>::keygen(rng)?.0,
+            },
+        })
     }
 }
 
-/// The Covercrypt public keys hold the DH secret public key associated to a right.
-/// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
+/// The Covercrypt public keys hold the DH secret public key associated to a
+/// right.
+///
+/// Subkeys can be hybridized in which case they also hold a PQ-KEM public key,
+/// or post-quantum, in which case they only hold a PQ-KEM public key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightPublicKey {
+    Classic {
+        H: <ElGamal as Nike>::PublicKey,
+    },
+    PostQuantum {
+        ek: <MlKem as Kem>::EncapsulationKey,
+    },
     Hybridized {
         H: <ElGamal as Nike>::PublicKey,
         ek: <MlKem as Kem>::EncapsulationKey,
     },
-    Classic {
-        H: <ElGamal as Nike>::PublicKey,
-    },
 }
 
 impl RightPublicKey {
-    pub fn is_hybridized(&self) -> bool {
+    /// Returns the security mode of this right public key.
+    pub fn security_mode(&self) -> SecurityMode {
         match self {
-            Self::Hybridized { .. } => true,
-            Self::Classic { .. } => false,
+            Self::Hybridized { .. } => SecurityMode::Hybridized,
+            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
+            Self::Classic { .. } => SecurityMode::Classic,
         }
     }
 }
 
 /// Covercrypt user IDs are used to make user keys unique and traceable.
-///
-/// They are composed of a sequence of `LENGTH` scalars.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 struct UserId(LinkedList<<ElGamal as Nike>::SecretKey>);
 
@@ -340,7 +383,7 @@ impl TracingPublicKey {
 #[derive(Debug, PartialEq)]
 pub struct MasterSecretKey {
     tsk: TracingSecretKey,
-    secrets: RevisionMap<Right, (bool, RightSecretKey)>,
+    secrets: RevisionMap<Right, (EncryptionStatus, RightSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
     pub access_structure: AccessStructure,
 }
@@ -373,8 +416,8 @@ impl MasterSecretKey {
                 .secrets
                 .iter()
                 .filter_map(|(r, secrets)| {
-                    secrets.front().and_then(|(is_activated, csk)| {
-                        if *is_activated {
+                    secrets.front().and_then(|(status, csk)| {
+                        if &EncryptionStatus::EncryptDecrypt == status {
                             Some((r.clone(), csk.cpk(&h)))
                         } else {
                             None
@@ -417,26 +460,37 @@ impl MasterPublicKey {
     fn select_subkeys(
         &self,
         targets: &HashSet<Right>,
-    ) -> Result<(bool, Vec<&RightPublicKey>), Error> {
-        // This mutable variable is set to false if at least one sub-key is not
-        // hybridized.
-        let mut is_hybridized = true;
-
+    ) -> Result<(SecurityMode, Vec<&RightPublicKey>), Error> {
         let subkeys = targets
             .iter()
             .map(|r| {
-                let subkey = self
-                    .encryption_keys
+                self.encryption_keys
                     .get(r)
-                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))?;
-                if !subkey.is_hybridized() {
-                    is_hybridized = false;
-                }
-                Ok(subkey)
+                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))
             })
-            .collect::<Result<_, Error>>()?;
+            .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok((is_hybridized, subkeys))
+        let (security_mode, is_homogeneous) = subkeys
+            .iter()
+            .map(|k| (k.security_mode(), true))
+            .reduce(|(lhs_mode, lhs_bool), (rhs_mode, rhs_bool)| {
+                if lhs_mode == rhs_mode {
+                    (lhs_mode, lhs_bool && rhs_bool)
+                } else {
+                    (lhs_mode, false)
+                }
+            })
+            .ok_or_else(|| {
+                Error::OperationNotPermitted("target set cannot be empty".to_string())
+            })?;
+
+        if is_homogeneous {
+            Ok((security_mode, subkeys))
+        } else {
+            Err(Error::OperationNotPermitted(
+                "cannot select subkeys with different security modes".to_string(),
+            ))
+        }
     }
 }
 

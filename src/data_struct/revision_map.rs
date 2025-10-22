@@ -125,6 +125,16 @@ where
         self.map.get_mut(key).and_then(LinkedList::front_mut)
     }
 
+    /// Returns the last revised value for a given key, removing it from the
+    /// map.
+    pub fn take_latest<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.get_mut(key).and_then(LinkedList::pop_front)
+    }
+
     /// Returns true if the given key is bound to some value.
     pub fn contains_key(&self, key: &K) -> bool {
         self.map.contains_key(key)
@@ -140,14 +150,23 @@ where
         self.map.iter()
     }
 
-    /// Iterates through all revisions of a given key starting with the more
-    /// recent one.
+    /// Returns the list of revisions, starting with the more recent one.
     pub fn get<Q>(&self, key: &Q) -> Option<&LinkedList<V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key) //.map(RevisionList::iter)
+        self.map.get(key)
+    }
+
+    /// Returns a mutable reference on the list of revisions, starting with the
+    /// more recent one.
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut LinkedList<V>>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.get_mut(key)
     }
 
     /// Removes and returns an iterator over all revisions from a given key.

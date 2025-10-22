@@ -1,6 +1,4 @@
-use crate::{abe_policy::AccessStructure, Error};
-
-use super::EncryptionHint;
+use crate::{abe_policy::AccessStructure, Error, SecurityMode};
 
 pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(), Error> {
     policy.add_hierarchy("SEC".to_string())?;
@@ -10,7 +8,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "LOW".to_string(),
         },
-        EncryptionHint::Classic,
+        SecurityMode::Classic,
         None,
     )?;
     policy.add_attribute(
@@ -18,17 +16,17 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "TOP".to_string(),
         },
-        EncryptionHint::Hybridized,
+        SecurityMode::Hybridized,
         Some("LOW"),
     )?;
 
     policy.add_anarchy("DPT".to_string())?;
     [
-        ("RD", EncryptionHint::Classic),
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-        ("DEV", EncryptionHint::Classic),
+        ("RD", SecurityMode::Classic),
+        ("HR", SecurityMode::Classic),
+        ("MKG", SecurityMode::Classic),
+        ("FIN", SecurityMode::Classic),
+        ("DEV", SecurityMode::Classic),
     ]
     .into_iter()
     .try_for_each(|(attribute, hint)| {
@@ -45,11 +43,11 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
     if complete {
         policy.add_anarchy("CTR".to_string())?;
         [
-            ("EN", EncryptionHint::Classic),
-            ("DE", EncryptionHint::Classic),
-            ("IT", EncryptionHint::Classic),
-            ("FR", EncryptionHint::Classic),
-            ("SP", EncryptionHint::Classic),
+            ("EN", SecurityMode::Classic),
+            ("DE", SecurityMode::Classic),
+            ("IT", SecurityMode::Classic),
+            ("FR", SecurityMode::Classic),
+            ("SP", SecurityMode::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, hint)| {
@@ -100,20 +98,20 @@ fn test_edit_anarchic_attributes() {
     // Add new attribute Sales
     let new_attr = QualifiedAttribute::new("DPT", "Sales");
     assert!(structure
-        .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
+        .add_attribute(new_attr.clone(), SecurityMode::Classic, None)
         .is_ok());
     assert_eq!(structure.attributes().count(), 8);
 
     // Try adding already existing attribute HR
     let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
     assert!(structure
-        .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
+        .add_attribute(duplicate_attr, SecurityMode::Classic, None)
         .is_err());
 
     // Try adding attribute to non existing dimension
     let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
     assert!(structure
-        .add_attribute(missing_dimension.clone(), EncryptionHint::Classic, None)
+        .add_attribute(missing_dimension.clone(), SecurityMode::Classic, None)
         .is_err());
 
     // Remove research attribute
@@ -145,14 +143,14 @@ fn test_edit_anarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr1"),
-            EncryptionHint::Classic,
+            SecurityMode::Classic,
             None,
         )
         .unwrap();
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr2"),
-            EncryptionHint::Classic,
+            SecurityMode::Classic,
             None,
         )
         .unwrap();
@@ -207,7 +205,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "MID"),
-            EncryptionHint::Classic,
+            SecurityMode::Classic,
             None,
         )
         .unwrap();
@@ -232,7 +230,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "LOW"),
-            EncryptionHint::Classic,
+            SecurityMode::Classic,
             None,
         )
         .unwrap();
@@ -265,7 +263,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "MID"),
-            EncryptionHint::Classic,
+            SecurityMode::Classic,
             Some("LOW"),
         )
         .unwrap();

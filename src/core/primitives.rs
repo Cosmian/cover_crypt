@@ -14,7 +14,7 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
+    abe_policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
     core::{
         kem::MlKem, nike::ElGamal, Encapsulations, KmacSignature, MasterPublicKey, MasterSecretKey,
         RightPublicKey, RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
@@ -57,27 +57,12 @@ fn sign(
     keys: &RevisionVec<Right, RightSecretKey>,
 ) -> Result<Option<KmacSignature>, Error> {
     if let Some(kmac_key) = &msk.signing_key {
-        let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
-        for marker in id.iter() {
-            kmac.update(&marker.serialize()?)
-        }
         // Subkeys ordering needs to be deterministic to allow deterministic
         // signatures. This explains why a hash-map is not used in USK.
-        for (coordinate, keys) in keys.iter() {
-            kmac.update(coordinate);
-            for subkey in keys.iter() {
-                match subkey {
-                    RightSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
-                        kmac.update(&s_i.serialize()?);
-                        kmac.update(&dk_i.serialize()?);
-                    }
-                    RightSecretKey::Classic { sk: s_i } => {
-                        kmac.update(&s_i.serialize()?);
-                    }
-                }
-            }
-        }
         let mut res = [0; SIGNATURE_LENGTH];
+        let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
+        kmac.update(&id.serialize()?);
+        kmac.update(&keys.serialize()?);
         kmac.finalize(&mut res);
         Ok(Some(res))
     } else {
@@ -184,24 +169,24 @@ pub fn usk_keygen(
 
 /// Generates a hybridized encapsulation of the given secret S with the given
 /// marker c, ElGamal random r and subkeys.
-fn h_encaps(
+fn h_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
     c: Vec<<ElGamal as Nike>::PublicKey>,
     r: <ElGamal as Nike>::SecretKey,
-    subkeys: &[&RightPublicKey],
+    subkeys: impl IntoIterator<
+        Item = (
+            &'a <ElGamal as Nike>::PublicKey,
+            &'a <MlKem as Kem>::EncapsulationKey,
+        ),
+    >,
     rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let encs = subkeys
-        .iter()
-        .map(|subkey| match subkey {
-            RightPublicKey::Hybridized { H, ek } => {
-                let K1 = ElGamal::session_key(&r, H)?;
-                let (K2, E) = MlKem::enc(ek, rng)?;
-                Ok((K1, K2, E))
-            }
-            RightPublicKey::Classic { .. } => {
-                Err(Error::Kem("all subkeys should be hybridized".to_string()))
-            }
+        .into_iter()
+        .map(|(H, ek)| {
+            let K1 = ElGamal::session_key(&r, H)?;
+            let (K2, E) = MlKem::enc(ek, rng)?;
+            Ok((K1, K2, E))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
@@ -252,11 +237,11 @@ fn h_encaps(
 
 /// Generates a classic encapsulation of the given secret S with the given
 /// marker c, ElGamal random r and subkeys.
-fn c_encaps(
+fn c_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
     c: Vec<<ElGamal as Nike>::PublicKey>,
     r: <ElGamal as Nike>::SecretKey,
-    subkeys: Vec<&RightPublicKey>,
+    subkeys: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     // In classic mode, T is only updated with c.
     let T = {
@@ -272,11 +257,7 @@ fn c_encaps(
 
     let encs = subkeys
         .into_iter()
-        .map(|subkey| -> Result<_, _> {
-            let H = match subkey {
-                RightPublicKey::Hybridized { H, .. } => H,
-                RightPublicKey::Classic { H } => H,
-            };
+        .map(|H| -> Result<_, _> {
             let K1 = ElGamal::session_key(&r, H)?;
             let F = xor_2(&S, &*H_hash(&K1, None, &T)?);
             Ok(F)
@@ -329,10 +310,34 @@ pub fn encaps(
     let r = G_hash(&S)?;
     let c = mpk.set_traps(&r);
 
-    if is_hybridized {
-        h_encaps(S, c, r, &coordinate_keys, rng)
-    } else {
-        c_encaps(S, c, r, coordinate_keys)
+    match is_hybridized {
+        SecurityMode::Classic => {
+            let subkeys = coordinate_keys.into_iter().map(|subkey| {
+                if let RightPublicKey::Classic { H } = subkey {
+                    Ok(H)
+                } else {
+                    Err(Error::OperationNotPermitted(format!(
+                        "expected a classic right public key: {subkey:?}"
+                    )))
+                }
+                .unwrap()
+            });
+            c_encaps(S, c, r, subkeys)
+        }
+        SecurityMode::PostQuantum => todo!(),
+        SecurityMode::Hybridized => {
+            let subkeys = coordinate_keys.into_iter().map(|subkey| {
+                if let RightPublicKey::Hybridized { H, ek } = subkey {
+                    Ok((H, ek))
+                } else {
+                    Err(Error::OperationNotPermitted(format!(
+                        "expected a classic right public key: {subkey:?}"
+                    )))
+                }
+                .unwrap()
+            });
+            h_encaps(S, c, r, subkeys, rng)
+        }
     }
 }
 
@@ -448,6 +453,7 @@ fn c_decaps(
                 let sk = match secret {
                     RightSecretKey::Hybridized { sk, .. } => sk,
                     RightSecretKey::Classic { sk } => sk,
+                    RightSecretKey::PostQuantum { .. } => continue,
                 };
                 let mut K1 = ElGamal::session_key(sk, A)?;
                 let S = xor_in_place(H_hash(&K1, None, &T)?, F);
@@ -569,8 +575,8 @@ pub fn full_decaps(
         Encapsulations::HEncs(encs) => {
             for (E, F) in encs {
                 for (right, secret_set) in msk.secrets.iter() {
-                    for (is_activated, secret) in secret_set {
-                        if *is_activated {
+                    for (status, secret) in secret_set {
+                        if &EncryptionStatus::EncryptDecrypt == status {
                             if let RightSecretKey::Hybridized { sk, dk } = secret {
                                 let mut K1 = ElGamal::session_key(sk, &A)?;
                                 let K2 = MlKem::dec(dk, E)?;
@@ -584,11 +590,12 @@ pub fn full_decaps(
         Encapsulations::CEncs(encs) => {
             for F in encs {
                 for (right, secret_set) in msk.secrets.iter() {
-                    for (is_activated, secret) in secret_set {
-                        if *is_activated {
+                    for (status, secret) in secret_set {
+                        if &EncryptionStatus::EncryptDecrypt == status {
                             let sk = match secret {
                                 RightSecretKey::Hybridized { sk, .. } => sk,
                                 RightSecretKey::Classic { sk } => sk,
+                                RightSecretKey::PostQuantum { .. } => continue,
                             };
                             let mut K1 = ElGamal::session_key(sk, &A)?;
                             try_decaps(right, &mut K1, None, F)?;
@@ -609,25 +616,28 @@ pub fn full_decaps(
 pub fn update_msk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: HashMap<Right, (EncryptionHint, AttributeStatus)>,
+    rights: HashMap<Right, (SecurityMode, EncryptionStatus)>,
 ) -> Result<(), Error> {
     let mut secrets = take(&mut msk.secrets);
     secrets.retain(|r| rights.contains_key(r));
 
-    for (r, (hint, status)) in rights {
-        if let Some((is_activated, coordinate_secret)) = secrets.get_latest_mut(&r) {
-            *is_activated = AttributeStatus::EncryptDecrypt == status;
-            if EncryptionHint::Classic == hint {
-                *coordinate_secret = coordinate_secret.drop_hybridization();
+    for (r, (mode, status)) in rights {
+        if let Some(revisions) = secrets.get_mut(&r) {
+            if let Some((_, secret)) = revisions.pop_front() {
+                revisions.push_front((status, secret.set_security_mode(mode, rng)?))
+            } else {
+                return Err(Error::OperationNotPermitted(
+                    "empty revision list is illegal".to_string(),
+                ));
             }
         } else {
-            if AttributeStatus::DecryptOnly == status {
+            if EncryptionStatus::DecryptOnly == status {
                 return Err(Error::OperationNotPermitted(
                     "cannot add decrypt only secret".to_string(),
                 ));
             }
-            let secret = RightSecretKey::random(rng, EncryptionHint::Hybridized == hint)?;
-            secrets.insert(r, (true, secret));
+            let secret = RightSecretKey::random(rng, mode)?;
+            secrets.insert(r, (status, secret));
         }
     }
     msk.secrets = secrets;
@@ -642,16 +652,21 @@ pub fn rekey(
 ) -> Result<(), Error> {
     for r in rights {
         if msk.secrets.contains_key(&r) {
-            let is_hybridized = msk
+            let security_mode = msk
                 .secrets
                 .get_latest(&r)
-                .map(|(_, k)| k.is_hybridized())
+                .map(|(_, k)| k.security_mode())
                 .ok_or_else(|| {
                     Error::OperationNotPermitted(format!("no current key for coordinate {r:#?}"))
                 })?;
 
-            msk.secrets
-                .insert(r, (true, RightSecretKey::random(rng, is_hybridized)?));
+            msk.secrets.insert(
+                r,
+                (
+                    EncryptionStatus::default(),
+                    RightSecretKey::random(rng, security_mode)?,
+                ),
+            );
         } else {
             return Err(Error::OperationNotPermitted(
                 "cannot re-key a right not belonging to the MSK".to_string(),

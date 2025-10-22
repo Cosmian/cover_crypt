@@ -3,9 +3,12 @@ use std::collections::{HashMap, HashSet};
 use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, EncryptionHint, Right},
+    abe_policy::{AccessPolicy, EncryptionStatus, Right},
     api::Covercrypt,
-    core::primitives::{decaps, encaps, refresh, rekey, update_msk},
+    core::{
+        primitives::{decaps, encaps, refresh, rekey, update_msk},
+        SecurityMode,
+    },
     test_utils::cc_keygen,
     traits::{KemAc, PkeAc},
 };
@@ -14,6 +17,12 @@ use super::{
     primitives::{setup, usk_keygen},
     MIN_TRACING_LEVEL,
 };
+
+#[test]
+fn security_mode_ordering() {
+    assert!(SecurityMode::Classic < SecurityMode::PostQuantum);
+    assert!(SecurityMode::PostQuantum < SecurityMode::Hybridized);
+}
 
 /// This test asserts that it is possible to encapsulate a key for a given
 /// coordinate and that different users which key is associated with this
@@ -31,11 +40,11 @@ fn test_encapsulation() {
         HashMap::from_iter([
             (
                 other_coordinate.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 target_coordinate.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -93,7 +102,7 @@ fn test_update() {
         .map(|_| {
             (
                 Right::random(&mut rng),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -112,7 +121,7 @@ fn test_update() {
         .enumerate()
         .for_each(|(i, (_, (_, status)))| {
             if i % 2 == 0 {
-                *status = AttributeStatus::DecryptOnly;
+                *status = EncryptionStatus::DecryptOnly;
             }
         });
     update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
@@ -147,11 +156,11 @@ fn test_rekey() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -231,11 +240,11 @@ fn test_integrity_check() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (SecurityMode::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )

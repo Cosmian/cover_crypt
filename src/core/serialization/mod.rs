@@ -33,15 +33,17 @@ impl Serializable for RightPublicKey {
 
     fn length(&self) -> usize {
         1 + match self {
-            Self::Hybridized { H, ek } => H.length() + ek.length(),
             Self::Classic { H } => H.length(),
+            Self::PostQuantum { ek } => ek.length(),
+            Self::Hybridized { H, ek } => H.length() + ek.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
             Self::Classic { H } => Ok(0usize.write(ser)? + H.write(ser)?),
-            Self::Hybridized { H, ek } => Ok(1usize.write(ser)? + ser.write(H)? + ser.write(ek)?),
+            Self::PostQuantum { ek } => Ok(2usize.write(ser)? + ek.write(ser)?),
+            Self::Hybridized { H, ek } => Ok(1usize.write(ser)? + H.write(ser)? + ek.write(ser)?),
         }
     }
 
@@ -49,6 +51,7 @@ impl Serializable for RightPublicKey {
         let is_hybridized = de.read::<usize>()?;
         match is_hybridized {
             0 => Ok(Self::Classic { H: de.read()? }),
+            2 => Ok(Self::PostQuantum { ek: de.read()? }),
             1 => Ok(Self::Hybridized {
                 H: de.read()?,
                 ek: de.read()?,
@@ -154,37 +157,32 @@ impl Serializable for RightSecretKey {
         1 + match self {
             Self::Hybridized { sk, dk } => sk.length() + dk.length(),
             Self::Classic { sk } => sk.length(),
+            Self::PostQuantum { dk } => dk.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
+            Self::Classic { sk } => Ok(0usize.write(ser)? + sk.write(ser)?),
+            Self::PostQuantum { dk } => Ok(2usize.write(ser)? + dk.write(ser)?),
             Self::Hybridized { sk, dk } => {
-                let mut n = ser.write_leb128_u64(1)?;
-                n += ser.write(sk)?;
-                n += ser.write(dk)?;
-                Ok(n)
-            }
-            Self::Classic { sk } => {
-                let mut n = ser.write_leb128_u64(0)?;
-                n += ser.write(sk)?;
-                Ok(n)
+                Ok(1usize.write(ser)? + sk.write(ser)? + dk.write(ser)?)
             }
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let is_hybridized = de.read_leb128_u64()?;
-        let sk = de.read()?;
-        if 1 == is_hybridized {
-            let dk = de.read()?;
-            Ok(Self::Hybridized { sk, dk })
-        } else if 0 == is_hybridized {
-            Ok(Self::Classic { sk })
-        } else {
-            Err(Error::ConversionFailed(format!(
-                "invalid hybridization flag {is_hybridized}"
-            )))
+        let mode = de.read_leb128_u64()?;
+        match mode {
+            0 => Ok(Self::Classic { sk: de.read()? }),
+            1 => Ok(Self::Hybridized {
+                sk: de.read()?,
+                dk: de.read()?,
+            }),
+            2 => Ok(Self::PostQuantum { dk: de.read()? }),
+            _ => Err(Error::ConversionFailed(format!(
+                "invalid hybridization flag {mode}"
+            ))),
         }
     }
 }
@@ -271,7 +269,7 @@ mod tests {
     };
 
     use crate::{
-        abe_policy::{AttributeStatus, EncryptionHint, Right},
+        abe_policy::{EncryptionStatus, Right},
         api::Covercrypt,
         core::{
             primitives::{encaps, rekey, setup, update_msk, usk_keygen},
@@ -279,7 +277,7 @@ mod tests {
         },
         test_utils::cc_keygen,
         traits::KemAc,
-        AccessPolicy,
+        AccessPolicy, SecurityMode,
     };
 
     #[test]
@@ -293,15 +291,15 @@ mod tests {
             let universe = HashMap::from([
                 (
                     coordinate_1.clone(),
-                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_2.clone(),
-                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_3.clone(),
-                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
             ]);
 
