@@ -13,16 +13,16 @@ type Name = String;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Attribute {
     pub(crate) id: usize,
-    pub(crate) mode: SecurityMode,
-    pub(crate) status: EncryptionStatus,
+    pub(crate) security_mode: SecurityMode,
+    pub(crate) encryption_status: EncryptionStatus,
 }
 
 impl Attribute {
     pub fn new(encryption_hint: SecurityMode, id: usize) -> Self {
         Self {
             id,
-            mode: encryption_hint,
-            status: EncryptionStatus::EncryptDecrypt,
+            security_mode: encryption_hint,
+            encryption_status: EncryptionStatus::EncryptDecrypt,
         }
     }
 
@@ -31,11 +31,11 @@ impl Attribute {
     }
 
     pub fn get_security_mode(&self) -> SecurityMode {
-        self.mode
+        self.security_mode
     }
 
-    pub fn get_status(&self) -> EncryptionStatus {
-        self.status
+    pub fn get_encryption_status(&self) -> EncryptionStatus {
+        self.encryption_status
     }
 }
 
@@ -185,11 +185,11 @@ impl Dimension {
         match self {
             Self::Anarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.status = EncryptionStatus::DecryptOnly)
+                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.status = EncryptionStatus::DecryptOnly)
+                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(name.to_string())),
         }
     }
@@ -240,14 +240,16 @@ mod serialization {
         type Error = Error;
 
         fn length(&self) -> usize {
-            self.id.length() + self.mode.length() + self.status.length()
+            self.id.length() + self.security_mode.length() + self.encryption_status.length()
         }
 
         fn write(
             &self,
             ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
         ) -> Result<usize, Self::Error> {
-            Ok(self.id.write(ser)? + self.mode.write(ser)? + self.status.write(ser)?)
+            Ok(self.id.write(ser)?
+                + self.security_mode.write(ser)?
+                + self.encryption_status.write(ser)?)
         }
 
         fn read(
@@ -255,8 +257,8 @@ mod serialization {
         ) -> Result<Self, Self::Error> {
             Ok(Self {
                 id: de.read()?,
-                mode: de.read()?,
-                status: de.read()?,
+                security_mode: de.read()?,
+                encryption_status: de.read()?,
             })
         }
     }

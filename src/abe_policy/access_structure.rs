@@ -336,7 +336,7 @@ fn combine(
                 res.push((
                     [vec![component.get_id()], ids.clone()].concat(),
                     security_mode.max(component.get_security_mode()),
-                    is_activated | component.get_status(),
+                    is_activated | component.get_encryption_status(),
                 ));
             }
         }
