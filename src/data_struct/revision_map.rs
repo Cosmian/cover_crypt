@@ -26,7 +26,7 @@ use crate::Error;
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RevisionMap<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,

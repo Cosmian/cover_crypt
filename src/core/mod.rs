@@ -225,10 +225,6 @@ impl TracingSecretKey {
         self.tracers.len() - 1
     }
 
-    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
-        self.tracers.iter().map(|(_, Pi)| Pi * r).collect()
-    }
-
     /// Generates a new tracer. Returns the associated trap.
     fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
         self.tracers.push_back(ElGamal::keygen(rng)?);
@@ -407,6 +403,10 @@ impl MasterSecretKey {
         })
     }
 
+    fn tracing_points(&self) -> impl IntoIterator<Item = &<ElGamal as Nike>::PublicKey> {
+        self.tsk.tracers.iter().map(|(_, P)| P)
+    }
+
     /// Generates a new MPK holding the latest public information of each right in Omega.
     pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
         let h = self.tsk.binding_point();
@@ -524,16 +524,9 @@ impl UserSecretKey {
         self.secrets.len()
     }
 
-    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
-        self.ps.iter().map(|Pi| Pi * r).collect()
+    fn tracing_points(&self) -> &[<ElGamal as Nike>::PublicKey] {
+        &self.ps
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Encapsulations {
-    Hybridized(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
-    Quantum(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
-    Classic(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
 /// Covercrypt encapsulation.
@@ -545,31 +538,46 @@ enum Encapsulations {
 /// - the traps used to select users that can open this encapsulation;
 /// - the right encapsulations.
 #[derive(Debug, Clone, PartialEq)]
-pub struct XEnc {
-    tag: Tag,
-    c: Vec<<ElGamal as Nike>::PublicKey>,
-    encapsulations: Encapsulations,
+pub enum XEnc {
+    Classic {
+        tag: Tag,
+        c: Vec<<ElGamal as Nike>::PublicKey>,
+        encapsulations: Vec<[u8; SHARED_SECRET_LENGTH]>,
+    },
+    Quantum {
+        tag: Tag,
+        encapsulations: Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>,
+    },
+    Hybridized {
+        tag: Tag,
+        c: Vec<<ElGamal as Nike>::PublicKey>,
+        encapsulations: Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>,
+    },
 }
 
 impl XEnc {
     /// Returns the tracing level of this encapsulation.
     pub fn tracing_level(&self) -> usize {
-        self.c.len() - 1
+        match self {
+            Self::Classic { c, .. } => c.len() - 1,
+            Self::Quantum { .. } => 0,
+            Self::Hybridized { c, .. } => c.len() - 1,
+        }
     }
 
     pub fn count(&self) -> usize {
-        match &self.encapsulations {
-            Encapsulations::Hybridized(vec) => vec.len(),
-            Encapsulations::Quantum(vec) => vec.len(),
-            Encapsulations::Classic(vec) => vec.len(),
+        match self {
+            Self::Hybridized { encapsulations, .. } => encapsulations.len(),
+            Self::Quantum { encapsulations, .. } => encapsulations.len(),
+            Self::Classic { encapsulations, .. } => encapsulations.len(),
         }
     }
 
     pub fn security_mode(&self) -> SecurityMode {
-        match self.encapsulations {
-            Encapsulations::Hybridized(_) => SecurityMode::Hybridized,
-            Encapsulations::Quantum(_) => SecurityMode::Quantum,
-            Encapsulations::Classic(_) => SecurityMode::Classic,
+        match self {
+            Self::Hybridized { .. } => SecurityMode::Hybridized,
+            Self::Quantum { .. } => SecurityMode::Quantum,
+            Self::Classic { .. } => SecurityMode::Classic,
         }
     }
 }

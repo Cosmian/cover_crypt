@@ -4,8 +4,8 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
 use crate::{
     core::{
-        Encapsulations, MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
-        TracingPublicKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
+        MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey, TracingPublicKey,
+        TracingSecretKey, UserId, UserSecretKey, XEnc,
     },
     Error,
 };
@@ -211,55 +211,74 @@ impl Serializable for UserSecretKey {
     }
 }
 
-impl Serializable for Encapsulations {
+impl Serializable for XEnc {
     type Error = Error;
 
     fn length(&self) -> usize {
         1 + match self {
-            Encapsulations::Hybridized(vec) => vec.length(),
-            Encapsulations::Quantum(vec) => vec.length(),
-            Encapsulations::Classic(vec) => vec.length(),
+            Self::Classic {
+                tag,
+                c,
+                encapsulations,
+            } => tag.length() + c.length() + encapsulations.length(),
+            Self::Quantum {
+                tag,
+                encapsulations,
+            } => tag.length() + encapsulations.length(),
+            Self::Hybridized {
+                tag,
+                c,
+                encapsulations,
+            } => tag.length() + c.length() + encapsulations.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Encapsulations::Classic(vec) => Ok(0usize.write(ser)? + vec.write(ser)?),
-            Encapsulations::Quantum(vec) => Ok(2usize.write(ser)? + vec.write(ser)?),
-            Encapsulations::Hybridized(vec) => Ok(1usize.write(ser)? + vec.write(ser)?),
+            XEnc::Classic {
+                tag,
+                c,
+                encapsulations,
+            } => Ok(0usize.write(ser)?
+                + tag.write(ser)?
+                + c.write(ser)?
+                + encapsulations.write(ser)?),
+            XEnc::Quantum {
+                tag,
+                encapsulations,
+            } => Ok(1usize.write(ser)? + tag.write(ser)? + encapsulations.write(ser)?),
+            XEnc::Hybridized {
+                tag,
+                c,
+                encapsulations,
+            } => Ok(2usize.write(ser)?
+                + tag.write(ser)?
+                + c.write(ser)?
+                + encapsulations.write(ser)?),
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let is_hybridized = de.read_leb128_u64()?;
-        match is_hybridized {
-            0 => Ok(Self::Classic(de.read()?)),
-            1 => Ok(Self::Hybridized(de.read()?)),
-            2 => Ok(Self::Quantum(de.read()?)),
+        let mode = usize::read(de)?;
+        match mode {
+            0 => Ok(Self::Classic {
+                tag: de.read()?,
+                c: de.read()?,
+                encapsulations: de.read()?,
+            }),
+            1 => Ok(Self::Quantum {
+                tag: de.read()?,
+                encapsulations: de.read()?,
+            }),
+            2 => Ok(Self::Hybridized {
+                tag: de.read()?,
+                c: de.read()?,
+                encapsulations: de.read()?,
+            }),
             n => Err(Error::ConversionFailed(format!(
                 "invalid encapsulation type: {n}"
             ))),
         }
-    }
-}
-
-impl Serializable for XEnc {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        self.tag.length() + self.c.length() + self.encapsulations.length()
-    }
-
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(self.tag.write(ser)? + self.c.write(ser)? + self.encapsulations.write(ser)?)
-    }
-
-    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tag: de.read()?,
-            c: de.read()?,
-            encapsulations: de.read()?,
-        })
     }
 }
 
