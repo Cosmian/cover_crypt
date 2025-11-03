@@ -49,7 +49,8 @@ impl Serializable for SecurityMode {
 /// attribute.
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EncryptionStatus {
-    #[default] EncryptDecrypt,
+    #[default]
+    EncryptDecrypt,
     DecryptOnly,
 }
 
