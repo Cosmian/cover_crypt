@@ -334,7 +334,7 @@ fn combine(
         for component in current_dimension.attributes() {
             for (ids, security_mode, is_activated) in partial_combinations.clone() {
                 res.push((
-                    [vec![component.get_id()], ids.clone()].concat(),
+                    [vec![component.get_id()], ids].concat(),
                     security_mode.max(component.get_security_mode()),
                     is_activated | component.get_encryption_status(),
                 ));

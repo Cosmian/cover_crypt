@@ -47,16 +47,10 @@ impl Serializable for SecurityMode {
 
 /// Whether to provide an encryption key in the master public key for this
 /// attribute.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EncryptionStatus {
-    EncryptDecrypt,
+    #[default] EncryptDecrypt,
     DecryptOnly,
-}
-
-impl Default for EncryptionStatus {
-    fn default() -> Self {
-        Self::EncryptDecrypt
-    }
 }
 
 impl BitOr for EncryptionStatus {
