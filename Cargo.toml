@@ -51,14 +51,14 @@ cosmian_crypto_core = { version = "10.3", default-features = false, features = [
   "ser",
   "sha3"
 ] }
-elliptic-curve = { version = "0.13.8", optional = true }
-ml-kem = { version = "0.2.1", features = ["zeroize"] }
-p256 = { version = "0.13.2", optional = true }
+elliptic-curve = { version = "0.13", optional = true }
+ml-kem = { version = "0.2", features = ["zeroize"] }
+p256 = { version = "0.13", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-subtle = { version = "2.6.1", optional = true }
+subtle = { version = "2.6", optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = [
+criterion = { version = "0.7", features = [
   "html_reports",
 ], default-features = false }
