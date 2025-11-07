@@ -257,7 +257,7 @@ fn h_encaps<'a>(
 }
 
 /// Generates post-quantum encapsulation of the given secret S with the given
-/// marker c and subkeys.
+/// subkeys.
 fn post_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
     subkeys: impl IntoIterator<Item = &'a <MlKem as Kem>::EncapsulationKey>,
