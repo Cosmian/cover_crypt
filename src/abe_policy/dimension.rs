@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{attribute::EncryptionHint, AttributeStatus};
+use super::{EncryptionStatus, SecurityMode};
 use crate::{data_struct::Dict, Error};
 
 type Name = String;
@@ -13,16 +13,16 @@ type Name = String;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Attribute {
     pub(crate) id: usize,
-    pub(crate) encryption_hint: EncryptionHint,
-    pub(crate) write_status: AttributeStatus,
+    pub(crate) security_mode: SecurityMode,
+    pub(crate) encryption_status: EncryptionStatus,
 }
 
 impl Attribute {
-    pub fn new(encryption_hint: EncryptionHint, id: usize) -> Self {
+    pub fn new(security_mode: SecurityMode, id: usize) -> Self {
         Self {
             id,
-            encryption_hint,
-            write_status: AttributeStatus::EncryptDecrypt,
+            security_mode,
+            encryption_status: EncryptionStatus::EncryptDecrypt,
         }
     }
 
@@ -30,12 +30,12 @@ impl Attribute {
         self.id
     }
 
-    pub fn get_encryption_hint(&self) -> EncryptionHint {
-        self.encryption_hint
+    pub fn get_security_mode(&self) -> SecurityMode {
+        self.security_mode
     }
 
-    pub fn get_status(&self) -> AttributeStatus {
-        self.write_status
+    pub fn get_encryption_status(&self) -> EncryptionStatus {
+        self.encryption_status
     }
 }
 
@@ -106,14 +106,14 @@ impl Dimension {
     pub fn add_attribute(
         &mut self,
         attribute: Name,
-        hint: EncryptionHint,
+        security_mode: SecurityMode,
         after: Option<&str>,
         id: usize,
     ) -> Result<(), Error> {
         match self {
             Self::Anarchy(attributes) => {
                 if let Entry::Vacant(entry) = attributes.entry(attribute) {
-                    entry.insert(Attribute::new(hint, id));
+                    entry.insert(Attribute::new(security_mode, id));
                     Ok(())
                 } else {
                     Err(Error::OperationNotPermitted(
@@ -150,7 +150,7 @@ impl Dimension {
                     .take_while(|a| Some(a) != higher_attributes.last())
                     .collect::<Dict<_, _>>();
 
-                new_attributes.insert(attribute, Attribute::new(hint, id));
+                new_attributes.insert(attribute, Attribute::new(security_mode, id));
                 higher_attributes.into_iter().rev().for_each(|(name, dim)| {
                     new_attributes.insert(name, dim);
                 });
@@ -185,11 +185,11 @@ impl Dimension {
         match self {
             Self::Anarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(name.to_string())),
         }
     }
@@ -240,7 +240,7 @@ mod serialization {
         type Error = Error;
 
         fn length(&self) -> usize {
-            self.id.length() + self.encryption_hint.length() + self.write_status.length()
+            self.id.length() + self.security_mode.length() + self.encryption_status.length()
         }
 
         fn write(
@@ -248,8 +248,8 @@ mod serialization {
             ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
         ) -> Result<usize, Self::Error> {
             Ok(self.id.write(ser)?
-                + self.encryption_hint.write(ser)?
-                + self.write_status.write(ser)?)
+                + self.security_mode.write(ser)?
+                + self.encryption_status.write(ser)?)
         }
 
         fn read(
@@ -257,8 +257,8 @@ mod serialization {
         ) -> Result<Self, Self::Error> {
             Ok(Self {
                 id: de.read()?,
-                encryption_hint: de.read()?,
-                write_status: de.read()?,
+                security_mode: de.read()?,
+                encryption_status: de.read()?,
             })
         }
     }
@@ -267,10 +267,10 @@ mod serialization {
     fn test_attribute_serialization() {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
-        let attribute = Attribute::new(EncryptionHint::Classic, 13);
+        let attribute = Attribute::new(SecurityMode::PreQuantum, 13);
         test_serialization(&attribute).unwrap();
 
-        let attribute = Attribute::new(EncryptionHint::Hybridized, usize::MAX);
+        let attribute = Attribute::new(SecurityMode::Hybridized, usize::MAX);
         test_serialization(&attribute).unwrap();
     }
 
@@ -318,20 +318,20 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut d = Dimension::Hierarchy(Dict::new());
-        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
+        d.add_attribute("A".to_string(), SecurityMode::PreQuantum, None, 0)
             .unwrap();
-        d.add_attribute("B".to_string(), EncryptionHint::Hybridized, Some("A"), 1)
+        d.add_attribute("B".to_string(), SecurityMode::Hybridized, Some("A"), 1)
             .unwrap();
-        d.add_attribute("C".to_string(), EncryptionHint::Hybridized, Some("B"), 2)
+        d.add_attribute("C".to_string(), SecurityMode::Hybridized, Some("B"), 2)
             .unwrap();
         test_serialization(&d).unwrap();
 
         let mut d = Dimension::Anarchy(HashMap::new());
-        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
+        d.add_attribute("A".to_string(), SecurityMode::PreQuantum, None, 0)
             .unwrap();
-        d.add_attribute("B".to_string(), EncryptionHint::Hybridized, None, 1)
+        d.add_attribute("B".to_string(), SecurityMode::Hybridized, None, 1)
             .unwrap();
-        d.add_attribute("C".to_string(), EncryptionHint::Hybridized, None, 2)
+        d.add_attribute("C".to_string(), SecurityMode::Hybridized, None, 2)
             .unwrap();
         test_serialization(&d).unwrap();
     }

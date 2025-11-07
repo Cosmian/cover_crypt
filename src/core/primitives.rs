@@ -14,11 +14,11 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    abe_policy::{AccessStructure, AttributeStatus, EncryptionHint, Right},
+    abe_policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
     core::{
-        kem::MlKem, nike::ElGamal, Encapsulations, KmacSignature, MasterPublicKey, MasterSecretKey,
-        RightPublicKey, RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
-        MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+        kem::MlKem, nike::ElGamal, KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey,
+        RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
+        SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
     },
     data_struct::{RevisionMap, RevisionVec},
     traits::{Kem, Nike, Sampling},
@@ -57,27 +57,12 @@ fn sign(
     keys: &RevisionVec<Right, RightSecretKey>,
 ) -> Result<Option<KmacSignature>, Error> {
     if let Some(kmac_key) = &msk.signing_key {
-        let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
-        for marker in id.iter() {
-            kmac.update(&marker.serialize()?)
-        }
         // Subkeys ordering needs to be deterministic to allow deterministic
         // signatures. This explains why a hash-map is not used in USK.
-        for (coordinate, keys) in keys.iter() {
-            kmac.update(coordinate);
-            for subkey in keys.iter() {
-                match subkey {
-                    RightSecretKey::Hybridized { sk: s_i, dk: dk_i } => {
-                        kmac.update(&s_i.serialize()?);
-                        kmac.update(&dk_i.serialize()?);
-                    }
-                    RightSecretKey::Classic { sk: s_i } => {
-                        kmac.update(&s_i.serialize()?);
-                    }
-                }
-            }
-        }
         let mut res = [0; SIGNATURE_LENGTH];
+        let mut kmac = Kmac::v256(&**kmac_key, b"USK signature");
+        kmac.update(&id.serialize()?);
+        kmac.update(&keys.serialize()?);
         kmac.finalize(&mut res);
         Ok(Some(res))
     } else {
@@ -102,14 +87,21 @@ fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as Nike>::Secr
 }
 
 fn H_hash(
-    K1: &<ElGamal as Nike>::PublicKey,
+    K1: Option<&<ElGamal as Nike>::PublicKey>,
     K2: Option<&Secret<SHARED_SECRET_LENGTH>>,
     T: &Secret<SHARED_SECRET_LENGTH>,
 ) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
+    // Additional check to enforce the constraint on the SHARED_SECRET_LENGTH
+    // constant that is defined in another file.
+    //
+    // NOTE: it would be nice to perform this check at compile-time instead.
+    assert_eq!(SHARED_SECRET_LENGTH, 32);
+
     let mut hasher = Sha3::v256();
-    // SHARED_SECRET_LENGTH = 32 = 256 / 8
     let mut H = Secret::<SHARED_SECRET_LENGTH>::new();
-    hasher.update(&K1.serialize()?);
+    if let Some(K1) = K1 {
+        hasher.update(&K1.serialize()?);
+    }
     if let Some(K2) = K2 {
         hasher.update(&**K2);
     }
@@ -133,6 +125,40 @@ fn J_hash(
     tag.copy_from_slice(&bytes[..TAG_LENGTH]);
     seed.copy_from_slice(&bytes[TAG_LENGTH..]);
     (tag, seed)
+}
+
+fn generate_T<'a>(
+    c: Option<&[<ElGamal as Nike>::PublicKey]>,
+    encapsulations: Option<impl IntoIterator<Item = &'a <MlKem as Kem>::Encapsulation>>,
+) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
+    let mut hasher = Sha3::v256();
+    let mut T = Secret::new();
+    if let Some(c) = c {
+        c.iter().try_for_each(|ck| {
+            hasher.update(&ck.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+    }
+    if let Some(encapsulations) = encapsulations {
+        encapsulations.into_iter().try_for_each(|E| {
+            hasher.update(&E.serialize()?);
+            Ok::<_, Error>(())
+        })?;
+    }
+    hasher.finalize(&mut *T);
+    Ok(T)
+}
+
+fn generate_U<'a>(
+    T: &Secret<SHARED_SECRET_LENGTH>,
+    encapsulations: impl IntoIterator<Item = &'a [u8; 32]>,
+) -> Secret<SHARED_SECRET_LENGTH> {
+    let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
+    let mut hasher = Sha3::v256();
+    hasher.update(&**T);
+    encapsulations.into_iter().for_each(|F| hasher.update(F));
+    hasher.finalize(&mut *U);
+    U
 }
 
 /// Generates new MSK with the given tracing level.
@@ -184,122 +210,116 @@ pub fn usk_keygen(
 
 /// Generates a hybridized encapsulation of the given secret S with the given
 /// marker c, ElGamal random r and subkeys.
-fn h_encaps(
+fn h_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
     c: Vec<<ElGamal as Nike>::PublicKey>,
     r: <ElGamal as Nike>::SecretKey,
-    subkeys: &[&RightPublicKey],
+    subkeys: impl IntoIterator<
+        Item = (
+            &'a <ElGamal as Nike>::PublicKey,
+            &'a <MlKem as Kem>::EncapsulationKey,
+        ),
+    >,
     rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let encs = subkeys
-        .iter()
-        .map(|subkey| match subkey {
-            RightPublicKey::Hybridized { H, ek } => {
-                let K1 = ElGamal::session_key(&r, H)?;
-                let (K2, E) = MlKem::enc(ek, rng)?;
-                Ok((K1, K2, E))
-            }
-            RightPublicKey::Classic { .. } => {
-                Err(Error::Kem("all subkeys should be hybridized".to_string()))
-            }
+        .into_iter()
+        .map(|(H, ek)| {
+            let K1 = ElGamal::session_key(&r, H)?;
+            let (K2, E) = MlKem::enc(ek, rng)?;
+            Ok((K1, K2, E))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    let T = {
-        let mut hasher = Sha3::v256();
-        let mut T = Secret::new();
-        c.iter().try_for_each(|ck| {
-            hasher.update(&ck.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-        encs.iter().try_for_each(|(_, _, E)| {
-            hasher.update(&E.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-        hasher.finalize(&mut *T);
-        T
-    };
+    let T = generate_T(Some(&c), Some(encs.iter().map(|(_, _, E)| E)))?;
 
-    let encs = encs
+    let encapsulations = encs
         .into_iter()
         .map(|(mut K1, K2, E)| -> Result<_, _> {
-            let F = xor_2(&S, &*H_hash(&K1, Some(&K2), &T)?);
+            let F = xor_2(&S, &*H_hash(Some(&K1), Some(&K2), &T)?);
             K1.zeroize();
             Ok((E, F))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    let U = {
-        let mut U = Secret::new();
-        let mut hasher = Sha3::v256();
-        hasher.update(&*T);
-        encs.iter().for_each(|(_, F)| hasher.update(F));
-        hasher.finalize(&mut *U);
-        U
-    };
+    let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
 
     let (tag, ss) = J_hash(&S, &U);
 
     Ok((
         ss,
-        XEnc {
+        XEnc::Hybridized {
             tag,
             c,
-            encapsulations: Encapsulations::HEncs(encs),
+            encapsulations,
         },
     ))
 }
 
-/// Generates a classic encapsulation of the given secret S with the given
-/// marker c, ElGamal random r and subkeys.
-fn c_encaps(
+/// Generates post-quantum encapsulation of the given secret S with the given
+/// subkeys.
+fn post_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
-    c: Vec<<ElGamal as Nike>::PublicKey>,
-    r: <ElGamal as Nike>::SecretKey,
-    subkeys: Vec<&RightPublicKey>,
+    subkeys: impl IntoIterator<Item = &'a <MlKem as Kem>::EncapsulationKey>,
+    rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
-    // In classic mode, T is only updated with c.
-    let T = {
-        let mut hasher = Sha3::v256();
-        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().try_for_each(|ck| {
-            hasher.update(&ck.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-        hasher.finalize(&mut *T);
-        T
-    };
-
     let encs = subkeys
         .into_iter()
-        .map(|subkey| -> Result<_, _> {
-            let H = match subkey {
-                RightPublicKey::Hybridized { H, .. } => H,
-                RightPublicKey::Classic { H } => H,
-            };
-            let K1 = ElGamal::session_key(&r, H)?;
-            let F = xor_2(&S, &*H_hash(&K1, None, &T)?);
-            Ok(F)
+        .map(|ek| MlKem::enc(ek, rng))
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let T = generate_T(None, Some(encs.iter().map(|(_, E)| E)))?;
+
+    let encapsulations = encs
+        .into_iter()
+        .map(|(K2, E)| -> Result<_, _> {
+            let F = xor_2(&S, &*H_hash(None, Some(&K2), &T)?);
+            Ok((E, F))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    let U = {
-        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
-        let mut hasher = Sha3::v256();
-        hasher.update(&*T);
-        encs.iter().for_each(|F| hasher.update(F));
-        hasher.finalize(&mut *U);
-        U
-    };
+    let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
 
     let (tag, ss) = J_hash(&S, &U);
 
     Ok((
         ss,
-        XEnc {
+        XEnc::PostQuantum {
+            tag,
+            encapsulations,
+        },
+    ))
+}
+
+/// Generates a pre-quantum encapsulation of the given secret S with the given
+/// marker c, ElGamal random r and subkeys.
+fn pre_quantum_encaps<'a>(
+    S: Secret<SHARED_SECRET_LENGTH>,
+    c: Vec<<ElGamal as Nike>::PublicKey>,
+    r: <ElGamal as Nike>::SecretKey,
+    subkeys: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
+    let T = generate_T(Some(&c), None::<Vec<_>>)?;
+
+    let encapsulations = subkeys
+        .into_iter()
+        .map(|H| -> Result<_, _> {
+            let K1 = ElGamal::session_key(&r, H)?;
+            let F = xor_2(&S, &*H_hash(Some(&K1), None, &T)?);
+            Ok(F)
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let U = generate_U(&T, &encapsulations);
+
+    let (tag, ss) = J_hash(&S, &U);
+
+    Ok((
+        ss,
+        XEnc::PreQuantum {
             tag,
             c,
-            encapsulations: Encapsulations::CEncs(encs),
+            encapsulations,
         },
     ))
 }
@@ -317,154 +337,136 @@ pub fn encaps(
     mpk: &MasterPublicKey,
     encryption_set: &HashSet<Right>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
+    // A typed key container would avoid the need for casting in the match arms
+    // but would also involve additional overhead.
     let (is_hybridized, mut coordinate_keys) = mpk.select_subkeys(encryption_set)?;
 
-    // Shuffling must be performed *before* generating the encapsulations since
-    // rights are hashed in-order. If shuffling is performed after generating
-    // the encapsulations, there would be no way to know in which order to
-    // perform hashing upon decapsulation.
+    // Shuffling must be performed *before* generating the final encapsulations
+    // in order to have a deterministic digest.
     shuffle(&mut coordinate_keys, rng);
 
     let S = Secret::random(rng);
-    let r = G_hash(&S)?;
-    let c = mpk.set_traps(&r);
 
-    if is_hybridized {
-        h_encaps(S, c, r, &coordinate_keys, rng)
-    } else {
-        c_encaps(S, c, r, coordinate_keys)
+    match is_hybridized {
+        SecurityMode::PreQuantum => {
+            let r = G_hash(&S)?;
+            let c = mpk.set_traps(&r);
+
+            let subkeys = coordinate_keys.into_iter().map(|subkey| {
+                if let RightPublicKey::PreQuantum { H } = subkey {
+                    H
+                } else {
+                    panic!("select_subkeys already ensures homogeneity")
+                }
+            });
+            pre_quantum_encaps(S, c, r, subkeys)
+        }
+        SecurityMode::PostQuantum => {
+            let subkeys = coordinate_keys.into_iter().map(|subkey| {
+                if let RightPublicKey::PostQuantum { ek } = subkey {
+                    ek
+                } else {
+                    panic!("select_subkeys already ensures homogeneity")
+                }
+            });
+            post_quantum_encaps(S, subkeys, rng)
+        }
+        SecurityMode::Hybridized => {
+            let r = G_hash(&S)?;
+            let c = mpk.set_traps(&r);
+
+            let subkeys = coordinate_keys.into_iter().map(|subkey| {
+                if let RightPublicKey::Hybridized { H, ek } = subkey {
+                    (H, ek)
+                } else {
+                    panic!("select_subkeys already ensures homogeneity")
+                }
+            });
+            h_encaps(S, c, r, subkeys, rng)
+        }
     }
 }
 
-/// Attempts to open the given hybridized encapsulations with this user secret
-/// key.
-fn h_decaps(
-    rng: &mut impl CryptoRngCore,
-    usk: &UserSecretKey,
+#[allow(clippy::too_many_arguments)]
+fn attempt_pre_quantum_decaps<'a>(
+    secret: &RightSecretKey,
     A: &<ElGamal as Nike>::PublicKey,
+    U: &Secret<SHARED_SECRET_LENGTH>,
+    T: &Secret<SHARED_SECRET_LENGTH>,
+    F: &[u8; 32],
     c: &[<ElGamal as Nike>::PublicKey],
     tag: &[u8; TAG_LENGTH],
-    encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
-) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-    let T = {
-        let mut hasher = Sha3::v256();
-        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().try_for_each(|ck| {
-            hasher.update(&ck.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-        encs.iter().try_for_each(|(E, _)| {
-            hasher.update(&E.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-        hasher.finalize(&mut *T);
-        T
-    };
-
-    let U = {
-        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
-        let mut hasher = Sha3::v256();
-        hasher.update(&*T);
-        encs.iter().for_each(|(_, F)| hasher.update(F));
-        hasher.finalize(&mut *U);
-        U
-    };
-
-    // Shuffle encapsulation to counter timing attacks attempting to determine
-    // which right was used to open an encapsulation.
-    let mut encs = encs.iter().collect::<Vec<_>>();
-    shuffle(&mut encs, rng);
-
-    // Loop order matters: this ordering is faster.
-    for mut revision in usk.secrets.revisions() {
-        // Shuffle secrets to counter timing attacks attempting to determine
-        // whether successive encapsulations target the same user right.
-        shuffle(&mut revision, rng);
-        for (E, F) in &encs {
-            for (_, secret) in &revision {
-                if let RightSecretKey::Hybridized { sk, dk } = secret {
-                    let mut K1 = ElGamal::session_key(sk, A)?;
-                    let K2 = MlKem::dec(dk, E)?;
-                    let S_ij = xor_in_place(H_hash(&K1, Some(&K2), &T)?, F);
-                    let (tag_ij, ss) = J_hash(&S_ij, &U);
-                    if tag == &tag_ij {
-                        // Fujisaki-Okamoto
-                        let r = G_hash(&S_ij)?;
-                        let c_ij = usk.set_traps(&r);
-                        if c == c_ij {
-                            K1.zeroize();
-                            return Ok(Some(ss));
-                        }
-                    }
-                }
+    tracing_points: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
+) -> Result<Option<Secret<32>>, Error> {
+    if let RightSecretKey::PreQuantum { sk } = secret {
+        let mut K1 = ElGamal::session_key(sk, A)?;
+        let S = xor_in_place(H_hash(Some(&K1), None, T)?, F);
+        K1.zeroize();
+        let (tag_ij, ss) = J_hash(&S, U);
+        if tag == &tag_ij {
+            // Fujisaki-Okamoto
+            let r = G_hash(&S)?;
+            let c_ij = tracing_points
+                .into_iter()
+                .map(|P| P * &r)
+                .collect::<Vec<_>>();
+            if c == c_ij {
+                return Ok(Some(ss));
             }
         }
     }
-
     Ok(None)
 }
 
-/// Attempts to open the given classic encapsulations with this user secret key.
-fn c_decaps(
-    rng: &mut impl CryptoRngCore,
-    usk: &UserSecretKey,
+#[allow(clippy::too_many_arguments)]
+fn attempt_hybridized_decaps<'a>(
+    secret: &RightSecretKey,
     A: &<ElGamal as Nike>::PublicKey,
+    U: &Secret<SHARED_SECRET_LENGTH>,
+    T: &Secret<SHARED_SECRET_LENGTH>,
+    E: &<MlKem as Kem>::Encapsulation,
+    F: &[u8; 32],
     c: &[<ElGamal as Nike>::PublicKey],
     tag: &[u8; TAG_LENGTH],
-    encs: &Vec<[u8; SHARED_SECRET_LENGTH]>,
-) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-    let T = {
-        let mut hasher = Sha3::v256();
-        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        c.iter().try_for_each(|ck| {
-            hasher.update(&ck.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-        hasher.finalize(&mut *T);
-        T
-    };
-
-    let U = {
-        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
-        let mut hasher = Sha3::v256();
-        hasher.update(&*T);
-        encs.iter().for_each(|F| hasher.update(F));
-        hasher.finalize(&mut *U);
-        U
-    };
-
-    // Shuffle encapsulation to counter timing attacks attempting to determine
-    // which right was used to open an encapsulation.
-    let mut encs = encs.iter().collect::<Vec<_>>();
-    shuffle(&mut encs, rng);
-
-    // Loop order matters: this ordering is faster.
-    for mut revision in usk.secrets.revisions() {
-        // Shuffle secrets to counter timing attacks attempting to determine
-        // whether successive encapsulations target the same user right.
-        shuffle(&mut revision, rng);
-        for F in &encs {
-            for (_, secret) in &revision {
-                let sk = match secret {
-                    RightSecretKey::Hybridized { sk, .. } => sk,
-                    RightSecretKey::Classic { sk } => sk,
-                };
-                let mut K1 = ElGamal::session_key(sk, A)?;
-                let S = xor_in_place(H_hash(&K1, None, &T)?, F);
+    tracing_points: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
+) -> Result<Option<Secret<32>>, Error> {
+    if let RightSecretKey::Hybridized { sk, dk } = secret {
+        let mut K1 = ElGamal::session_key(sk, A)?;
+        let K2 = MlKem::dec(dk, E)?;
+        let S_ij = xor_in_place(H_hash(Some(&K1), Some(&K2), T)?, F);
+        let (tag_ij, ss) = J_hash(&S_ij, U);
+        if tag == &tag_ij {
+            // Fujisaki-Okamoto
+            let r = G_hash(&S_ij)?;
+            let c_ij = tracing_points
+                .into_iter()
+                .map(|P| P * &r)
+                .collect::<Vec<_>>();
+            if c == c_ij {
                 K1.zeroize();
-                let (tag_ij, ss) = J_hash(&S, &U);
-                if tag == &tag_ij {
-                    // Fujisaki-Okamoto
-                    let r = G_hash(&S)?;
-                    let c_ij = usk.set_traps(&r);
-                    if c == c_ij {
-                        return Ok(Some(ss));
-                    }
-                }
+                return Ok(Some(ss));
             }
         }
     }
+    Ok(None)
+}
 
+fn attempt_post_quantum_decaps(
+    secret: &RightSecretKey,
+    U: &Secret<SHARED_SECRET_LENGTH>,
+    T: &Secret<SHARED_SECRET_LENGTH>,
+    E: &<MlKem as Kem>::Encapsulation,
+    F: &[u8; 32],
+    tag: &[u8; TAG_LENGTH],
+) -> Result<Option<Secret<32>>, Error> {
+    if let RightSecretKey::PostQuantum { dk } = secret {
+        let K2 = MlKem::dec(dk, E)?;
+        let S_ij = xor_in_place(H_hash(None, Some(&K2), T)?, F);
+        let (tag_ij, ss) = J_hash(&S_ij, U);
+        if tag == &tag_ij {
+            return Ok(Some(ss));
+        }
+    }
     Ok(None)
 }
 
@@ -475,21 +477,148 @@ pub fn decaps(
     usk: &UserSecretKey,
     encapsulation: &XEnc,
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-    // A = ⊙ _i (α_i. c_i)
-    let A = usk
-        .id
-        .iter()
-        .zip(encapsulation.c.iter())
-        .map(|(marker, trap)| trap * marker)
-        .sum();
+    fn generate_tracing_closure(
+        usk: &UserSecretKey,
+        c: &[<ElGamal as Nike>::PublicKey],
+    ) -> <ElGamal as Nike>::PublicKey {
+        usk.id
+            .iter()
+            .zip(c.iter())
+            .map(|(marker, trap)| trap * marker)
+            .sum::<<ElGamal as Nike>::PublicKey>()
+    }
 
-    match &encapsulation.encapsulations {
-        Encapsulations::HEncs(encs) => {
-            h_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
+    fn partial_post_quantum_decaps(
+        rng: &mut impl CryptoRngCore,
+        usk: &UserSecretKey,
+        tag: &[u8; TAG_LENGTH],
+        encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+    ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
+        let T = generate_T(None, Some(encs.iter().map(|(E, _)| E)))?;
+        let U = generate_U(&T, encs.iter().map(|(_, F)| F));
+
+        // Shuffle encapsulation to counter timing attacks attempting to determine
+        // which right was used to open an encapsulation.
+        let mut encs = encs.iter().collect::<Vec<_>>();
+        shuffle(&mut encs, rng);
+
+        // Loop order matters: this ordering is faster.
+        for mut revision in usk.secrets.revisions() {
+            // Shuffle secrets to counter timing attacks attempting to determine
+            // whether successive encapsulations target the same user right.
+            shuffle(&mut revision, rng);
+            for (E, F) in &encs {
+                for (_, secret) in &revision {
+                    if let Some(ss) = attempt_post_quantum_decaps(secret, &U, &T, E, F, tag)? {
+                        return Ok(Some(ss));
+                    }
+                }
+            }
         }
-        Encapsulations::CEncs(encs) => {
-            c_decaps(rng, usk, &A, &encapsulation.c, &encapsulation.tag, encs)
+
+        Ok(None)
+    }
+
+    fn partial_hybridized_decaps(
+        rng: &mut impl CryptoRngCore,
+        usk: &UserSecretKey,
+        c: &[<ElGamal as Nike>::PublicKey],
+        tag: &[u8; TAG_LENGTH],
+        encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+    ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
+        let A = generate_tracing_closure(usk, c);
+        let T = generate_T(Some(c), Some(encs.iter().map(|(E, _)| E)))?;
+        let U = generate_U(&T, encs.iter().map(|(_, F)| F));
+
+        // Shuffle encapsulation to counter timing attacks attempting to determine
+        // which right was used to open an encapsulation.
+        let mut encs = encs.iter().collect::<Vec<_>>();
+        shuffle(&mut encs, rng);
+
+        // Loop order matters: this ordering is faster.
+        for mut revision in usk.secrets.revisions() {
+            // Shuffle secrets to counter timing attacks attempting to determine
+            // whether successive encapsulations target the same user right.
+            shuffle(&mut revision, rng);
+            for (E, F) in &encs {
+                for (_, secret) in &revision {
+                    if let Some(ss) = attempt_hybridized_decaps(
+                        secret,
+                        &A,
+                        &U,
+                        &T,
+                        E,
+                        F,
+                        c,
+                        tag,
+                        usk.tracing_points(),
+                    )? {
+                        return Ok(Some(ss));
+                    }
+                }
+            }
         }
+
+        Ok(None)
+    }
+
+    fn partial_pre_quantum_decaps(
+        rng: &mut impl CryptoRngCore,
+        usk: &UserSecretKey,
+        c: &[<ElGamal as Nike>::PublicKey],
+        tag: &[u8; TAG_LENGTH],
+        encs: &Vec<[u8; SHARED_SECRET_LENGTH]>,
+    ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
+        let A = generate_tracing_closure(usk, c);
+        let T = generate_T(Some(c), None::<Vec<_>>)?;
+        let U = generate_U(&T, encs);
+
+        // Shuffle encapsulations to counter timing attacks attempting to determine
+        // which right was used to open an encapsulation.
+        let mut encs = encs.iter().collect::<Vec<_>>();
+        shuffle(&mut encs, rng);
+
+        // Loop order matters: this ordering is faster.
+        for mut revision in usk.secrets.revisions() {
+            // Shuffle secrets to counter timing attacks attempting to determine
+            // whether successive encapsulations target the same user right.
+            shuffle(&mut revision, rng);
+            for F in &encs {
+                for (_, secret) in &revision {
+                    if let Some(ss) = attempt_pre_quantum_decaps(
+                        secret,
+                        &A,
+                        &U,
+                        &T,
+                        F,
+                        c,
+                        tag,
+                        usk.tracing_points(),
+                    )? {
+                        return Ok(Some(ss));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    match encapsulation {
+        XEnc::Hybridized {
+            tag,
+            c,
+            encapsulations,
+        } => partial_hybridized_decaps(rng, usk, c, tag, encapsulations),
+        XEnc::PostQuantum {
+            tag,
+            encapsulations,
+        } => partial_post_quantum_decaps(rng, usk, tag, encapsulations),
+        XEnc::PreQuantum {
+            tag,
+            c,
+            encapsulations,
+        } => partial_pre_quantum_decaps(rng, usk, c, tag, encapsulations),
     }
 }
 
@@ -499,9 +628,29 @@ pub fn full_decaps(
     msk: &MasterSecretKey,
     encapsulation: &XEnc,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
-    let A = {
-        let c_0 = encapsulation
-            .c
+    /// Opens the given encapsulation with the provided secrets. Returns both
+    /// the encapsulated secret and the right associated to the first secret
+    /// allowing opening this encapsulation, or returns an error if no secret
+    /// allow opening this encapsulation.
+    fn open(
+        secrets: &RevisionMap<Right, (EncryptionStatus, RightSecretKey)>,
+        attempt_opening: impl Fn(&RightSecretKey) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error>,
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Right), Error> {
+        for (right, secret_set) in secrets.iter() {
+            for (_, secret) in secret_set {
+                if let Some(ss) = attempt_opening(secret)? {
+                    return Ok::<_, Error>((ss, right.clone()));
+                }
+            }
+        }
+        Err(Error::Kem("could not open the encapsulation".to_string()))
+    }
+
+    fn generate_tracing_closure(
+        msk: &MasterSecretKey,
+        c: &[<ElGamal as Nike>::PublicKey],
+    ) -> Result<<ElGamal as Nike>::PublicKey, Error> {
+        let c_0 = c
             .first()
             .ok_or_else(|| Error::Kem("invalid encapsulation: C is empty".to_string()))?;
         let t_0 = msk
@@ -511,96 +660,146 @@ pub fn full_decaps(
             .map(|(si, _)| si)
             .ok_or_else(|| Error::KeyError("MSK has no tracer".to_string()))?;
 
-        c_0 * &(&msk.tsk.s / t_0)?
-    };
-
-    let T = {
-        let mut hasher = Sha3::v256();
-        let mut T = Secret::<SHARED_SECRET_LENGTH>::new();
-        encapsulation.c.iter().try_for_each(|ck| {
-            hasher.update(&ck.serialize()?);
-            Ok::<_, Error>(())
-        })?;
-
-        if let Encapsulations::HEncs(encs) = &encapsulation.encapsulations {
-            encs.iter().try_for_each(|(E, _)| {
-                hasher.update(&E.serialize()?);
-                Ok::<_, Error>(())
-            })?;
-        }
-        hasher.finalize(&mut *T);
-        T
-    };
-
-    let U = {
-        let mut U = Secret::<SHARED_SECRET_LENGTH>::new();
-        let mut hasher = Sha3::v256();
-        hasher.update(&*T);
-        match &encapsulation.encapsulations {
-            Encapsulations::HEncs(encs) => encs.iter().for_each(|(_, F)| hasher.update(F)),
-            Encapsulations::CEncs(encs) => encs.iter().for_each(|F| hasher.update(F)),
-        }
-        hasher.finalize(&mut *U);
-        U
-    };
-
-    let mut enc_ss = None;
-    let mut rights = HashSet::with_capacity(encapsulation.count());
-    let mut try_decaps = |right: &Right,
-                          K1: &mut <ElGamal as Nike>::PublicKey,
-                          K2: Option<Secret<SHARED_SECRET_LENGTH>>,
-                          F| {
-        let S_ij = xor_in_place(H_hash(K1, K2.as_ref(), &T)?, F);
-        let (tag_ij, ss) = J_hash(&S_ij, &U);
-        if encapsulation.tag == tag_ij {
-            // Fujisaki-Okamoto
-            let r = G_hash(&S_ij)?;
-            let c_ij = msk.tsk.set_traps(&r);
-            if encapsulation.c == c_ij {
-                K1.zeroize();
-                enc_ss = Some(ss);
-                rights.insert(right.clone());
-            }
-        }
-        Ok::<_, Error>(())
-    };
-
-    match &encapsulation.encapsulations {
-        Encapsulations::HEncs(encs) => {
-            for (E, F) in encs {
-                for (right, secret_set) in msk.secrets.iter() {
-                    for (is_activated, secret) in secret_set {
-                        if *is_activated {
-                            if let RightSecretKey::Hybridized { sk, dk } = secret {
-                                let mut K1 = ElGamal::session_key(sk, &A)?;
-                                let K2 = MlKem::dec(dk, E)?;
-                                try_decaps(right, &mut K1, Some(K2), F)?;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Encapsulations::CEncs(encs) => {
-            for F in encs {
-                for (right, secret_set) in msk.secrets.iter() {
-                    for (is_activated, secret) in secret_set {
-                        if *is_activated {
-                            let sk = match secret {
-                                RightSecretKey::Hybridized { sk, .. } => sk,
-                                RightSecretKey::Classic { sk } => sk,
-                            };
-                            let mut K1 = ElGamal::session_key(sk, &A)?;
-                            try_decaps(right, &mut K1, None, F)?;
-                        }
-                    }
-                }
-            }
-        }
+        Ok(c_0 * &(&msk.tsk.s / t_0)?)
     }
-    enc_ss
-        .map(|ss| (ss, rights))
-        .ok_or_else(|| Error::Kem("could not open the encapsulation".to_string()))
+
+    fn full_pre_quantum_decapsulation(
+        msk: &MasterSecretKey,
+        tag: &[u8; TAG_LENGTH],
+        c: &[<ElGamal as Nike>::PublicKey],
+        encapsulations: &[[u8; 32]],
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+        let A = generate_tracing_closure(msk, c)?;
+        let T = generate_T(Some(c), None::<Vec<_>>)?;
+        let U = generate_U(&T, encapsulations);
+
+        // Attempts opening the encapsulation F with this right secret key.
+        let attempt_opening = |F, secret: &RightSecretKey| {
+            attempt_pre_quantum_decaps(secret, &A, &U, &T, F, c, tag, msk.tracing_points())
+        };
+
+        let mut enc_ss = None;
+        let mut rights = HashSet::with_capacity(encapsulations.len());
+        let mut secrets = msk.secrets.clone();
+
+        for F in encapsulations {
+            let (ss, right) = open(&secrets, |secret| attempt_opening(F, secret))?;
+            if let Some(enc_ss) = &enc_ss {
+                if &ss != enc_ss {
+                    return Err(Error::Kem(
+                        "malformed encapsulation: different encapsulated secrets found".to_string(),
+                    ));
+                }
+            }
+            // Removes this right since well-formed encapsulations use rights
+            // only once. This should allow a ~2x speed-up.
+            secrets.remove(&right);
+            enc_ss = Some(ss);
+            rights.insert(right);
+        }
+
+        enc_ss
+            .map(|ss| (ss, rights))
+            // An empty encapsulation should be the only way to raise this error
+            // since the function `open` either errors upon failure to open.
+            .ok_or_else(|| Error::Kem("empty encapsulation".to_string()))
+    }
+
+    fn full_post_quantum_decapsulation(
+        msk: &MasterSecretKey,
+        tag: &[u8; TAG_LENGTH],
+        encapsulations: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+        let T = generate_T(None, Some(encapsulations.iter().map(|(E, _)| E)))?;
+        let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
+
+        let attempt_opening =
+            |E, F, secret: &RightSecretKey| attempt_post_quantum_decaps(secret, &U, &T, E, F, tag);
+
+        let mut enc_ss = None;
+        let mut rights = HashSet::with_capacity(encapsulations.len());
+        let mut secrets = msk.secrets.clone();
+
+        for (E, F) in encapsulations {
+            let (ss, right) = open(&secrets, |secret| attempt_opening(E, F, secret))?;
+            if let Some(enc_ss) = &enc_ss {
+                if &ss != enc_ss {
+                    return Err(Error::Kem(
+                        "malformed encapsulation: different encapsulated secrets found".to_string(),
+                    ));
+                }
+            }
+            // Removes this right since well-formed encapsulations use rights
+            // only once. This should allow a ~2x speed-up.
+            secrets.remove(&right);
+            enc_ss = Some(ss);
+            rights.insert(right);
+        }
+
+        enc_ss
+            .map(|ss| (ss, rights))
+            // An empty encapsulation should be the only way to raise this error
+            // since the function `open` either errors upon failure to open.
+            .ok_or_else(|| Error::Kem("empty encapsulation".to_string()))
+    }
+
+    fn full_hybrid_decapsulation(
+        msk: &MasterSecretKey,
+        tag: &[u8; TAG_LENGTH],
+        c: &[<ElGamal as Nike>::PublicKey],
+        encapsulations: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+        let A = generate_tracing_closure(msk, c)?;
+        let T = generate_T(Some(c), Some(encapsulations.iter().map(|(E, _)| E)))?;
+        let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
+
+        let attempt_opening = |E, F, secret: &RightSecretKey| {
+            attempt_hybridized_decaps(secret, &A, &U, &T, E, F, c, tag, msk.tracing_points())
+        };
+
+        let mut enc_ss = None;
+        let mut rights = HashSet::with_capacity(encapsulations.len());
+        let mut secrets = msk.secrets.clone();
+
+        for (E, F) in encapsulations {
+            let (ss, right) = open(&secrets, |secret| attempt_opening(E, F, secret))?;
+            if let Some(enc_ss) = &enc_ss {
+                if &ss != enc_ss {
+                    return Err(Error::Kem(
+                        "malformed encapsulation: different encapsulated secrets found".to_string(),
+                    ));
+                }
+            }
+            // Removes this right since well-formed encapsulations use rights
+            // only once. This should allow a ~2x speed-up.
+            secrets.remove(&right);
+            enc_ss = Some(ss);
+            rights.insert(right);
+        }
+
+        enc_ss
+            .map(|ss| (ss, rights))
+            // An empty encapsulation should be the only way to raise this error
+            // since the function `open` either errors upon failure to open.
+            .ok_or_else(|| Error::Kem("empty encapsulation".to_string()))
+    }
+
+    match encapsulation {
+        XEnc::PreQuantum {
+            tag,
+            c,
+            encapsulations,
+        } => full_pre_quantum_decapsulation(msk, tag, c, encapsulations),
+        XEnc::PostQuantum {
+            tag,
+            encapsulations,
+        } => full_post_quantum_decapsulation(msk, tag, encapsulations),
+        XEnc::Hybridized {
+            tag,
+            c,
+            encapsulations,
+        } => full_hybrid_decapsulation(msk, tag, c, encapsulations),
+    }
 }
 
 /// Updates the MSK such that it has at least one secret per right given, and no
@@ -609,25 +808,28 @@ pub fn full_decaps(
 pub fn update_msk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: HashMap<Right, (EncryptionHint, AttributeStatus)>,
+    rights: HashMap<Right, (SecurityMode, EncryptionStatus)>,
 ) -> Result<(), Error> {
     let mut secrets = take(&mut msk.secrets);
     secrets.retain(|r| rights.contains_key(r));
 
-    for (r, (hint, status)) in rights {
-        if let Some((is_activated, coordinate_secret)) = secrets.get_latest_mut(&r) {
-            *is_activated = AttributeStatus::EncryptDecrypt == status;
-            if EncryptionHint::Classic == hint {
-                *coordinate_secret = coordinate_secret.drop_hybridization();
+    for (r, (mode, status)) in rights {
+        if let Some(revisions) = secrets.get_mut(&r) {
+            if let Some((_, secret)) = revisions.pop_front() {
+                revisions.push_front((status, secret.set_security_mode(mode, rng)?))
+            } else {
+                return Err(Error::OperationNotPermitted(
+                    "empty revision list is illegal".to_string(),
+                ));
             }
         } else {
-            if AttributeStatus::DecryptOnly == status {
+            if EncryptionStatus::DecryptOnly == status {
                 return Err(Error::OperationNotPermitted(
                     "cannot add decrypt only secret".to_string(),
                 ));
             }
-            let secret = RightSecretKey::random(rng, EncryptionHint::Hybridized == hint)?;
-            secrets.insert(r, (true, secret));
+            let secret = RightSecretKey::random(rng, mode)?;
+            secrets.insert(r, (status, secret));
         }
     }
     msk.secrets = secrets;
@@ -642,16 +844,21 @@ pub fn rekey(
 ) -> Result<(), Error> {
     for r in rights {
         if msk.secrets.contains_key(&r) {
-            let is_hybridized = msk
+            let security_mode = msk
                 .secrets
                 .get_latest(&r)
-                .map(|(_, k)| k.is_hybridized())
+                .map(|(_, k)| k.security_mode())
                 .ok_or_else(|| {
                     Error::OperationNotPermitted(format!("no current key for coordinate {r:#?}"))
                 })?;
 
-            msk.secrets
-                .insert(r, (true, RightSecretKey::random(rng, is_hybridized)?));
+            msk.secrets.insert(
+                r,
+                (
+                    EncryptionStatus::default(),
+                    RightSecretKey::random(rng, security_mode)?,
+                ),
+            );
         } else {
             return Err(Error::OperationNotPermitted(
                 "cannot re-key a right not belonging to the MSK".to_string(),

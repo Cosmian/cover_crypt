@@ -1,6 +1,4 @@
-use crate::{abe_policy::AccessStructure, Error};
-
-use super::EncryptionHint;
+use crate::{abe_policy::AccessStructure, Error, SecurityMode};
 
 pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(), Error> {
     policy.add_hierarchy("SEC".to_string())?;
@@ -10,34 +8,42 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "LOW".to_string(),
         },
-        EncryptionHint::Classic,
+        SecurityMode::PreQuantum,
         None,
+    )?;
+    policy.add_attribute(
+        crate::abe_policy::QualifiedAttribute {
+            dimension: "SEC".to_string(),
+            name: "MED".to_string(),
+        },
+        SecurityMode::PostQuantum,
+        Some("LOW"),
     )?;
     policy.add_attribute(
         crate::abe_policy::QualifiedAttribute {
             dimension: "SEC".to_string(),
             name: "TOP".to_string(),
         },
-        EncryptionHint::Hybridized,
-        Some("LOW"),
+        SecurityMode::Hybridized,
+        Some("MED"),
     )?;
 
     policy.add_anarchy("DPT".to_string())?;
     [
-        ("RD", EncryptionHint::Classic),
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-        ("DEV", EncryptionHint::Classic),
+        ("RD", SecurityMode::PreQuantum),
+        ("HR", SecurityMode::PreQuantum),
+        ("MKG", SecurityMode::PreQuantum),
+        ("FIN", SecurityMode::PreQuantum),
+        ("DEV", SecurityMode::PreQuantum),
     ]
     .into_iter()
-    .try_for_each(|(attribute, hint)| {
+    .try_for_each(|(attribute, mode)| {
         policy.add_attribute(
             crate::abe_policy::QualifiedAttribute {
                 dimension: "DPT".to_string(),
                 name: attribute.to_string(),
             },
-            hint,
+            mode,
             None,
         )
     })?;
@@ -45,20 +51,20 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
     if complete {
         policy.add_anarchy("CTR".to_string())?;
         [
-            ("EN", EncryptionHint::Classic),
-            ("DE", EncryptionHint::Classic),
-            ("IT", EncryptionHint::Classic),
-            ("FR", EncryptionHint::Classic),
-            ("SP", EncryptionHint::Classic),
+            ("EN", SecurityMode::PreQuantum),
+            ("DE", SecurityMode::PreQuantum),
+            ("IT", SecurityMode::PreQuantum),
+            ("FR", SecurityMode::PreQuantum),
+            ("SP", SecurityMode::PreQuantum),
         ]
         .into_iter()
-        .try_for_each(|(attribute, hint)| {
+        .try_for_each(|(attribute, mode)| {
             policy.add_attribute(
                 crate::abe_policy::QualifiedAttribute {
                     dimension: "CTR".to_string(),
                     name: attribute.to_string(),
                 },
-                hint,
+                mode,
                 None,
             )
         })?;
@@ -74,7 +80,7 @@ fn test_edit_anarchic_attributes() {
     let mut structure = AccessStructure::new();
     gen_structure(&mut structure, false).unwrap();
 
-    assert_eq!(structure.attributes().count(), 7);
+    assert_eq!(structure.attributes().count(), 8);
 
     // Try renaming Research to already used name MKG
     assert!(structure
@@ -95,31 +101,31 @@ fn test_edit_anarchic_attributes() {
         .map(|a| a.name)
         .collect();
 
-    assert!(order.len() == 2);
+    assert!(order.len() == 3);
 
     // Add new attribute Sales
     let new_attr = QualifiedAttribute::new("DPT", "Sales");
     assert!(structure
-        .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
+        .add_attribute(new_attr.clone(), SecurityMode::PreQuantum, None)
         .is_ok());
-    assert_eq!(structure.attributes().count(), 8);
+    assert_eq!(structure.attributes().count(), 9);
 
     // Try adding already existing attribute HR
     let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
     assert!(structure
-        .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
+        .add_attribute(duplicate_attr, SecurityMode::PreQuantum, None)
         .is_err());
 
     // Try adding attribute to non existing dimension
     let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
     assert!(structure
-        .add_attribute(missing_dimension.clone(), EncryptionHint::Classic, None)
+        .add_attribute(missing_dimension.clone(), SecurityMode::PreQuantum, None)
         .is_err());
 
     // Remove research attribute
     let delete_attr = QualifiedAttribute::new("DPT", "Research");
     structure.del_attribute(&delete_attr).unwrap();
-    assert_eq!(structure.attributes().count(), 7);
+    assert_eq!(structure.attributes().count(), 8);
 
     // Duplicate remove
     assert!(structure.del_attribute(&delete_attr).is_err());
@@ -145,14 +151,14 @@ fn test_edit_anarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr1"),
-            EncryptionHint::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr2"),
-            EncryptionHint::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
@@ -185,6 +191,10 @@ fn test_edit_hierarchic_attributes() {
             },
             QualifiedAttribute {
                 dimension: "SEC".to_string(),
+                name: "MED".to_string(),
+            },
+            QualifiedAttribute {
+                dimension: "SEC".to_string(),
                 name: "TOP".to_string(),
             },
         ]
@@ -206,8 +216,8 @@ fn test_edit_hierarchic_attributes() {
 
     structure
         .add_attribute(
-            QualifiedAttribute::new("SEC", "MID"),
-            EncryptionHint::Classic,
+            QualifiedAttribute::new("SEC", "OTHER"),
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
@@ -220,7 +230,11 @@ fn test_edit_hierarchic_attributes() {
         vec![
             QualifiedAttribute {
                 dimension: "SEC".to_string(),
-                name: "MID".to_string(),
+                name: "OTHER".to_string(),
+            },
+            QualifiedAttribute {
+                dimension: "SEC".to_string(),
+                name: "MED".to_string(),
             },
             QualifiedAttribute {
                 dimension: "SEC".to_string(),
@@ -232,7 +246,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "LOW"),
-            EncryptionHint::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
@@ -249,7 +263,11 @@ fn test_edit_hierarchic_attributes() {
             },
             QualifiedAttribute {
                 dimension: "SEC".to_string(),
-                name: "MID".to_string(),
+                name: "OTHER".to_string(),
+            },
+            QualifiedAttribute {
+                dimension: "SEC".to_string(),
+                name: "MED".to_string(),
             },
             QualifiedAttribute {
                 dimension: "SEC".to_string(),
@@ -259,13 +277,13 @@ fn test_edit_hierarchic_attributes() {
     );
 
     structure
-        .del_attribute(&QualifiedAttribute::new("SEC", "MID"))
+        .del_attribute(&QualifiedAttribute::new("SEC", "OTHER"))
         .unwrap();
 
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "MID"),
-            EncryptionHint::Classic,
+            SecurityMode::PreQuantum,
             Some("LOW"),
         )
         .unwrap();
@@ -283,6 +301,10 @@ fn test_edit_hierarchic_attributes() {
             QualifiedAttribute {
                 dimension: "SEC".to_string(),
                 name: "MID".to_string(),
+            },
+            QualifiedAttribute {
+                dimension: "SEC".to_string(),
+                name: "MED".to_string(),
             },
             QualifiedAttribute {
                 dimension: "SEC".to_string(),

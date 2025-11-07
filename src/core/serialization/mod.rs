@@ -4,8 +4,8 @@ use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
 use crate::{
     core::{
-        Encapsulations, MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
-        TracingPublicKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
+        MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey, TracingPublicKey,
+        TracingSecretKey, UserId, UserSecretKey, XEnc,
     },
     Error,
 };
@@ -33,22 +33,25 @@ impl Serializable for RightPublicKey {
 
     fn length(&self) -> usize {
         1 + match self {
+            Self::PreQuantum { H } => H.length(),
+            Self::PostQuantum { ek } => ek.length(),
             Self::Hybridized { H, ek } => H.length() + ek.length(),
-            Self::Classic { H } => H.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Self::Classic { H } => Ok(0usize.write(ser)? + H.write(ser)?),
-            Self::Hybridized { H, ek } => Ok(1usize.write(ser)? + ser.write(H)? + ser.write(ek)?),
+            Self::PreQuantum { H } => Ok(0usize.write(ser)? + H.write(ser)?),
+            Self::PostQuantum { ek } => Ok(2usize.write(ser)? + ek.write(ser)?),
+            Self::Hybridized { H, ek } => Ok(1usize.write(ser)? + H.write(ser)? + ek.write(ser)?),
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let is_hybridized = de.read::<usize>()?;
         match is_hybridized {
-            0 => Ok(Self::Classic { H: de.read()? }),
+            0 => Ok(Self::PreQuantum { H: de.read()? }),
+            2 => Ok(Self::PostQuantum { ek: de.read()? }),
             1 => Ok(Self::Hybridized {
                 H: de.read()?,
                 ek: de.read()?,
@@ -153,38 +156,33 @@ impl Serializable for RightSecretKey {
     fn length(&self) -> usize {
         1 + match self {
             Self::Hybridized { sk, dk } => sk.length() + dk.length(),
-            Self::Classic { sk } => sk.length(),
+            Self::PreQuantum { sk } => sk.length(),
+            Self::PostQuantum { dk } => dk.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
+            Self::PreQuantum { sk } => Ok(0usize.write(ser)? + sk.write(ser)?),
+            Self::PostQuantum { dk } => Ok(2usize.write(ser)? + dk.write(ser)?),
             Self::Hybridized { sk, dk } => {
-                let mut n = ser.write_leb128_u64(1)?;
-                n += ser.write(sk)?;
-                n += ser.write(dk)?;
-                Ok(n)
-            }
-            Self::Classic { sk } => {
-                let mut n = ser.write_leb128_u64(0)?;
-                n += ser.write(sk)?;
-                Ok(n)
+                Ok(1usize.write(ser)? + sk.write(ser)? + dk.write(ser)?)
             }
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let is_hybridized = de.read_leb128_u64()?;
-        let sk = de.read()?;
-        if 1 == is_hybridized {
-            let dk = de.read()?;
-            Ok(Self::Hybridized { sk, dk })
-        } else if 0 == is_hybridized {
-            Ok(Self::Classic { sk })
-        } else {
-            Err(Error::ConversionFailed(format!(
-                "invalid hybridization flag {is_hybridized}"
-            )))
+        let mode = de.read_leb128_u64()?;
+        match mode {
+            0 => Ok(Self::PreQuantum { sk: de.read()? }),
+            1 => Ok(Self::Hybridized {
+                sk: de.read()?,
+                dk: de.read()?,
+            }),
+            2 => Ok(Self::PostQuantum { dk: de.read()? }),
+            _ => Err(Error::ConversionFailed(format!(
+                "invalid hybridization flag {mode}"
+            ))),
         }
     }
 }
@@ -213,52 +211,74 @@ impl Serializable for UserSecretKey {
     }
 }
 
-impl Serializable for Encapsulations {
+impl Serializable for XEnc {
     type Error = Error;
 
     fn length(&self) -> usize {
         1 + match self {
-            Encapsulations::HEncs(vec) => vec.length(),
-            Encapsulations::CEncs(vec) => vec.length(),
+            Self::PreQuantum {
+                tag,
+                c,
+                encapsulations,
+            } => tag.length() + c.length() + encapsulations.length(),
+            Self::PostQuantum {
+                tag,
+                encapsulations,
+            } => tag.length() + encapsulations.length(),
+            Self::Hybridized {
+                tag,
+                c,
+                encapsulations,
+            } => tag.length() + c.length() + encapsulations.length(),
         }
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Encapsulations::CEncs(vec) => Ok(0usize.write(ser)? + vec.write(ser)?),
-            Encapsulations::HEncs(vec) => Ok(1usize.write(ser)? + vec.write(ser)?),
+            XEnc::PreQuantum {
+                tag,
+                c,
+                encapsulations,
+            } => Ok(0usize.write(ser)?
+                + tag.write(ser)?
+                + c.write(ser)?
+                + encapsulations.write(ser)?),
+            XEnc::PostQuantum {
+                tag,
+                encapsulations,
+            } => Ok(1usize.write(ser)? + tag.write(ser)? + encapsulations.write(ser)?),
+            XEnc::Hybridized {
+                tag,
+                c,
+                encapsulations,
+            } => Ok(2usize.write(ser)?
+                + tag.write(ser)?
+                + c.write(ser)?
+                + encapsulations.write(ser)?),
         }
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        let is_hybridized = de.read_leb128_u64()?;
-        match is_hybridized {
-            0 => Ok(Self::CEncs(de.read()?)),
-            1 => Ok(Self::HEncs(de.read()?)),
+        let mode = usize::read(de)?;
+        match mode {
+            0 => Ok(Self::PreQuantum {
+                tag: de.read()?,
+                c: de.read()?,
+                encapsulations: de.read()?,
+            }),
+            1 => Ok(Self::PostQuantum {
+                tag: de.read()?,
+                encapsulations: de.read()?,
+            }),
+            2 => Ok(Self::Hybridized {
+                tag: de.read()?,
+                c: de.read()?,
+                encapsulations: de.read()?,
+            }),
             n => Err(Error::ConversionFailed(format!(
                 "invalid encapsulation type: {n}"
             ))),
         }
-    }
-}
-
-impl Serializable for XEnc {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        self.tag.length() + self.c.length() + self.encapsulations.length()
-    }
-
-    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(self.tag.write(ser)? + self.c.write(ser)? + self.encapsulations.write(ser)?)
-    }
-
-    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tag: de.read()?,
-            c: de.read()?,
-            encapsulations: de.read()?,
-        })
     }
 }
 
@@ -271,7 +291,7 @@ mod tests {
     };
 
     use crate::{
-        abe_policy::{AttributeStatus, EncryptionHint, Right},
+        abe_policy::{EncryptionStatus, Right},
         api::Covercrypt,
         core::{
             primitives::{encaps, rekey, setup, update_msk, usk_keygen},
@@ -279,7 +299,7 @@ mod tests {
         },
         test_utils::cc_keygen,
         traits::KemAc,
-        AccessPolicy,
+        AccessPolicy, SecurityMode,
     };
 
     #[test]
@@ -293,15 +313,15 @@ mod tests {
             let universe = HashMap::from([
                 (
                     coordinate_1.clone(),
-                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_2.clone(),
-                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_3.clone(),
-                    (EncryptionHint::Hybridized, AttributeStatus::EncryptDecrypt),
+                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
             ]);
 

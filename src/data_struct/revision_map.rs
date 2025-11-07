@@ -26,7 +26,7 @@ use crate::Error;
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RevisionMap<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
@@ -140,14 +140,23 @@ where
         self.map.iter()
     }
 
-    /// Iterates through all revisions of a given key starting with the more
-    /// recent one.
+    /// Returns the list of revisions, starting with the more recent one.
     pub fn get<Q>(&self, key: &Q) -> Option<&LinkedList<V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key) //.map(RevisionList::iter)
+        self.map.get(key)
+    }
+
+    /// Returns a mutable reference on the list of revisions, starting with the
+    /// more recent one.
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut LinkedList<V>>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.get_mut(key)
     }
 
     /// Removes and returns an iterator over all revisions from a given key.

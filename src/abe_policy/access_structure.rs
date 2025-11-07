@@ -2,14 +2,12 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
     abe_policy::{
-        AccessPolicy, Attribute, AttributeStatus, Dimension, EncryptionHint, QualifiedAttribute,
-        Right,
+        attribute::SecurityMode, AccessPolicy, Attribute, Dimension, EncryptionStatus,
+        QualifiedAttribute, Right, Version,
     },
     data_struct::Dict,
     Error,
 };
-
-use super::Version;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AccessStructure {
@@ -104,7 +102,7 @@ impl AccessStructure {
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
-        encryption_hint: EncryptionHint,
+        security_mode: SecurityMode,
         after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
@@ -116,7 +114,7 @@ impl AccessStructure {
         self.dimensions
             .get_mut(&attribute.dimension)
             .ok_or_else(|| Error::DimensionNotFound(attribute.dimension.clone()))?
-            .add_attribute(attribute.name, encryption_hint, after, cnt)?;
+            .add_attribute(attribute.name, security_mode, after, cnt)?;
 
         Ok(())
     }
@@ -172,13 +170,11 @@ impl AccessStructure {
 
     /// Generates all rights defined by this access structure and return their
     /// hybridization and activation status.
-    pub(crate) fn omega(&self) -> Result<HashMap<Right, (EncryptionHint, AttributeStatus)>, Error> {
+    pub(crate) fn omega(&self) -> Result<HashMap<Right, (SecurityMode, EncryptionStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
             .into_iter()
-            .map(|(ids, is_hybridized, is_readonly)| {
-                Right::from_point(ids).map(|r| (r, (is_hybridized, is_readonly)))
-            })
+            .map(|(ids, mode, status)| Right::from_point(ids).map(|r| (r, (mode, status))))
             .collect()
     }
 }
@@ -309,10 +305,12 @@ impl AccessStructure {
     }
 }
 
-/// Combines all attributes IDs from the given dimensions using at most one attribute for each
-/// dimensions. Returns the disjunction of the associated hybridization and activation status.
+/// Combines all attributes IDs from the given dimensions using at most one
+/// attribute for each dimensions. Returns the disjunction of the associated
+/// hybridization and activation status.
 ///
-/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following combinations will be created:
+/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following
+/// combinations will be created:
 /// - D1::A1
 /// - D1::A1 && D2::A2
 /// - D1::A1 && D2::B2
@@ -320,27 +318,27 @@ impl AccessStructure {
 /// - D2::B2
 fn combine(
     dimensions: &[(&String, &Dimension)],
-) -> Vec<(Vec<usize>, EncryptionHint, AttributeStatus)> {
+) -> Vec<(Vec<usize>, SecurityMode, EncryptionStatus)> {
     if dimensions.is_empty() {
         vec![(
             vec![],
-            EncryptionHint::Classic,
-            AttributeStatus::EncryptDecrypt,
+            SecurityMode::PreQuantum,
+            EncryptionStatus::EncryptDecrypt,
         )]
     } else {
         let (_, current_dimension) = &dimensions[0];
         let partial_combinations = combine(&dimensions[1..]);
         let mut res = vec![];
         for component in current_dimension.attributes() {
-            for (ids, is_hybridized, is_activated) in &partial_combinations {
+            for (ids, security_mode, encryption_status) in partial_combinations.clone() {
                 res.push((
-                    [vec![component.get_id()], ids.clone()].concat(),
-                    *is_hybridized | component.get_encryption_hint(),
-                    *is_activated | component.get_status(),
+                    [vec![component.get_id()], ids].concat(),
+                    security_mode.max(component.get_security_mode()),
+                    encryption_status | component.get_encryption_status(),
                 ));
             }
         }
-        [partial_combinations.clone(), res].concat()
+        [partial_combinations, res].concat()
     }
 }
 
@@ -410,13 +408,13 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", EncryptionHint::Classic),
-            ("Germany", EncryptionHint::Classic),
-            ("Spain", EncryptionHint::Classic),
+            ("France", SecurityMode::PreQuantum),
+            ("Germany", SecurityMode::PreQuantum),
+            ("Spain", SecurityMode::PreQuantum),
         ]
         .into_iter()
-        .try_for_each(|(attribute, hint)| {
-            structure.add_attribute(QualifiedAttribute::new("Country", attribute), hint, None)
+        .try_for_each(|(attribute, mode)| {
+            structure.add_attribute(QualifiedAttribute::new("Country", attribute), mode, None)
         })
         .unwrap();
 
@@ -471,6 +469,12 @@ mod tests {
             rights.insert(Right::from_point(vec![structure.get_attribute_id(
                 &QualifiedAttribute {
                     dimension: "SEC".to_string(),
+                    name: "MED".to_string(),
+                },
+            )?])?);
+            rights.insert(Right::from_point(vec![structure.get_attribute_id(
+                &QualifiedAttribute {
+                    dimension: "SEC".to_string(),
                     name: "TOP".to_string(),
                 },
             )?])?);
@@ -493,6 +497,28 @@ mod tests {
                 structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "SEC".to_string(),
                     name: "LOW".to_string(),
+                })?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "DPT".to_string(),
+                    name: "HR".to_string(),
+                })?,
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "SEC".to_string(),
+                    name: "MED".to_string(),
+                })?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "DPT".to_string(),
+                    name: "FIN".to_string(),
+                })?,
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "SEC".to_string(),
+                    name: "MED".to_string(),
                 })?,
             ])?);
 
@@ -528,12 +554,12 @@ mod tests {
                 structure
                     .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // There are 2 rights in the security dimension, plus the
+                // There are 3 rights in the security dimension, plus the
                 // broadcast for this dimension. This is the restricted
                 // space. There is only one projection of DPT::HR, which is the
                 // universal broadcast. The complementary space is generated by
                 // extending these two points with the restricted space.
-                2 * (1 + 2)
+                2 * (1 + 3)
             );
 
             let ap = "SEC::LOW";

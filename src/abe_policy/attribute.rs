@@ -5,53 +5,56 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
-/// Hint the user about which kind of encryption to use.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum EncryptionHint {
-    /// Hybridized encryption should be used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SecurityMode {
+    PreQuantum,
+    PostQuantum,
     Hybridized,
-    /// Classic encryption should be used.
-    Classic,
 }
 
-impl BitOr for EncryptionHint {
-    type Output = Self;
+impl Serializable for SecurityMode {
+    type Error = Error;
 
-    fn bitor(self, rhs: Self) -> Self::Output {
-        if self == Self::Hybridized || rhs == Self::Hybridized {
-            Self::Hybridized
-        } else {
-            Self::Classic
-        }
+    fn length(&self) -> usize {
+        1
     }
-}
 
-impl EncryptionHint {
-    #[must_use]
-    pub fn new(is_hybridized: bool) -> Self {
-        if is_hybridized {
-            Self::Hybridized
-        } else {
-            Self::Classic
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        match self {
+            Self::PreQuantum => ser.write(&0usize),
+            Self::Hybridized => ser.write(&1usize),
+            Self::PostQuantum => ser.write(&2usize),
         }
+        .map_err(Error::from)
     }
-}
 
-impl From<EncryptionHint> for bool {
-    fn from(val: EncryptionHint) -> Self {
-        val == EncryptionHint::Hybridized
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let status = de.read::<usize>()?;
+        match status {
+            0 => Ok(Self::PreQuantum),
+            1 => Ok(Self::Hybridized),
+            2 => Ok(Self::PostQuantum),
+            n => Err(Error::ConversionFailed(format!(
+                "invalid security mode: {}",
+                n
+            ))),
+        }
     }
 }
 
 /// Whether to provide an encryption key in the master public key for this
 /// attribute.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AttributeStatus {
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EncryptionStatus {
+    #[default]
     EncryptDecrypt,
     DecryptOnly,
 }
 
-impl BitOr for AttributeStatus {
+impl BitOr for EncryptionStatus {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
@@ -63,9 +66,40 @@ impl BitOr for AttributeStatus {
     }
 }
 
-impl From<AttributeStatus> for bool {
-    fn from(val: AttributeStatus) -> Self {
-        val == AttributeStatus::EncryptDecrypt
+impl From<EncryptionStatus> for bool {
+    fn from(val: EncryptionStatus) -> Self {
+        val == EncryptionStatus::EncryptDecrypt
+    }
+}
+
+impl Serializable for EncryptionStatus {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        1
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        match self {
+            Self::DecryptOnly => ser.write(&0usize),
+            Self::EncryptDecrypt => ser.write(&1usize),
+        }
+        .map_err(Error::from)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        let status = de.read::<usize>()?;
+        match status {
+            0 => Ok(Self::DecryptOnly),
+            1 => Ok(Self::EncryptDecrypt),
+            n => Err(Error::ConversionFailed(format!(
+                "invalid attribute-status value: {}",
+                n
+            ))),
+        }
     }
 }
 
@@ -145,68 +179,6 @@ impl TryFrom<&str> for QualifiedAttribute {
         }
 
         Ok(Self::new(dimension.trim(), component.trim()))
-    }
-}
-
-impl Serializable for EncryptionHint {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        1
-    }
-
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        match self {
-            EncryptionHint::Classic => ser.write(&0usize),
-            EncryptionHint::Hybridized => ser.write(&1usize),
-        }
-        .map_err(Error::from)
-    }
-
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let hint = de.read::<usize>()?;
-        match hint {
-            0 => Ok(EncryptionHint::Classic),
-            1 => Ok(EncryptionHint::Hybridized),
-            n => Err(Error::ConversionFailed(format!(
-                "invalid encryption-hint value: {}",
-                n
-            ))),
-        }
-    }
-}
-
-impl Serializable for AttributeStatus {
-    type Error = Error;
-
-    fn length(&self) -> usize {
-        1
-    }
-
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
-        match self {
-            AttributeStatus::DecryptOnly => ser.write(&0usize),
-            AttributeStatus::EncryptDecrypt => ser.write(&1usize),
-        }
-        .map_err(Error::from)
-    }
-
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
-        let status = de.read::<usize>()?;
-        match status {
-            0 => Ok(AttributeStatus::DecryptOnly),
-            1 => Ok(AttributeStatus::EncryptDecrypt),
-            n => Err(Error::ConversionFailed(format!(
-                "invalid attribute-status value: {}",
-                n
-            ))),
-        }
     }
 }
 

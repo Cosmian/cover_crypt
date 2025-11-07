@@ -83,12 +83,12 @@ macro_rules! gen_usk {
     }};
 }
 
-fn bench_classical_encapsulation(c: &mut Criterion) {
+fn bench_pre_quantum_encapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
     let (_, mpk) = cc_keygen(&cc, true).unwrap();
 
     {
-        let mut group = c.benchmark_group("Classic encapsulation");
+        let mut group = c.benchmark_group("Pre-quantum encapsulation");
         for (enc_ap, cnt_enc) in C_ENC_APS {
             let _ = gen_enc!(cc, mpk, enc_ap, cnt_enc);
             let eap = AccessPolicy::parse(enc_ap).unwrap();
@@ -99,7 +99,7 @@ fn bench_classical_encapsulation(c: &mut Criterion) {
     }
 }
 
-fn bench_classical_decapsulation(c: &mut Criterion) {
+fn bench_pre_quantum_decapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
     let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
 
@@ -188,8 +188,8 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
-    bench_classical_encapsulation,
-    bench_classical_decapsulation,
+    bench_pre_quantum_encapsulation,
+    bench_pre_quantum_decapsulation,
     bench_hybridized_encapsulation,
     bench_hybridized_decapsulation
 );

@@ -9,7 +9,7 @@ mod tests;
 
 pub use access_policy::AccessPolicy;
 pub use access_structure::AccessStructure;
-pub use attribute::{AttributeStatus, EncryptionHint, QualifiedAttribute};
+pub use attribute::{EncryptionStatus, QualifiedAttribute, SecurityMode};
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 pub use dimension::{Attribute, Dimension};
 pub use rights::Right;
