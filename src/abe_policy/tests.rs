@@ -8,7 +8,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "LOW".to_string(),
         },
-        SecurityMode::Classic,
+        SecurityMode::PreQuantum,
         None,
     )?;
     policy.add_attribute(
@@ -16,7 +16,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "MED".to_string(),
         },
-        SecurityMode::Quantum,
+        SecurityMode::PostQuantum,
         Some("LOW"),
     )?;
     policy.add_attribute(
@@ -30,20 +30,20 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
 
     policy.add_anarchy("DPT".to_string())?;
     [
-        ("RD", SecurityMode::Classic),
-        ("HR", SecurityMode::Classic),
-        ("MKG", SecurityMode::Classic),
-        ("FIN", SecurityMode::Classic),
-        ("DEV", SecurityMode::Classic),
+        ("RD", SecurityMode::PreQuantum),
+        ("HR", SecurityMode::PreQuantum),
+        ("MKG", SecurityMode::PreQuantum),
+        ("FIN", SecurityMode::PreQuantum),
+        ("DEV", SecurityMode::PreQuantum),
     ]
     .into_iter()
-    .try_for_each(|(attribute, hint)| {
+    .try_for_each(|(attribute, mode)| {
         policy.add_attribute(
             crate::abe_policy::QualifiedAttribute {
                 dimension: "DPT".to_string(),
                 name: attribute.to_string(),
             },
-            hint,
+            mode,
             None,
         )
     })?;
@@ -51,20 +51,20 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
     if complete {
         policy.add_anarchy("CTR".to_string())?;
         [
-            ("EN", SecurityMode::Classic),
-            ("DE", SecurityMode::Classic),
-            ("IT", SecurityMode::Classic),
-            ("FR", SecurityMode::Classic),
-            ("SP", SecurityMode::Classic),
+            ("EN", SecurityMode::PreQuantum),
+            ("DE", SecurityMode::PreQuantum),
+            ("IT", SecurityMode::PreQuantum),
+            ("FR", SecurityMode::PreQuantum),
+            ("SP", SecurityMode::PreQuantum),
         ]
         .into_iter()
-        .try_for_each(|(attribute, hint)| {
+        .try_for_each(|(attribute, mode)| {
             policy.add_attribute(
                 crate::abe_policy::QualifiedAttribute {
                     dimension: "CTR".to_string(),
                     name: attribute.to_string(),
                 },
-                hint,
+                mode,
                 None,
             )
         })?;
@@ -106,20 +106,20 @@ fn test_edit_anarchic_attributes() {
     // Add new attribute Sales
     let new_attr = QualifiedAttribute::new("DPT", "Sales");
     assert!(structure
-        .add_attribute(new_attr.clone(), SecurityMode::Classic, None)
+        .add_attribute(new_attr.clone(), SecurityMode::PreQuantum, None)
         .is_ok());
     assert_eq!(structure.attributes().count(), 9);
 
     // Try adding already existing attribute HR
     let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
     assert!(structure
-        .add_attribute(duplicate_attr, SecurityMode::Classic, None)
+        .add_attribute(duplicate_attr, SecurityMode::PreQuantum, None)
         .is_err());
 
     // Try adding attribute to non existing dimension
     let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
     assert!(structure
-        .add_attribute(missing_dimension.clone(), SecurityMode::Classic, None)
+        .add_attribute(missing_dimension.clone(), SecurityMode::PreQuantum, None)
         .is_err());
 
     // Remove research attribute
@@ -151,14 +151,14 @@ fn test_edit_anarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr1"),
-            SecurityMode::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr2"),
-            SecurityMode::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
@@ -217,7 +217,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "OTHER"),
-            SecurityMode::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
@@ -246,7 +246,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "LOW"),
-            SecurityMode::Classic,
+            SecurityMode::PreQuantum,
             None,
         )
         .unwrap();
@@ -283,7 +283,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "MID"),
-            SecurityMode::Classic,
+            SecurityMode::PreQuantum,
             Some("LOW"),
         )
         .unwrap();

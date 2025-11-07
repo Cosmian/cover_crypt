@@ -58,10 +58,10 @@ pub const MIN_TRACING_LEVEL: usize = 1;
 /// or post-quantum in which case they only hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightSecretKey {
-    Classic {
+    PreQuantum {
         sk: <ElGamal as Nike>::SecretKey,
     },
-    Quantum {
+    PostQuantum {
         dk: <MlKem as Kem>::DecapsulationKey,
     },
     Hybridized {
@@ -75,13 +75,13 @@ impl RightSecretKey {
     /// point `h`.
     fn random(rng: &mut impl CryptoRngCore, security_mode: SecurityMode) -> Result<Self, Error> {
         match security_mode {
-            SecurityMode::Classic => {
+            SecurityMode::PreQuantum => {
                 let sk = <ElGamal as Nike>::SecretKey::random(rng);
-                Ok(Self::Classic { sk })
+                Ok(Self::PreQuantum { sk })
             }
-            SecurityMode::Quantum => {
+            SecurityMode::PostQuantum => {
                 let (dk, _) = MlKem::keygen(rng)?;
-                Ok(Self::Quantum { dk })
+                Ok(Self::PostQuantum { dk })
             }
             SecurityMode::Hybridized => {
                 let sk = <ElGamal as Nike>::SecretKey::random(rng);
@@ -99,8 +99,8 @@ impl RightSecretKey {
                 H: h * sk,
                 ek: dk.ek(),
             },
-            Self::Quantum { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
-            Self::Classic { sk } => RightPublicKey::Classic { H: h * sk },
+            Self::PostQuantum { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
+            Self::PreQuantum { sk } => RightPublicKey::PreQuantum { H: h * sk },
         }
     }
 
@@ -108,8 +108,8 @@ impl RightSecretKey {
     fn security_mode(&self) -> SecurityMode {
         match self {
             Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::Quantum { .. } => SecurityMode::Quantum,
-            Self::Classic { .. } => SecurityMode::Classic,
+            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
+            Self::PreQuantum { .. } => SecurityMode::PreQuantum,
         }
     }
 
@@ -120,22 +120,22 @@ impl RightSecretKey {
         rng: &mut impl CryptoRngCore,
     ) -> Result<Self, Error> {
         Ok(match (self, security_mode) {
-            (Self::Hybridized { sk, .. }, SecurityMode::Classic) => Self::Classic { sk },
-            (Self::Hybridized { dk, .. }, SecurityMode::Quantum) => Self::Quantum { dk },
+            (Self::Hybridized { sk, .. }, SecurityMode::PreQuantum) => Self::PreQuantum { sk },
+            (Self::Hybridized { dk, .. }, SecurityMode::PostQuantum) => Self::PostQuantum { dk },
             (Self::Hybridized { sk, dk }, SecurityMode::Hybridized) => Self::Hybridized { sk, dk },
-            (Self::Quantum { .. }, SecurityMode::Classic) => Self::Quantum {
+            (Self::PostQuantum { .. }, SecurityMode::PreQuantum) => Self::PostQuantum {
                 dk: <MlKem as Kem>::keygen(rng)?.0,
             },
-            (Self::Quantum { dk }, SecurityMode::Quantum) => Self::Quantum { dk },
-            (Self::Quantum { dk }, SecurityMode::Hybridized) => Self::Hybridized {
+            (Self::PostQuantum { dk }, SecurityMode::PostQuantum) => Self::PostQuantum { dk },
+            (Self::PostQuantum { dk }, SecurityMode::Hybridized) => Self::Hybridized {
                 sk: <ElGamal as Nike>::keygen(rng)?.0,
                 dk,
             },
-            (Self::Classic { sk }, SecurityMode::Classic) => Self::Classic { sk },
-            (Self::Classic { .. }, SecurityMode::Quantum) => Self::Quantum {
+            (Self::PreQuantum { sk }, SecurityMode::PreQuantum) => Self::PreQuantum { sk },
+            (Self::PreQuantum { .. }, SecurityMode::PostQuantum) => Self::PostQuantum {
                 dk: <MlKem as Kem>::keygen(rng)?.0,
             },
-            (Self::Classic { sk }, SecurityMode::Hybridized) => Self::Hybridized {
+            (Self::PreQuantum { sk }, SecurityMode::Hybridized) => Self::Hybridized {
                 sk,
                 dk: <MlKem as Kem>::keygen(rng)?.0,
             },
@@ -150,7 +150,7 @@ impl RightSecretKey {
 /// or post-quantum, in which case they only hold a PQ-KEM public key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightPublicKey {
-    Classic {
+    PreQuantum {
         H: <ElGamal as Nike>::PublicKey,
     },
     PostQuantum {
@@ -167,8 +167,8 @@ impl RightPublicKey {
     pub fn security_mode(&self) -> SecurityMode {
         match self {
             Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::PostQuantum { .. } => SecurityMode::Quantum,
-            Self::Classic { .. } => SecurityMode::Classic,
+            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
+            Self::PreQuantum { .. } => SecurityMode::PreQuantum,
         }
     }
 }
@@ -539,12 +539,12 @@ impl UserSecretKey {
 /// - the right encapsulations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum XEnc {
-    Classic {
+    PreQuantum {
         tag: Tag,
         c: Vec<<ElGamal as Nike>::PublicKey>,
         encapsulations: Vec<[u8; SHARED_SECRET_LENGTH]>,
     },
-    Quantum {
+    PostQuantum {
         tag: Tag,
         encapsulations: Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>,
     },
@@ -559,8 +559,8 @@ impl XEnc {
     /// Returns the tracing level of this encapsulation.
     pub fn tracing_level(&self) -> usize {
         match self {
-            Self::Classic { c, .. } => c.len() - 1,
-            Self::Quantum { .. } => 0,
+            Self::PreQuantum { c, .. } => c.len() - 1,
+            Self::PostQuantum { .. } => 0,
             Self::Hybridized { c, .. } => c.len() - 1,
         }
     }
@@ -568,16 +568,16 @@ impl XEnc {
     pub fn count(&self) -> usize {
         match self {
             Self::Hybridized { encapsulations, .. } => encapsulations.len(),
-            Self::Quantum { encapsulations, .. } => encapsulations.len(),
-            Self::Classic { encapsulations, .. } => encapsulations.len(),
+            Self::PostQuantum { encapsulations, .. } => encapsulations.len(),
+            Self::PreQuantum { encapsulations, .. } => encapsulations.len(),
         }
     }
 
     pub fn security_mode(&self) -> SecurityMode {
         match self {
             Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::Quantum { .. } => SecurityMode::Quantum,
-            Self::Classic { .. } => SecurityMode::Classic,
+            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
+            Self::PreQuantum { .. } => SecurityMode::PreQuantum,
         }
     }
 }

@@ -257,8 +257,8 @@ fn h_encaps<'a>(
 }
 
 /// Generates post-quantum encapsulation of the given secret S with the given
-/// marker c, ElGamal random r and subkeys.
-fn q_encaps<'a>(
+/// marker c and subkeys.
+fn post_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
     subkeys: impl IntoIterator<Item = &'a <MlKem as Kem>::EncapsulationKey>,
     rng: &mut impl CryptoRngCore,
@@ -284,16 +284,16 @@ fn q_encaps<'a>(
 
     Ok((
         ss,
-        XEnc::Quantum {
+        XEnc::PostQuantum {
             tag,
             encapsulations,
         },
     ))
 }
 
-/// Generates a classic encapsulation of the given secret S with the given
+/// Generates a pre-quantum encapsulation of the given secret S with the given
 /// marker c, ElGamal random r and subkeys.
-fn c_encaps<'a>(
+fn pre_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
     c: Vec<<ElGamal as Nike>::PublicKey>,
     r: <ElGamal as Nike>::SecretKey,
@@ -316,7 +316,7 @@ fn c_encaps<'a>(
 
     Ok((
         ss,
-        XEnc::Classic {
+        XEnc::PreQuantum {
             tag,
             c,
             encapsulations,
@@ -348,20 +348,20 @@ pub fn encaps(
     let S = Secret::random(rng);
 
     match is_hybridized {
-        SecurityMode::Classic => {
+        SecurityMode::PreQuantum => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
-                if let RightPublicKey::Classic { H } = subkey {
+                if let RightPublicKey::PreQuantum { H } = subkey {
                     H
                 } else {
                     panic!("select_subkeys already ensures homogeneity")
                 }
             });
-            c_encaps(S, c, r, subkeys)
+            pre_quantum_encaps(S, c, r, subkeys)
         }
-        SecurityMode::Quantum => {
+        SecurityMode::PostQuantum => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::PostQuantum { ek } = subkey {
                     ek
@@ -369,7 +369,7 @@ pub fn encaps(
                     panic!("select_subkeys already ensures homogeneity")
                 }
             });
-            q_encaps(S, subkeys, rng)
+            post_quantum_encaps(S, subkeys, rng)
         }
         SecurityMode::Hybridized => {
             let r = G_hash(&S)?;
@@ -388,7 +388,7 @@ pub fn encaps(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn attempt_classic_decaps<'a>(
+fn attempt_pre_quantum_decaps<'a>(
     secret: &RightSecretKey,
     A: &<ElGamal as Nike>::PublicKey,
     U: &Secret<SHARED_SECRET_LENGTH>,
@@ -398,7 +398,7 @@ fn attempt_classic_decaps<'a>(
     tag: &[u8; TAG_LENGTH],
     tracing_points: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
 ) -> Result<Option<Secret<32>>, Error> {
-    if let RightSecretKey::Classic { sk } = secret {
+    if let RightSecretKey::PreQuantum { sk } = secret {
         let mut K1 = ElGamal::session_key(sk, A)?;
         let S = xor_in_place(H_hash(Some(&K1), None, T)?, F);
         K1.zeroize();
@@ -451,7 +451,7 @@ fn attempt_hybridized_decaps<'a>(
     Ok(None)
 }
 
-fn attempt_quantum_decaps(
+fn attempt_post_quantum_decaps(
     secret: &RightSecretKey,
     U: &Secret<SHARED_SECRET_LENGTH>,
     T: &Secret<SHARED_SECRET_LENGTH>,
@@ -459,7 +459,7 @@ fn attempt_quantum_decaps(
     F: &[u8; 32],
     tag: &[u8; TAG_LENGTH],
 ) -> Result<Option<Secret<32>>, Error> {
-    if let RightSecretKey::Quantum { dk } = secret {
+    if let RightSecretKey::PostQuantum { dk } = secret {
         let K2 = MlKem::dec(dk, E)?;
         let S_ij = xor_in_place(H_hash(None, Some(&K2), T)?, F);
         let (tag_ij, ss) = J_hash(&S_ij, U);
@@ -488,7 +488,7 @@ pub fn decaps(
             .sum::<<ElGamal as Nike>::PublicKey>()
     }
 
-    fn partial_quantum_decaps(
+    fn partial_post_quantum_decaps(
         rng: &mut impl CryptoRngCore,
         usk: &UserSecretKey,
         tag: &[u8; TAG_LENGTH],
@@ -509,7 +509,7 @@ pub fn decaps(
             shuffle(&mut revision, rng);
             for (E, F) in &encs {
                 for (_, secret) in &revision {
-                    if let Some(ss) = attempt_quantum_decaps(secret, &U, &T, E, F, tag)? {
+                    if let Some(ss) = attempt_post_quantum_decaps(secret, &U, &T, E, F, tag)? {
                         return Ok(Some(ss));
                     }
                 }
@@ -562,7 +562,7 @@ pub fn decaps(
         Ok(None)
     }
 
-    fn partial_classic_decaps(
+    fn partial_pre_quantum_decaps(
         rng: &mut impl CryptoRngCore,
         usk: &UserSecretKey,
         c: &[<ElGamal as Nike>::PublicKey],
@@ -585,9 +585,16 @@ pub fn decaps(
             shuffle(&mut revision, rng);
             for F in &encs {
                 for (_, secret) in &revision {
-                    if let Some(ss) =
-                        attempt_classic_decaps(secret, &A, &U, &T, F, c, tag, usk.tracing_points())?
-                    {
+                    if let Some(ss) = attempt_pre_quantum_decaps(
+                        secret,
+                        &A,
+                        &U,
+                        &T,
+                        F,
+                        c,
+                        tag,
+                        usk.tracing_points(),
+                    )? {
                         return Ok(Some(ss));
                     }
                 }
@@ -603,15 +610,15 @@ pub fn decaps(
             c,
             encapsulations,
         } => partial_hybridized_decaps(rng, usk, c, tag, encapsulations),
-        XEnc::Quantum {
+        XEnc::PostQuantum {
             tag,
             encapsulations,
-        } => partial_quantum_decaps(rng, usk, tag, encapsulations),
-        XEnc::Classic {
+        } => partial_post_quantum_decaps(rng, usk, tag, encapsulations),
+        XEnc::PreQuantum {
             tag,
             c,
             encapsulations,
-        } => partial_classic_decaps(rng, usk, c, tag, encapsulations),
+        } => partial_pre_quantum_decaps(rng, usk, c, tag, encapsulations),
     }
 }
 
@@ -656,7 +663,7 @@ pub fn full_decaps(
         Ok(c_0 * &(&msk.tsk.s / t_0)?)
     }
 
-    fn full_classic_decapsulation(
+    fn full_pre_quantum_decapsulation(
         msk: &MasterSecretKey,
         tag: &[u8; TAG_LENGTH],
         c: &[<ElGamal as Nike>::PublicKey],
@@ -668,7 +675,7 @@ pub fn full_decaps(
 
         // Attempts opening the encapsulation F with this right secret key.
         let attempt_opening = |F, secret: &RightSecretKey| {
-            attempt_classic_decaps(secret, &A, &U, &T, F, c, tag, msk.tracing_points())
+            attempt_pre_quantum_decaps(secret, &A, &U, &T, F, c, tag, msk.tracing_points())
         };
 
         let mut enc_ss = None;
@@ -698,7 +705,7 @@ pub fn full_decaps(
             .ok_or_else(|| Error::Kem("empty encapsulation".to_string()))
     }
 
-    fn full_quantum_decapsulation(
+    fn full_post_quantum_decapsulation(
         msk: &MasterSecretKey,
         tag: &[u8; TAG_LENGTH],
         encapsulations: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
@@ -707,7 +714,7 @@ pub fn full_decaps(
         let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
 
         let attempt_opening =
-            |E, F, secret: &RightSecretKey| attempt_quantum_decaps(secret, &U, &T, E, F, tag);
+            |E, F, secret: &RightSecretKey| attempt_post_quantum_decaps(secret, &U, &T, E, F, tag);
 
         let mut enc_ss = None;
         let mut rights = HashSet::with_capacity(encapsulations.len());
@@ -778,15 +785,15 @@ pub fn full_decaps(
     }
 
     match encapsulation {
-        XEnc::Classic {
+        XEnc::PreQuantum {
             tag,
             c,
             encapsulations,
-        } => full_classic_decapsulation(msk, tag, c, encapsulations),
-        XEnc::Quantum {
+        } => full_pre_quantum_decapsulation(msk, tag, c, encapsulations),
+        XEnc::PostQuantum {
             tag,
             encapsulations,
-        } => full_quantum_decapsulation(msk, tag, encapsulations),
+        } => full_post_quantum_decapsulation(msk, tag, encapsulations),
         XEnc::Hybridized {
             tag,
             c,

@@ -7,8 +7,8 @@ use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SecurityMode {
-    Classic,
-    Quantum,
+    PreQuantum,
+    PostQuantum,
     Hybridized,
 }
 
@@ -24,9 +24,9 @@ impl Serializable for SecurityMode {
         ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
     ) -> Result<usize, Self::Error> {
         match self {
-            Self::Classic => ser.write(&0usize),
-            Self::Quantum => ser.write(&1usize),
-            Self::Hybridized => ser.write(&2usize),
+            Self::PreQuantum => ser.write(&0usize),
+            Self::Hybridized => ser.write(&1usize),
+            Self::PostQuantum => ser.write(&2usize),
         }
         .map_err(Error::from)
     }
@@ -34,11 +34,11 @@ impl Serializable for SecurityMode {
     fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
         let status = de.read::<usize>()?;
         match status {
-            0 => Ok(Self::Classic),
-            1 => Ok(Self::Quantum),
-            2 => Ok(Self::Hybridized),
+            0 => Ok(Self::PreQuantum),
+            1 => Ok(Self::Hybridized),
+            2 => Ok(Self::PostQuantum),
             n => Err(Error::ConversionFailed(format!(
-                "invalid security-mode value: {}",
+                "invalid security mode: {}",
                 n
             ))),
         }

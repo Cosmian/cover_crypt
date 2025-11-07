@@ -18,10 +18,10 @@ pub struct Attribute {
 }
 
 impl Attribute {
-    pub fn new(encryption_hint: SecurityMode, id: usize) -> Self {
+    pub fn new(security_mode: SecurityMode, id: usize) -> Self {
         Self {
             id,
-            security_mode: encryption_hint,
+            security_mode,
             encryption_status: EncryptionStatus::EncryptDecrypt,
         }
     }
@@ -106,14 +106,14 @@ impl Dimension {
     pub fn add_attribute(
         &mut self,
         attribute: Name,
-        hint: SecurityMode,
+        security_mode: SecurityMode,
         after: Option<&str>,
         id: usize,
     ) -> Result<(), Error> {
         match self {
             Self::Anarchy(attributes) => {
                 if let Entry::Vacant(entry) = attributes.entry(attribute) {
-                    entry.insert(Attribute::new(hint, id));
+                    entry.insert(Attribute::new(security_mode, id));
                     Ok(())
                 } else {
                     Err(Error::OperationNotPermitted(
@@ -150,7 +150,7 @@ impl Dimension {
                     .take_while(|a| Some(a) != higher_attributes.last())
                     .collect::<Dict<_, _>>();
 
-                new_attributes.insert(attribute, Attribute::new(hint, id));
+                new_attributes.insert(attribute, Attribute::new(security_mode, id));
                 higher_attributes.into_iter().rev().for_each(|(name, dim)| {
                     new_attributes.insert(name, dim);
                 });
@@ -267,7 +267,7 @@ mod serialization {
     fn test_attribute_serialization() {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
-        let attribute = Attribute::new(SecurityMode::Classic, 13);
+        let attribute = Attribute::new(SecurityMode::PreQuantum, 13);
         test_serialization(&attribute).unwrap();
 
         let attribute = Attribute::new(SecurityMode::Hybridized, usize::MAX);
@@ -318,7 +318,7 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut d = Dimension::Hierarchy(Dict::new());
-        d.add_attribute("A".to_string(), SecurityMode::Classic, None, 0)
+        d.add_attribute("A".to_string(), SecurityMode::PreQuantum, None, 0)
             .unwrap();
         d.add_attribute("B".to_string(), SecurityMode::Hybridized, Some("A"), 1)
             .unwrap();
@@ -327,7 +327,7 @@ mod serialization {
         test_serialization(&d).unwrap();
 
         let mut d = Dimension::Anarchy(HashMap::new());
-        d.add_attribute("A".to_string(), SecurityMode::Classic, None, 0)
+        d.add_attribute("A".to_string(), SecurityMode::PreQuantum, None, 0)
             .unwrap();
         d.add_attribute("B".to_string(), SecurityMode::Hybridized, None, 1)
             .unwrap();

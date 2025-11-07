@@ -174,9 +174,7 @@ impl AccessStructure {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
             .into_iter()
-            .map(|(ids, is_hybridized, is_readonly)| {
-                Right::from_point(ids).map(|r| (r, (is_hybridized, is_readonly)))
-            })
+            .map(|(ids, mode, status)| Right::from_point(ids).map(|r| (r, (mode, status))))
             .collect()
     }
 }
@@ -324,7 +322,7 @@ fn combine(
     if dimensions.is_empty() {
         vec![(
             vec![],
-            SecurityMode::Classic,
+            SecurityMode::PreQuantum,
             EncryptionStatus::EncryptDecrypt,
         )]
     } else {
@@ -332,11 +330,11 @@ fn combine(
         let partial_combinations = combine(&dimensions[1..]);
         let mut res = vec![];
         for component in current_dimension.attributes() {
-            for (ids, security_mode, is_activated) in partial_combinations.clone() {
+            for (ids, security_mode, encryption_status) in partial_combinations.clone() {
                 res.push((
                     [vec![component.get_id()], ids].concat(),
                     security_mode.max(component.get_security_mode()),
-                    is_activated | component.get_encryption_status(),
+                    encryption_status | component.get_encryption_status(),
                 ));
             }
         }
@@ -410,13 +408,13 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", SecurityMode::Classic),
-            ("Germany", SecurityMode::Classic),
-            ("Spain", SecurityMode::Classic),
+            ("France", SecurityMode::PreQuantum),
+            ("Germany", SecurityMode::PreQuantum),
+            ("Spain", SecurityMode::PreQuantum),
         ]
         .into_iter()
-        .try_for_each(|(attribute, hint)| {
-            structure.add_attribute(QualifiedAttribute::new("Country", attribute), hint, None)
+        .try_for_each(|(attribute, mode)| {
+            structure.add_attribute(QualifiedAttribute::new("Country", attribute), mode, None)
         })
         .unwrap();
 
