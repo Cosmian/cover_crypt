@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
-    abe_policy::{
+    abe::policy::{
         attribute::SecurityMode, AccessPolicy, Attribute, Dimension, EncryptionStatus,
         QualifiedAttribute, Right, Version,
     },
@@ -377,7 +377,7 @@ mod serialization {
 
     #[test]
     fn test_access_structure_serialization() {
-        use crate::abe_policy::gen_structure;
+        use crate::abe::gen_structure;
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut structure = AccessStructure::new();
@@ -389,7 +389,7 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::abe_policy::gen_structure;
+    use crate::abe::gen_structure;
 
     #[test]
     fn test_combine() {

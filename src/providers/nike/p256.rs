@@ -1,35 +1,24 @@
-use std::hash::Hash;
-use std::iter::Sum;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::MulAssign;
-use std::ops::Sub;
-use std::ops::SubAssign;
-
-use cosmian_crypto_core::bytes_ser_de::Deserializer;
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-use cosmian_crypto_core::bytes_ser_de::Serializer;
-use cosmian_crypto_core::reexport::tiny_keccak::Hasher;
-use cosmian_crypto_core::reexport::tiny_keccak::Sha3;
-use cosmian_crypto_core::reexport::zeroize::Zeroize;
-use cosmian_crypto_core::CryptoCoreError;
-use elliptic_curve::group::GroupEncoding;
-use elliptic_curve::rand_core::CryptoRngCore;
-use elliptic_curve::Field;
-use elliptic_curve::PrimeField;
+use crate::{
+    providers::nike::{KeyHomomorphicNike, Nike},
+    traits::{Group, One, Ring, Seedable, Zero},
+    Error,
+};
+use cosmian_crypto_core::{
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
+    reexport::{
+        tiny_keccak::{Hasher, Sha3},
+        zeroize::Zeroize,
+    },
+    CryptoCoreError, Sampling,
+};
+use elliptic_curve::{group::GroupEncoding, rand_core::CryptoRngCore, Field, PrimeField};
 use p256::{ProjectivePoint, Scalar};
+use std::{
+    hash::Hash,
+    iter::Sum,
+    ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign},
+};
 use subtle::ConstantTimeEq;
-
-use crate::traits::Group;
-use crate::traits::KeyHomomorphicNike;
-use crate::traits::Nike;
-use crate::traits::One;
-use crate::traits::Ring;
-use crate::traits::Sampling;
-use crate::traits::Zero;
-use crate::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct P256Point(ProjectivePoint);
@@ -328,8 +317,10 @@ impl Sampling for P256Scalar {
     fn random(rng: &mut impl CryptoRngCore) -> Self {
         Self(Scalar::random(rng))
     }
+}
 
-    fn hash(seed: &[u8]) -> Self {
+impl Seedable<32> for P256Scalar {
+    fn from_seed(seed: &[u8; 32]) -> Self {
         let mut i = 0u32;
         loop {
             let mut hasher = Sha3::v256();

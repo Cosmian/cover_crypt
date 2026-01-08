@@ -14,14 +14,20 @@ use cosmian_crypto_core::{
 };
 
 use crate::{
-    abe_policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
-    core::{
-        kem::MlKem, nike::ElGamal, KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey,
-        RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
-        SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+    abe::{
+        core::{
+            KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
+            TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH,
+            SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+        },
+        policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
     },
     data_struct::{RevisionMap, RevisionVec},
-    traits::{Kem, Nike, Sampling},
+    providers::{
+        kem::{Kem, MlKem},
+        nike::{ElGamal, Nike},
+    },
+    traits::Seedable,
     Error,
 };
 
@@ -83,7 +89,9 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
 }
 
 fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as Nike>::SecretKey, Error> {
-    Ok(<<ElGamal as Nike>::SecretKey as Sampling>::hash(&**seed))
+    Ok(<<ElGamal as Nike>::SecretKey as Seedable<
+        SHARED_SECRET_LENGTH,
+    >>::from_seed(seed))
 }
 
 fn H_hash(

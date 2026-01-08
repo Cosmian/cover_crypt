@@ -1,8 +1,8 @@
-use crate::{core::SHARED_SECRET_LENGTH, traits::Kem, Error};
+use crate::{providers::kem::Kem, Error};
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::{rand_core::CryptoRngCore, zeroize::Zeroize},
-    Secret,
+    CryptoCoreError, Secret,
 };
 use ml_kem::{
     array::Array,
@@ -10,13 +10,15 @@ use ml_kem::{
     EncodedSizeUser, KemCore,
 };
 
+const SHARED_SECRET_LENGTH: usize = 32;
+
 macro_rules! make_mlkem {
     ($base: ident, $ek: ident, $ek_len: literal, $dk: ident, $dk_len: literal, $enc: ident, $enc_len:literal) => {
         #[derive(Debug, PartialEq, Clone)]
         pub struct $ek(Box<<ml_kem::$base as KemCore>::EncapsulationKey>);
 
         impl Serializable for $ek {
-            type Error = Error;
+            type Error = CryptoCoreError;
 
             fn length(&self) -> usize {
                 $ek_len
@@ -48,7 +50,7 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $dk {
-            type Error = Error;
+            type Error = CryptoCoreError;
 
             fn length(&self) -> usize {
                 $dk_len
@@ -73,14 +75,14 @@ macro_rules! make_mlkem {
         pub struct $enc(Box<Array<u8, <ml_kem::$base as KemCore>::CiphertextSize>>);
 
         impl Serializable for $enc {
-            type Error = Error;
+            type Error = CryptoCoreError;
 
             fn length(&self) -> usize {
                 $enc_len
             }
 
             fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-                Ok(ser.write_array(&self.0)?)
+                ser.write_array(&self.0)
             }
 
             fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -97,9 +99,7 @@ macro_rules! make_mlkem {
             type EncapsulationKey = $ek;
             type DecapsulationKey = $dk;
             type SessionKey = Secret<SHARED_SECRET_LENGTH>;
-
             type Encapsulation = $enc;
-
             type Error = Error;
 
             fn keygen(

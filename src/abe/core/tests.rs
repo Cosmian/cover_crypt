@@ -3,14 +3,15 @@ use std::collections::{HashMap, HashSet};
 use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AccessPolicy, EncryptionStatus, Right},
-    api::Covercrypt,
-    core::{
-        primitives::{decaps, encaps, refresh, rekey, update_msk},
-        SecurityMode,
+    abe::{
+        core::{
+            primitives::{decaps, encaps, refresh, rekey, update_msk},
+            SecurityMode,
+        },
+        policy::{AccessPolicy, EncryptionStatus, Right},
+        Covercrypt, KemAc, PkeAc,
     },
     test_utils::cc_keygen,
-    traits::{KemAc, PkeAc},
 };
 
 use super::{

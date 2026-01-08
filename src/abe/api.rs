@@ -1,23 +1,21 @@
-use std::sync::{Mutex, MutexGuard};
-
+use crate::{
+    abe::{
+        core::{
+            primitives::{self, full_decaps, prune, refresh, rekey, setup, update_msk, usk_keygen},
+            MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
+            SHARED_SECRET_LENGTH,
+        },
+        policy::AccessPolicy,
+        KemAc, PkeAc,
+    },
+    traits::AE,
+    Error,
+};
 use cosmian_crypto_core::{
     reexport::{rand_core::SeedableRng, zeroize::Zeroizing},
     CsRng, Secret, SymmetricKey,
 };
-
-use super::{
-    core::primitives::{prune, update_msk, usk_keygen},
-    core::MIN_TRACING_LEVEL,
-    traits::AE,
-};
-use crate::{
-    core::{
-        primitives::{self, full_decaps, refresh, rekey, setup},
-        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
-    },
-    traits::{KemAc, PkeAc},
-    AccessPolicy, Error,
-};
+use std::sync::{Mutex, MutexGuard};
 
 #[derive(Debug)]
 pub struct Covercrypt {

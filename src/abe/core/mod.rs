@@ -1,23 +1,21 @@
 #![allow(non_snake_case)]
 
+use crate::{
+    abe::policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
+    data_struct::{RevisionMap, RevisionVec},
+    providers::{
+        kem::{Kem, MlKem},
+        nike::{ElGamal, Nike},
+    },
+    traits::Zero,
+    Error,
+};
+use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, Sampling, SymmetricKey};
 use std::{
     collections::{HashMap, HashSet, LinkedList},
     hash::Hash,
 };
 
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
-use kem::MlKem;
-use nike::ElGamal;
-
-use crate::{
-    abe_policy::{AccessStructure, EncryptionStatus, Right},
-    data_struct::{RevisionMap, RevisionVec},
-    traits::{Kem, Nike, Sampling, Zero},
-    Error, SecurityMode,
-};
-
-mod kem;
-mod nike;
 mod serialization;
 
 #[cfg(test)]

@@ -1,10 +1,13 @@
-use crate::{abe_policy::AccessStructure, Error, SecurityMode};
+use crate::{
+    abe::policy::{AccessStructure, SecurityMode},
+    Error,
+};
 
 pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(), Error> {
     policy.add_hierarchy("SEC".to_string())?;
 
     policy.add_attribute(
-        crate::abe_policy::QualifiedAttribute {
+        crate::abe::policy::QualifiedAttribute {
             dimension: "SEC".to_string(),
             name: "LOW".to_string(),
         },
@@ -12,7 +15,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
         None,
     )?;
     policy.add_attribute(
-        crate::abe_policy::QualifiedAttribute {
+        crate::abe::policy::QualifiedAttribute {
             dimension: "SEC".to_string(),
             name: "MED".to_string(),
         },
@@ -20,7 +23,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
         Some("LOW"),
     )?;
     policy.add_attribute(
-        crate::abe_policy::QualifiedAttribute {
+        crate::abe::policy::QualifiedAttribute {
             dimension: "SEC".to_string(),
             name: "TOP".to_string(),
         },
@@ -39,7 +42,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
     .into_iter()
     .try_for_each(|(attribute, mode)| {
         policy.add_attribute(
-            crate::abe_policy::QualifiedAttribute {
+            crate::abe::policy::QualifiedAttribute {
                 dimension: "DPT".to_string(),
                 name: attribute.to_string(),
             },
@@ -60,7 +63,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
         .into_iter()
         .try_for_each(|(attribute, mode)| {
             policy.add_attribute(
-                crate::abe_policy::QualifiedAttribute {
+                crate::abe::policy::QualifiedAttribute {
                     dimension: "CTR".to_string(),
                     name: attribute.to_string(),
                 },

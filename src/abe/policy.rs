@@ -10,13 +10,14 @@ mod tests;
 pub use access_policy::AccessPolicy;
 pub use access_structure::AccessStructure;
 pub use attribute::{EncryptionStatus, QualifiedAttribute, SecurityMode};
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 pub use dimension::{Attribute, Dimension};
 pub use rights::Right;
+
 #[cfg(any(test, feature = "test-utils"))]
 pub use tests::gen_structure;
 
 use crate::Error;
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Version {

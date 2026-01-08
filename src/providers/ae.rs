@@ -1,6 +1,7 @@
 use cosmian_crypto_core::{
     reexport::{rand_core::CryptoRngCore, zeroize::Zeroizing},
-    Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce, RandomFixedSizeCBytes,
+    SymmetricKey,
 };
 
 use crate::{traits::AE, Error};
@@ -23,14 +24,12 @@ impl AE<{ Self::KEY_LENGTH }> for Aes256Gcm {
         ctx: &[u8],
     ) -> Result<Zeroizing<Vec<u8>>, Error> {
         if ctx.len() < Self::NONCE_LENGTH {
-            return Err(Error::CryptoCoreError(
-                cosmian_crypto_core::CryptoCoreError::DecryptionError,
-            ));
+            return Err(Error::CryptoCoreError(CryptoCoreError::DecryptionError));
         }
         let nonce = Nonce::try_from_slice(&ctx[..Self::NONCE_LENGTH])?;
         Self::new(key)
             .decrypt(&nonce, &ctx[Self::NONCE_LENGTH..], None)
-            .map_err(Error::CryptoCoreError)
             .map(Zeroizing::new)
+            .map_err(Error::CryptoCoreError)
     }
 }

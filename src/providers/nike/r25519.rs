@@ -1,27 +1,20 @@
-use std::iter::Sum;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Deref;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::MulAssign;
-use std::ops::Sub;
-use std::ops::SubAssign;
-
-use cosmian_crypto_core::bytes_ser_de::Deserializer;
+use crate::{
+    providers::nike::{KeyHomomorphicNike, Nike},
+    traits::{Group, One, Ring, Seedable, Zero},
+    Error,
+};
 use cosmian_crypto_core::{
-    bytes_ser_de::{Serializable, Serializer},
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::{
         rand_core::CryptoRngCore,
         tiny_keccak::{Hasher, Sha3},
         zeroize::Zeroize,
     },
-    CryptoCoreError, R25519PrivateKey as Scalar, R25519PublicKey as EcPoint,
+    CryptoCoreError, R25519PrivateKey as Scalar, R25519PublicKey as EcPoint, Sampling,
 };
-
-use crate::{
-    traits::{Group, KeyHomomorphicNike, Nike, One, Ring, Sampling, Zero},
-    Error,
+use std::{
+    iter::Sum,
+    ops::{Add, AddAssign, Deref, Div, Mul, MulAssign, Sub, SubAssign},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -305,8 +298,10 @@ impl Sampling for R25519Scalar {
     fn random(rng: &mut impl CryptoRngCore) -> Self {
         Self(Scalar::new(rng))
     }
+}
 
-    fn hash(seed: &[u8]) -> Self {
+impl Seedable<32> for R25519Scalar {
+    fn from_seed(seed: &[u8; 32]) -> Self {
         let mut hasher = Sha3::v512();
         let mut bytes = [0; 512 / 8];
         hasher.update(seed);
