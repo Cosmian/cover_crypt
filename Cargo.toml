@@ -46,7 +46,7 @@ curve25519 = ["cosmian_crypto_core/curve25519"]
 test-utils = []
 
 [dependencies]
-cosmian_crypto_core = { version = "10.3", default-features = false, features = [
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/generic-pke-implementation", default-features = false, features = [
   "aes",
   "ser",
   "sha3"

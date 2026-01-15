@@ -1,8 +1,9 @@
-use crate::{providers::kem::Kem, Error};
+use crate::Error;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::{rand_core::CryptoRngCore, zeroize::Zeroize},
-    CryptoCoreError, Secret,
+    traits::KEM,
+    CryptoCoreError, Secret, SymmetricKey,
 };
 use ml_kem::{
     array::Array,
@@ -95,10 +96,9 @@ macro_rules! make_mlkem {
 
         pub struct $base;
 
-        impl Kem for $base {
+        impl KEM<SHARED_SECRET_LENGTH> for $base {
             type EncapsulationKey = $ek;
             type DecapsulationKey = $dk;
-            type SessionKey = Secret<SHARED_SECRET_LENGTH>;
             type Encapsulation = $enc;
             type Error = Error;
 
@@ -112,23 +112,24 @@ macro_rules! make_mlkem {
             fn enc(
                 ek: &Self::EncapsulationKey,
                 rng: &mut impl CryptoRngCore,
-            ) -> Result<(Self::SessionKey, Self::Encapsulation), Self::Error> {
+            ) -> Result<(SymmetricKey<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
+            {
                 let (enc, mut ss) =
                     ek.0.encapsulate(rng)
                         .map_err(|e| Error::Kem(format!("{:?}", e)))?;
                 let ss = Secret::from_unprotected_bytes(ss.as_mut());
-                Ok((ss, $enc(Box::new(enc))))
+                Ok((ss.into(), $enc(Box::new(enc))))
             }
 
             fn dec(
                 dk: &Self::DecapsulationKey,
                 enc: &Self::Encapsulation,
-            ) -> Result<Self::SessionKey, Self::Error> {
+            ) -> Result<SymmetricKey<SHARED_SECRET_LENGTH>, Self::Error> {
                 let mut ss =
                     dk.0.decapsulate(&enc.0)
                         .map_err(|e| Self::Error::Kem(format!("{e:?}")))?;
                 let ss = Secret::from_unprotected_bytes(ss.as_mut());
-                Ok(ss)
+                Ok(ss.into())
             }
         }
     };

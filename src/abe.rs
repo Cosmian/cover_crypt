@@ -1,11 +1,11 @@
 mod api;
-mod core;
+pub mod core;
 mod policy;
 
 pub mod encrypted_header;
 
 pub use api::Covercrypt;
-pub use core::{MasterPublicKey, MasterSecretKey, UserSecretKey};
+pub use core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
 pub use policy::{
     AccessPolicy, AccessStructure, Attribute, Dimension, EncryptionStatus, QualifiedAttribute,
     SecurityMode,
@@ -14,8 +14,7 @@ pub use policy::{
 #[cfg(any(test, feature = "test-utils"))]
 pub use policy::gen_structure;
 
-use crate::traits::AE;
-use cosmian_crypto_core::{reexport::zeroize::Zeroizing, Secret};
+use cosmian_crypto_core::{traits::AE, Secret};
 
 pub trait KemAc<const LENGTH: usize> {
     type EncapsulationKey;
@@ -71,5 +70,5 @@ pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
         &self,
         dk: &Self::DecryptionKey,
         ctx: &Self::Ciphertext,
-    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error>;
+    ) -> Result<Option<E::Plaintext>, Self::Error>;
 }

@@ -8,8 +8,7 @@
 //! the DDH and LWE", T. Brézot, P. de Perthuis and D. Pointcheval 2023.
 //! [2] "A Proposal for an ISO Standard for Public Key Encryption (version 2.1)", Shoup 2001.
 
-#![allow(dead_code)]
-
+mod abe;
 mod data_struct;
 mod error;
 mod providers;
@@ -18,5 +17,7 @@ mod traits;
 #[cfg(any(test, feature = "test-utils"))]
 mod test_utils;
 
-pub mod abe;
+pub mod base;
+
+pub use abe::*;
 pub use error::Error;
