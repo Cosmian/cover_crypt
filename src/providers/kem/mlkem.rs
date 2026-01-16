@@ -1,7 +1,10 @@
 use crate::Error;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    reexport::{rand_core::CryptoRngCore, zeroize::Zeroize},
+    reexport::{
+        rand_core::CryptoRngCore,
+        zeroize::{Zeroize, ZeroizeOnDrop},
+    },
     traits::KEM,
     CryptoCoreError, Secret, SymmetricKey,
 };
@@ -42,6 +45,9 @@ macro_rules! make_mlkem {
 
         #[derive(Debug, Clone, PartialEq)]
         pub struct $dk(Box<<ml_kem::$base as KemCore>::DecapsulationKey>);
+
+        // DecapsulationKey implements ZeroizeOnDrop.
+        impl ZeroizeOnDrop for $dk {}
 
         #[allow(dead_code)]
         impl $dk {

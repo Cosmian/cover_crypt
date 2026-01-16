@@ -16,7 +16,6 @@ use cosmian_crypto_core::{
     reexport::{
         rand_core::{CryptoRngCore, RngCore},
         tiny_keccak::{Hasher, Kmac, Sha3},
-        zeroize::Zeroize,
     },
     traits::{Seedable, KEM, NIKE},
     RandomFixedSizeCBytes, Secret, SymmetricKey,
@@ -240,9 +239,8 @@ fn h_encaps<'a>(
 
     let encapsulations = encs
         .into_iter()
-        .map(|(mut K1, K2, E)| -> Result<_, _> {
+        .map(|(K1, K2, E)| -> Result<_, _> {
             let F = xor_2(&S, &*H_hash(Some(&K1), Some(&K2), &T)?);
-            K1.zeroize();
             Ok((E, F))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -404,9 +402,8 @@ fn attempt_pre_quantum_decaps<'a>(
     tracing_points: impl IntoIterator<Item = &'a <ElGamal as NIKE>::PublicKey>,
 ) -> Result<Option<Secret<32>>, Error> {
     if let RightSecretKey::PreQuantum { sk } = secret {
-        let mut K1 = ElGamal::shared_secret(sk, A)?;
+        let K1 = ElGamal::shared_secret(sk, A)?;
         let S = xor_in_place(H_hash(Some(&K1), None, T)?, F);
-        K1.zeroize();
         let (tag_ij, ss) = J_hash(&S, U);
         if tag == &tag_ij {
             // Fujisaki-Okamoto
@@ -436,7 +433,7 @@ fn attempt_hybridized_decaps<'a>(
     tracing_points: impl IntoIterator<Item = &'a <ElGamal as NIKE>::PublicKey>,
 ) -> Result<Option<Secret<32>>, Error> {
     if let RightSecretKey::Hybridized { sk, dk } = secret {
-        let mut K1 = ElGamal::shared_secret(sk, A)?;
+        let K1 = ElGamal::shared_secret(sk, A)?;
         let K2 = MlKem::dec(dk, E)?;
         let S_ij = xor_in_place(H_hash(Some(&K1), Some(&K2), T)?, F);
         let (tag_ij, ss) = J_hash(&S_ij, U);
@@ -448,7 +445,6 @@ fn attempt_hybridized_decaps<'a>(
                 .map(|P| P * &r)
                 .collect::<Vec<_>>();
             if c == c_ij {
-                K1.zeroize();
                 return Ok(Some(ss));
             }
         }
