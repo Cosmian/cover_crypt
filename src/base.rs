@@ -6,7 +6,7 @@ use crate::{
 use cosmian_crypto_core::{
     reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
     traits::{kem_to_pke::GenericPKE, KEM},
-    Aes256Gcm, SymmetricKey,
+    SymmetricKey,
 };
 
 #[derive(Debug)]
@@ -254,4 +254,49 @@ impl KEM<32> for ConfigurableKEM {
     }
 }
 
-pub type ConfigurablePKE = GenericPKE<{ ConfigurableKEM::KEY_LENGTH }, ConfigurableKEM, Aes256Gcm>;
+pub type ConfigurablePKE<AE> = GenericPKE<{ ConfigurableKEM::KEY_LENGTH }, ConfigurableKEM, AE>;
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::cc_keygen;
+
+    use super::*;
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+
+    #[test]
+    fn test_abe_kem() {
+        let mut rng = CsRng::from_entropy();
+        let config = Configuration::AbeScheme;
+        let (mut msk, _) = config.keygen(&mut rng).unwrap();
+
+        // Load the test access structure used in other tests.
+        let access_structure = msk.access_structure().unwrap();
+        let (_msk, _) = cc_keygen(&Covercrypt::default(), true).unwrap();
+        *access_structure = _msk.access_structure.clone();
+        let mut mpk = msk.update_msk().unwrap();
+
+        let user_ap = AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
+        let ok_ap = AccessPolicy::parse("DPT::MKG && SEC::TOP").unwrap();
+        let ko_ap = AccessPolicy::parse("DPT::DEV").unwrap();
+
+        let usk = msk.generate_user_secret_key(&user_ap).unwrap();
+
+        // Check user *can* decrypt the OK access policy.
+        mpk.set_access_policy(ok_ap).unwrap();
+        let (key, enc) = ConfigurableKEM::enc(&mpk, &mut rng).unwrap();
+        let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
+        assert_eq!(key, key_);
+
+        // Check user *cannot* decrypt the KO access policy.
+        mpk.set_access_policy(ko_ap).unwrap();
+        let (_key, enc) = ConfigurableKEM::enc(&mpk, &mut rng).unwrap();
+        let res = ConfigurableKEM::dec(&usk, &enc);
+        assert!(res.is_err());
+        match res {
+            Err(Error::OperationNotPermitted(msg)) => {
+                assert_eq!(&msg, "user key does not have the required access right")
+            }
+            _ => panic!("incorrect error returned"),
+        }
+    }
+}
