@@ -1,14 +1,18 @@
-use super::*;
 use crate::{
     abe::{AccessPolicy, KemAc},
     providers::{MlKem, PreQuantumKem},
+    AccessStructure, Covercrypt, Error, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
 };
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, traits::KEM, SymmetricKey};
+use cosmian_crypto_core::{
+    reexport::rand_core::CryptoRngCore,
+    traits::{kem_to_pke::GenericPKE, KEM},
+    Aes256Gcm, SymmetricKey,
+};
 
 #[derive(Debug)]
 pub enum AbeDKey {
-    Master(abe::Covercrypt, abe::MasterSecretKey),
-    User(abe::Covercrypt, abe::UserSecretKey),
+    Master(Covercrypt, MasterSecretKey),
+    User(Covercrypt, UserSecretKey),
 }
 
 #[derive(Debug)]
@@ -19,7 +23,7 @@ pub enum DKey {
 }
 
 impl DKey {
-    pub fn access_structure(&mut self) -> Result<&mut abe::AccessStructure, Error> {
+    pub fn access_structure(&mut self) -> Result<&mut AccessStructure, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(_, msk)) => Ok(&mut msk.access_structure),
             _ => Err(Error::KeyError(
@@ -35,43 +39,43 @@ impl DKey {
                 Ok(EKey::AbeScheme(cc.clone(), mpk, None))
             }
             _ => Err(Error::KeyError(
-                "cannot update non ABE master keys".to_string(),
+                "cannot update non ABE master key".to_string(),
             )),
         }
     }
 
-    pub fn rekey(&mut self, ap: &abe::AccessPolicy) -> Result<EKey, Error> {
+    pub fn rekey(&mut self, ap: &AccessPolicy) -> Result<EKey, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(cc, msk)) => {
                 let mpk = cc.rekey(msk, ap)?;
                 Ok(EKey::AbeScheme(cc.clone(), mpk, None))
             }
             _ => Err(Error::KeyError(
-                "cannot rekey non ABE master keys".to_string(),
+                "cannot re-key non ABE master key".to_string(),
             )),
         }
     }
 
-    pub fn prune_master_key(&mut self, ap: &abe::AccessPolicy) -> Result<EKey, Error> {
+    pub fn prune_master_key(&mut self, ap: &AccessPolicy) -> Result<EKey, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(cc, msk)) => {
                 let mpk = cc.prune_master_secret_key(msk, ap)?;
                 Ok(EKey::AbeScheme(cc.clone(), mpk, None))
             }
             _ => Err(Error::KeyError(
-                "cannot prune non ABE master keys".to_string(),
+                "cannot prune non ABE master key".to_string(),
             )),
         }
     }
 
-    pub fn generate_user_secret_key(&mut self, ap: &abe::AccessPolicy) -> Result<DKey, Error> {
+    pub fn generate_user_secret_key(&mut self, ap: &AccessPolicy) -> Result<DKey, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(cc, msk)) => {
                 let usk = cc.generate_user_secret_key(msk, ap)?;
                 Ok(DKey::AbeScheme(AbeDKey::User(cc.clone(), usk)))
             }
             _ => Err(Error::KeyError(
-                "cannot prune non ABE master keys".to_string(),
+                "cannot generate user secret key using a non ABE master key".to_string(),
             )),
         }
     }
@@ -106,7 +110,7 @@ impl DKey {
                 Ok((SymmetricKey::from(ss), Enc::AbeScheme(enc)))
             }
             _ => Err(Error::KeyError(
-                "cannot refresh user secret key: invalid key types".to_string(),
+                "cannot re-encapsulate: invalid object types".to_string(),
             )),
         }
     }
@@ -114,14 +118,14 @@ impl DKey {
 
 #[derive(Debug, Clone)]
 pub enum EKey {
-    AbeScheme(abe::Covercrypt, abe::MasterPublicKey, Option<AccessPolicy>),
+    AbeScheme(Covercrypt, MasterPublicKey, Option<AccessPolicy>),
     PreQuantum(<PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::EncapsulationKey),
     PostQuantum(<MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::EncapsulationKey),
 }
 
 impl EKey {
     /// Sets the encapsulation key to use the provided access polity.
-    pub fn set_access_policy(&mut self, access_policy: abe::AccessPolicy) -> Result<(), Error> {
+    pub fn set_access_policy(&mut self, access_policy: AccessPolicy) -> Result<(), Error> {
         match self {
             Self::AbeScheme(_, _, ap) => {
                 *ap = Some(access_policy);
@@ -136,7 +140,7 @@ impl EKey {
 
 #[derive(Debug, Clone)]
 pub enum Enc {
-    AbeScheme(abe::XEnc),
+    AbeScheme(XEnc),
     PreQuantum(<PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::Encapsulation),
     PostQuantum(<MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::Encapsulation),
 }
@@ -152,7 +156,7 @@ impl Configuration {
     pub fn keygen(&self, rng: &mut impl CryptoRngCore) -> Result<(DKey, EKey), Error> {
         match self {
             Self::AbeScheme => {
-                let cc = abe::Covercrypt::default();
+                let cc = Covercrypt::default();
                 let (msk, mpk) = cc.setup()?;
                 Ok((
                     DKey::AbeScheme(AbeDKey::Master(cc.clone(), msk)),
@@ -246,3 +250,5 @@ impl KEM<32> for ConfigurableKEM {
         }
     }
 }
+
+pub type ConfigurablePKE = GenericPKE<{ ConfigurableKEM::KEY_LENGTH }, ConfigurableKEM, Aes256Gcm>;
