@@ -7,7 +7,7 @@ use crate::{
     Error,
 };
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore,
+    reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
     traits::{Sampling, Zero, KEM, NIKE},
     SymmetricKey,
 };
@@ -382,6 +382,9 @@ pub struct MasterSecretKey {
     pub access_structure: AccessStructure,
 }
 
+// All secret keys are zeroized on drop.
+impl ZeroizeOnDrop for MasterSecretKey {}
+
 impl MasterSecretKey {
     /// Returns the most recent secret key associated to each given right.
     ///
@@ -510,6 +513,9 @@ pub struct UserSecretKey {
     secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
+
+// All secret keys are zeroized on drop.
+impl ZeroizeOnDrop for UserSecretKey {}
 
 impl UserSecretKey {
     /// Returns the tracing level of this user secret key.

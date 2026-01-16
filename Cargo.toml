@@ -56,6 +56,7 @@ cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", bran
 ml-kem = { version = "0.2", features = ["zeroize"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+zeroize = "1.8"
 
 [dev-dependencies]
 criterion = { version = "0.7", features = [

@@ -4,7 +4,7 @@ use crate::{
     AccessStructure, Covercrypt, Error, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
 };
 use cosmian_crypto_core::{
-    reexport::rand_core::CryptoRngCore,
+    reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
     traits::{kem_to_pke::GenericPKE, KEM},
     Aes256Gcm, SymmetricKey,
 };
@@ -15,7 +15,10 @@ pub enum AbeDKey {
     User(Covercrypt, UserSecretKey),
 }
 
-#[derive(Debug)]
+// All secret keys are zeroized on drop.
+impl ZeroizeOnDrop for AbeDKey {}
+
+#[derive(Debug, ZeroizeOnDrop)]
 pub enum DKey {
     AbeScheme(AbeDKey),
     PreQuantum(<PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::DecapsulationKey),
