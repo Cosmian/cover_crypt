@@ -9,7 +9,8 @@ use crate::{
             EncryptionHint,
         },
         policy::{AccessPolicy, EncryptionStatus, Right},
-        Covercrypt, KemAc, PkeAc,
+        traits::{KemAc, PkeAc},
+        Covercrypt,
     },
     test_utils::cc_keygen,
 };

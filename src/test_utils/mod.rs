@@ -20,7 +20,7 @@ mod tests {
 
     use super::*;
     use crate::abe::{
-        encrypted_header::EncryptedHeader, AccessPolicy, Covercrypt, EncryptionHint, KemAc,
+        encrypted_header::EncryptedHeader, traits::KemAc, AccessPolicy, Covercrypt, EncryptionHint,
         QualifiedAttribute,
     };
 

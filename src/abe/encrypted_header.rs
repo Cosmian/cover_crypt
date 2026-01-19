@@ -6,7 +6,8 @@ use cosmian_crypto_core::{
 use crate::{
     abe::{
         core::{XEnc, SHARED_SECRET_LENGTH},
-        AccessPolicy, Covercrypt, KemAc, MasterPublicKey, UserSecretKey,
+        traits::KemAc,
+        AccessPolicy, Covercrypt, MasterPublicKey, UserSecretKey,
     },
     Error,
 };

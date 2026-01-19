@@ -298,7 +298,7 @@ mod tests {
                 MIN_TRACING_LEVEL,
             },
             policy::{AccessPolicy, EncryptionHint, EncryptionStatus, Right},
-            KemAc,
+            traits::KemAc,
         },
         test_utils::cc_keygen,
     };

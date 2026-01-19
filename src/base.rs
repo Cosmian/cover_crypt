@@ -1,5 +1,5 @@
 use crate::{
-    abe::{AccessPolicy, KemAc},
+    abe::{traits::KemAc, AccessPolicy},
     providers::{MlKem, PreQuantumKem},
     AccessStructure, Covercrypt, Error, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
 };

@@ -12,7 +12,6 @@ mod abe;
 mod data_struct;
 mod error;
 mod providers;
-mod traits;
 
 #[cfg(any(test, feature = "test-utils"))]
 mod test_utils;

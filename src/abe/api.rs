@@ -8,7 +8,7 @@ use crate::{
             SHARED_SECRET_LENGTH,
         },
         policy::AccessPolicy,
-        KemAc, PkeAc,
+        traits::{KemAc, PkeAc},
     },
     Error,
 };
