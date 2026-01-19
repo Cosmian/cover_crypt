@@ -267,7 +267,7 @@ mod serialization {
     fn test_attribute_serialization() {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
-        let attribute = Attribute::new(EncryptionHint::PreQuantum, 13);
+        let attribute = Attribute::new(EncryptionHint::Classic, 13);
         test_serialization(&attribute).unwrap();
 
         let attribute = Attribute::new(EncryptionHint::Hybridized, usize::MAX);
@@ -318,7 +318,7 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut d = Dimension::Hierarchy(Dict::new());
-        d.add_attribute("A".to_string(), EncryptionHint::PreQuantum, None, 0)
+        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
             .unwrap();
         d.add_attribute("B".to_string(), EncryptionHint::Hybridized, Some("A"), 1)
             .unwrap();
@@ -327,7 +327,7 @@ mod serialization {
         test_serialization(&d).unwrap();
 
         let mut d = Dimension::Anarchy(HashMap::new());
-        d.add_attribute("A".to_string(), EncryptionHint::PreQuantum, None, 0)
+        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
             .unwrap();
         d.add_attribute("B".to_string(), EncryptionHint::Hybridized, None, 1)
             .unwrap();

@@ -73,7 +73,7 @@ impl RightSecretKey {
     /// point `h`.
     fn random(rng: &mut impl CryptoRngCore, security_mode: EncryptionHint) -> Result<Self, Error> {
         match security_mode {
-            EncryptionHint::PreQuantum => {
+            EncryptionHint::Classic => {
                 let sk = <ElGamal as NIKE>::SecretKey::random(rng);
                 Ok(Self::PreQuantum { sk })
             }
@@ -107,7 +107,7 @@ impl RightSecretKey {
         match self {
             Self::Hybridized { .. } => EncryptionHint::Hybridized,
             Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
-            Self::PreQuantum { .. } => EncryptionHint::PreQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::Classic,
         }
     }
 
@@ -118,12 +118,12 @@ impl RightSecretKey {
         rng: &mut impl CryptoRngCore,
     ) -> Result<Self, Error> {
         Ok(match (self, security_mode) {
-            (Self::Hybridized { sk, .. }, EncryptionHint::PreQuantum) => Self::PreQuantum { sk },
+            (Self::Hybridized { sk, .. }, EncryptionHint::Classic) => Self::PreQuantum { sk },
             (Self::Hybridized { dk, .. }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
             (Self::Hybridized { sk, dk }, EncryptionHint::Hybridized) => {
                 Self::Hybridized { sk, dk }
             }
-            (Self::PostQuantum { .. }, EncryptionHint::PreQuantum) => Self::PostQuantum {
+            (Self::PostQuantum { .. }, EncryptionHint::Classic) => Self::PostQuantum {
                 dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
             },
             (Self::PostQuantum { dk }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
@@ -131,7 +131,7 @@ impl RightSecretKey {
                 sk: <ElGamal as NIKE>::keygen(rng)?.0,
                 dk,
             },
-            (Self::PreQuantum { sk }, EncryptionHint::PreQuantum) => Self::PreQuantum { sk },
+            (Self::PreQuantum { sk }, EncryptionHint::Classic) => Self::PreQuantum { sk },
             (Self::PreQuantum { .. }, EncryptionHint::PostQuantum) => Self::PostQuantum {
                 dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
             },
@@ -168,7 +168,7 @@ impl RightPublicKey {
         match self {
             Self::Hybridized { .. } => EncryptionHint::Hybridized,
             Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
-            Self::PreQuantum { .. } => EncryptionHint::PreQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::Classic,
         }
     }
 }
@@ -589,7 +589,7 @@ impl XEnc {
         match self {
             Self::Hybridized { .. } => EncryptionHint::Hybridized,
             Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
-            Self::PreQuantum { .. } => EncryptionHint::PreQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::Classic,
         }
     }
 }

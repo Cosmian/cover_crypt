@@ -324,7 +324,7 @@ fn combine(
     if dimensions.is_empty() {
         vec![(
             vec![],
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             EncryptionStatus::EncryptDecrypt,
         )]
     } else {
@@ -410,9 +410,9 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", EncryptionHint::PreQuantum),
-            ("Germany", EncryptionHint::PreQuantum),
-            ("Spain", EncryptionHint::PreQuantum),
+            ("France", EncryptionHint::Classic),
+            ("Germany", EncryptionHint::Classic),
+            ("Spain", EncryptionHint::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, mode)| {

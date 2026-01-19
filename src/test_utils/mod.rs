@@ -34,7 +34,7 @@ mod tests {
 
         let _ = &mut msk.access_structure.add_attribute(
             QualifiedAttribute::new("DPT", "Sales"),
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             None,
         )?;
         let mpk = cc.update_msk(&mut msk)?;

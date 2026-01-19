@@ -22,7 +22,7 @@ use super::{
 
 #[test]
 fn security_mode_ordering() {
-    assert!(EncryptionHint::PreQuantum < EncryptionHint::PostQuantum);
+    assert!(EncryptionHint::Classic < EncryptionHint::PostQuantum);
     assert!(EncryptionHint::PostQuantum < EncryptionHint::Hybridized);
 }
 
@@ -42,11 +42,11 @@ fn test_encapsulation() {
         HashMap::from_iter([
             (
                 other_coordinate.clone(),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 target_coordinate.clone(),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -104,7 +104,7 @@ fn test_update() {
         .map(|_| {
             (
                 Right::random(&mut rng),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -158,11 +158,11 @@ fn test_rekey() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -242,11 +242,11 @@ fn test_integrity_check() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -310,7 +310,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), EncryptionHint::PreQuantum);
+    assert_eq!(enc.security_mode(), EncryptionHint::Classic);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 

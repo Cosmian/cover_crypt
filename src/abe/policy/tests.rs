@@ -11,7 +11,7 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
             dimension: "SEC".to_string(),
             name: "LOW".to_string(),
         },
-        EncryptionHint::PreQuantum,
+        EncryptionHint::Classic,
         None,
     )?;
     policy.add_attribute(
@@ -33,11 +33,11 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
 
     policy.add_anarchy("DPT".to_string())?;
     [
-        ("RD", EncryptionHint::PreQuantum),
-        ("HR", EncryptionHint::PreQuantum),
-        ("MKG", EncryptionHint::PreQuantum),
-        ("FIN", EncryptionHint::PreQuantum),
-        ("DEV", EncryptionHint::PreQuantum),
+        ("RD", EncryptionHint::Classic),
+        ("HR", EncryptionHint::Classic),
+        ("MKG", EncryptionHint::Classic),
+        ("FIN", EncryptionHint::Classic),
+        ("DEV", EncryptionHint::Classic),
     ]
     .into_iter()
     .try_for_each(|(attribute, mode)| {
@@ -54,11 +54,11 @@ pub fn gen_structure(policy: &mut AccessStructure, complete: bool) -> Result<(),
     if complete {
         policy.add_anarchy("CTR".to_string())?;
         [
-            ("EN", EncryptionHint::PreQuantum),
-            ("DE", EncryptionHint::PreQuantum),
-            ("IT", EncryptionHint::PreQuantum),
-            ("FR", EncryptionHint::PreQuantum),
-            ("SP", EncryptionHint::PreQuantum),
+            ("EN", EncryptionHint::Classic),
+            ("DE", EncryptionHint::Classic),
+            ("IT", EncryptionHint::Classic),
+            ("FR", EncryptionHint::Classic),
+            ("SP", EncryptionHint::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, mode)| {
@@ -109,20 +109,20 @@ fn test_edit_anarchic_attributes() {
     // Add new attribute Sales
     let new_attr = QualifiedAttribute::new("DPT", "Sales");
     assert!(structure
-        .add_attribute(new_attr.clone(), EncryptionHint::PreQuantum, None)
+        .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
         .is_ok());
     assert_eq!(structure.attributes().count(), 9);
 
     // Try adding already existing attribute HR
     let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
     assert!(structure
-        .add_attribute(duplicate_attr, EncryptionHint::PreQuantum, None)
+        .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
         .is_err());
 
     // Try adding attribute to non existing dimension
     let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
     assert!(structure
-        .add_attribute(missing_dimension.clone(), EncryptionHint::PreQuantum, None)
+        .add_attribute(missing_dimension.clone(), EncryptionHint::Classic, None)
         .is_err());
 
     // Remove research attribute
@@ -154,14 +154,14 @@ fn test_edit_anarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr1"),
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             None,
         )
         .unwrap();
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr2"),
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             None,
         )
         .unwrap();
@@ -220,7 +220,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "OTHER"),
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             None,
         )
         .unwrap();
@@ -249,7 +249,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "LOW"),
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             None,
         )
         .unwrap();
@@ -286,7 +286,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "MID"),
-            EncryptionHint::PreQuantum,
+            EncryptionHint::Classic,
             Some("LOW"),
         )
         .unwrap();

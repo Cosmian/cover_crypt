@@ -351,7 +351,7 @@ pub fn encaps(
     let S = Secret::random(rng);
 
     match is_hybridized {
-        EncryptionHint::PreQuantum => {
+        EncryptionHint::Classic => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
