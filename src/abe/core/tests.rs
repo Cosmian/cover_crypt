@@ -6,7 +6,7 @@ use crate::{
     abe::{
         core::{
             primitives::{decaps, encaps, refresh, rekey, update_msk},
-            SecurityMode,
+            EncryptionHint,
         },
         policy::{AccessPolicy, EncryptionStatus, Right},
         Covercrypt, KemAc, PkeAc,
@@ -21,8 +21,8 @@ use super::{
 
 #[test]
 fn security_mode_ordering() {
-    assert!(SecurityMode::PreQuantum < SecurityMode::PostQuantum);
-    assert!(SecurityMode::PostQuantum < SecurityMode::Hybridized);
+    assert!(EncryptionHint::PreQuantum < EncryptionHint::PostQuantum);
+    assert!(EncryptionHint::PostQuantum < EncryptionHint::Hybridized);
 }
 
 /// This test asserts that it is possible to encapsulate a key for a given
@@ -41,11 +41,11 @@ fn test_encapsulation() {
         HashMap::from_iter([
             (
                 other_coordinate.clone(),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 target_coordinate.clone(),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -103,7 +103,7 @@ fn test_update() {
         .map(|_| {
             (
                 Right::random(&mut rng),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -157,11 +157,11 @@ fn test_rekey() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -241,11 +241,11 @@ fn test_integrity_check() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (SecurityMode::PreQuantum, EncryptionStatus::EncryptDecrypt),
+                (EncryptionHint::PreQuantum, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -309,7 +309,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), SecurityMode::PreQuantum);
+    assert_eq!(enc.security_mode(), EncryptionHint::PreQuantum);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
@@ -322,7 +322,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), SecurityMode::PostQuantum);
+    assert_eq!(enc.security_mode(), EncryptionHint::PostQuantum);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
@@ -335,7 +335,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), SecurityMode::Hybridized);
+    assert_eq!(enc.security_mode(), EncryptionHint::Hybridized);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 }

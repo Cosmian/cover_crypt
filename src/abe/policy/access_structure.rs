@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
     abe::policy::{
-        attribute::SecurityMode, AccessPolicy, Attribute, Dimension, EncryptionStatus,
+        attribute::EncryptionHint, AccessPolicy, Attribute, Dimension, EncryptionStatus,
         QualifiedAttribute, Right, Version,
     },
     data_struct::Dict,
@@ -102,7 +102,7 @@ impl AccessStructure {
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
-        security_mode: SecurityMode,
+        security_mode: EncryptionHint,
         after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
@@ -170,7 +170,9 @@ impl AccessStructure {
 
     /// Generates all rights defined by this access structure and return their
     /// hybridization and activation status.
-    pub(crate) fn omega(&self) -> Result<HashMap<Right, (SecurityMode, EncryptionStatus)>, Error> {
+    pub(crate) fn omega(
+        &self,
+    ) -> Result<HashMap<Right, (EncryptionHint, EncryptionStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
             .into_iter()
@@ -318,11 +320,11 @@ impl AccessStructure {
 /// - D2::B2
 fn combine(
     dimensions: &[(&String, &Dimension)],
-) -> Vec<(Vec<usize>, SecurityMode, EncryptionStatus)> {
+) -> Vec<(Vec<usize>, EncryptionHint, EncryptionStatus)> {
     if dimensions.is_empty() {
         vec![(
             vec![],
-            SecurityMode::PreQuantum,
+            EncryptionHint::PreQuantum,
             EncryptionStatus::EncryptDecrypt,
         )]
     } else {
@@ -408,9 +410,9 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", SecurityMode::PreQuantum),
-            ("Germany", SecurityMode::PreQuantum),
-            ("Spain", SecurityMode::PreQuantum),
+            ("France", EncryptionHint::PreQuantum),
+            ("Germany", EncryptionHint::PreQuantum),
+            ("Spain", EncryptionHint::PreQuantum),
         ]
         .into_iter()
         .try_for_each(|(attribute, mode)| {

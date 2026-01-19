@@ -297,7 +297,7 @@ mod tests {
                 primitives::{encaps, rekey, setup, update_msk, usk_keygen},
                 MIN_TRACING_LEVEL,
             },
-            policy::{AccessPolicy, EncryptionStatus, Right, SecurityMode},
+            policy::{AccessPolicy, EncryptionHint, EncryptionStatus, Right},
             KemAc,
         },
         test_utils::cc_keygen,
@@ -314,15 +314,15 @@ mod tests {
             let universe = HashMap::from([
                 (
                     coordinate_1.clone(),
-                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_2.clone(),
-                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_3.clone(),
-                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
             ]);
 

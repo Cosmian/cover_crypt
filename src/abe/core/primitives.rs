@@ -5,7 +5,7 @@ use crate::{
             TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH,
             SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
         },
-        policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
+        policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
     },
     data_struct::{RevisionMap, RevisionVec},
     providers::{ElGamal, MlKem},
@@ -351,7 +351,7 @@ pub fn encaps(
     let S = Secret::random(rng);
 
     match is_hybridized {
-        SecurityMode::PreQuantum => {
+        EncryptionHint::PreQuantum => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
@@ -364,7 +364,7 @@ pub fn encaps(
             });
             pre_quantum_encaps(S, c, r, subkeys)
         }
-        SecurityMode::PostQuantum => {
+        EncryptionHint::PostQuantum => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::PostQuantum { ek } = subkey {
                     ek
@@ -374,7 +374,7 @@ pub fn encaps(
             });
             post_quantum_encaps(S, subkeys, rng)
         }
-        SecurityMode::Hybridized => {
+        EncryptionHint::Hybridized => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
@@ -837,7 +837,7 @@ pub fn master_decaps(
 pub fn update_msk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: HashMap<Right, (SecurityMode, EncryptionStatus)>,
+    rights: HashMap<Right, (EncryptionHint, EncryptionStatus)>,
 ) -> Result<(), Error> {
     let mut secrets = take(&mut msk.secrets);
     secrets.retain(|r| rights.contains_key(r));

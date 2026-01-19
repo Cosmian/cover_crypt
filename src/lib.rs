@@ -19,5 +19,7 @@ mod test_utils;
 
 pub mod base;
 
+pub use abe::api;
 pub use abe::*;
+
 pub use error::Error;

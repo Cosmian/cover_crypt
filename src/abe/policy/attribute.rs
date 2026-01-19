@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum SecurityMode {
+pub enum EncryptionHint {
     PreQuantum,
     PostQuantum,
     Hybridized,
 }
 
-impl Serializable for SecurityMode {
+impl Serializable for EncryptionHint {
     type Error = Error;
 
     fn length(&self) -> usize {

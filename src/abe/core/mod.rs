@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use crate::{
-    abe::policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
+    abe::policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
     data_struct::{RevisionMap, RevisionVec},
     providers::{ElGamal, MlKem},
     Error,
@@ -71,17 +71,17 @@ enum RightSecretKey {
 impl RightSecretKey {
     /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
     /// point `h`.
-    fn random(rng: &mut impl CryptoRngCore, security_mode: SecurityMode) -> Result<Self, Error> {
+    fn random(rng: &mut impl CryptoRngCore, security_mode: EncryptionHint) -> Result<Self, Error> {
         match security_mode {
-            SecurityMode::PreQuantum => {
+            EncryptionHint::PreQuantum => {
                 let sk = <ElGamal as NIKE>::SecretKey::random(rng);
                 Ok(Self::PreQuantum { sk })
             }
-            SecurityMode::PostQuantum => {
+            EncryptionHint::PostQuantum => {
                 let (dk, _) = MlKem::keygen(rng)?;
                 Ok(Self::PostQuantum { dk })
             }
-            SecurityMode::Hybridized => {
+            EncryptionHint::Hybridized => {
                 let sk = <ElGamal as NIKE>::SecretKey::random(rng);
                 let (dk, _) = MlKem::keygen(rng)?;
                 Ok(Self::Hybridized { sk, dk })
@@ -103,37 +103,39 @@ impl RightSecretKey {
     }
 
     /// Returns the security mode of this right secret key.
-    fn security_mode(&self) -> SecurityMode {
+    fn security_mode(&self) -> EncryptionHint {
         match self {
-            Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
-            Self::PreQuantum { .. } => SecurityMode::PreQuantum,
+            Self::Hybridized { .. } => EncryptionHint::Hybridized,
+            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::PreQuantum,
         }
     }
 
     /// Sets the security mode of this right secret key.
     fn set_security_mode(
         self,
-        security_mode: SecurityMode,
+        security_mode: EncryptionHint,
         rng: &mut impl CryptoRngCore,
     ) -> Result<Self, Error> {
         Ok(match (self, security_mode) {
-            (Self::Hybridized { sk, .. }, SecurityMode::PreQuantum) => Self::PreQuantum { sk },
-            (Self::Hybridized { dk, .. }, SecurityMode::PostQuantum) => Self::PostQuantum { dk },
-            (Self::Hybridized { sk, dk }, SecurityMode::Hybridized) => Self::Hybridized { sk, dk },
-            (Self::PostQuantum { .. }, SecurityMode::PreQuantum) => Self::PostQuantum {
+            (Self::Hybridized { sk, .. }, EncryptionHint::PreQuantum) => Self::PreQuantum { sk },
+            (Self::Hybridized { dk, .. }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
+            (Self::Hybridized { sk, dk }, EncryptionHint::Hybridized) => {
+                Self::Hybridized { sk, dk }
+            }
+            (Self::PostQuantum { .. }, EncryptionHint::PreQuantum) => Self::PostQuantum {
                 dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
             },
-            (Self::PostQuantum { dk }, SecurityMode::PostQuantum) => Self::PostQuantum { dk },
-            (Self::PostQuantum { dk }, SecurityMode::Hybridized) => Self::Hybridized {
+            (Self::PostQuantum { dk }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
+            (Self::PostQuantum { dk }, EncryptionHint::Hybridized) => Self::Hybridized {
                 sk: <ElGamal as NIKE>::keygen(rng)?.0,
                 dk,
             },
-            (Self::PreQuantum { sk }, SecurityMode::PreQuantum) => Self::PreQuantum { sk },
-            (Self::PreQuantum { .. }, SecurityMode::PostQuantum) => Self::PostQuantum {
+            (Self::PreQuantum { sk }, EncryptionHint::PreQuantum) => Self::PreQuantum { sk },
+            (Self::PreQuantum { .. }, EncryptionHint::PostQuantum) => Self::PostQuantum {
                 dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
             },
-            (Self::PreQuantum { sk }, SecurityMode::Hybridized) => Self::Hybridized {
+            (Self::PreQuantum { sk }, EncryptionHint::Hybridized) => Self::Hybridized {
                 sk,
                 dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
             },
@@ -162,11 +164,11 @@ enum RightPublicKey {
 
 impl RightPublicKey {
     /// Returns the security mode of this right public key.
-    pub fn security_mode(&self) -> SecurityMode {
+    pub fn security_mode(&self) -> EncryptionHint {
         match self {
-            Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
-            Self::PreQuantum { .. } => SecurityMode::PreQuantum,
+            Self::Hybridized { .. } => EncryptionHint::Hybridized,
+            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::PreQuantum,
         }
     }
 }
@@ -466,7 +468,7 @@ impl MasterPublicKey {
     fn select_subkeys(
         &self,
         targets: &HashSet<Right>,
-    ) -> Result<(SecurityMode, Vec<&RightPublicKey>), Error> {
+    ) -> Result<(EncryptionHint, Vec<&RightPublicKey>), Error> {
         let subkeys = targets
             .iter()
             .map(|r| {
@@ -583,11 +585,11 @@ impl XEnc {
         }
     }
 
-    pub fn security_mode(&self) -> SecurityMode {
+    pub fn security_mode(&self) -> EncryptionHint {
         match self {
-            Self::Hybridized { .. } => SecurityMode::Hybridized,
-            Self::PostQuantum { .. } => SecurityMode::PostQuantum,
-            Self::PreQuantum { .. } => SecurityMode::PreQuantum,
+            Self::Hybridized { .. } => EncryptionHint::Hybridized,
+            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::PreQuantum,
         }
     }
 }

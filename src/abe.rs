@@ -1,4 +1,4 @@
-mod api;
+pub mod api;
 pub mod core;
 mod policy;
 
@@ -7,8 +7,8 @@ pub mod encrypted_header;
 pub use api::Covercrypt;
 pub use core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
 pub use policy::{
-    AccessPolicy, AccessStructure, Attribute, Dimension, EncryptionStatus, QualifiedAttribute,
-    SecurityMode,
+    AccessPolicy, AccessStructure, Attribute, Dimension, EncryptionHint, EncryptionStatus,
+    QualifiedAttribute,
 };
 
 #[cfg(any(test, feature = "test-utils"))]
