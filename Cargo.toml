@@ -46,9 +46,9 @@ curve25519 = ["cosmian_rust_curve25519_provider"]
 test-utils = []
 
 [dependencies]
-cosmian_rust_nist_ec_provider = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/restructure-repo", optional = true }
-cosmian_rust_curve25519_provider = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/restructure-repo", optional = true }
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/restructure-repo", default-features = false, features = [
+cosmian_rust_nist_ec_provider = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/revert-breaking-changes", optional = true }
+cosmian_rust_curve25519_provider = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/revert-breaking-changes", optional = true }
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/revert-breaking-changes", default-features = false, features = [
   "aes",
   "ser",
   "sha3"
