@@ -8,7 +8,7 @@ use cosmian_crypto_core::{
     kdf::Hasher,
     reexport::{rand_core::CryptoRngCore, tiny_keccak::Sha3, zeroize::ZeroizeOnDrop},
     traits::{kem_to_pke::GenericPKE, KEM},
-    SymmetricKey,
+    Secret, SymmetricKey,
 };
 
 #[derive(Debug)]
@@ -201,6 +201,18 @@ impl Configuration {
     }
 }
 
+/// Interface of a CCA KEM that can be configured to be either:
+/// - a pre-quantum KEM based on the ElGamal provider;
+/// - a post-quantum KEM based on the MlKem provider;
+/// - a hybridized KEM based on both the ElGamal and MlKem provider and
+///   guaranteeing bast-of-both security;
+/// - an ABE KEM based on Covercrypt and in which case the security against a
+///   post-quantum adversary is defined on a per-attribute basis similarly to
+///   Covercrypt.
+///
+/// Note while the constant-time characteristic of these variant depends on the
+/// specific provider, the ABE variant *is not* constant-time as Covercrypt is
+/// not.
 #[derive(Debug, Clone)]
 pub struct ConfigurableKEM;
 
@@ -268,13 +280,11 @@ impl KEM<32> for ConfigurableKEM {
                     let (ss, _) = crate::abe::core::primitives::master_decaps(msk, xenc, false)?;
                     Ok(SymmetricKey::from(ss))
                 }
-                AbeDKey::User(cc, usk) => cc.decaps(usk, xenc).and_then(|res| {
-                    let ss = res.ok_or_else(|| {
-                        Error::OperationNotPermitted(
-                            "user key does not have the required access right".to_string(),
-                        )
-                    })?;
-                    Ok(SymmetricKey::from(ss))
+                AbeDKey::User(cc, usk) => cc.decaps(usk, xenc).map(|res| {
+                    // If the user does not have the right to decapsulate,
+                    // return a random key to preserve the KEM semantics.
+                    let ss = res.unwrap_or_else(|| Secret::random(&mut *cc.rng()));
+                    SymmetricKey::from(ss)
                 }),
             },
             (DKey::PreQuantum(dk), Enc::PreQuantum(enc)) => {
@@ -338,14 +348,8 @@ mod tests {
         // Check user *cannot* decrypt the KO access policy.
         mpk.set_access_policy(ko_ap).unwrap();
         let (_key, enc) = ConfigurableKEM::enc(&mpk, &mut rng).unwrap();
-        let res = ConfigurableKEM::dec(&usk, &enc);
-        assert!(res.is_err());
-        match res {
-            Err(Error::OperationNotPermitted(msg)) => {
-                assert_eq!(&msg, "user key does not have the required access right")
-            }
-            _ => panic!("incorrect error returned"),
-        }
+        let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
+        assert!(key != key_);
     }
 
     #[test]
@@ -355,5 +359,9 @@ mod tests {
         let (key, enc) = ConfigurableKEM::enc(&pk, &mut rng).unwrap();
         let key_ = ConfigurableKEM::dec(&sk, &enc).unwrap();
         assert_eq!(key, key_);
+
+        let (sk, _) = Configuration::Hybridized.keygen(&mut rng).unwrap();
+        let key_ = ConfigurableKEM::dec(&sk, &enc).unwrap();
+        assert!(key != key_);
     }
 }
