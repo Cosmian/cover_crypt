@@ -4,7 +4,9 @@ use crate::{
     AccessStructure, Covercrypt, Error, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
 };
 use cosmian_crypto_core::{
-    reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
+    bytes_ser_de::Serializable,
+    kdf::Hasher,
+    reexport::{rand_core::CryptoRngCore, tiny_keccak::Sha3, zeroize::ZeroizeOnDrop},
     traits::{kem_to_pke::GenericPKE, KEM},
     SymmetricKey,
 };
@@ -23,6 +25,10 @@ pub enum DKey {
     AbeScheme(AbeDKey),
     PreQuantum(<PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::DecapsulationKey),
     PostQuantum(<MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::DecapsulationKey),
+    Hybridized(
+        <PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::DecapsulationKey,
+        <MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::DecapsulationKey,
+    ),
 }
 
 impl DKey {
@@ -124,6 +130,10 @@ pub enum EKey {
     AbeScheme(Covercrypt, MasterPublicKey, Option<AccessPolicy>),
     PreQuantum(<PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::EncapsulationKey),
     PostQuantum(<MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::EncapsulationKey),
+    Hybridized(
+        <PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::EncapsulationKey,
+        <MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::EncapsulationKey,
+    ),
 }
 
 impl EKey {
@@ -146,6 +156,10 @@ pub enum Enc {
     AbeScheme(XEnc),
     PreQuantum(<PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::Encapsulation),
     PostQuantum(<MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::Encapsulation),
+    Hybridized(
+        <PreQuantumKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::Encapsulation,
+        <MlKem as KEM<{ ConfigurableKEM::KEY_LENGTH }>>::Encapsulation,
+    ),
 }
 
 #[derive(Debug, Clone)]
@@ -153,6 +167,7 @@ pub enum Configuration {
     AbeScheme,
     PreQuantum,
     PostQuantum,
+    Hybridized,
 }
 
 impl Configuration {
@@ -173,6 +188,14 @@ impl Configuration {
             Self::PostQuantum => {
                 let (dk, ek) = MlKem::keygen(rng)?;
                 Ok((DKey::PostQuantum(dk), EKey::PostQuantum(ek)))
+            }
+            Self::Hybridized => {
+                let (pre_dk, pre_ek) = PreQuantumKem::keygen(rng)?;
+                let (post_dk, post_ek) = MlKem::keygen(rng)?;
+                Ok((
+                    DKey::Hybridized(pre_dk, post_dk),
+                    EKey::Hybridized(pre_ek, post_ek),
+                ))
             }
         }
     }
@@ -219,6 +242,19 @@ impl KEM<32> for ConfigurableKEM {
                 let (key, enc) = MlKem::enc(ek, rng).map_err(|e| Error::Kem(e.to_string()))?;
                 Ok((key, Enc::PostQuantum(enc)))
             }
+            EKey::Hybridized(pre_ek, post_ek) => {
+                let (k1, enc1) =
+                    PreQuantumKem::enc(pre_ek, rng).map_err(|e| Error::Kem(e.to_string()))?;
+                let (k2, enc2) = MlKem::enc(post_ek, rng).map_err(|e| Error::Kem(e.to_string()))?;
+                let mut key = SymmetricKey::default();
+                let mut hasher = Sha3::v256();
+                hasher.update(&*k1);
+                hasher.update(&*k2);
+                hasher.update(&enc1.serialize()?);
+                hasher.update(&enc2);
+                hasher.finalize(&mut *key);
+                Ok((key, Enc::Hybridized(enc1, enc2)))
+            }
         }
     }
 
@@ -246,6 +282,18 @@ impl KEM<32> for ConfigurableKEM {
             }
             (DKey::PostQuantum(dk), Enc::PostQuantum(enc)) => {
                 MlKem::dec(dk, enc).map_err(|e| Error::Kem(e.to_string()))
+            }
+            (DKey::Hybridized(dk1, dk2), Enc::Hybridized(enc1, enc2)) => {
+                let k1 = PreQuantumKem::dec(dk1, enc1).map_err(|e| Error::Kem(e.to_string()))?;
+                let k2 = MlKem::dec(dk2, enc2).map_err(|e| Error::Kem(e.to_string()))?;
+                let mut key = SymmetricKey::default();
+                let mut hasher = Sha3::v256();
+                hasher.update(&*k1);
+                hasher.update(&*k2);
+                hasher.update(&enc1.serialize()?);
+                hasher.update(enc2);
+                hasher.finalize(&mut *key);
+                Ok(key)
             }
             _ => Err(Error::KeyError(
                 "cannot proceed with decapsulation: incompatible types".to_string(),
@@ -298,5 +346,14 @@ mod tests {
             }
             _ => panic!("incorrect error returned"),
         }
+    }
+
+    #[test]
+    fn test_hybridized_kem() {
+        let mut rng = CsRng::from_entropy();
+        let (sk, pk) = Configuration::Hybridized.keygen(&mut rng).unwrap();
+        let (key, enc) = ConfigurableKEM::enc(&pk, &mut rng).unwrap();
+        let key_ = ConfigurableKEM::dec(&sk, &enc).unwrap();
+        assert_eq!(key, key_);
     }
 }

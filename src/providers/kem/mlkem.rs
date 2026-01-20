@@ -1,4 +1,5 @@
 use crate::Error;
+use core::ops::Deref;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::{
@@ -80,6 +81,14 @@ macro_rules! make_mlkem {
 
         #[derive(Debug, PartialEq, Eq, Clone, Hash)]
         pub struct $enc(Box<Array<u8, <ml_kem::$base as KemCore>::CiphertextSize>>);
+
+        impl Deref for $enc {
+            type Target = [u8];
+
+            fn deref(&self) -> &Self::Target {
+                self.0.as_slice()
+            }
+        }
 
         impl Serializable for $enc {
             type Error = CryptoCoreError;
