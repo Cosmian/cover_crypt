@@ -23,7 +23,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Kem(err) => write!(f, "Kyber error: {err}"),
-            Self::CryptoCoreError(err) => write!(f, "CryptoCore error{err}"),
+            Self::CryptoCoreError(err) => write!(f, "CryptoCore error: {err}"),
             Self::KeyError(err) => write!(f, "{err}"),
             Self::AttributeNotFound(err) => write!(f, "attribute not found: {err}"),
             Self::ExistingDimension(dimension) => {

@@ -11,10 +11,7 @@ use cosmian_crypto_core::{
     traits::{Sampling, Zero, KEM, NIKE},
     SymmetricKey,
 };
-use std::{
-    collections::{HashMap, HashSet, LinkedList},
-    hash::Hash,
-};
+use std::collections::{HashMap, HashSet, LinkedList};
 
 mod serialization;
 
@@ -174,7 +171,7 @@ impl RightPublicKey {
 }
 
 /// Covercrypt user IDs are used to make user keys unique and traceable.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 struct UserId(LinkedList<<ElGamal as NIKE>::SecretKey>);
 
 impl UserId {
@@ -206,7 +203,18 @@ impl UserId {
 struct TracingSecretKey {
     s: <ElGamal as NIKE>::SecretKey,
     tracers: LinkedList<(<ElGamal as NIKE>::SecretKey, <ElGamal as NIKE>::PublicKey)>,
-    users: HashSet<UserId>,
+    // Since `Hash` is not a fallible operation, it cannot be implemented on FFI
+    // providers like OpenSSL. And since `Zeroizing<Vec<u8>>` does not implement
+    // `Hash` either, a `HashSet` cannot be using without extracting the raw
+    // bytes which then requires manually zeroizing them everywhere they may be
+    // leaking. Using a linked list implies a linear complexity in the number of
+    // comparisons, which themselves have a linear complexity in the tracing
+    // dimension. This is not ideal, but it is safe.
+    //
+    // Since this is an internal implementation detail, the container used may
+    // be change later without breaking change as long as it serializes to the
+    // same bytes.
+    users: LinkedList<UserId>,
 }
 
 impl TracingSecretKey {
@@ -215,7 +223,7 @@ impl TracingSecretKey {
         let tracers = (0..=level)
             .map(|_| <ElGamal as NIKE>::keygen(rng))
             .collect::<Result<_, _>>()?;
-        let users = HashSet::new();
+        let users = LinkedList::new();
 
         Ok(Self { s, tracers, users })
     }
@@ -272,14 +280,17 @@ impl TracingSecretKey {
 
     /// Adds the given user ID to the list of known users.
     fn add_user(&mut self, id: UserId) {
-        self.users.insert(id);
+        self.users.push_front(id);
     }
 
     /// Removes the given user ID from the list of known users.
     ///
     /// Returns true if the user was in the list.
     fn del_user(&mut self, id: &UserId) -> bool {
-        self.users.remove(id)
+        self.users
+            .extract_if(|id_| id == id_)
+            .collect::<Vec<_>>()
+            .is_empty()
     }
 
     /// Generates the associated tracing public key.

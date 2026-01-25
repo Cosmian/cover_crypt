@@ -13,7 +13,9 @@ use crate::{
     Error,
 };
 use cosmian_crypto_core::{
-    reexport::rand_core::SeedableRng, traits::AE, CsRng, Secret, SymmetricKey,
+    reexport::rand_core::{RngCore, SeedableRng},
+    traits::AE,
+    CsRng, Secret, SymmetricKey,
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -192,7 +194,12 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     }
 }
 
-impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> PkeAc<KEY_LENGTH, E> for Covercrypt
+impl<
+        const KEY_LENGTH: usize,
+        const NONCE_LENGTH: usize,
+        const TAG_LENGTH: usize,
+        E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
+    > PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, E> for Covercrypt
 where
     Error: From<E::Error>,
 {
@@ -212,7 +219,9 @@ where
         // this encapsulation also requires locking the RNG.
         let mut rng = self.rng.lock().expect("poisoned lock");
         let key = SymmetricKey::<KEY_LENGTH>::derive(&seed, b"Covercrypt AE key")?;
-        let ctx = E::encrypt(&key, ptx, &mut *rng)?;
+        let mut nonce = [0; NONCE_LENGTH];
+        rng.fill_bytes(&mut nonce);
+        let ctx = E::encrypt(&key, ptx, &nonce)?;
         Ok((enc, ctx))
     }
 
@@ -224,7 +233,7 @@ where
         self.decaps(usk, &ctx.0)?
             .map(|seed| {
                 let key = SymmetricKey::derive(&seed, b"Covercrypt AE key")?;
-                E::decrypt(&key, &ctx.1).map_err(Self::Error::from)
+                E::decrypt(&key, ctx.1.as_ref()).map_err(Self::Error::from)
             })
             .transpose()
     }

@@ -1,6 +1,6 @@
 use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
-use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -19,10 +19,7 @@ impl Serializable for EncryptionHint {
         1
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
             Self::Classic => ser.write(&0usize),
             Self::Hybridized => ser.write(&1usize),
@@ -31,7 +28,7 @@ impl Serializable for EncryptionHint {
         .map_err(Error::from)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let status = de.read::<usize>()?;
         match status {
             0 => Ok(Self::Classic),
@@ -79,10 +76,7 @@ impl Serializable for EncryptionStatus {
         1
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
             Self::DecryptOnly => ser.write(&0usize),
             Self::EncryptDecrypt => ser.write(&1usize),
@@ -90,7 +84,7 @@ impl Serializable for EncryptionStatus {
         .map_err(Error::from)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let status = de.read::<usize>()?;
         match status {
             0 => Ok(Self::DecryptOnly),
@@ -189,14 +183,11 @@ impl Serializable for QualifiedAttribute {
         self.dimension.length() + self.name.length()
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         Ok(ser.write(&self.dimension)? + ser.write(&self.name)?)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self {
             dimension: de.read()?,
             name: de.read()?,

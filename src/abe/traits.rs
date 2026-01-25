@@ -29,10 +29,17 @@ pub trait KemAc<const LENGTH: usize> {
     ) -> Result<Option<Secret<LENGTH>>, Self::Error>;
 }
 
-pub trait PkeAc<const KEY_LENGTH: usize, E: AE<KEY_LENGTH>> {
+pub trait PkeAc<
+    const KEY_LENGTH: usize,
+    const NONCE_LENGTH: usize,
+    const TAG_LENGTH: usize,
+    E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
+>
+{
     type EncryptionKey;
     type DecryptionKey;
     type Ciphertext;
+
     type Error: std::error::Error;
 
     /// Encrypts the given plaintext under the given access policy.

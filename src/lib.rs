@@ -16,8 +16,6 @@ mod providers;
 #[cfg(any(test, feature = "test-utils"))]
 mod test_utils;
 
-pub mod base;
-
 pub use abe::api;
 pub use abe::*;
 

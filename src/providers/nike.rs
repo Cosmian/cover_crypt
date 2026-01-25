@@ -5,4 +5,4 @@ compile_error!("only one elliptic curve can be chosen at a time");
 pub use cosmian_rust_curve25519_provider::R25519 as ElGamal;
 
 #[cfg(feature = "p-256")]
-pub use cosmian_rust_nist_ec_provider::P256 as ElGamal;
+pub use cosmian_openssl_provider::p256::P256 as ElGamal;

@@ -15,12 +15,18 @@ use ml_kem::{
     EncodedSizeUser, KemCore,
 };
 
-const SHARED_SECRET_LENGTH: usize = 32;
+pub const KEY_LENGTH: usize = 32;
 
 macro_rules! make_mlkem {
     ($base: ident, $ek: ident, $ek_len: literal, $dk: ident, $dk_len: literal, $enc: ident, $enc_len:literal) => {
         #[derive(Debug, PartialEq, Clone)]
         pub struct $ek(Box<<ml_kem::$base as KemCore>::EncapsulationKey>);
+
+        impl From<&$dk> for $ek {
+            fn from(dk: &$dk) -> Self {
+                Self(Box::new(dk.0.encapsulation_key().clone()))
+            }
+        }
 
         impl Serializable for $ek {
             type Error = CryptoCoreError;
@@ -111,7 +117,7 @@ macro_rules! make_mlkem {
 
         pub struct $base;
 
-        impl KEM<SHARED_SECRET_LENGTH> for $base {
+        impl KEM<KEY_LENGTH> for $base {
             type EncapsulationKey = $ek;
             type DecapsulationKey = $dk;
             type Encapsulation = $enc;
@@ -127,8 +133,7 @@ macro_rules! make_mlkem {
             fn enc(
                 ek: &Self::EncapsulationKey,
                 rng: &mut impl CryptoRngCore,
-            ) -> Result<(SymmetricKey<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
-            {
+            ) -> Result<(SymmetricKey<KEY_LENGTH>, Self::Encapsulation), Self::Error> {
                 let (enc, mut ss) =
                     ek.0.encapsulate(rng)
                         .map_err(|e| Error::Kem(format!("{:?}", e)))?;
@@ -139,7 +144,7 @@ macro_rules! make_mlkem {
             fn dec(
                 dk: &Self::DecapsulationKey,
                 enc: &Self::Encapsulation,
-            ) -> Result<SymmetricKey<SHARED_SECRET_LENGTH>, Self::Error> {
+            ) -> Result<SymmetricKey<KEY_LENGTH>, Self::Error> {
                 let mut ss =
                     dk.0.decapsulate(&enc.0)
                         .map_err(|e| Self::Error::Kem(format!("{e:?}")))?;

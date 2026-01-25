@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, traits::AE_InPlace, Aes256Gcm, CsRng};
 
 use crate::{
     abe::{
@@ -349,12 +349,22 @@ fn test_covercrypt_pke() {
 
     let ptx = "testing encryption/decryption".as_bytes();
 
-    let ctx = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(&cc, &mpk, &ap, ptx)
-        .expect("cannot encrypt!");
+    let ctx = PkeAc::<
+        { Aes256Gcm::KEY_LENGTH },
+        { Aes256Gcm::NONCE_LENGTH },
+        { Aes256Gcm::TAG_LENGTH },
+        Aes256Gcm,
+    >::encrypt(&cc, &mpk, &ap, ptx)
+    .expect("cannot encrypt!");
     let usk = cc
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
-    let ptx1 = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(&cc, &usk, &ctx)
-        .expect("cannot decrypt the ciphertext");
+    let ptx1 = PkeAc::<
+        { Aes256Gcm::KEY_LENGTH },
+        { Aes256Gcm::NONCE_LENGTH },
+        { Aes256Gcm::TAG_LENGTH },
+        Aes256Gcm,
+    >::decrypt(&cc, &usk, &ctx)
+    .expect("cannot decrypt the ciphertext");
     assert_eq!(ptx, &*ptx1.unwrap());
 }
