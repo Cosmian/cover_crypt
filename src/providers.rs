@@ -1,5 +1,5 @@
-mod kem;
+pub mod kem;
 mod nike;
 
-pub use kem::MlKem;
-pub use nike::ElGamal;
+pub(crate) use kem::MlKem;
+pub(crate) use nike::ElGamal;
