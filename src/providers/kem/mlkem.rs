@@ -115,6 +115,7 @@ macro_rules! make_mlkem {
             }
         }
 
+        #[derive(Debug, Copy, Clone)]
         pub struct $base;
 
         impl KEM<KEY_LENGTH> for $base {
