@@ -7,8 +7,10 @@
 use std::{
     collections::LinkedList,
     fmt::Debug,
-    ops::{BitAnd, BitOr},
+    ops::{BitAnd, BitOr, Deref},
 };
+
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 
 use crate::{abe::policy::QualifiedAttribute, Error};
 
@@ -216,8 +218,63 @@ impl BitOr for AccessPolicy {
     }
 }
 
+impl Serializable for AccessPolicy {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        match self {
+            AccessPolicy::Broadcast => 1,
+            AccessPolicy::Term(qualified_attribute) => 1 + qualified_attribute.length(),
+            AccessPolicy::Conjunction(access_policy, access_policy1) => {
+                1 + access_policy.length() + access_policy1.length()
+            }
+            AccessPolicy::Disjunction(access_policy, access_policy1) => {
+                1 + access_policy.length() + access_policy1.length()
+            }
+        }
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        match self {
+            AccessPolicy::Broadcast => ser.write(&0_u64).map_err(Error::from),
+            AccessPolicy::Term(qualified_attribute) => {
+                Ok(ser.write(&1_u64)? + ser.write(qualified_attribute)?)
+            }
+            AccessPolicy::Conjunction(access_policy, access_policy1) => Ok(ser.write(&2_u64)?
+                + ser.write(access_policy.deref())?
+                + ser.write(access_policy1.deref())?),
+            AccessPolicy::Disjunction(access_policy, access_policy1) => Ok(ser.write(&3_u64)?
+                + ser.write(access_policy.deref())?
+                + ser.write(access_policy1.deref())?),
+        }
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        match de.read::<u64>()? {
+            0 => Ok(Self::Broadcast),
+            1 => Ok(Self::Term(de.read()?)),
+            2 => Ok(Self::Conjunction(
+                Box::new(de.read()?),
+                Box::new(de.read()?),
+            )),
+            3 => Ok(Self::Disjunction(
+                Box::new(de.read()?),
+                Box::new(de.read()?),
+            )),
+            n => Err(Error::ConversionFailed(format!(
+                "{n} is not a valid access policy tag"
+            ))),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::bytes_ser_de::test_serialization;
+
     use super::AccessPolicy;
 
     #[test]
@@ -225,13 +282,20 @@ mod tests {
         // These are valid access policies.
         let ap = AccessPolicy::parse("(D1::A && (D2::A) || D2::B)").unwrap();
         println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
         let ap = AccessPolicy::parse("D1::A && D2::A || D2::B").unwrap();
         println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
         let ap = AccessPolicy::parse("D1::A && (D2::A || D2::B)").unwrap();
         println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
         let ap = AccessPolicy::parse("D1::A (D2::A || D2::B)").unwrap();
         println!("{ap:#?}");
-        assert_eq!(AccessPolicy::parse("*").unwrap(), AccessPolicy::Broadcast);
+        test_serialization(&ap).unwrap();
+        let ap = AccessPolicy::parse("*").unwrap();
+        test_serialization(&ap).unwrap();
+        assert_eq!(ap, AccessPolicy::Broadcast);
+
         assert!(AccessPolicy::parse("").is_err());
 
         // These are invalid access policies.
