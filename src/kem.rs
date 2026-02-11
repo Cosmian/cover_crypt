@@ -9,7 +9,7 @@ use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::rand_core::SeedableRng,
     traits::{cyclic_group_to_kem::GenericKem, KEM},
-    CsRng,
+    CryptoCoreError, CsRng,
 };
 use cosmian_openssl_provider::{hash::Sha256, kem::MonadicKEM, p256::P256};
 use cosmian_rust_curve25519_provider::R25519;
@@ -142,6 +142,7 @@ impl Serializable for KemTag {
 // known, and perform both the KEM operation and serialization/deserialization
 // of the key and encapsulation objects.
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigurableKemDk(Zeroizing<Vec<u8>>);
 
 impl ConfigurableKemDk {
@@ -155,6 +156,23 @@ impl ConfigurableKemDk {
     }
 }
 
+impl Serializable for ConfigurableKemDk {
+    type Error = CryptoCoreError;
+
+    fn length(&self) -> usize {
+        self.0.length()
+    }
+
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+        ser.write(&self.0)
+    }
+
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        de.read().map(Self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigurableKemEk(Zeroizing<Vec<u8>>);
 
 impl ConfigurableKemEk {
@@ -168,6 +186,23 @@ impl ConfigurableKemEk {
     }
 }
 
+impl Serializable for ConfigurableKemEk {
+    type Error = CryptoCoreError;
+
+    fn length(&self) -> usize {
+        self.0.length()
+    }
+
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+        ser.write(&self.0)
+    }
+
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        de.read().map(Self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigurableKemEnc(Zeroizing<Vec<u8>>);
 
 impl ConfigurableKemEnc {
@@ -178,6 +213,22 @@ impl ConfigurableKemEnc {
                 "failed reading tag from configurable-KEM encapsulation: {e:?}"
             ))
         })
+    }
+}
+
+impl Serializable for ConfigurableKemEnc {
+    type Error = CryptoCoreError;
+
+    fn length(&self) -> usize {
+        self.0.length()
+    }
+
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
+        ser.write(&self.0)
+    }
+
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
+        de.read().map(Self)
     }
 }
 
@@ -569,7 +620,10 @@ mod tests {
     fn test_configurable_kem() {
         fn run_test(tag: KemTag) {
             let (dk, ek) = ConfigurableKEM::keygen(tag, None).unwrap();
+            test_serialization(&dk).unwrap();
+            test_serialization(&ek).unwrap();
             let (key, enc) = ConfigurableKEM::enc(&ek, None).unwrap();
+            test_serialization(&enc).unwrap();
             let key_ = ConfigurableKEM::dec(&dk, &enc).unwrap();
             assert_eq!(key, key_);
         }
