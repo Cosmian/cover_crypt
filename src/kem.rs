@@ -211,6 +211,82 @@ type KemCombiner<const LENGTH: usize, Kem1, Kem2> =
         Sha256, // SHA256 from the OpenSSL provider.
     >;
 
+pub struct ConfigurableKemDk(Zeroizing<Vec<u8>>);
+pub struct ConfigurableKemEk(Zeroizing<Vec<u8>>);
+pub struct ConfigurableKemEnc(Zeroizing<Vec<u8>>);
+
+impl TryFrom<&ConfigurableKemDk> for MasterSecretKey {
+    type Error = Error;
+
+    fn try_from(dk: &ConfigurableKemDk) -> Result<Self, Self::Error> {
+        let (tag, dk_bytes) = <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(&dk.0).map_err(|e| {
+            Error::ConversionFailed(format!(
+                "failed deserializing the tag and decapsulation key in configurable KEM: {e}"
+            ))
+        })?;
+
+        if tag == KemTag::Abe {
+            let mut de = Deserializer::new(&dk_bytes);
+            match de.read::<u64>()? {
+                0 => Ok(de.read()?),
+                n => Err(Error::ConversionFailed(format!(
+                    "{n} is not a valid configurable-KEM MSK tag"
+                ))),
+            }
+        } else {
+            Err(Error::ConversionFailed(format!(
+                "cannot deserialize CoverCrypt MSK from configurable-KEM decapsulation key with tag: {tag:?}"
+            )))
+        }
+    }
+}
+
+impl TryFrom<&ConfigurableKemDk> for UserSecretKey {
+    type Error = Error;
+
+    fn try_from(dk: &ConfigurableKemDk) -> Result<Self, Self::Error> {
+        let (tag, dk_bytes) = <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(&dk.0).map_err(|e| {
+            Error::ConversionFailed(format!(
+                "failed deserializing the tag and decapsulation key in configurable KEM: {e}"
+            ))
+        })?;
+
+        if tag == KemTag::Abe {
+            let mut de = Deserializer::new(&dk_bytes);
+            match de.read::<u64>()? {
+                1 => Ok(de.read()?),
+                n => Err(Error::ConversionFailed(format!(
+                    "{n} is not a valid configurable-KEM USK tag"
+                ))),
+            }
+        } else {
+            Err(Error::ConversionFailed(format!(
+                "cannot deserialize CoverCrypt USK from configurable-KEM decapsulation key with tag: {tag:?}"
+            )))
+        }
+    }
+}
+
+impl TryFrom<MasterSecretKey> for ConfigurableKemDk {
+    type Error = Error;
+
+    fn try_from(msk: MasterSecretKey) -> Result<Self, Self::Error> {
+        Ok(ConfigurableKemDk(
+            (KemTag::Abe, (1u64, msk).serialize()?).serialize()?,
+        ))
+    }
+}
+
+impl TryFrom<UserSecretKey> for ConfigurableKemDk {
+    type Error = Error;
+
+    fn try_from(usk: UserSecretKey) -> Result<Self, Self::Error> {
+        Ok(ConfigurableKemDk(
+            (KemTag::Abe, (1_u64, usk).serialize()?).serialize()?,
+        ))
+    }
+}
+
 pub struct ConfigurableKEM;
 
 impl ConfigurableKEM {
@@ -218,7 +294,7 @@ impl ConfigurableKEM {
     pub fn keygen(
         tag: KemTag,
         access_structure: Option<AccessStructure>,
-    ) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), Error> {
+    ) -> Result<(ConfigurableKemDk, ConfigurableKemEk), Error> {
         let rng = &mut CsRng::from_entropy();
 
         let (dk_bytes, ek_bytes) = match tag {
@@ -269,19 +345,22 @@ impl ConfigurableKEM {
                 let (mut msk, _) = cc.setup()?;
                 msk.access_structure = access_structure;
                 let mpk = cc.update_msk(&mut msk)?;
-                Ok((msk.serialize()?, mpk.serialize()?))
+                Ok(((0_u64, msk).serialize()?, mpk.serialize()?))
             }
         }?;
 
-        Ok(((tag, dk_bytes).serialize()?, (tag, ek_bytes).serialize()?))
+        Ok((
+            ConfigurableKemDk((tag, dk_bytes).serialize()?),
+            ConfigurableKemEk((tag, ek_bytes).serialize()?),
+        ))
     }
 
     pub fn enc(
-        ek_bytes: &[u8],
+        ek_bytes: &ConfigurableKemEk,
         access_policy: Option<&AccessPolicy>,
-    ) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), Error> {
+    ) -> Result<(Zeroizing<Vec<u8>>, ConfigurableKemEnc), Error> {
         let (tag, ek_bytes) =
-            <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(ek_bytes).map_err(|e| {
+            <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(&ek_bytes.0).map_err(|e| {
                 Error::ConversionFailed(format!(
                     "failed deserializing the tag and encapsulation key in configurable KEM: {e}"
                 ))
@@ -345,35 +424,20 @@ impl ConfigurableKEM {
                 Ok((key.serialize()?, (tag, enc.serialize()?).serialize()?))
             }
         }
+        .map(|(key, enc)| (key, ConfigurableKemEnc(enc)))
     }
 
-    pub fn usk_gen(
-        msk: Zeroizing<Vec<u8>>,
-        access_policy: &AccessPolicy,
-    ) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), Error> {
-        let (tag, msk_bytes) = <(KemTag, Zeroizing<Vec<u8>>)>::deserialize(&msk).map_err(|e| {
-            Error::ConversionFailed(format!(
-                "failed deserializing CoverCrypt MSK in configurable KEM: {e}"
-            ))
-        })?;
-
-        let mut msk = MasterSecretKey::deserialize(&msk_bytes)?;
-        let usk = Covercrypt::default().generate_user_secret_key(&mut msk, access_policy)?;
-
-        Ok((
-            (tag, msk.serialize()?).serialize()?,
-            (tag, usk.serialize()?).serialize()?,
-        ))
-    }
-
-    pub fn dec(dk: &[u8], enc: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
-        let (dk_tag, dk_bytes) = <(KemTag, Vec<u8>)>::deserialize(dk).map_err(|e| {
+    pub fn dec(
+        dk: &ConfigurableKemDk,
+        enc: &ConfigurableKemEnc,
+    ) -> Result<Zeroizing<Vec<u8>>, Error> {
+        let (dk_tag, dk_bytes) = <(KemTag, Vec<u8>)>::deserialize(&dk.0).map_err(|e| {
             Error::ConversionFailed(format!(
                 "failed deserializing the tag and decapsulation key in configurable KEM: {e}"
             ))
         })?;
 
-        let (enc_tag, enc_bytes) = <(KemTag, Vec<u8>)>::deserialize(enc).map_err(|e| {
+        let (enc_tag, enc_bytes) = <(KemTag, Vec<u8>)>::deserialize(&enc.0).map_err(|e| {
             Error::ConversionFailed(format!(
                 "failed deserializing the tag and encapsulation in configurable KEM: {e}"
             ))
@@ -431,15 +495,24 @@ impl ConfigurableKEM {
                 .and_then(|key| key.serialize().map_err(Error::from))
             }
             KemTag::Abe => {
-                let usk = UserSecretKey::deserialize(&dk_bytes)?;
-                let enc = XEnc::deserialize(&enc_bytes)?;
-                let key = Covercrypt::default().decaps(&usk, &enc)?.ok_or_else(|| {
-                    Error::OperationNotPermitted(
-                        "cannot open Covercrypt encapsulation: incompatible access rights"
-                            .to_owned(),
-                    )
-                })?;
-                Ok(key.serialize()?)
+                let mut de = Deserializer::new(&dk_bytes);
+                match de.read::<u64>()? {
+                    1 => {
+                        let usk = de.read()?;
+                        let enc = XEnc::deserialize(&enc_bytes)?;
+                        let key = Covercrypt::default().decaps(&usk, &enc)?.ok_or_else(|| {
+                            Error::OperationNotPermitted(
+                                "cannot open Covercrypt encapsulation: incompatible access rights"
+                                    .to_owned(),
+                            )
+                        })?;
+                        Ok(key.serialize()?)
+                    }
+
+                    n => Err(Error::ConversionFailed(format!(
+                        "{n} is not a valid configurable-KEM USK tag"
+                    ))),
+                }
             }
         }
     }
@@ -514,7 +587,11 @@ mod tests {
         let enc_access_policy = AccessPolicy::parse("*").unwrap();
 
         let (msk, mpk) = ConfigurableKEM::keygen(KemTag::Abe, Some(access_structure)).unwrap();
-        let (_msk, usk) = ConfigurableKEM::usk_gen(msk, &usk_access_policy).unwrap();
+        let mut msk = MasterSecretKey::try_from(&msk).unwrap();
+        let usk = Covercrypt::default()
+            .generate_user_secret_key(&mut msk, &usk_access_policy)
+            .unwrap();
+        let usk = ConfigurableKemDk::try_from(usk).unwrap();
         let (key, enc) = ConfigurableKEM::enc(&mpk, Some(&enc_access_policy)).unwrap();
         let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
         assert_eq!(key, key_);
