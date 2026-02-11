@@ -11,6 +11,7 @@
 mod abe;
 mod data_struct;
 mod error;
+mod kem;
 mod providers;
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -18,4 +19,4 @@ mod test_utils;
 
 pub use abe::*;
 pub use error::Error;
-pub use providers::*;
+pub use kem::*;
