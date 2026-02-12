@@ -199,7 +199,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "10.4.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=develop#77497f47a222f8df76538e9765b1333170dd3443"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -218,7 +218,7 @@ dependencies = [
 [[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=develop#77497f47a222f8df76538e9765b1333170dd3443"
 dependencies = [
  "cosmian_crypto_core",
  "openssl",
@@ -228,7 +228,7 @@ dependencies = [
 [[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Fimplement-openssl-provider#c5a0ee061bcb7b504a78585d463b35cb9aa26cf9"
+source = "git+https://github.com/Cosmian/crypto_core.git?branch=develop#77497f47a222f8df76538e9765b1333170dd3443"
 dependencies = [
  "cosmian_crypto_core",
  "curve25519-dalek",
@@ -1050,6 +1050,6 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.16"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfcd145825aace48cff44a8844de64bf75feec3080e0aa5cdbde72961ae51a65"
+checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
