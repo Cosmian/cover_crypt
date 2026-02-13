@@ -3,7 +3,7 @@
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
 use crate::{
-    core::{
+    abe::core::{
         MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey, TracingPublicKey,
         TracingSecretKey, UserId, UserSecretKey, XEnc,
     },
@@ -291,15 +291,16 @@ mod tests {
     };
 
     use crate::{
-        abe_policy::{EncryptionStatus, Right},
-        api::Covercrypt,
-        core::{
-            primitives::{encaps, rekey, setup, update_msk, usk_keygen},
-            MIN_TRACING_LEVEL,
+        abe::{
+            api::Covercrypt,
+            core::{
+                primitives::{encaps, rekey, setup, update_msk, usk_keygen},
+                MIN_TRACING_LEVEL,
+            },
+            policy::{AccessPolicy, EncryptionHint, EncryptionStatus, Right},
+            traits::KemAc,
         },
         test_utils::cc_keygen,
-        traits::KemAc,
-        AccessPolicy, SecurityMode,
     };
 
     #[test]
@@ -313,15 +314,15 @@ mod tests {
             let universe = HashMap::from([
                 (
                     coordinate_1.clone(),
-                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_2.clone(),
-                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
                 (
                     coordinate_3.clone(),
-                    (SecurityMode::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
                 ),
             ]);
 

@@ -1,6 +1,8 @@
-use crate::{abe_policy::gen_structure, api::Covercrypt, Error, MasterPublicKey, MasterSecretKey};
-
-//pub mod non_regression;
+use crate::{
+    abe::gen_structure,
+    abe::{Covercrypt, MasterPublicKey, MasterSecretKey},
+    Error,
+};
 
 /// Creates the test access structure.
 pub fn cc_keygen(
@@ -17,11 +19,9 @@ pub fn cc_keygen(
 mod tests {
 
     use super::*;
-    use crate::{
-        abe_policy::{AccessPolicy, QualifiedAttribute},
-        api::Covercrypt,
-        traits::KemAc,
-        EncryptedHeader, SecurityMode,
+    use crate::abe::{
+        encrypted_header::EncryptedHeader, traits::KemAc, AccessPolicy, Covercrypt, EncryptionHint,
+        QualifiedAttribute,
     };
 
     #[test]
@@ -34,7 +34,7 @@ mod tests {
 
         let _ = &mut msk.access_structure.add_attribute(
             QualifiedAttribute::new("DPT", "Sales"),
-            SecurityMode::PreQuantum,
+            EncryptionHint::Classic,
             None,
         )?;
         let mpk = cc.update_msk(&mut msk)?;

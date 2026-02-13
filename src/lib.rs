@@ -8,29 +8,15 @@
 //! the DDH and LWE", T. Brézot, P. de Perthuis and D. Pointcheval 2023.
 //! [2] "A Proposal for an ISO Standard for Public Key Encryption (version 2.1)", Shoup 2001.
 
-mod error;
-
-mod abe_policy;
-mod ae;
-mod core;
+mod abe;
 mod data_struct;
-mod encrypted_header;
-
-pub mod api;
-pub mod traits;
-
-pub use abe_policy::{AccessStructure, QualifiedAttribute, SecurityMode};
+mod error;
+mod kem;
+mod providers;
 
 #[cfg(any(test, feature = "test-utils"))]
-pub mod test_utils;
+mod test_utils;
 
-#[cfg(feature = "test-utils")]
-pub use abe_policy::gen_structure;
-
-#[cfg(feature = "test-utils")]
-pub use test_utils::cc_keygen;
-
-pub use self::core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
-pub use abe_policy::AccessPolicy;
-pub use encrypted_header::{CleartextHeader, EncryptedHeader};
+pub use abe::*;
 pub use error::Error;
+pub use kem::*;

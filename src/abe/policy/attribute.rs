@@ -1,40 +1,37 @@
 use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
-use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum SecurityMode {
-    PreQuantum,
+pub enum EncryptionHint {
+    Classic,
     PostQuantum,
     Hybridized,
 }
 
-impl Serializable for SecurityMode {
+impl Serializable for EncryptionHint {
     type Error = Error;
 
     fn length(&self) -> usize {
         1
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
-            Self::PreQuantum => ser.write(&0usize),
+            Self::Classic => ser.write(&0usize),
             Self::Hybridized => ser.write(&1usize),
             Self::PostQuantum => ser.write(&2usize),
         }
         .map_err(Error::from)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let status = de.read::<usize>()?;
         match status {
-            0 => Ok(Self::PreQuantum),
+            0 => Ok(Self::Classic),
             1 => Ok(Self::Hybridized),
             2 => Ok(Self::PostQuantum),
             n => Err(Error::ConversionFailed(format!(
@@ -79,10 +76,7 @@ impl Serializable for EncryptionStatus {
         1
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         match self {
             Self::DecryptOnly => ser.write(&0usize),
             Self::EncryptDecrypt => ser.write(&1usize),
@@ -90,7 +84,7 @@ impl Serializable for EncryptionStatus {
         .map_err(Error::from)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         let status = de.read::<usize>()?;
         match status {
             0 => Ok(Self::DecryptOnly),
@@ -189,14 +183,11 @@ impl Serializable for QualifiedAttribute {
         self.dimension.length() + self.name.length()
     }
 
-    fn write(
-        &self,
-        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-    ) -> Result<usize, Self::Error> {
+    fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
         Ok(ser.write(&self.dimension)? + ser.write(&self.name)?)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self {
             dimension: de.read()?,
             name: de.read()?,

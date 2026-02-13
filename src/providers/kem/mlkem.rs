@@ -1,8 +1,13 @@
-use crate::{core::SHARED_SECRET_LENGTH, traits::Kem, Error};
+use crate::Error;
+use core::ops::Deref;
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    reexport::{rand_core::CryptoRngCore, zeroize::Zeroize},
-    Secret,
+    reexport::{
+        rand_core::CryptoRngCore,
+        zeroize::{Zeroize, ZeroizeOnDrop},
+    },
+    traits::KEM,
+    CryptoCoreError, Secret, SymmetricKey,
 };
 use ml_kem::{
     array::Array,
@@ -10,13 +15,21 @@ use ml_kem::{
     EncodedSizeUser, KemCore,
 };
 
+pub const KEY_LENGTH: usize = 32;
+
 macro_rules! make_mlkem {
     ($base: ident, $ek: ident, $ek_len: literal, $dk: ident, $dk_len: literal, $enc: ident, $enc_len:literal) => {
         #[derive(Debug, PartialEq, Clone)]
         pub struct $ek(Box<<ml_kem::$base as KemCore>::EncapsulationKey>);
 
+        impl From<&$dk> for $ek {
+            fn from(dk: &$dk) -> Self {
+                Self(Box::new(dk.0.encapsulation_key().clone()))
+            }
+        }
+
         impl Serializable for $ek {
-            type Error = Error;
+            type Error = CryptoCoreError;
 
             fn length(&self) -> usize {
                 $ek_len
@@ -40,6 +53,9 @@ macro_rules! make_mlkem {
         #[derive(Debug, Clone, PartialEq)]
         pub struct $dk(Box<<ml_kem::$base as KemCore>::DecapsulationKey>);
 
+        // DecapsulationKey implements ZeroizeOnDrop.
+        impl ZeroizeOnDrop for $dk {}
+
         #[allow(dead_code)]
         impl $dk {
             pub fn ek(&self) -> $ek {
@@ -48,7 +64,7 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $dk {
-            type Error = Error;
+            type Error = CryptoCoreError;
 
             fn length(&self) -> usize {
                 $dk_len
@@ -72,15 +88,23 @@ macro_rules! make_mlkem {
         #[derive(Debug, PartialEq, Eq, Clone, Hash)]
         pub struct $enc(Box<Array<u8, <ml_kem::$base as KemCore>::CiphertextSize>>);
 
+        impl Deref for $enc {
+            type Target = [u8];
+
+            fn deref(&self) -> &Self::Target {
+                self.0.as_slice()
+            }
+        }
+
         impl Serializable for $enc {
-            type Error = Error;
+            type Error = CryptoCoreError;
 
             fn length(&self) -> usize {
                 $enc_len
             }
 
             fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-                Ok(ser.write_array(&self.0)?)
+                ser.write_array(&self.0)
             }
 
             fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -91,15 +115,13 @@ macro_rules! make_mlkem {
             }
         }
 
+        #[derive(Debug, Copy, Clone)]
         pub struct $base;
 
-        impl Kem for $base {
+        impl KEM<KEY_LENGTH> for $base {
             type EncapsulationKey = $ek;
             type DecapsulationKey = $dk;
-            type SessionKey = Secret<SHARED_SECRET_LENGTH>;
-
             type Encapsulation = $enc;
-
             type Error = Error;
 
             fn keygen(
@@ -112,29 +134,28 @@ macro_rules! make_mlkem {
             fn enc(
                 ek: &Self::EncapsulationKey,
                 rng: &mut impl CryptoRngCore,
-            ) -> Result<(Self::SessionKey, Self::Encapsulation), Self::Error> {
+            ) -> Result<(SymmetricKey<KEY_LENGTH>, Self::Encapsulation), Self::Error> {
                 let (enc, mut ss) =
                     ek.0.encapsulate(rng)
                         .map_err(|e| Error::Kem(format!("{:?}", e)))?;
                 let ss = Secret::from_unprotected_bytes(ss.as_mut());
-                Ok((ss, $enc(Box::new(enc))))
+                Ok((ss.into(), $enc(Box::new(enc))))
             }
 
             fn dec(
                 dk: &Self::DecapsulationKey,
                 enc: &Self::Encapsulation,
-            ) -> Result<Self::SessionKey, Self::Error> {
+            ) -> Result<SymmetricKey<KEY_LENGTH>, Self::Error> {
                 let mut ss =
                     dk.0.decapsulate(&enc.0)
                         .map_err(|e| Self::Error::Kem(format!("{e:?}")))?;
                 let ss = Secret::from_unprotected_bytes(ss.as_mut());
-                Ok(ss)
+                Ok(ss.into())
             }
         }
     };
 }
 
-#[cfg(feature = "mlkem-512")]
 make_mlkem!(
     MlKem512,
     EncapsulationKey512,
@@ -145,7 +166,6 @@ make_mlkem!(
     768
 );
 
-#[cfg(feature = "mlkem-768")]
 make_mlkem!(
     MlKem768,
     EncapsulationKey768,
@@ -180,8 +200,6 @@ mod tests {
         };
     }
 
-    #[cfg(feature = "mlkem-512")]
     test_mlkem!(MlKem512, test_mlkem512);
-    #[cfg(feature = "mlkem-768")]
     test_mlkem!(MlKem768, test_mlkem768);
 }

@@ -1,33 +1,33 @@
-use std::sync::{Mutex, MutexGuard};
-
+use crate::{
+    abe::{
+        core::{
+            primitives::{
+                self, master_decaps, prune, refresh, rekey, setup, update_msk, usk_keygen,
+            },
+            MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
+            SHARED_SECRET_LENGTH,
+        },
+        policy::AccessPolicy,
+        traits::{KemAc, PkeAc},
+    },
+    Error,
+};
 use cosmian_crypto_core::{
-    reexport::{rand_core::SeedableRng, zeroize::Zeroizing},
+    reexport::rand_core::{RngCore, SeedableRng},
+    traits::AE,
     CsRng, Secret, SymmetricKey,
 };
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use super::{
-    core::primitives::{prune, update_msk, usk_keygen},
-    core::MIN_TRACING_LEVEL,
-    traits::AE,
-};
-use crate::{
-    core::{
-        primitives::{self, full_decaps, refresh, rekey, setup},
-        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, SHARED_SECRET_LENGTH,
-    },
-    traits::{KemAc, PkeAc},
-    AccessPolicy, Error,
-};
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Covercrypt {
-    rng: Mutex<CsRng>,
+    rng: Arc<Mutex<CsRng>>,
 }
 
 impl Default for Covercrypt {
     fn default() -> Self {
         Self {
-            rng: Mutex::new(CsRng::from_entropy()),
+            rng: Arc::new(Mutex::new(CsRng::from_entropy())),
         }
     }
 }
@@ -158,7 +158,7 @@ impl Covercrypt {
         mpk: &MasterPublicKey,
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
-        let (_ss, rights) = full_decaps(msk, encapsulation)?;
+        let (_ss, rights) = master_decaps(msk, encapsulation, true)?;
         primitives::encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             mpk,
@@ -194,12 +194,18 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     }
 }
 
-impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH, Error = Error>> PkeAc<KEY_LENGTH, E>
-    for Covercrypt
+impl<
+        const KEY_LENGTH: usize,
+        const NONCE_LENGTH: usize,
+        const TAG_LENGTH: usize,
+        E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
+    > PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, E> for Covercrypt
+where
+    Error: From<E::Error>,
 {
     type EncryptionKey = MasterPublicKey;
     type DecryptionKey = UserSecretKey;
-    type Ciphertext = (XEnc, Vec<u8>);
+    type Ciphertext = (XEnc, E::Ciphertext);
     type Error = Error;
 
     fn encrypt(
@@ -212,19 +218,22 @@ impl<const KEY_LENGTH: usize, E: AE<KEY_LENGTH, Error = Error>> PkeAc<KEY_LENGTH
         // Locking Covercrypt RNG must be performed after encapsulation since
         // this encapsulation also requires locking the RNG.
         let mut rng = self.rng.lock().expect("poisoned lock");
-        let key = SymmetricKey::derive(&seed, b"Covercrypt AE key")?;
-        E::encrypt(&mut *rng, &key, ptx).map(|ctx| (enc, ctx))
+        let key = SymmetricKey::<KEY_LENGTH>::derive(&seed, b"Covercrypt AE key")?;
+        let mut nonce = [0; NONCE_LENGTH];
+        rng.fill_bytes(&mut nonce);
+        let ctx = E::encrypt(&key, ptx, &nonce)?;
+        Ok((enc, ctx))
     }
 
     fn decrypt(
         &self,
         usk: &Self::DecryptionKey,
         ctx: &Self::Ciphertext,
-    ) -> Result<Option<Zeroizing<Vec<u8>>>, Self::Error> {
+    ) -> Result<Option<E::Plaintext>, Self::Error> {
         self.decaps(usk, &ctx.0)?
             .map(|seed| {
                 let key = SymmetricKey::derive(&seed, b"Covercrypt AE key")?;
-                E::decrypt(&key, &ctx.1)
+                E::decrypt(&key, ctx.1.as_ref()).map_err(Self::Error::from)
             })
             .transpose()
     }

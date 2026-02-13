@@ -1,28 +1,28 @@
-use std::{
-    collections::{HashMap, HashSet, LinkedList},
-    mem::take,
+use crate::{
+    abe::{
+        core::{
+            KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
+            TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH,
+            SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+        },
+        policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
+    },
+    data_struct::{RevisionMap, RevisionVec},
+    providers::{ElGamal, MlKem},
+    Error,
 };
-
 use cosmian_crypto_core::{
     bytes_ser_de::Serializable,
     reexport::{
         rand_core::{CryptoRngCore, RngCore},
         tiny_keccak::{Hasher, Kmac, Sha3},
-        zeroize::Zeroize,
     },
+    traits::{Seedable, KEM, NIKE},
     RandomFixedSizeCBytes, Secret, SymmetricKey,
 };
-
-use crate::{
-    abe_policy::{AccessStructure, EncryptionStatus, Right, SecurityMode},
-    core::{
-        kem::MlKem, nike::ElGamal, KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey,
-        RightSecretKey, TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
-        SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
-    },
-    data_struct::{RevisionMap, RevisionVec},
-    traits::{Kem, Nike, Sampling},
-    Error,
+use std::{
+    collections::{HashMap, HashSet, LinkedList},
+    mem::take,
 };
 
 fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
@@ -82,13 +82,15 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
     }
 }
 
-fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as Nike>::SecretKey, Error> {
-    Ok(<<ElGamal as Nike>::SecretKey as Sampling>::hash(&**seed))
+fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as NIKE>::SecretKey, Error> {
+    Ok(<<ElGamal as NIKE>::SecretKey as Seedable<
+        SHARED_SECRET_LENGTH,
+    >>::from_seed(seed))
 }
 
 fn H_hash(
-    K1: Option<&<ElGamal as Nike>::PublicKey>,
-    K2: Option<&Secret<SHARED_SECRET_LENGTH>>,
+    K1: Option<&<ElGamal as NIKE>::PublicKey>,
+    K2: Option<&SymmetricKey<SHARED_SECRET_LENGTH>>,
     T: &Secret<SHARED_SECRET_LENGTH>,
 ) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
     // Additional check to enforce the constraint on the SHARED_SECRET_LENGTH
@@ -128,8 +130,10 @@ fn J_hash(
 }
 
 fn generate_T<'a>(
-    c: Option<&[<ElGamal as Nike>::PublicKey]>,
-    encapsulations: Option<impl IntoIterator<Item = &'a <MlKem as Kem>::Encapsulation>>,
+    c: Option<&[<ElGamal as NIKE>::PublicKey]>,
+    encapsulations: Option<
+        impl IntoIterator<Item = &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation>,
+    >,
 ) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
     let mut hasher = Sha3::v256();
     let mut T = Secret::new();
@@ -212,12 +216,12 @@ pub fn usk_keygen(
 /// marker c, ElGamal random r and subkeys.
 fn h_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
-    c: Vec<<ElGamal as Nike>::PublicKey>,
-    r: <ElGamal as Nike>::SecretKey,
+    c: Vec<<ElGamal as NIKE>::PublicKey>,
+    r: <ElGamal as NIKE>::SecretKey,
     subkeys: impl IntoIterator<
         Item = (
-            &'a <ElGamal as Nike>::PublicKey,
-            &'a <MlKem as Kem>::EncapsulationKey,
+            &'a <ElGamal as NIKE>::PublicKey,
+            &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::EncapsulationKey,
         ),
     >,
     rng: &mut impl CryptoRngCore,
@@ -225,7 +229,7 @@ fn h_encaps<'a>(
     let encs = subkeys
         .into_iter()
         .map(|(H, ek)| {
-            let K1 = ElGamal::session_key(&r, H)?;
+            let K1 = ElGamal::shared_secret(&r, H)?;
             let (K2, E) = MlKem::enc(ek, rng)?;
             Ok((K1, K2, E))
         })
@@ -235,9 +239,8 @@ fn h_encaps<'a>(
 
     let encapsulations = encs
         .into_iter()
-        .map(|(mut K1, K2, E)| -> Result<_, _> {
+        .map(|(K1, K2, E)| -> Result<_, _> {
             let F = xor_2(&S, &*H_hash(Some(&K1), Some(&K2), &T)?);
-            K1.zeroize();
             Ok((E, F))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -260,7 +263,7 @@ fn h_encaps<'a>(
 /// subkeys.
 fn post_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
-    subkeys: impl IntoIterator<Item = &'a <MlKem as Kem>::EncapsulationKey>,
+    subkeys: impl IntoIterator<Item = &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::EncapsulationKey>,
     rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let encs = subkeys
@@ -295,16 +298,16 @@ fn post_quantum_encaps<'a>(
 /// marker c, ElGamal random r and subkeys.
 fn pre_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
-    c: Vec<<ElGamal as Nike>::PublicKey>,
-    r: <ElGamal as Nike>::SecretKey,
-    subkeys: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
+    c: Vec<<ElGamal as NIKE>::PublicKey>,
+    r: <ElGamal as NIKE>::SecretKey,
+    subkeys: impl IntoIterator<Item = &'a <ElGamal as NIKE>::PublicKey>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let T = generate_T(Some(&c), None::<Vec<_>>)?;
 
     let encapsulations = subkeys
         .into_iter()
         .map(|H| -> Result<_, _> {
-            let K1 = ElGamal::session_key(&r, H)?;
+            let K1 = ElGamal::shared_secret(&r, H)?;
             let F = xor_2(&S, &*H_hash(Some(&K1), None, &T)?);
             Ok(F)
         })
@@ -348,7 +351,7 @@ pub fn encaps(
     let S = Secret::random(rng);
 
     match is_hybridized {
-        SecurityMode::PreQuantum => {
+        EncryptionHint::Classic => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
@@ -361,7 +364,7 @@ pub fn encaps(
             });
             pre_quantum_encaps(S, c, r, subkeys)
         }
-        SecurityMode::PostQuantum => {
+        EncryptionHint::PostQuantum => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::PostQuantum { ek } = subkey {
                     ek
@@ -371,7 +374,7 @@ pub fn encaps(
             });
             post_quantum_encaps(S, subkeys, rng)
         }
-        SecurityMode::Hybridized => {
+        EncryptionHint::Hybridized => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
@@ -390,18 +393,17 @@ pub fn encaps(
 #[allow(clippy::too_many_arguments)]
 fn attempt_pre_quantum_decaps<'a>(
     secret: &RightSecretKey,
-    A: &<ElGamal as Nike>::PublicKey,
+    A: &<ElGamal as NIKE>::PublicKey,
     U: &Secret<SHARED_SECRET_LENGTH>,
     T: &Secret<SHARED_SECRET_LENGTH>,
     F: &[u8; 32],
-    c: &[<ElGamal as Nike>::PublicKey],
+    c: &[<ElGamal as NIKE>::PublicKey],
     tag: &[u8; TAG_LENGTH],
-    tracing_points: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
+    tracing_points: impl IntoIterator<Item = &'a <ElGamal as NIKE>::PublicKey>,
 ) -> Result<Option<Secret<32>>, Error> {
     if let RightSecretKey::PreQuantum { sk } = secret {
-        let mut K1 = ElGamal::session_key(sk, A)?;
+        let K1 = ElGamal::shared_secret(sk, A)?;
         let S = xor_in_place(H_hash(Some(&K1), None, T)?, F);
-        K1.zeroize();
         let (tag_ij, ss) = J_hash(&S, U);
         if tag == &tag_ij {
             // Fujisaki-Okamoto
@@ -421,17 +423,17 @@ fn attempt_pre_quantum_decaps<'a>(
 #[allow(clippy::too_many_arguments)]
 fn attempt_hybridized_decaps<'a>(
     secret: &RightSecretKey,
-    A: &<ElGamal as Nike>::PublicKey,
+    A: &<ElGamal as NIKE>::PublicKey,
     U: &Secret<SHARED_SECRET_LENGTH>,
     T: &Secret<SHARED_SECRET_LENGTH>,
-    E: &<MlKem as Kem>::Encapsulation,
+    E: &<MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
     F: &[u8; 32],
-    c: &[<ElGamal as Nike>::PublicKey],
+    c: &[<ElGamal as NIKE>::PublicKey],
     tag: &[u8; TAG_LENGTH],
-    tracing_points: impl IntoIterator<Item = &'a <ElGamal as Nike>::PublicKey>,
+    tracing_points: impl IntoIterator<Item = &'a <ElGamal as NIKE>::PublicKey>,
 ) -> Result<Option<Secret<32>>, Error> {
     if let RightSecretKey::Hybridized { sk, dk } = secret {
-        let mut K1 = ElGamal::session_key(sk, A)?;
+        let K1 = ElGamal::shared_secret(sk, A)?;
         let K2 = MlKem::dec(dk, E)?;
         let S_ij = xor_in_place(H_hash(Some(&K1), Some(&K2), T)?, F);
         let (tag_ij, ss) = J_hash(&S_ij, U);
@@ -443,7 +445,6 @@ fn attempt_hybridized_decaps<'a>(
                 .map(|P| P * &r)
                 .collect::<Vec<_>>();
             if c == c_ij {
-                K1.zeroize();
                 return Ok(Some(ss));
             }
         }
@@ -455,7 +456,7 @@ fn attempt_post_quantum_decaps(
     secret: &RightSecretKey,
     U: &Secret<SHARED_SECRET_LENGTH>,
     T: &Secret<SHARED_SECRET_LENGTH>,
-    E: &<MlKem as Kem>::Encapsulation,
+    E: &<MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
     F: &[u8; 32],
     tag: &[u8; TAG_LENGTH],
 ) -> Result<Option<Secret<32>>, Error> {
@@ -479,20 +480,23 @@ pub fn decaps(
 ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
     fn generate_tracing_closure(
         usk: &UserSecretKey,
-        c: &[<ElGamal as Nike>::PublicKey],
-    ) -> <ElGamal as Nike>::PublicKey {
+        c: &[<ElGamal as NIKE>::PublicKey],
+    ) -> <ElGamal as NIKE>::PublicKey {
         usk.id
             .iter()
             .zip(c.iter())
             .map(|(marker, trap)| trap * marker)
-            .sum::<<ElGamal as Nike>::PublicKey>()
+            .sum::<<ElGamal as NIKE>::PublicKey>()
     }
 
     fn partial_post_quantum_decaps(
         rng: &mut impl CryptoRngCore,
         usk: &UserSecretKey,
         tag: &[u8; TAG_LENGTH],
-        encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+        encs: &[(
+            <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+            [u8; SHARED_SECRET_LENGTH],
+        )],
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
         let T = generate_T(None, Some(encs.iter().map(|(E, _)| E)))?;
         let U = generate_U(&T, encs.iter().map(|(_, F)| F));
@@ -522,9 +526,12 @@ pub fn decaps(
     fn partial_hybridized_decaps(
         rng: &mut impl CryptoRngCore,
         usk: &UserSecretKey,
-        c: &[<ElGamal as Nike>::PublicKey],
+        c: &[<ElGamal as NIKE>::PublicKey],
         tag: &[u8; TAG_LENGTH],
-        encs: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+        encs: &[(
+            <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+            [u8; SHARED_SECRET_LENGTH],
+        )],
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
         let A = generate_tracing_closure(usk, c);
         let T = generate_T(Some(c), Some(encs.iter().map(|(E, _)| E)))?;
@@ -565,7 +572,7 @@ pub fn decaps(
     fn partial_pre_quantum_decaps(
         rng: &mut impl CryptoRngCore,
         usk: &UserSecretKey,
-        c: &[<ElGamal as Nike>::PublicKey],
+        c: &[<ElGamal as NIKE>::PublicKey],
         tag: &[u8; TAG_LENGTH],
         encs: &Vec<[u8; SHARED_SECRET_LENGTH]>,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
@@ -624,9 +631,10 @@ pub fn decaps(
 
 /// Recover the encapsulated shared secret and set of rights used in the
 /// encapsulation.
-pub fn full_decaps(
+pub fn master_decaps(
     msk: &MasterSecretKey,
     encapsulation: &XEnc,
+    full: bool,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
     /// Opens the given encapsulation with the provided secrets. Returns both
     /// the encapsulated secret and the right associated to the first secret
@@ -648,8 +656,8 @@ pub fn full_decaps(
 
     fn generate_tracing_closure(
         msk: &MasterSecretKey,
-        c: &[<ElGamal as Nike>::PublicKey],
-    ) -> Result<<ElGamal as Nike>::PublicKey, Error> {
+        c: &[<ElGamal as NIKE>::PublicKey],
+    ) -> Result<<ElGamal as NIKE>::PublicKey, Error> {
         let c_0 = c
             .first()
             .ok_or_else(|| Error::Kem("invalid encapsulation: C is empty".to_string()))?;
@@ -663,11 +671,12 @@ pub fn full_decaps(
         Ok(c_0 * &(&msk.tsk.s / t_0)?)
     }
 
-    fn full_pre_quantum_decapsulation(
+    fn pre_quantum_decapsulation(
         msk: &MasterSecretKey,
         tag: &[u8; TAG_LENGTH],
-        c: &[<ElGamal as Nike>::PublicKey],
+        c: &[<ElGamal as NIKE>::PublicKey],
         encapsulations: &[[u8; 32]],
+        full: bool,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
         let A = generate_tracing_closure(msk, c)?;
         let T = generate_T(Some(c), None::<Vec<_>>)?;
@@ -696,6 +705,10 @@ pub fn full_decaps(
             secrets.remove(&right);
             enc_ss = Some(ss);
             rights.insert(right);
+
+            if !full {
+                break;
+            }
         }
 
         enc_ss
@@ -705,10 +718,14 @@ pub fn full_decaps(
             .ok_or_else(|| Error::Kem("empty encapsulation".to_string()))
     }
 
-    fn full_post_quantum_decapsulation(
+    fn post_quantum_decapsulation(
         msk: &MasterSecretKey,
         tag: &[u8; TAG_LENGTH],
-        encapsulations: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+        encapsulations: &[(
+            <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+            [u8; SHARED_SECRET_LENGTH],
+        )],
+        full: bool,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
         let T = generate_T(None, Some(encapsulations.iter().map(|(E, _)| E)))?;
         let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
@@ -734,6 +751,10 @@ pub fn full_decaps(
             secrets.remove(&right);
             enc_ss = Some(ss);
             rights.insert(right);
+
+            if !full {
+                break;
+            }
         }
 
         enc_ss
@@ -743,11 +764,15 @@ pub fn full_decaps(
             .ok_or_else(|| Error::Kem("empty encapsulation".to_string()))
     }
 
-    fn full_hybrid_decapsulation(
+    fn hybrid_decapsulation(
         msk: &MasterSecretKey,
         tag: &[u8; TAG_LENGTH],
-        c: &[<ElGamal as Nike>::PublicKey],
-        encapsulations: &[(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])],
+        c: &[<ElGamal as NIKE>::PublicKey],
+        encapsulations: &[(
+            <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+            [u8; SHARED_SECRET_LENGTH],
+        )],
+        full: bool,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
         let A = generate_tracing_closure(msk, c)?;
         let T = generate_T(Some(c), Some(encapsulations.iter().map(|(E, _)| E)))?;
@@ -775,6 +800,10 @@ pub fn full_decaps(
             secrets.remove(&right);
             enc_ss = Some(ss);
             rights.insert(right);
+
+            if !full {
+                break;
+            }
         }
 
         enc_ss
@@ -789,16 +818,16 @@ pub fn full_decaps(
             tag,
             c,
             encapsulations,
-        } => full_pre_quantum_decapsulation(msk, tag, c, encapsulations),
+        } => pre_quantum_decapsulation(msk, tag, c, encapsulations, full),
         XEnc::PostQuantum {
             tag,
             encapsulations,
-        } => full_post_quantum_decapsulation(msk, tag, encapsulations),
+        } => post_quantum_decapsulation(msk, tag, encapsulations, full),
         XEnc::Hybridized {
             tag,
             c,
             encapsulations,
-        } => full_hybrid_decapsulation(msk, tag, c, encapsulations),
+        } => hybrid_decapsulation(msk, tag, c, encapsulations, full),
     }
 }
 
@@ -808,7 +837,7 @@ pub fn full_decaps(
 pub fn update_msk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: HashMap<Right, (SecurityMode, EncryptionStatus)>,
+    rights: HashMap<Right, (EncryptionHint, EncryptionStatus)>,
 ) -> Result<(), Error> {
     let mut secrets = take(&mut msk.secrets);
     secrets.retain(|r| rights.contains_key(r));

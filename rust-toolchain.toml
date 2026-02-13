@@ -1,0 +1,6 @@
+[toolchain]
+# Pin to a stable toolchain (no nightly) because dependencies rely on
+# `core::hint::select_unpredictable`, which is available on stable.
+channel = "1.89.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
