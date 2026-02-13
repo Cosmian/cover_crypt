@@ -3,6 +3,10 @@ use std::collections::{
     LinkedList, VecDeque,
 };
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+
+use crate::Error;
+
 /// A `RevisionVec` is a vector that stores pairs containing a key
 /// and a sequence of values. Inserting a new value in the sequence
 /// associated to an existing key prepends this value to the sequence.
@@ -131,7 +135,7 @@ impl<K, T> RevisionVec<K, T> {
 
     /// Iterates through all versions of all entry in a breadth-first manner.
     #[must_use]
-    pub fn bfs(&self) -> BfsQueue<T> {
+    pub fn bfs(&self) -> BfsQueue<'_, T> {
         BfsQueue::new(self)
     }
 
@@ -199,6 +203,25 @@ impl<K, T> FromIterator<(K, T)> for RevisionVec<K, T> {
                 .map(|(k, v)| (k, LinkedList::from_iter([v])))
                 .collect(),
         }
+    }
+}
+
+impl<K: Serializable, T: Serializable> Serializable for RevisionVec<K, T> {
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        self.chains.length()
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        Ok(self.chains.write(ser)?)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        Ok(Self { chains: de.read()? })
     }
 }
 

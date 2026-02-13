@@ -1,15 +1,13 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
-    abe_policy::{
-        AccessPolicy, Attribute, AttributeStatus, Dimension, EncryptionHint, QualifiedAttribute,
-        Right,
+    abe::policy::{
+        attribute::EncryptionHint, AccessPolicy, Attribute, Dimension, EncryptionStatus,
+        QualifiedAttribute, Right, Version,
     },
     data_struct::Dict,
     Error,
 };
-
-use super::Version;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AccessStructure {
@@ -104,7 +102,7 @@ impl AccessStructure {
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
-        encryption_hint: EncryptionHint,
+        security_mode: EncryptionHint,
         after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
@@ -116,7 +114,7 @@ impl AccessStructure {
         self.dimensions
             .get_mut(&attribute.dimension)
             .ok_or_else(|| Error::DimensionNotFound(attribute.dimension.clone()))?
-            .add_attribute(attribute.name, encryption_hint, after, cnt)?;
+            .add_attribute(attribute.name, security_mode, after, cnt)?;
 
         Ok(())
     }
@@ -172,13 +170,13 @@ impl AccessStructure {
 
     /// Generates all rights defined by this access structure and return their
     /// hybridization and activation status.
-    pub(crate) fn omega(&self) -> Result<HashMap<Right, (EncryptionHint, AttributeStatus)>, Error> {
+    pub(crate) fn omega(
+        &self,
+    ) -> Result<HashMap<Right, (EncryptionHint, EncryptionStatus)>, Error> {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
             .into_iter()
-            .map(|(ids, is_hybridized, is_readonly)| {
-                Right::from_point(ids).map(|r| (r, (is_hybridized, is_readonly)))
-            })
+            .map(|(ids, mode, status)| Right::from_point(ids).map(|r| (r, (mode, status))))
             .collect()
     }
 }
@@ -309,10 +307,12 @@ impl AccessStructure {
     }
 }
 
-/// Combines all attributes IDs from the given dimensions using at most one attribute for each
-/// dimensions. Returns the disjunction of the associated hybridization and activation status.
+/// Combines all attributes IDs from the given dimensions using at most one
+/// attribute for each dimensions. Returns the disjunction of the associated
+/// hybridization and activation status.
 ///
-/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following combinations will be created:
+/// As an example, if dimensions D1::A1 and D2::(A2,B2) are given, the following
+/// combinations will be created:
 /// - D1::A1
 /// - D1::A1 && D2::A2
 /// - D1::A1 && D2::B2
@@ -320,27 +320,27 @@ impl AccessStructure {
 /// - D2::B2
 fn combine(
     dimensions: &[(&String, &Dimension)],
-) -> Vec<(Vec<usize>, EncryptionHint, AttributeStatus)> {
+) -> Vec<(Vec<usize>, EncryptionHint, EncryptionStatus)> {
     if dimensions.is_empty() {
         vec![(
             vec![],
             EncryptionHint::Classic,
-            AttributeStatus::EncryptDecrypt,
+            EncryptionStatus::EncryptDecrypt,
         )]
     } else {
         let (_, current_dimension) = &dimensions[0];
         let partial_combinations = combine(&dimensions[1..]);
         let mut res = vec![];
         for component in current_dimension.attributes() {
-            for (ids, is_hybridized, is_activated) in &partial_combinations {
+            for (ids, security_mode, encryption_status) in partial_combinations.clone() {
                 res.push((
-                    [vec![component.get_id()], ids.clone()].concat(),
-                    *is_hybridized | component.get_encryption_hint(),
-                    *is_activated | component.get_status(),
+                    [vec![component.get_id()], ids].concat(),
+                    security_mode.max(component.get_security_mode()),
+                    encryption_status | component.get_encryption_status(),
                 ));
             }
         }
-        [partial_combinations.clone(), res].concat()
+        [partial_combinations, res].concat()
     }
 }
 
@@ -356,62 +356,30 @@ impl Default for AccessStructure {
 mod serialization {
 
     use super::*;
-    use cosmian_crypto_core::bytes_ser_de::{
-        to_leb128_len, Deserializer, Serializable, Serializer,
-    };
+    use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
 
     impl Serializable for AccessStructure {
         type Error = Error;
 
         fn length(&self) -> usize {
-            1 + to_leb128_len(self.dimensions.len())
-                + self
-                    .dimensions
-                    .iter()
-                    .map(|(name, dimension)| {
-                        let l = name.len();
-                        to_leb128_len(l) + l + dimension.length()
-                    })
-                    .sum::<usize>()
+            self.version.length() + self.dimensions.length()
         }
 
         fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-            let mut n = ser.write_leb128_u64(self.version as u64)?;
-            n += ser.write_leb128_u64(self.dimensions.len() as u64)?;
-            self.dimensions.iter().try_for_each(|(name, dimension)| {
-                n += ser.write_vec(name.as_bytes())?;
-                n += ser.write(dimension)?;
-                Ok::<_, Self::Error>(())
-            })?;
-            Ok(n)
+            Ok(self.version.write(ser)? + self.dimensions.write(ser)?)
         }
 
         fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-            let version = de.read_leb128_u64()?;
-            let dimensions = if version == Version::V1 as u64 {
-                (0..de.read_leb128_u64()?)
-                    .map(|_| {
-                        let name = String::from_utf8(de.read_vec()?)
-                            .map_err(|e| Error::ConversionFailed(e.to_string()))?;
-                        let dimension = de.read::<Dimension>()?;
-                        Ok((name, dimension))
-                    })
-                    .collect::<Result<HashMap<_, _>, Error>>()
-            } else {
-                Err(Error::ConversionFailed(
-                    "unable to deserialize versions prior to V3".to_string(),
-                ))
-            }?;
             Ok(Self {
-                version: Version::V1,
-                dimensions,
+                version: de.read()?,
+                dimensions: de.read()?,
             })
         }
     }
 
     #[test]
     fn test_access_structure_serialization() {
-        use crate::abe_policy::gen_structure;
+        use crate::abe::gen_structure;
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut structure = AccessStructure::new();
@@ -423,7 +391,7 @@ mod serialization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::abe_policy::gen_structure;
+    use crate::abe::gen_structure;
 
     #[test]
     fn test_combine() {
@@ -447,8 +415,8 @@ mod tests {
             ("Spain", EncryptionHint::Classic),
         ]
         .into_iter()
-        .try_for_each(|(attribute, hint)| {
-            structure.add_attribute(QualifiedAttribute::new("Country", attribute), hint, None)
+        .try_for_each(|(attribute, mode)| {
+            structure.add_attribute(QualifiedAttribute::new("Country", attribute), mode, None)
         })
         .unwrap();
 
@@ -503,6 +471,12 @@ mod tests {
             rights.insert(Right::from_point(vec![structure.get_attribute_id(
                 &QualifiedAttribute {
                     dimension: "SEC".to_string(),
+                    name: "MED".to_string(),
+                },
+            )?])?);
+            rights.insert(Right::from_point(vec![structure.get_attribute_id(
+                &QualifiedAttribute {
+                    dimension: "SEC".to_string(),
                     name: "TOP".to_string(),
                 },
             )?])?);
@@ -525,6 +499,28 @@ mod tests {
                 structure.get_attribute_id(&QualifiedAttribute {
                     dimension: "SEC".to_string(),
                     name: "LOW".to_string(),
+                })?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "DPT".to_string(),
+                    name: "HR".to_string(),
+                })?,
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "SEC".to_string(),
+                    name: "MED".to_string(),
+                })?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "DPT".to_string(),
+                    name: "FIN".to_string(),
+                })?,
+                structure.get_attribute_id(&QualifiedAttribute {
+                    dimension: "SEC".to_string(),
+                    name: "MED".to_string(),
                 })?,
             ])?);
 
@@ -560,12 +556,12 @@ mod tests {
                 structure
                     .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // There are 2 rights in the security dimension, plus the
+                // There are 3 rights in the security dimension, plus the
                 // broadcast for this dimension. This is the restricted
                 // space. There is only one projection of DPT::HR, which is the
                 // universal broadcast. The complementary space is generated by
                 // extending these two points with the restricted space.
-                2 * (1 + 2)
+                2 * (1 + 3)
             );
 
             let ap = "SEC::LOW";

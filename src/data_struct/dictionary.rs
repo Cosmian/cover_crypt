@@ -7,6 +7,7 @@ use std::{
     mem::swap,
 };
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeMap,
@@ -262,6 +263,31 @@ where
         D: Deserializer<'de>,
     {
         deserializer.deserialize_map(DictVisitor::new())
+    }
+}
+
+impl<K: Serializable, V: Serializable> Serializable for Dict<K, V>
+where
+    K: Hash + PartialEq + Eq + Clone + Debug,
+{
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        self.indices.length() + self.entries.length()
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        Ok(self.indices.write(ser)? + self.entries.write(ser)?)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        Ok(Self {
+            indices: de.read()?,
+            entries: de.read()?,
+        })
     }
 }
 

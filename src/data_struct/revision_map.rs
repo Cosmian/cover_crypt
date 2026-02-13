@@ -8,6 +8,10 @@ use std::{
     hash::Hash,
 };
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+
+use crate::Error;
+
 /// A `RevisionMap` is a `HashMap` which keys are mapped to sequences of values.
 /// Upon insertion for an existing key, the new value is prepended to the
 /// sequence of older values instead of replacing it.
@@ -22,7 +26,7 @@ use std::{
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RevisionMap<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
@@ -136,14 +140,23 @@ where
         self.map.iter()
     }
 
-    /// Iterates through all revisions of a given key starting with the more
-    /// recent one.
+    /// Returns the list of revisions, starting with the more recent one.
     pub fn get<Q>(&self, key: &Q) -> Option<&LinkedList<V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.map.get(key) //.map(RevisionList::iter)
+        self.map.get(key)
+    }
+
+    /// Returns a mutable reference on the list of revisions, starting with the
+    /// more recent one.
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut LinkedList<V>>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.get_mut(key)
     }
 
     /// Removes and returns an iterator over all revisions from a given key.
@@ -173,6 +186,29 @@ where
     /// Retains only the elements with a key validating the given predicate.
     pub fn retain(&mut self, f: impl Fn(&K) -> bool) {
         self.map.retain(|key, _| f(key));
+    }
+}
+
+impl<K, V> Serializable for RevisionMap<K, V>
+where
+    K: Hash + PartialEq + Eq + Debug + Serializable,
+    V: Debug + Serializable,
+{
+    type Error = Error;
+
+    fn length(&self) -> usize {
+        self.map.length()
+    }
+
+    fn write(
+        &self,
+        ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+    ) -> Result<usize, Self::Error> {
+        Ok(self.map.write(ser)?)
+    }
+
+    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+        Ok(Self { map: de.read()? })
     }
 }
 
