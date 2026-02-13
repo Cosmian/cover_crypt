@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_cover_crypt"
-version = "15.0.0"
+version = "15.1.0"
 authors = [
   "Théophile Brezot <theophile.brezot@cosmian.com>",
   "Bruno Grieder <bruno.grieder@cosmian.com>",
@@ -46,12 +46,12 @@ curve25519 = []
 test-utils = []
 
 [dependencies]
-cosmian_openssl_provider = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/fix-memory-allocation-error-upon-deserialization" }
-cosmian_rust_curve25519_provider = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/fix-memory-allocation-error-upon-deserialization" }
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core.git", branch = "tbz/fix-memory-allocation-error-upon-deserialization", default-features = false, features = [
+cosmian_openssl_provider = { version = "1.0.0" }
+cosmian_rust_curve25519_provider = { version = "1.0.0" }
+cosmian_crypto_core = { version = "11.0", default-features = false, features = [
   "aes",
   "ser",
-  "sha3"
+  "sha3",
 ] }
 ml-kem = { version = "0.2", features = ["zeroize"] }
 serde = { version = "1.0", features = ["derive"] }
