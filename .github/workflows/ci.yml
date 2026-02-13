@@ -18,7 +18,7 @@ jobs:
   cargo-publish:
     needs:
       - cargo-test
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
     if: startsWith(github.ref, 'refs/tags/')
     with:
       toolchain: 1.89.0
