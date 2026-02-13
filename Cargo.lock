@@ -184,7 +184,7 @@ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "15.0.0"
+version = "15.1.0"
 dependencies = [
  "cosmian_crypto_core",
  "cosmian_openssl_provider",
@@ -198,8 +198,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "10.4.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Ffix-memory-allocation-error-upon-deserialization#24afc12b77b03ce476909a0835216a01bee32c5b"
+version = "11.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "271f3236104ae46dbc58527127605571571ff6bc9222052f1f913c8f73916558"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -218,7 +219,8 @@ dependencies = [
 [[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Ffix-memory-allocation-error-upon-deserialization#24afc12b77b03ce476909a0835216a01bee32c5b"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb222d76b31200effbcee8b998920ee8496949fc407d1b2e22b8d64ad90c58b3"
 dependencies = [
  "cosmian_crypto_core",
  "openssl",
@@ -228,7 +230,8 @@ dependencies = [
 [[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core.git?branch=tbz%2Ffix-memory-allocation-error-upon-deserialization#24afc12b77b03ce476909a0835216a01bee32c5b"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c38ea5665310769d4dabdefd3da0dcba91efabc258335b4edee1e2dd592adf14"
 dependencies = [
  "cosmian_crypto_core",
  "curve25519-dalek",
