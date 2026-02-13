@@ -1,23 +1,18 @@
 #![allow(non_snake_case)]
 
-use std::{
-    collections::{HashMap, HashSet, LinkedList},
-    hash::Hash,
-};
-
-use cosmian_crypto_core::{reexport::rand_core::CryptoRngCore, SymmetricKey};
-use kem::MlKem;
-use nike::ElGamal;
-
 use crate::{
-    abe_policy::{AccessStructure, Right},
+    abe::policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
     data_struct::{RevisionMap, RevisionVec},
-    traits::{Kem, Nike, Sampling, Zero},
+    providers::{ElGamal, MlKem},
     Error,
 };
+use cosmian_crypto_core::{
+    reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
+    traits::{Sampling, Zero, KEM, NIKE},
+    SymmetricKey,
+};
+use std::collections::{HashMap, HashSet, LinkedList};
 
-mod kem;
-mod nike;
 mod serialization;
 
 #[cfg(test)]
@@ -53,86 +48,131 @@ type Tag = [u8; TAG_LENGTH];
 pub const MIN_TRACING_LEVEL: usize = 1;
 
 /// The Covercrypt subkeys hold the DH secret key associated to a right.
-/// Subkeys can be hybridized, in which case they also hold a PQ-KEM secret key.
+///
+/// Subkeys can be hybridized in which case they also hold a PQ-KEM secret key,
+/// or post-quantum in which case they only hold a PQ-KEM secret key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightSecretKey {
-    Hybridized {
-        sk: <ElGamal as Nike>::SecretKey,
-        dk: <MlKem as Kem>::DecapsulationKey,
+    PreQuantum {
+        sk: <ElGamal as NIKE>::SecretKey,
     },
-    Classic {
-        sk: <ElGamal as Nike>::SecretKey,
+    PostQuantum {
+        dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::DecapsulationKey,
+    },
+    Hybridized {
+        sk: <ElGamal as NIKE>::SecretKey,
+        dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::DecapsulationKey,
     },
 }
 
 impl RightSecretKey {
     /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
     /// point `h`.
-    fn random(rng: &mut impl CryptoRngCore, hybridize: bool) -> Result<Self, Error> {
-        let sk = <ElGamal as Nike>::SecretKey::random(rng);
-        if hybridize {
-            let (dk, _) = MlKem::keygen(rng)?;
-            Ok(Self::Hybridized { sk, dk })
-        } else {
-            Ok(Self::Classic { sk })
+    fn random(rng: &mut impl CryptoRngCore, security_mode: EncryptionHint) -> Result<Self, Error> {
+        match security_mode {
+            EncryptionHint::Classic => {
+                let sk = <ElGamal as NIKE>::SecretKey::random(rng);
+                Ok(Self::PreQuantum { sk })
+            }
+            EncryptionHint::PostQuantum => {
+                let (dk, _) = MlKem::keygen(rng)?;
+                Ok(Self::PostQuantum { dk })
+            }
+            EncryptionHint::Hybridized => {
+                let sk = <ElGamal as NIKE>::SecretKey::random(rng);
+                let (dk, _) = MlKem::keygen(rng)?;
+                Ok(Self::Hybridized { sk, dk })
+            }
         }
     }
 
     /// Generates the associated right public key.
     #[must_use]
-    fn cpk(&self, h: &<ElGamal as Nike>::PublicKey) -> RightPublicKey {
+    fn cpk(&self, h: &<ElGamal as NIKE>::PublicKey) -> RightPublicKey {
         match self {
             Self::Hybridized { sk, dk } => RightPublicKey::Hybridized {
                 H: h * sk,
                 ek: dk.ek(),
             },
-            Self::Classic { sk } => RightPublicKey::Classic { H: h * sk },
+            Self::PostQuantum { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
+            Self::PreQuantum { sk } => RightPublicKey::PreQuantum { H: h * sk },
         }
     }
 
-    /// Returns true if this right secret key is hybridized.
-    fn is_hybridized(&self) -> bool {
+    /// Returns the security mode of this right secret key.
+    fn security_mode(&self) -> EncryptionHint {
         match self {
-            Self::Hybridized { .. } => true,
-            Self::Classic { .. } => false,
+            Self::Hybridized { .. } => EncryptionHint::Hybridized,
+            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::Classic,
         }
     }
 
-    fn drop_hybridization(&self) -> Self {
-        match self {
-            Self::Hybridized { sk: x_i, .. } => Self::Classic { sk: x_i.clone() },
-            Self::Classic { .. } => self.clone(),
-        }
+    /// Sets the security mode of this right secret key.
+    fn set_security_mode(
+        self,
+        security_mode: EncryptionHint,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<Self, Error> {
+        Ok(match (self, security_mode) {
+            (Self::Hybridized { sk, .. }, EncryptionHint::Classic) => Self::PreQuantum { sk },
+            (Self::Hybridized { dk, .. }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
+            (Self::Hybridized { sk, dk }, EncryptionHint::Hybridized) => {
+                Self::Hybridized { sk, dk }
+            }
+            (Self::PostQuantum { .. }, EncryptionHint::Classic) => Self::PostQuantum {
+                dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
+            },
+            (Self::PostQuantum { dk }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
+            (Self::PostQuantum { dk }, EncryptionHint::Hybridized) => Self::Hybridized {
+                sk: <ElGamal as NIKE>::keygen(rng)?.0,
+                dk,
+            },
+            (Self::PreQuantum { sk }, EncryptionHint::Classic) => Self::PreQuantum { sk },
+            (Self::PreQuantum { .. }, EncryptionHint::PostQuantum) => Self::PostQuantum {
+                dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
+            },
+            (Self::PreQuantum { sk }, EncryptionHint::Hybridized) => Self::Hybridized {
+                sk,
+                dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
+            },
+        })
     }
 }
 
-/// The Covercrypt public keys hold the DH secret public key associated to a right.
-/// Subkeys can be hybridized, in which case they also hold a PQ-KEM public key.
+/// The Covercrypt public keys hold the DH secret public key associated to a
+/// right.
+///
+/// Subkeys can be hybridized in which case they also hold a PQ-KEM public key,
+/// or post-quantum, in which case they only hold a PQ-KEM public key.
 #[derive(Clone, Debug, PartialEq)]
 enum RightPublicKey {
-    Hybridized {
-        H: <ElGamal as Nike>::PublicKey,
-        ek: <MlKem as Kem>::EncapsulationKey,
+    PreQuantum {
+        H: <ElGamal as NIKE>::PublicKey,
     },
-    Classic {
-        H: <ElGamal as Nike>::PublicKey,
+    PostQuantum {
+        ek: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::EncapsulationKey,
+    },
+    Hybridized {
+        H: <ElGamal as NIKE>::PublicKey,
+        ek: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::EncapsulationKey,
     },
 }
 
 impl RightPublicKey {
-    pub fn is_hybridized(&self) -> bool {
+    /// Returns the security mode of this right public key.
+    pub fn security_mode(&self) -> EncryptionHint {
         match self {
-            Self::Hybridized { .. } => true,
-            Self::Classic { .. } => false,
+            Self::Hybridized { .. } => EncryptionHint::Hybridized,
+            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::Classic,
         }
     }
 }
 
 /// Covercrypt user IDs are used to make user keys unique and traceable.
-///
-/// They are composed of a sequence of `LENGTH` scalars.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-struct UserId(LinkedList<<ElGamal as Nike>::SecretKey>);
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+struct UserId(LinkedList<<ElGamal as NIKE>::SecretKey>);
 
 impl UserId {
     /// Returns the tracing level of the USK.
@@ -140,7 +180,7 @@ impl UserId {
         self.0.len() - 1
     }
 
-    fn iter(&self) -> impl Iterator<Item = &<ElGamal as Nike>::SecretKey> {
+    fn iter(&self) -> impl Iterator<Item = &<ElGamal as NIKE>::SecretKey> {
         self.0.iter()
     }
 }
@@ -161,18 +201,29 @@ impl UserId {
 /// - the set of known user IDs.
 #[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
-    s: <ElGamal as Nike>::SecretKey,
-    tracers: LinkedList<(<ElGamal as Nike>::SecretKey, <ElGamal as Nike>::PublicKey)>,
-    users: HashSet<UserId>,
+    s: <ElGamal as NIKE>::SecretKey,
+    tracers: LinkedList<(<ElGamal as NIKE>::SecretKey, <ElGamal as NIKE>::PublicKey)>,
+    // Since `Hash` is not a fallible operation, it cannot be implemented on FFI
+    // providers like OpenSSL. And since `Zeroizing<Vec<u8>>` does not implement
+    // `Hash` either, a `HashSet` cannot be using without extracting the raw
+    // bytes which then requires manually zeroizing them everywhere they may be
+    // leaking. Using a linked list implies a linear complexity in the number of
+    // comparisons, which themselves have a linear complexity in the tracing
+    // dimension. This is not ideal, but it is safe.
+    //
+    // Since this is an internal implementation detail, the container used may
+    // be change later without breaking change as long as it serializes to the
+    // same bytes.
+    users: LinkedList<UserId>,
 }
 
 impl TracingSecretKey {
     fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
-        let s = <ElGamal as Nike>::SecretKey::random(rng);
+        let s = <ElGamal as NIKE>::SecretKey::random(rng);
         let tracers = (0..=level)
-            .map(|_| ElGamal::keygen(rng))
+            .map(|_| <ElGamal as NIKE>::keygen(rng))
             .collect::<Result<_, _>>()?;
-        let users = HashSet::new();
+        let users = LinkedList::new();
 
         Ok(Self { s, tracers, users })
     }
@@ -182,20 +233,16 @@ impl TracingSecretKey {
         self.tracers.len() - 1
     }
 
-    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
-        self.tracers.iter().map(|(_, Pi)| Pi * r).collect()
-    }
-
     /// Generates a new tracer. Returns the associated trap.
     fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
-        self.tracers.push_back(ElGamal::keygen(rng)?);
+        self.tracers.push_back(<ElGamal as NIKE>::keygen(rng)?);
         Ok(())
     }
 
     /// Drops the oldest tracer and returns it.
     fn _decrease_tracing(
         &mut self,
-    ) -> Result<(<ElGamal as Nike>::SecretKey, <ElGamal as Nike>::PublicKey), Error> {
+    ) -> Result<(<ElGamal as NIKE>::SecretKey, <ElGamal as NIKE>::PublicKey), Error> {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -233,14 +280,17 @@ impl TracingSecretKey {
 
     /// Adds the given user ID to the list of known users.
     fn add_user(&mut self, id: UserId) {
-        self.users.insert(id);
+        self.users.push_front(id);
     }
 
     /// Removes the given user ID from the list of known users.
     ///
     /// Returns true if the user was in the list.
     fn del_user(&mut self, id: &UserId) -> bool {
-        self.users.remove(id)
+        self.users
+            .extract_if(|id_| id == id_)
+            .collect::<Vec<_>>()
+            .is_empty()
     }
 
     /// Generates the associated tracing public key.
@@ -250,7 +300,7 @@ impl TracingSecretKey {
     }
 
     /// Returns the binding points.
-    fn binding_point(&self) -> <ElGamal as Nike>::PublicKey {
+    fn binding_point(&self) -> <ElGamal as NIKE>::PublicKey {
         (&self.s).into()
     }
 
@@ -262,7 +312,7 @@ impl TracingSecretKey {
                 .tracers
                 .iter()
                 .take(self.tracers.len() - 1)
-                .map(|_| <ElGamal as Nike>::SecretKey::random(rng))
+                .map(|_| <ElGamal as NIKE>::SecretKey::random(rng))
                 .collect::<LinkedList<_>>();
 
             let last_marker = ((&self.s
@@ -271,7 +321,7 @@ impl TracingSecretKey {
                     .iter()
                     .zip(markers.iter())
                     .map(|((sk_i, _), a_i)| sk_i * a_i)
-                    .fold(<ElGamal as Nike>::SecretKey::zero(), |acc, x_i| acc + x_i))
+                    .fold(<ElGamal as NIKE>::SecretKey::zero(), |acc, x_i| acc + x_i))
                 / last_tracer)?;
 
             markers.push_back(last_marker);
@@ -319,8 +369,8 @@ impl TracingSecretKey {
 }
 
 /// Covercrypt tracing public key.
-#[derive(Debug, PartialEq, Eq, Default)]
-struct TracingPublicKey(LinkedList<<ElGamal as Nike>::PublicKey>);
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct TracingPublicKey(LinkedList<<ElGamal as NIKE>::PublicKey>);
 
 impl TracingPublicKey {
     /// Returns the tracing level tracing of this key.
@@ -340,10 +390,13 @@ impl TracingPublicKey {
 #[derive(Debug, PartialEq)]
 pub struct MasterSecretKey {
     tsk: TracingSecretKey,
-    secrets: RevisionMap<Right, (bool, RightSecretKey)>,
+    secrets: RevisionMap<Right, (EncryptionStatus, RightSecretKey)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
     pub access_structure: AccessStructure,
 }
+
+// All secret keys are zeroized on drop.
+impl ZeroizeOnDrop for MasterSecretKey {}
 
 impl MasterSecretKey {
     /// Returns the most recent secret key associated to each given right.
@@ -364,6 +417,10 @@ impl MasterSecretKey {
         })
     }
 
+    fn tracing_points(&self) -> impl IntoIterator<Item = &<ElGamal as NIKE>::PublicKey> {
+        self.tsk.tracers.iter().map(|(_, P)| P)
+    }
+
     /// Generates a new MPK holding the latest public information of each right in Omega.
     pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
         let h = self.tsk.binding_point();
@@ -373,8 +430,8 @@ impl MasterSecretKey {
                 .secrets
                 .iter()
                 .filter_map(|(r, secrets)| {
-                    secrets.front().and_then(|(is_activated, csk)| {
-                        if *is_activated {
+                    secrets.front().and_then(|(status, csk)| {
+                        if &EncryptionStatus::EncryptDecrypt == status {
                             Some((r.clone(), csk.cpk(&h)))
                         } else {
                             None
@@ -393,7 +450,7 @@ impl MasterSecretKey {
 /// - the tracing public key;
 /// - the public keys for each right in Omega;
 /// - the access structure.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
     encryption_keys: HashMap<Right, RightPublicKey>,
@@ -402,42 +459,57 @@ pub struct MasterPublicKey {
 
 impl MasterPublicKey {
     /// Returns the tracing level of this MPK.
-    #[inline(always)]
     pub fn tracing_level(&self) -> usize {
         self.tpk.tracing_level()
     }
 
     /// Generates traps for the given scalar.
     // TODO: find a better concept.
-    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
+    fn set_traps(&self, r: &<ElGamal as NIKE>::SecretKey) -> Vec<<ElGamal as NIKE>::PublicKey> {
         self.tpk.0.iter().map(|Pi| Pi * r).collect()
     }
 
     /// Returns the subkeys associated with the given rights in this public key,
     /// alongside a boolean value that is true if all of them are hybridized.
+    ///
+    /// # Error
+    ///
+    /// Returns an error in case a key is missing for one of the target rights
+    /// or these rights do not define an homogeneous set of keys.
     fn select_subkeys(
         &self,
         targets: &HashSet<Right>,
-    ) -> Result<(bool, Vec<&RightPublicKey>), Error> {
-        // This mutable variable is set to false if at least one sub-key is not
-        // hybridized.
-        let mut is_hybridized = true;
-
+    ) -> Result<(EncryptionHint, Vec<&RightPublicKey>), Error> {
         let subkeys = targets
             .iter()
             .map(|r| {
-                let subkey = self
-                    .encryption_keys
+                self.encryption_keys
                     .get(r)
-                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))?;
-                if !subkey.is_hybridized() {
-                    is_hybridized = false;
-                }
-                Ok(subkey)
+                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))
             })
-            .collect::<Result<_, Error>>()?;
+            .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok((is_hybridized, subkeys))
+        let (security_mode, is_homogeneous) = subkeys
+            .iter()
+            .map(|k| (k.security_mode(), true))
+            .reduce(|(lhs_mode, lhs_bool), (rhs_mode, rhs_bool)| {
+                if lhs_mode == rhs_mode {
+                    (lhs_mode, lhs_bool && rhs_bool)
+                } else {
+                    (lhs_mode, false)
+                }
+            })
+            .ok_or_else(|| {
+                Error::OperationNotPermitted("target set cannot be empty".to_string())
+            })?;
+
+        if is_homogeneous {
+            Ok((security_mode, subkeys))
+        } else {
+            Err(Error::OperationNotPermitted(
+                "cannot select subkeys with different security modes".to_string(),
+            ))
+        }
     }
 }
 
@@ -450,10 +522,13 @@ impl MasterPublicKey {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
     id: UserId,
-    ps: Vec<<ElGamal as Nike>::PublicKey>,
+    ps: Vec<<ElGamal as NIKE>::PublicKey>,
     secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
+
+// All secret keys are zeroized on drop.
+impl ZeroizeOnDrop for UserSecretKey {}
 
 impl UserSecretKey {
     /// Returns the tracing level of this user secret key.
@@ -466,15 +541,9 @@ impl UserSecretKey {
         self.secrets.len()
     }
 
-    fn set_traps(&self, r: &<ElGamal as Nike>::SecretKey) -> Vec<<ElGamal as Nike>::PublicKey> {
-        self.ps.iter().map(|Pi| Pi * r).collect()
+    fn tracing_points(&self) -> &[<ElGamal as NIKE>::PublicKey] {
+        &self.ps
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Encapsulations {
-    HEncs(Vec<(<MlKem as Kem>::Encapsulation, [u8; SHARED_SECRET_LENGTH])>),
-    CEncs(Vec<[u8; SHARED_SECRET_LENGTH]>),
 }
 
 /// Covercrypt encapsulation.
@@ -486,22 +555,52 @@ enum Encapsulations {
 /// - the traps used to select users that can open this encapsulation;
 /// - the right encapsulations.
 #[derive(Debug, Clone, PartialEq)]
-pub struct XEnc {
-    tag: Tag,
-    c: Vec<<ElGamal as Nike>::PublicKey>,
-    encapsulations: Encapsulations,
+pub enum XEnc {
+    PreQuantum {
+        tag: Tag,
+        c: Vec<<ElGamal as NIKE>::PublicKey>,
+        encapsulations: Vec<[u8; SHARED_SECRET_LENGTH]>,
+    },
+    PostQuantum {
+        tag: Tag,
+        encapsulations: Vec<(
+            <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+            [u8; SHARED_SECRET_LENGTH],
+        )>,
+    },
+    Hybridized {
+        tag: Tag,
+        c: Vec<<ElGamal as NIKE>::PublicKey>,
+        encapsulations: Vec<(
+            <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+            [u8; SHARED_SECRET_LENGTH],
+        )>,
+    },
 }
 
 impl XEnc {
     /// Returns the tracing level of this encapsulation.
     pub fn tracing_level(&self) -> usize {
-        self.c.len() - 1
+        match self {
+            Self::PreQuantum { c, .. } => c.len() - 1,
+            Self::PostQuantum { .. } => 0,
+            Self::Hybridized { c, .. } => c.len() - 1,
+        }
     }
 
     pub fn count(&self) -> usize {
-        match &self.encapsulations {
-            Encapsulations::HEncs(vec) => vec.len(),
-            Encapsulations::CEncs(vec) => vec.len(),
+        match self {
+            Self::Hybridized { encapsulations, .. } => encapsulations.len(),
+            Self::PostQuantum { encapsulations, .. } => encapsulations.len(),
+            Self::PreQuantum { encapsulations, .. } => encapsulations.len(),
+        }
+    }
+
+    pub fn security_mode(&self) -> EncryptionHint {
+        match self {
+            Self::Hybridized { .. } => EncryptionHint::Hybridized,
+            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
+            Self::PreQuantum { .. } => EncryptionHint::Classic,
         }
     }
 }

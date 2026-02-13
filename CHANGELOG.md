@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [15.1.0] - 2026-02-13
+
+### 🚀 Features
+
+- Add a tagged, byte-serialized configurable KEM API supporting pre-quantum (P-256, R25519), post-quantum (ML-KEM 512/768) and hybridized combinations, plus Covercrypt (ABE) encapsulations (`KemTag::Abe`).
+- Add post-quantum-only ABE encapsulations/keys alongside pre-quantum and hybridized modes (`XEnc` variants and right key mode tracking).
+
+### Refactor
+
+- Restructure the crate around `abe/` and `providers/` modules; move ABE API/core/policy/serialization under `src/abe/`.
+- Switch elliptic-curve backends to `cosmian_openssl_provider` / `cosmian_rust_curve25519_provider` and align internal traits with `cosmian_crypto_core` (`KEM`, `NIKE`, AE/PKE interfaces).
+- Implement CryptoCore byte-serialization (`Serializable`) for `Dict`, `RevisionMap`, and `RevisionVec`.
+
+### Bug Fixes
+
+- Fix formatting of `CryptoCoreError` display message.
+
+### Ci
+
+- Pin Rust toolchain to 1.89.0 and update GitHub Actions checkout to v4; add `rust-toolchain.toml`.
+
+### Miscellaneous Tasks
+
+- Commit `Cargo.lock`, adjust dependency versions (criterion 0.7, zeroize 1.8, ml-kem 0.2), and use the `crypto_core` git branch containing the deserialization allocation fix.
+- Rename benchmarks from "Classic" to "Pre-quantum".
+
 ## [15.0.0] - 2025-03-13
 
 ### 🚀 Features

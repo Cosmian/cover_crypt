@@ -1,5 +1,7 @@
 use std::fmt::{Debug, Display};
 
+use cosmian_crypto_core::CryptoCoreError;
+
 type Key = String;
 
 #[derive(Debug)]
@@ -7,6 +9,7 @@ pub enum Error {
     EntryNotFound(Key),
     ExistingEntry(Key),
     AlreadyHasChild(Key),
+    Serialization(CryptoCoreError),
 }
 
 impl Display for Error {
@@ -17,6 +20,7 @@ impl Display for Error {
             Self::AlreadyHasChild(key) => {
                 write!(f, "Entry with key {key} already has a child.")
             }
+            Self::Serialization(e) => write!(f, "Serialization error: {e}"),
         }
     }
 }
@@ -41,5 +45,13 @@ impl Error {
         T: Debug,
     {
         Self::AlreadyHasChild(format!("{key:?}"))
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<CryptoCoreError> for Error {
+    fn from(error: CryptoCoreError) -> Self {
+        Self::Serialization(error)
     }
 }

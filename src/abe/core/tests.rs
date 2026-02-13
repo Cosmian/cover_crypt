@@ -1,19 +1,30 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, Aes256Gcm, CsRng};
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, traits::AE_InPlace, Aes256Gcm, CsRng};
 
 use crate::{
-    abe_policy::{AccessPolicy, AttributeStatus, EncryptionHint, Right},
-    api::Covercrypt,
-    core::primitives::{decaps, encaps, refresh, rekey, update_msk},
+    abe::{
+        core::{
+            primitives::{decaps, encaps, refresh, rekey, update_msk},
+            EncryptionHint,
+        },
+        policy::{AccessPolicy, EncryptionStatus, Right},
+        traits::{KemAc, PkeAc},
+        Covercrypt,
+    },
     test_utils::cc_keygen,
-    traits::{KemAc, PkeAc},
 };
 
 use super::{
     primitives::{setup, usk_keygen},
     MIN_TRACING_LEVEL,
 };
+
+#[test]
+fn security_mode_ordering() {
+    assert!(EncryptionHint::Classic < EncryptionHint::PostQuantum);
+    assert!(EncryptionHint::PostQuantum < EncryptionHint::Hybridized);
+}
 
 /// This test asserts that it is possible to encapsulate a key for a given
 /// coordinate and that different users which key is associated with this
@@ -31,11 +42,11 @@ fn test_encapsulation() {
         HashMap::from_iter([
             (
                 other_coordinate.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 target_coordinate.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -93,7 +104,7 @@ fn test_update() {
         .map(|_| {
             (
                 Right::random(&mut rng),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -112,7 +123,7 @@ fn test_update() {
         .enumerate()
         .for_each(|(i, (_, (_, status)))| {
             if i % 2 == 0 {
-                *status = AttributeStatus::DecryptOnly;
+                *status = EncryptionStatus::DecryptOnly;
             }
         });
     update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
@@ -147,11 +158,11 @@ fn test_rekey() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -231,11 +242,11 @@ fn test_integrity_check() {
         HashMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::Classic, AttributeStatus::EncryptDecrypt),
+                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             ),
         ]),
     )
@@ -290,6 +301,33 @@ fn test_reencrypt_with_msk() {
 
 #[test]
 fn test_covercrypt_kem() {
+    // Classic encapsulations.
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::LOW").unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
+    let usk = cc
+        .generate_user_secret_key(&mut msk, &ap)
+        .expect("cannot generate usk");
+    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(enc.security_mode(), EncryptionHint::Classic);
+    let res = cc.decaps(&usk, &enc).unwrap();
+    assert_eq!(secret, res.unwrap());
+
+    // Post-quantum encapsulations.
+    let ap = AccessPolicy::parse("DPT::FIN && SEC::MED").unwrap();
+    let cc = Covercrypt::default();
+    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
+    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
+    let usk = cc
+        .generate_user_secret_key(&mut msk, &ap)
+        .expect("cannot generate usk");
+    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(enc.security_mode(), EncryptionHint::PostQuantum);
+    let res = cc.decaps(&usk, &enc).unwrap();
+    assert_eq!(secret, res.unwrap());
+
+    // Hybridized encapsulation.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let cc = Covercrypt::default();
     let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
@@ -298,6 +336,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    assert_eq!(enc.security_mode(), EncryptionHint::Hybridized);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 }
@@ -310,12 +349,22 @@ fn test_covercrypt_pke() {
 
     let ptx = "testing encryption/decryption".as_bytes();
 
-    let ctx = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(&cc, &mpk, &ap, ptx)
-        .expect("cannot encrypt!");
+    let ctx = PkeAc::<
+        { Aes256Gcm::KEY_LENGTH },
+        { Aes256Gcm::NONCE_LENGTH },
+        { Aes256Gcm::TAG_LENGTH },
+        Aes256Gcm,
+    >::encrypt(&cc, &mpk, &ap, ptx)
+    .expect("cannot encrypt!");
     let usk = cc
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
-    let ptx1 = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(&cc, &usk, &ctx)
-        .expect("cannot decrypt the ciphertext");
+    let ptx1 = PkeAc::<
+        { Aes256Gcm::KEY_LENGTH },
+        { Aes256Gcm::NONCE_LENGTH },
+        { Aes256Gcm::TAG_LENGTH },
+        Aes256Gcm,
+    >::decrypt(&cc, &usk, &ctx)
+    .expect("cannot decrypt the ciphertext");
     assert_eq!(ptx, &*ptx1.unwrap());
 }

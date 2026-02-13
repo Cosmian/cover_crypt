@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{attribute::EncryptionHint, AttributeStatus};
+use super::{EncryptionHint, EncryptionStatus};
 use crate::{data_struct::Dict, Error};
 
 type Name = String;
@@ -13,16 +13,16 @@ type Name = String;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Attribute {
     pub(crate) id: usize,
-    pub(crate) encryption_hint: EncryptionHint,
-    pub(crate) write_status: AttributeStatus,
+    pub(crate) security_mode: EncryptionHint,
+    pub(crate) encryption_status: EncryptionStatus,
 }
 
 impl Attribute {
-    pub fn new(encryption_hint: EncryptionHint, id: usize) -> Self {
+    pub fn new(security_mode: EncryptionHint, id: usize) -> Self {
         Self {
             id,
-            encryption_hint,
-            write_status: AttributeStatus::EncryptDecrypt,
+            security_mode,
+            encryption_status: EncryptionStatus::EncryptDecrypt,
         }
     }
 
@@ -30,12 +30,12 @@ impl Attribute {
         self.id
     }
 
-    pub fn get_encryption_hint(&self) -> EncryptionHint {
-        self.encryption_hint
+    pub fn get_security_mode(&self) -> EncryptionHint {
+        self.security_mode
     }
 
-    pub fn get_status(&self) -> AttributeStatus {
-        self.write_status
+    pub fn get_encryption_status(&self) -> EncryptionStatus {
+        self.encryption_status
     }
 }
 
@@ -57,13 +57,6 @@ impl Dimension {
         match self {
             Self::Anarchy(attributes) => attributes.len(),
             Self::Hierarchy(attributes) => attributes.len(),
-        }
-    }
-
-    pub fn is_ordered(&self) -> bool {
-        match self {
-            Self::Anarchy(_) => false,
-            Self::Hierarchy(_) => true,
         }
     }
 
@@ -113,14 +106,14 @@ impl Dimension {
     pub fn add_attribute(
         &mut self,
         attribute: Name,
-        hint: EncryptionHint,
+        security_mode: EncryptionHint,
         after: Option<&str>,
         id: usize,
     ) -> Result<(), Error> {
         match self {
             Self::Anarchy(attributes) => {
                 if let Entry::Vacant(entry) = attributes.entry(attribute) {
-                    entry.insert(Attribute::new(hint, id));
+                    entry.insert(Attribute::new(security_mode, id));
                     Ok(())
                 } else {
                     Err(Error::OperationNotPermitted(
@@ -157,7 +150,7 @@ impl Dimension {
                     .take_while(|a| Some(a) != higher_attributes.last())
                     .collect::<Dict<_, _>>();
 
-                new_attributes.insert(attribute, Attribute::new(hint, id));
+                new_attributes.insert(attribute, Attribute::new(security_mode, id));
                 higher_attributes.into_iter().rev().for_each(|(name, dim)| {
                     new_attributes.insert(name, dim);
                 });
@@ -192,11 +185,11 @@ impl Dimension {
         match self {
             Self::Anarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.write_status = AttributeStatus::DecryptOnly)
+                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
                 .ok_or(Error::AttributeNotFound(name.to_string())),
         }
     }
@@ -239,9 +232,7 @@ impl Dimension {
 }
 
 mod serialization {
-    use cosmian_crypto_core::bytes_ser_de::{
-        to_leb128_len, Deserializer, Serializable, Serializer,
-    };
+    use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     use super::*;
 
@@ -249,44 +240,25 @@ mod serialization {
         type Error = Error;
 
         fn length(&self) -> usize {
-            2 + to_leb128_len(self.id)
+            self.id.length() + self.security_mode.length() + self.encryption_status.length()
         }
 
-        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-            let mut n = ser.write_leb128_u64(self.id as u64)?;
-            n += ser.write_leb128_u64(<bool>::from(self.encryption_hint) as u64)?;
-            n += ser.write_leb128_u64(<bool>::from(self.write_status) as u64)?;
-            Ok(n)
+        fn write(
+            &self,
+            ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
+        ) -> Result<usize, Self::Error> {
+            Ok(self.id.write(ser)?
+                + self.security_mode.write(ser)?
+                + self.encryption_status.write(ser)?)
         }
 
-        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-            let id = de.read_leb128_u64()?.try_into()?;
-            let hint = de.read_leb128_u64()?;
-            let encryption_hint = if 0 == hint {
-                EncryptionHint::Classic
-            } else if 1 == hint {
-                EncryptionHint::Hybridized
-            } else {
-                return Err(Error::ConversionFailed(format!(
-                    "erroneous hint value {hint}"
-                )));
-            };
-
-            let status = de.read_leb128_u64()?;
-            let write_status = if 0 == status {
-                AttributeStatus::DecryptOnly
-            } else if 1 == status {
-                AttributeStatus::EncryptDecrypt
-            } else {
-                return Err(Error::ConversionFailed(format!(
-                    "erroneous status value {hint}"
-                )));
-            };
-
+        fn read(
+            de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+        ) -> Result<Self, Self::Error> {
             Ok(Self {
-                id,
-                encryption_hint,
-                write_status,
+                id: de.read()?,
+                security_mode: de.read()?,
+                encryption_status: de.read()?,
             })
         }
     }
@@ -306,21 +278,9 @@ mod serialization {
         type Error = Error;
 
         fn length(&self) -> usize {
-            let f = |attributes: Box<dyn Iterator<Item = (&String, &Attribute)>>| {
-                attributes
-                    .map(|(name, attribute)| {
-                        let l = name.len();
-                        to_leb128_len(l) + l + attribute.length()
-                    })
-                    .sum::<usize>()
-            };
             1 + match self {
-                Dimension::Anarchy(attributes) => {
-                    to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
-                }
-                Dimension::Hierarchy(attributes) => {
-                    to_leb128_len(attributes.len()) + f(Box::new(attributes.iter()))
-                }
+                Dimension::Anarchy(inner) => inner.length(),
+                Dimension::Hierarchy(inner) => inner.length(),
             }
         }
 
@@ -328,52 +288,27 @@ mod serialization {
             &self,
             ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
         ) -> Result<usize, Self::Error> {
-            let write_attributes =
-                |mut attributes: Box<dyn Iterator<Item = (&String, &Attribute)>>,
-                 ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer|
-                 -> Result<usize, Error> {
-                    attributes.try_fold(0, |mut n, (name, attribute)| {
-                        n += ser.write_vec(name.as_bytes())?;
-                        n += ser.write(attribute)?;
-                        Ok(n)
-                    })
-                };
-
-            let mut n = ser.write_leb128_u64(self.is_ordered() as u64)?;
             match self {
-                Dimension::Anarchy(attributes) => {
-                    n += ser.write_leb128_u64(attributes.len() as u64)?;
-                    n += write_attributes(Box::new(attributes.iter()), ser)?;
-                }
-                Dimension::Hierarchy(attributes) => {
-                    n += ser.write_leb128_u64(attributes.len() as u64)?;
-                    n += write_attributes(Box::new(attributes.iter()), ser)?;
-                }
-            };
-
-            Ok(n)
+                Dimension::Anarchy(inner) => Ok(ser.write(&0usize)? + ser.write(inner)?),
+                Dimension::Hierarchy(inner) => Ok(ser.write(&1usize)?
+                    + ser
+                        .write(inner)
+                        .map_err(|e| Error::ConversionFailed(e.to_string()))?),
+            }
         }
 
         fn read(
             de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
         ) -> Result<Self, Self::Error> {
-            let is_ordered = de.read_leb128_u64()?;
-            let l = de.read_leb128_u64()?;
-            let attributes = (0..l).map(|_| {
-                let name = String::from_utf8(de.read_vec()?)
-                    .map_err(|e| Error::ConversionFailed(e.to_string()))?;
-                let attribute = de.read::<Attribute>()?;
-                Ok::<_, Error>((name, attribute))
-            });
-
-            if 0 == is_ordered {
-                attributes.collect::<Result<_, _>>().map(Self::Anarchy)
-            } else if 1 == is_ordered {
-                attributes.collect::<Result<_, _>>().map(Self::Hierarchy)
-            } else {
-                Err(Error::ConversionFailed(format!(
-                    "invalid boolean value {is_ordered}"
-                )))
+            let t = de.read::<usize>()?;
+            match t {
+                0 => Ok(Self::Anarchy(de.read()?)),
+                1 => Ok(Self::Hierarchy(de.read().map_err(
+                    |e: crate::data_struct::error::Error| Error::ConversionFailed(e.to_string()),
+                )?)),
+                n => Err(Error::ConversionFailed(format!(
+                    "invalid dimension type: {n}"
+                ))),
             }
         }
     }
