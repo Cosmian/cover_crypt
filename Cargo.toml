@@ -38,16 +38,17 @@ name = "runme"
 required-features = ["test-utils"]
 
 [features]
-default = ["mlkem-512", "curve25519"]
+default = ["mlkem-512", "curve25519", "generic-kem"]
 mlkem-512 = []
 mlkem-768 = []
-p-256 = []
-curve25519 = []
+p-256 = ["cosmian_openssl_provider"]
+curve25519 = ["cosmian_rust_curve25519_provider"]
 test-utils = []
+generic-kem = ["cosmian_openssl_provider", "curve25519", "mlkem-512"]
 
 [dependencies]
-cosmian_openssl_provider = { version = "1.0.0" }
-cosmian_rust_curve25519_provider = { version = "1.0.0" }
+cosmian_openssl_provider = { version = "1.0.0", optional = true }
+cosmian_rust_curve25519_provider = { version = "1.0.0" , optional = true }
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
   "aes",
   "ser",
