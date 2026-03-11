@@ -38,7 +38,7 @@ name = "runme"
 required-features = ["test-utils"]
 
 [features]
-default = ["mlkem-512", "curve25519"]
+default = ["mlkem-512", "curve25519", "generic-kem"]
 mlkem-512 = []
 mlkem-768 = []
 p-256 = ["cosmian_openssl_provider"]
