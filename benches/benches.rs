@@ -1,4 +1,4 @@
-use cosmian_cover_crypt::{api::Covercrypt, cc_keygen, traits::KemAc, AccessPolicy};
+use cosmian_cover_crypt::{api::Covercrypt, test_utils::cc_keygen, traits::KemAc, AccessPolicy};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 const C_ENC_APS: [(&str, usize); 5] = [
