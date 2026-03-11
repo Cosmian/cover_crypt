@@ -13,13 +13,14 @@ pub use attribute::{EncryptionHint, EncryptionStatus, QualifiedAttribute};
 pub use dimension::{Attribute, Dimension};
 pub use rights::Right;
 
+use serde::{Deserialize, Serialize};
 #[cfg(any(test, feature = "test-utils"))]
 pub use tests::gen_structure;
 
 use crate::Error;
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Version {
     V1,
 }

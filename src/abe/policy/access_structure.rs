@@ -1,5 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     abe::policy::{
         attribute::EncryptionHint, AccessPolicy, Attribute, Dimension, EncryptionStatus,
@@ -9,7 +11,7 @@ use crate::{
     Error,
 };
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct AccessStructure {
     version: Version,
     // Use a hash-map to efficiently find dimensions by name.
