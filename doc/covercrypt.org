@@ -1,0 +1,722 @@
+#+title: Covercrypt
+#+subtitle:An efficient ABE-like encryption scheme.
+#+options: toc:t
+#+latex_class: article
+#+latex_class_options: [a4paper]
+#+latex_compiler: lualatex
+#+latex_header: \usepackage{fontspec}
+#+latex_header: \usepackage{amsmath, amsfonts, amssymb}
+#+latex_header: \usepackage{amsthm}
+#+latex_header: \theoremstyle{definition}
+#+latex_header: \newtheorem{definition}{Definition}[section]
+#+latex_header: \newtheorem*{remark}{Remark}
+#+latex_header: \usepackage{pgf-umlsd}
+#+latex_header: \usepackage{tikz}
+#+latex_header: \usetikzlibrary{shapes,arrows,positioning,calc}
+#+latex_header: \usepackage{ebproof}
+
+#+bibliography: references.bib
+
+#+latex: \newpage
+
+* Introduction
+
+In large organizations, pieces of data created by one member are commonly shared
+to other members.  However,  some pieces of data are sensitive  and must only be
+shared to a specific subset of members. The process of accessing a piece of data
+therefore becomes a three-step procedure  requiring members to: (1) authenticate
+themselves  to  some  trusted  identity   management  system,  (2)  request  the
+authorization to  access this  data from  some trusted  authorization management
+system and  (3) request this data  from the storage system  which first verifies
+the validity of the identity claim  delivered by the identity management system,
+the  validity  of  the  authorization   claim  delivered  by  the  authorization
+management system, and the compatibility of those claims.
+
+However, authorization rules may be complex which may lead to operator errors or
+bugs in  the authorization and  storage systems. Moreover actors  may misbehave,
+which   may  question   our  trust   in   the  authorization   given  by   those
+systems. Hopefully, there are ways to raise the need for trust in those systems.
+One of them consists in  cryptographically enforcing authorization by encrypting
+data under a key owned by the members  of the targeted only.  That way, the only
+trusted parties are the targeted members  and the key distribution, which can be
+performed in  a centralized Key  Management System (KMS).  But  if authorization
+rules are complex, key distribution may  also become complex and hence victim of
+the same kind of errors.
+
+Attribute-Based Encryption (ABE) is a tool  that has been extensively studied to
+solve exactly this  problem.  However, known ABE schemes are  not very efficient
+and not post-quantum-secure which hinders  their adoption. Covercrypt solves the
+same  problem  while  relaxing  some  formal constraints  in  order  to  achieve
+efficiency in most practical use-cases  while offering both CCA and post-quantum
+security, attribute-hiding ciphertexts and key tracing.
+
+Covercrypt assumes  the existence of a  centralized KMS holding a  master secret
+key with  which all other  keys are  created: the master  public key is  used to
+encrypt data under its access policy  while user secret keys are also associated
+to access policies and can decrypt  all Covercrypt ciphertexts with a compatible
+access  policy.   Covercrypt follows  the  KEM-DEM  approach  in which  data  is
+symmetrically  encrypted under  a key  which  encapsulation is  appended to  the
+symmetric ciphertext. More precisely, Covercrypt is a actually Key-Encapsulation
+Mechanism with  Access Control  (KEM-AC) --  as defined  in [[kem-ac-definition]] --
+that can be  combined with a Data-Encryption Mechanism (DEM)  to obtain a Public
+Key Encryption (PKE) scheme.  In the  rest of this document, we therefore prefer
+the term Covercrypt /encapsulation/ to the term Covercrypt ciphertext. Moreover,
+when necessary,  we use the  terms /user  policy/ and /encapsulation  policy/ to
+denote  an  access  policy  associated  to   a  user  secret  and  a  Covercrypt
+encapsulation respectively, and  use the term policy the context  makes it clear
+whether we refer to a user or encapsulation policy.
+
+* Subset-cover KEM-AC
+
+** Key-Encapsulation Mechanism with Access Control (KEM-AC)
+
+A Key-Encapsulation Mechanism with  Access Control (KEM-AC) allows encapsulating
+a secret  with respect to an  /encapsulation policy/, such that  user secret key
+can open it  if an only if  its associated /user policy/ is  compatible with the
+encapsulation policy with respect to some binary relation over the policy space.
+
+#+name: kem-ac-definition
+#+attr_latex: :options [Key-Encapsulation Mechanism with Access Control]
+#+begin_definition
+A   KEM-AC  is   defined   over  a   master-secret-key  space   $\mathcal{K}_S$,
+master-public-key   space   $\mathcal{K}_P$    and   a   user-secret-key   space
+$\mathcal{K}_U$, a  session-key space  $\mathcal K$  and an  encapsulation space
+$\mathcal E$, and exposes the following operations:
+- setup: :: $\mathbb P(\mathcal P_U \times \mathcal P_E) \rightarrow
+  \mathcal{K}_S \times \mathcal{K}_P$
+
+  This randomized algorithm takes as input  a binary relation $R$ over policies,
+  and  returns   a  master  secret   key  $msk_R$   and  a  master   public  key
+  $\mathsf{mpk}_R$.
+
+- keygen: :: $\mathcal{K}_S \times \mathcal P_U \rightarrow \mathcal{K}_U$
+
+  This  randomized algorithm  takes  as input  a master  secret  key $msk_R  \in
+  \mathcal K_S$ under a binary relation  $R \subset \mathcal P_U \times \mathcal
+  P_E$  and a  policy $p_u  \in \mathcal  P_U$, and  returns a  user secret  key
+  $usk_{p_u,R}$.
+
+- encaps: ::  $\mathcal{K}_P \times \mathcal  P_E \rightarrow \mathcal  K \times
+  \mathcal E$
+
+  This  randomized algorithm  takes  as input  a master  public  key $mpk_R  \in
+  \mathcal K_P$ under a binary relation  $R \subset \mathcal P_U \times \mathcal
+  P_E$ and  an encapsulation policy $p_e  \in \mathcal P_E$, and  returns both a
+  session key $k \in \mathcal K$ and its encapsulation $enc_{p_e,R} \in \mathcal
+  E$.
+
+- decaps: :: $\mathcal{K}_U \times \mathcal E \rightarrow \mathcal K$ or $\bot$
+
+  This algorithm  takes as input a  user secret key $usk_{p_u,R_u}  \in \mathcal
+  K_U$ associated  to an  access policy  $p_u \in \mathcal  P_U$ under  a binary
+  relation $R_u$, and an encapsulation $enc_{p_e,R_e} \in \mathcal E$ associated
+  to a policy $p_e \in \mathcal P_E$  under a binary relation $R_e$.  It returns
+  the encapsulated  session key $k \in  \mathcal K$ if $(p_u,p_e)  \in R_e$, and
+  $\bot$ otherwise.
+#+end_definition
+
+Covercrypt is a  subset-cover algorithm: it implements a KEM-AC  with respect to
+an access structure $S$ defining a set of rights $\mathcal U$ called /universe/,
+which policy space is $\mathbb P(\mathcal U)$ and binary relation is the test of
+intersection: $R_{\mathcal U}  = \{(p_u, p_e) \in \mathbb P(\mathcal  U)^2 : p_u
+\cap p_e \ne  \emptyset \}$. More precisely, the Covercrypt  setup is as follows
+(the other primitives remain the same):
+- setup: :: $\mathcal S \rightarrow \mathcal K_S \times \mathcal K_P$
+
+  This randomized algorithm takes as input  an access structure $S$, and returns
+  a master secret key $msk$ and a master public key $mpk$.
+
+** Key and encapsulation life-cycle management
+
+Just like any other keys, Covercrypt keys  can be compromised and lost. There is
+therefore the need to renew them.  However,  in order to preserve the ability to
+open older encapsulations with renewed keys, it is desirable for the key renewal
+to be different from setting up a  new instance. The renewal procedure -- called
+/key rotation/ -- is described in the present section.
+
+Recall that  each user secret  key $usk_p$ is associated  to a policy  $p$. Upon
+use-secret-key compromise, a key rotation with respect to its entire policy must
+be performed.  Due to the particular  structure of Covercrypt keys, this process
+implies: (1)  the rotation of all  associated secrets in the  master secret key,
+(2) the propagation of this rotation to  the master public key to prevent future
+encapsulations from being generated with respect to compromised secrets, (3) the
+propagation of this rotation to all user secret keys which policy intersects the
+ones  of  the  compromised  key  to  allow  legitimate  users  opening  the  new
+encapsulations generated with respect to the new secrets, and (4) optionally the
+refresh of all encapsulations which associated  policy intersects the one of the
+compromised key  to prevent an eventual  attacker from opening them  if it still
+hasn't  accessed   them.  The  entire   key-rotation  process  is   depicted  in
+Figure \ref{rotation-flow}, and leverages the following primitives:
+- usk-policy: :: $\mathcal K_U \rightarrow \mathbb P(\mathcal U)$
+
+  This function takes as input a  Covercrypt user secret key $usk_p \in \mathcal
+  K_U$ and returns its associated policy $p \in \mathcal U$.
+
+- rotate: :: $\mathcal K_S \times \mathbb P(\mathcal U) \rightarrow \mathcal K_S
+  \times \mathcal K_P$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ and  an access policy  $p^* \in \mathcal  U$, refreshes every  secrets in
+  this given  master secret key  that are associated to  a right in  this policy
+  (/i.e./ each secret  associated to a right  in $s \cap p^*$),  and returns the
+  refreshed master secret key along with its associated master public key.
+
+- usk-refresh: :: $\mathcal K_S \times \mathcal K_U \rightarrow \mathcal K_U$ or
+  $\bot$
+
+  This algorithm takes as input a master secret key $msk \in \mathcal K_S$ and a
+  user  secret key  $usk_p  \in \mathcal  K_U$  associated to  a  policy $p  \in
+  \mathcal U$. If the integrity of the  given user secret key can be verified by
+  the master secret key, it returns a new user secret key $usk_p'$ associated to
+  the same access policy containing all  secrets that are contained in the given
+  user secret  key, plus  new secrets  for each  rights in  $p$ for  which newer
+  secrets exists in the  master secret key.  If the integrity  of the given user
+  secret key cannot be verified, $\bot$ is returned.
+
+- enc-refresh:  ::   $\mathcal K_S \times \mathcal K_P \times \mathcal E
+  \rightarrow \mathcal E$ or $\bot$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$, a master  public key $mpk \in \mathcal K_S$  and an encapsulation $enc_p
+  \in \mathcal E$ associated to a policy $p \in \mathcal U$. If the integrity of
+  the master public  key can be verified, that its  revision number matches that
+  of the master secret key, and that the encapsulation can be open, it returns a
+  new encapsulation  $enc_p'$ associated  to the  same access  policy. Otherwise
+  $\bot$ is returned.
+
+#+begin_export latex
+\tikzset{
+  block/.style = {draw, fill=white, rectangle, minimum height=3em, minimum width=3em},
+  tmp/.style  = {coordinate},
+  sum/.style= {draw, fill=white, circle, node distance=2cm},
+  input/.style = {coordinate},
+  output/.style= {coordinate},
+  pinstyle/.style = {pin edge={to-,thin,black}
+  }
+}
+
+\begin{figure}
+  \center
+  \begin{tikzpicture}[auto, node distance=2cm,>=latex']
+    \node [input] (usk) {};
+    \node [block, right of=usk, node distance = 2.5cm] (pol) {usk-policy};
+    \node [block, right of=pol, node distance = 2.5cm] (rot) {rotate};
+    \node [input, below of=pol, node distance = 2.5cm] (enc) {};
+    \node [block, below of=rot, node distance = 2.5cm, dashed] (erf) {enc-refresh};
+    \node [input, above of=rot] (msk){};
+    \node [output, below of=rot] (mout){};
+    \node [output, below of=erf] (eout){};
+    \node [block, right of=rot, node distance = 2.5cm] (urf) {usk-refresh};
+    \node [input, above of=urf] (uski_old){};
+    \node [output, below of=urf] (uski_new){};
+    \draw [->] (rot) -- node{$msk'$} (urf);
+    \draw [->] (rot) -- node{$\left(msk', mpk'\right)$} (mout);
+    \draw [->] (erf) -- node{$enc_{p^j}$ or $\bot$} (eout);
+    \draw [->] (uski_old) -- node{$usk_{p^i}^*$} (urf);
+    \draw [->] (usk) -- node{$usk_{p^*}^*$} (pol);
+    \draw [->] (enc) -- node{$enc_{p^j}^*$} (erf);
+    \draw [->] (urf) -- node{$usk_{p^i}$ or $\bot$} (uski_new);
+    \draw [->] (pol) -- node{$p^*$} (rot);
+    \draw [->] (msk) -- node{$msk$} (rot);
+  \end{tikzpicture}
+  \caption{\label{rotation-flow}User-secret-key rotation flow, where untrusted objects are marked with an asterix.}
+\end{figure}
+#+end_export
+
+#+begin_remark
+Checking the  integrity of the user  secret key (resp.  encapsulation  key) upon
+refresh is required  to prevent right escalation  (resp.  impersonification) via
+modification of  this key, while  encapsulation policies cannot be  modified via
+modification  of  the  encapsulation  due  to the  CCA  security  guaranteed  by
+Covercrypt encapsulations.
+#+end_remark
+
+Additionally, to prevent impersonification attacks upon encapsulation, users can
+always verify the integrity of the master public key using user secret keys, and
+since this is necessary to prevent right-escalation attacks upon user-secret-key
+refresh, we also provide a way to verify the integrity of user secret keys using
+the master secret key:
+- mpk-verify: :: $\mathcal K_U \times \mathcal K_P \rightarrow \mathcal B$
+
+  Returns whether the integrity of the given master public key $mpk \in \mathcal
+  K_P$ can be verified using the given user secret key $usk_p \in \mathcal K_U$.
+- usk-verify: :: $\mathcal K_S \times \mathcal K_P \rightarrow \mathcal B$
+
+  Returns whether the integrity of the given user secret key $usk_p \in \mathcal
+  K_U$ can be verified using the given master secret key $msk \in \mathcal K_S$.
+
+Finally, a Covercrypt instantiation is  associated to a sequence of /revisions/:
+the setup initializes  an instance with /revision number/ 0,  and each execution
+of the key rotation procedure increments this  number by one and returns the new
+value of the master secret key with the new revision number.  Covercrypt objects
+can only create objects with the same revision number which can be extracted via
+one of the following functions:
+- msk-revision: :: $\mathcal K_S \rightarrow \mathcal N^*$
+- mpk-revision: :: $\mathcal K_P \rightarrow \mathcal N^*$
+- usk-revision: :: $\mathcal K_U \rightarrow \mathcal N^*$
+- enc-revision: :: $\mathcal E \rightarrow \mathcal N^*$
+
+  Retrieves  the revision  number  from the  given master  secret  key $msk  \in
+  \mathcal K_S$,  resp. master  public key  $mpk \in  \mathcal K_P$,  resp. user
+  secret key $usk_p \in \mathcal K_U$, resp. encapsulation $enc \in \mathcal E$.
+
+#+begin_remark
+Downgrade attacks upon  encapsulation can be avoided by  verifying the integrity
+of the master public key used, and that its revision number is no less than that
+of the user secret key.
+#+end_remark
+
+** Live universe modifications
+
+Real-life access  structure may evolve  with time.  Covercrypt reflects  this by
+exposing primitives  allowing to  modify the policy  universe without  having to
+perform a new  setup. In particular, additive modifications of  the universe are
+/backward-compatible/:  old user  secret  keys and  encapsulations  need not  be
+modified in order to open new compatible  encapsulations, or to be opened by new
+compatible user secret keys. In other words, additive universe modifications can
+be seen as the use of a right  that was present in the universe but unused until
+then.
+- add-rights: :: $\mathcal K_S \times \mathbb P(\mathcal R) \rightarrow \mathcal
+  K_S \times \mathcal K_P$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ under a universe $\mathcal U$ and  a set of new rights $\{r_i\}_i \subset
+  \mathcal R$,  and returns new master  secret and public keys  under a universe
+  $\mathcal U' \gets \mathcal U \cup \{r_i\}_i$.
+
+- del-rights: :: $\mathcal K_S \times \mathbb P(\mathcal R) \rightarrow \mathcal
+  K_S \times \mathcal K_P$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ under a universe $\mathcal U$ and  a set of new rights $\{r_i\}_i \subset
+  \mathcal R$,  and returns new master  secret and public keys  with incremented
+  revision  numbers under  a universe  $\mathcal U'  \gets \mathcal  U \setminus
+  \{r_i\}_i$.
+
+#+begin_remark
+Additive universe modifications do not  generate new revisions while destructive
+universe  modifications  generate  new  revisions since  downgrade  attacks  can
+leverage  master public  keys  prior to  the  removal of  some  rights from  the
+universe to trick users create encapsulations for compromised secrets.
+#+end_remark
+
+* Propositional KEM-AC
+
+In order to  make expressing policies more ergonomic, we  introduce KEM-AC which
+policy space $\Omega$ is the space of logical propositions with its two internal
+laws   /and/  ($\land$)   and   /or/  ($\lor$),   and   which  binary   relation
+$\Rightarrow_{\mathcal U}$  is the logical  implication from the user  policy to
+the  encapsulation policy  with respect  to  some universe  $\mathcal U  \subset
+\Omega$: \[ \forall  (p_u, p_e) \in \mathcal U^2,  (p_u \Rightarrow_{\mathcal U}
+p_e) \iff \left(p_u  \land \bigwedge_{p \in \Omega \setminus \mathcal  U} \neg p
+\Rightarrow p_e  \right) \] Then,  we show  how to implement  this propositional
+KEM-AC with the set-based KEM-AC defined in Section [[*Subset-cover KEM-AC]].
+
+** Semantic
+
+#+attr_latex: :options [Universe]
+#+begin_definition
+In  the propositional  KEM-AC setting,  the universe  $\mathcal U$  is a  set of
+atomic logical propositions called /attributes/. The set of expressible policies
+is the symmetric transitive closure of $\mathcal U$ with respect to both logical
+operators $\land$ and $\lor$: $\mathcal P_U = \mathcal P_E = (\mathcal U, \land,
+\lor)$.
+#+end_definition
+
+In  order  to  structure  the set  of  expressible  policies,  logically-related
+attributes can be grouped by dimension, which come in two kinds:
+
+#+attr_latex: :options [Dimension]
+#+begin_definition
+Given  a universe  of attributes  $\mathcal  U$, a  dimension  $D$ is  a set  of
+attributes in $\mathcal  U$. In other words, the set  of dimensions $\mathcal D$
+is the power set of $\mathcal U$: $\mathcal D = \mathbb P(\mathcal U)$.
+#+end_definition
+
+#+attr_latex: :options [Hierarchy]
+#+begin_definition
+A hierarchical  dimension with respect to  some universe $\mathcal U$,  noted $D
+\in \mathcal  H_{\mathcal U}$, is a  dimension of $\mathcal U$  which attributes
+are  strictly  increasing w.r.t.   $\mathcal  U$:  \[\mathcal H_{\mathcal  U}  =
+\left\{ D  \in \mathcal D  \mid D =  \emptyset \lor \exists p  \in D :  \left( D
+\setminus \{p\} \in \mathcal H_{\mathcal U}  \right) \land \left( \forall p' \in
+D,\,  p \Rightarrow_{\mathcal  U}  p'  \right) \right\}\]  In  other words,  the
+logical  implication  w.r.t.   $\mathcal  U$  defines  an  order  relation  over
+hierarchical dimensions.
+#+end_definition
+
+#+attr_latex: :options [Anarchy]
+#+begin_definition
+An anarchical dimension with respect to some universe $\mathcal U$, noted $D \in
+\mathcal A_{\mathcal  U}$, is a  dimensions of $\mathcal U$  containing mutually
+exclusive  propositions  which disjunction  is  true  w.r.t.  $\mathcal  U$:  \[
+\mathcal A_{\mathcal  U} = \left\{ D  \in \mathcal D \mid  \left(\forall (p, p')
+\in D^2,  p = p' \lor  \left(p \Rightarrow_{\mathcal U} \neg  p' \right) \right)
+\land \left( \bigvee_{p \in \mathcal U}  \Rightarrow \bigvee_{p \in D} p \right)
+\right\} \]
+#+end_definition
+
+Not  all combinations  of  dimensions  can be  used  within  a given  Covercrypt
+instance.  The access structure associated to  the master secret and public keys
+defines which dimensions  are expressible, and must respect  the constraint that
+expressible dimensions are mutually disjoint.
+
+#+attr_latex: :options [Access Structure]
+#+begin_definition
+In the  propositional KEM-AC setting, an  access structure is a  set of mutually
+disjoint dimensions: \[ \mathcal S =  \{S \in \mathbb P(\mathcal D) \mid \forall
+(D_i, D_j) \in S^2, D_i \cap D_j = \emptyset \}\]
+#+end_definition
+
+#+attr_latex: :options [Valid Policy]
+#+begin_definition
+A policy $p = \bigcup_i \left(\bigcap_j a_{i,j}\right)$ is said to be valid with
+respect to an access structure $S$ if  and only if for all $(i,j)$, there exists
+a dimension $D$ in $S$ such that $p_{i,j} \in D$.
+#+end_definition
+
+** TODO Live universe modifications
+
+Evolving  the access  structure  underlying  a given  revision  of a  Covercrypt
+instance can be done through one of those functions:
+- add-hierarchy: :: $\mathcal K_S \times \mathbb P(\mathcal R) \rightarrow
+  \mathcal K_S \times \mathcal K_P$ or $\bot$
+- del-hierarchy: :: $\mathcal K_S \times \mathbb P(\mathcal R) \rightarrow
+  \mathcal K_S \times \mathcal K_P$ or $\bot$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ with an access structure $S$ and  a set of attributes $D \subset \mathcal
+  R$. If  this new  hierarchy is  valid with respect  to $S$,  it returns  a new
+  master secret key and a new  master public key which structure contains (resp.
+  does not contain) $H$. Otherwise $\bot$ is returned.
+
+- add-anarchy: :: $\mathcal K_S \times \mathcal A \rightarrow \mathcal K_S
+  \times \mathcal K_P$ or $\bot$
+- del-anarchy: :: $\mathcal K_S \times \mathcal A \rightarrow \mathcal K_S
+  \times \mathcal K_P$ or $\bot$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ with an access structure $S$  and an anarchical dimension $A \in \mathcal
+  A$. If this new anarchy is valid with  respect to $S$, it returns a new master
+  secret key and  a new master public key which  structure contains (resp.  does
+  not contain) $A$. Otherwise $\bot$ is returned.
+
+- add-attribute: :: $\mathcal K_S \times \mathcal A \times \mathcal U
+  \rightarrow \mathcal K_S \times \mathcal K_P$ or $\bot$
+- del-attribute: ::  $\mathcal K_S \times \mathcal A \times \mathcal U
+  \rightarrow \mathcal K_S \times \mathcal K_P$ or $\bot$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ with an access structure $S$,  an anarchical dimension $D \in \mathcal A$
+  and an attribute $p \in \mathcal U$. If  this dimension is a member of $S$, it
+  returns a  new master secret key  and a new  master public key with  an access
+  structure  in which  this dimension  contains  (resp. does  not contain)  this
+  attribute.
+
+- add-hierarchical-attribute: :: $\mathcal K_S \times \mathcal H \times \mathcal
+  U \rightarrow \mathcal K_S \times \mathcal K_P$ or $\bot$
+- del-hierarchical-attribute: :: $\mathcal K_S \times \mathcal H \times \mathcal
+  U \rightarrow \mathcal K_S \times \mathcal K_P$ or $\bot$
+
+  This randomized algorithm takes as input a master secret key $msk \in \mathcal
+  K_S$ with an access structure $S$, a hierarchical dimension $D \in \mathcal H$
+  and an attribute $p \in \mathcal U$. If  this dimension is a member of $S$, it
+  returns a  new master secret key  and a new  master public key with  an access
+  structure  in which  this dimension  contains  (resp. does  not contain)  this
+  attribute.
+
+** Syntax
+
+The policy language has a very simple syntax:
+#+begin_example
+  <policy>    ::= <attribute> | <policy> <operator> <policy>
+  <operator>  ::= "&&" | "||"
+  <attribute> ::= "*" | <dimension>::<name>
+  <dimension> ::= <name>
+  <name>      ::= <word> \ { "&&" | "||" | <word>::<word> }
+  <word>      ::= char+
+#+end_example
+
+
+*** COMMENT Reductions
+
+The usual distributive rule of $and$ over $or$ applies, and policies are said to
+be irreducible if they are in their Disjunctive Normal Form (DNF).
+
+#+begin_export latex
+\begin{center}
+\begin{prooftree}
+\hypo{$A\land (B\lor C)$}
+\infer1{$(A\land B)\lor (A\land C)$}
+\end{prooftree}
+\end{center}
+#+end_export
+
+*** COMMENT User policy expansion
+
+In order to  reduce the verbosity of user policies,  missing dimensions in terms
+of their DNF are implicitly added. For example, given a bi-dimensional structure
+~s := { D1 := {A1 | B1} | D2 := {A2 | B2} }~, a user policy ~D1::A1~ is expanded
+into ~D1::A1 && (D2::A2 | D2::B2)~.
+
+#+begin_remark
+Encapsulation policies are /not/ expanded.
+#+end_remark
+
+*** COMMENT Evaluation
+
+Given two access policies $p_1$ and $p_2$, we say that those access policies are
+in relation, noted $p_1 \,R\, p_2$, if and  only if there exists a DNF clause in
+$p_1$
+
+* TODO Optional key tracing
+* TODO Hierarchical Covercrypt and interoperability
+* TODO Implementation considerations
+** Key and encapsulation formats
+
+Covercrypt is parameterized by:
+- a signature scheme that could be described by the following signature:
+  #+begin_src ocaml :session :results none
+    module type Signature = sig
+      type sk
+      type vk
+      type signature
+
+      val sign : sk -> msg:string -> signature
+      val verf : vk -> msg:string -> signature -> bool
+    end
+  #+end_src
+
+- a mac scheme that could be described by the following signature:
+  #+begin_src ocaml :session :results none
+    module type MAC = sig
+      type key
+      type tag
+
+      val mac : key -> msg:string -> tag
+    end
+  #+end_src
+
+- a key-homomorphic Non-Interactive Key-Exchange (NIKE) scheme that could be
+  described as:
+  #+begin_src ocaml :session :results none
+    module type Group = sig
+      type t
+
+      val id : t
+      val op : t -> t -> t
+      val inv : t -> t
+    end
+
+    module type AbelianGroup = sig
+      include Group
+
+      val zero : t
+      val ( + ) : t -> t -> t
+      val ( - ) : t -> t -> t
+    end
+
+    module type Ring = sig
+      include AbelianGroup
+
+      val one : t
+      val ( * ) : t -> t -> t
+      val ( / ) : t -> t -> t option
+    end
+
+    module type KH_NIKE = sig
+      module Sk : Ring
+      module Pk : Group
+
+      type key
+      type rng
+
+      val op : Pk.t -> Sk.t -> Pk.t
+      val keygen : rng -> Sk.t * Pk.t
+      val session : Pk.t -> Sk.t -> key
+    end
+  #+end_src
+  Such that: ~session (op pk sk) sk' = session pk Ring.(sk * sk')~.
+- a KEM that could be described by the following signature:
+  #+begin_src ocaml :session :results none
+    module type KEM = sig
+      type dk
+      type ek
+      type ss
+      type enc
+      type rng
+
+      val keygen : rng -> dk * ek
+      val encaps : rng -> ek -> ss * enc
+      val decaps : dk -> enc -> ss
+    end
+  #+end_src
+
+*** Master secret key
+
+The master secret key is composed of:
+1. a revision number $v$;
+2. a signing key $sk$ used to sign the master public key;
+3. a mac key $k$ used to verify the integrity of user secret keys;
+4. a tracing secret key $tsk$;
+5. a mapping $rsk$ from rights to histories of secrets.
+#+begin_src ocaml :results none :session
+  module Covercrypt_msk
+      (S : Signature)
+      (M : MAC)
+      (Nike : KH_NIKE)
+      (Kem : KEM)
+      (Right : sig type t end)
+  = struct
+    type msk = {
+      v : int;
+      k : M.key;
+      sk : S.sk;
+      tsk : tsk;
+      rsk : rsk;
+    }
+    and tsk = Nike.Sk.t list
+    and rsk = (Right.t, secret list) Hashtbl.t
+    and secret =
+      | N of Nike.Sk.t
+      | K of Kem.dk
+      | H of Nike.Sk.t * Kem.dk
+  end
+#+end_src
+With the additional constraints that there exist a tracing threshold $t \in
+\mathbb N^*$ such that $|tsk| = t + 2$.
+
+*** Master public key
+
+The master public key is composed of:
+1. a revision number $v$;
+2. a tracing public key $tpk$;
+3. a mapping $rpk$ from the right to a public element;
+4. a signature $\sigma$ of its other components under the signing key of the
+   master secret key;
+#+begin_src ocaml :results none :session
+  module Covercrypt_mpk
+      (S : Signature)
+      (Nike : KH_NIKE)
+      (Kem : KEM)
+      (Right : sig type t end)
+  = struct
+    type mpk = {
+      v : int;
+      tpk : tpk;
+      rpk : rpk;
+      sgn : S.signature;
+    }
+    and tpk = Nike.Pk.t list
+    and rpk = (Right.t, elt list) Hashtbl.t
+    and elt =
+      | N of Nike.Pk.t
+      | K of Kem.ek
+      | H of Nike.Pk.t * Kem.ek
+  end
+#+end_src
+With the additional constraints that there exist a tracing threshold $t \in
+\mathbb N^*$ such that $|tpk| = t + 2$.
+
+*** User secret key
+A user secret key is composed of:
+1. a revision number $v$;
+2. a verification key $vk$ to verify the master public key;
+3. a tracing user key $tuk$;
+4. a mapping $ruk$ of rights onto histories of secrets;
+5. a MAC tag of its other components.
+#+begin_src ocaml :results none :session
+  module Covercrypt_usk
+      (S : Signature)
+      (M : MAC)
+      (Nike : KH_NIKE)
+      (Kem : KEM)
+      (Right : sig type t end)
+  = struct
+    type usk = {
+      v : int;
+      vk : S.vk;
+      tuk : tuk;
+      ruk : ruk;
+      tag : M.tag
+    }
+    and tuk = Nike.Sk.t list
+    and ruk = (Right.t, secret list) Hashtbl.t
+    and secret =
+      | N of Nike.Sk.t
+      | K of Kem.dk
+      | H of Nike.Sk.t * Kem.dk
+  end
+#+end_src
+With the additional constraints that there exist a tracing threshold $t \in
+\mathbb N^*$ such that $|tuk| = t + 1$.
+
+*** Encapsulation
+
+An encapsulation is composed of:
+1. a revision number $v$;
+2. a verification tag;
+3. a tracing encapsulation $tenc$;
+4. an attribute-hiding access-control encapsulation $renc$;
+#+begin_src ocaml :results none :session
+  module Sized_string = struct
+    module type S = sig
+      type t
+      val size : int
+      val to_string : t -> string
+      val of_string : string -> t option
+    end
+
+    module Make (P : sig val size : int end) : S = struct
+      type t = string
+      let size = P.size
+      let to_string s = s
+      let of_string s =
+        if String.length s = size
+        then Some s else None
+    end
+  end
+
+  module Covercrypt_enc
+      (Nike : KH_NIKE)
+      (Kem : KEM)
+  = struct
+    module VTag = Sized_string.Make (struct let size = 16 end)
+    module NEnc = Sized_string.Make (struct let size = 32 end)
+    type enc = {
+      v : int;
+      tag : VTag.t;
+      tenc : Nike.Pk.t list;
+      renc : renc;
+    }
+    and renc =
+      | N of NEnc.t list
+      | K of Kem.enc list
+      | H of NEnc.t * Kem.enc
+  end
+#+end_src
+With the additional constraints that there exist a tracing threshold $t \in
+\mathbb N^*$ such that $|tenc| = t + 1$.
+
+** COMMENT KEM-AC
+
+A KEM-AC  can be defined by  the following signature:
+#+name: kem-ac-signature
+#+begin_src ocaml
+  module type KEMAC = sig
+    type rng
+    type msk
+    type mpk
+    type usk
+    type enc
+    type secret
+    type policy
+    type structure
+
+    val setup : rng -> structure -> msk * mpk
+    val keygen : rng -> msk -> policy -> usk option
+    val encaps : rng -> mpk -> policy -> (secret * enc) option
+    val decaps : usk -> enc -> secret option
+  end
+#+end_src
+* TODO Wish-list
