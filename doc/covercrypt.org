@@ -289,7 +289,13 @@ of the master public key used, and that its revision number is no less than that
 of the user secret key.
 #+end_remark
 
-** Live universe modifications
+** TODO Hybridization à la carte
+
+To accommodate different regulations and  right sensitivities, it is possible to
+describe for each  right the kind of  encapsulation to generate, among  a set of
+predefined encapsulation kinds.
+
+** Live access-structure modifications
 
 Real-life access  structure may evolve  with time.  Covercrypt reflects  this by
 exposing primitives  allowing to  modify the policy  universe without  having to
@@ -320,6 +326,7 @@ leverage  master public  keys  prior to  the  removal of  some  rights from  the
 universe to trick users create encapsulations for compromised secrets.
 #+end_remark
 
+
 * Boolean KEM-AC
 
 In order to  make expressing policies more ergonomic, we  introduce KEM-AC which
@@ -329,7 +336,20 @@ implement  this  boolean KEM-AC  on  top  of  the  set-based KEM-AC  defined  in
 Section [[*Subset-cover  KEM-AC]]  via  compiling   boolean  policies  to  set-based
 policies.
 
-** Semantics
+** Syntax and semantics
+
+The policy  language has a  very simple syntax  which specification is  given in
+Figure [[policy-language-syntax]], and which semantics is defined thereafter.
+#+name: policy-language-syntax
+#+caption: Syntax of the policy language.
+#+begin_src text
+  <policy>    ::= <attribute> | <policy> <operator> <policy>
+  <operator>  ::= "&&" | "||"
+  <attribute> ::= "*" | <dimension>::<name>
+  <dimension> ::= <name>
+  <name>      ::= <word> \ { "&&" | "||" | <word>::<word> }
+  <word>      ::= char+
+#+end_src
 
 #+attr_latex: :options [Universe]
 #+begin_definition
@@ -339,14 +359,14 @@ expressible  policies is  the  closure of  $\cU$ with  respect  to both  logical
 operators $\land$ and $\lor$: $\cP_U = \cP_E = \left< \cU, \land, \lor \right>$.
 #+end_definition
 
-#+attr_latex: :options [Implication with respect to $\cU$]
+#+attr_latex: :options [Implication in $\cU$]
 #+begin_definition
 Given  two logical  propositions $(p,  p') \in  \Omega^2$ for  some universe  of
 expressible attributes $\cU$  from $\Omega$ ($\cU \subset \Omega$),  $p$ is said
-to imply $p'$ with respect to $\cU$ -- noted $p \iwrt{\cU} p'$ -- if and only if
-$p$ implies  $p'$ when all  events outside of $\cU$  cannot be true:  \[ \forall
-(p_u, p_e) \in  \cU^2, (p_u \iwrt{\cU} p_e) \iff \left(  \bigwedge_{p \in \Omega
-\setminus \cU} \neg p \land p_u \Longrightarrow p_e \right) \]
+to imply $p'$ in $\cU$ -- noted $p  \iwrt{\cU} p'$ -- if and only if $p$ implies
+$p'$ when all events outside of $\cU$  cannot be true: \[ \forall (p_u, p_e) \in
+\cU^2, (p_u \iwrt{\cU}  p_e) \iff \left( \bigwedge_{p \in  \Omega \setminus \cU}
+\neg p \land p_u \Longrightarrow p_e \right) \]
 #+end_definition
 
 In  order  to  structure  the set  of  expressible  policies,  logically-related
@@ -362,7 +382,7 @@ $\cU$: $\cD_\cU = \mathbb P(\cU)$.
 #+attr_latex: :options [Hierarchy]
 #+begin_definition
 A hierarchical  dimension of  a universe  $\cU$, noted $D  \in \cH_{\cU}$,  is a
-dimension of $\cU$ which attributes are strictly increasing w.r.t. $\cU$:
+dimension of $\cU$ which attributes are strictly increasing in $\cU$:
 #+begin_export latex
 \[
   \cH_{\cU} = \left\{ D \in \cD_\cU \mid D = \emptyset \lor \exists a \in D :
@@ -377,15 +397,15 @@ dimension of $\cU$ which attributes are strictly increasing w.r.t. $\cU$:
   \end{array}
 \]
 #+end_export
-In other words, the logical implication  w.r.t.  $\cU$ defines an order relation
-over hierarchical dimensions.
+In other words, the logical implication  in $\cU$ defines an order relation over
+hierarchical dimensions.
 #+end_definition
 
 #+attr_latex: :options [Anarchy]
 #+begin_definition
 An  anarchical dimension  of a  universe $\cU$,  noted $D  \in \cA_{\cU}$,  is a
 dimensions of $\cU$ containing mutually exclusive propositions which disjunction
-is true w.r.t.  $\cU$:
+is true in $\cU$:
 #+begin_export latex
 \[
   \cA_{\cU} = \left\{ D \in \cD_\cU \left |
@@ -470,49 +490,7 @@ instance can be done through one of those functions:
   master secret  key and  a new master  public key with  an access  structure in
   which this dimension contains (resp. does not contain) this attribute.
 
-** Syntax
-
-The policy language has a very simple syntax:
-#+begin_example
-  <policy>    ::= <attribute> | <policy> <operator> <policy>
-  <operator>  ::= "&&" | "||"
-  <attribute> ::= "*" | <dimension>::<name>
-  <dimension> ::= <name>
-  <name>      ::= <word> \ { "&&" | "||" | <word>::<word> }
-  <word>      ::= char+
-#+end_example
-
-
-*** COMMENT Reductions
-
-The usual distributive rule of $and$ over $or$ applies, and policies are said to
-be irreducible if they are in their Disjunctive Normal Form (DNF).
-
-#+begin_export latex
-\begin{center}
-\begin{prooftree}
-\hypo{$A\land (B\lor C)$}
-\infer1{$(A\land B)\lor (A\land C)$}
-\end{prooftree}
-\end{center}
-#+end_export
-
-*** COMMENT User policy expansion
-
-In order to  reduce the verbosity of user policies,  missing dimensions in terms
-of their DNF are implicitly added. For example, given a bi-dimensional structure
-~s := { D1 := {A1 | B1} | D2 := {A2 | B2} }~, a user policy ~D1::A1~ is expanded
-into ~D1::A1 && (D2::A2 | D2::B2)~.
-
-#+begin_remark
-Encapsulation policies are /not/ expanded.
-#+end_remark
-
-*** COMMENT Evaluation
-
-Given two access policies $p_1$ and $p_2$, we say that those access policies are
-in relation, noted $p_1 \,R\, p_2$, if and  only if there exists a DNF clause in
-$p_1$
+** TODO Hybridization à la carte
 
 * TODO Optional key tracing
 * TODO Hierarchical Covercrypt and interoperability
