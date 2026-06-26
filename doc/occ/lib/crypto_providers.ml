@@ -3,9 +3,15 @@ open Core
 module type RNG = sig
   type t
 
-  val init : unit -> t
-  val fill : t -> bytes -> unit
-  val draw : t -> int -> bytes
+  (* Stateful module holding the RNG state. *)
+
+  val fill : bytes -> unit
+  val draw : int -> string
+  val next : unit -> int
+end
+
+module type Hash = sig
+  val hash : string -> string
 end
 
 module type Signature = sig
@@ -55,6 +61,8 @@ module type KH_NIKE = sig
   module Sk : sig
     include Ring
     include Serializable with type t := t
+
+    val random : (module RNG) -> t
   end
 
   module Pk : sig
@@ -65,6 +73,7 @@ module type KH_NIKE = sig
   type key
 
   val op : Pk.t -> Sk.t -> Pk.t
+  val derive : Sk.t -> Pk.t
   val keygen : (module RNG) -> Sk.t * Pk.t
   val session : Pk.t -> Sk.t -> key
 end
@@ -72,7 +81,12 @@ end
 module type KEM = sig
   type dk
   type ek
-  type enc
+
+  module Encapsulation : sig
+    include Serializable
+  end
+
+  type enc = Encapsulation.t
 
   val keygen : (module RNG) -> dk * ek
   val encaps : (module RNG) -> ek -> bytes * enc
