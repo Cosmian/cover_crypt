@@ -22,6 +22,9 @@
 #+latex_header: \newcommand{\sfusk}{\mathsf{usk}}
 #+latex_header: \newcommand{\sfenc}{\mathsf{enc}}
 #+latex_header: \newcommand{\iwrt}[1]{\,\Longrightarrow_{#1}\,}
+#+latex_header: \newcommand{\attr}[2]{a_{#2}^{#1}}
+#+latex_header: \newcommand{\powerset}[1]{\mathbb P(#1)}
+
 
 #+latex_header: \newcommand{\cA}{\mathcal{A}}
 #+latex_header: \newcommand{\cB}{\mathcal{B}}
@@ -35,6 +38,11 @@
 #+latex_header: \newcommand{\cS}{\mathcal{S}}
 #+latex_header: \newcommand{\cU}{\mathcal{U}}
 #+latex_header: \newcommand{\bN}{\mathbb{N}}
+
+#+latex_header: \newcommand{\true}{\mathsf{true}}
+#+latex_header: \newcommand{\false}{\mathsf{false}}
+#+latex_header: \newcommand{\True}{\mathsf{True}}
+#+latex_header: \newcommand{\False}{\mathsf{Talse}}
 
 #+bibliography: references.bib
 
@@ -326,7 +334,6 @@ leverage  master public  keys  prior to  the  removal of  some  rights from  the
 universe to trick users create encapsulations for compromised secrets.
 #+end_remark
 
-
 * Boolean KEM-AC
 
 In order to  make expressing policies more ergonomic, we  introduce KEM-AC which
@@ -342,31 +349,45 @@ The policy  language has a  very simple syntax  which specification is  given in
 Figure [[policy-language-syntax]], and which semantics is defined thereafter.
 #+name: policy-language-syntax
 #+caption: Syntax of the policy language.
-#+begin_src text
+#+begin_figure
+#+begin_example
   <policy>    ::= <attribute> | <policy> <operator> <policy>
   <operator>  ::= "&&" | "||"
   <attribute> ::= "*" | <dimension>::<name>
   <dimension> ::= <name>
   <name>      ::= <word> \ { "&&" | "||" | <word>::<word> }
   <word>      ::= char+
-#+end_src
+#+end_example
+#+end_figure
 
 #+attr_latex: :options [Universe]
 #+begin_definition
-In the boolean KEM-AC setting, the universe of expressible attributes $\cU$ is a
-set of atomic logical propositions of  $\Omega$ called /attributes/.  The set of
-expressible  policies is  the  closure of  $\cU$ with  respect  to both  logical
-operators $\land$ and $\lor$: $\cP_U = \cP_E = \left< \cU, \land, \lor \right>$.
+In the boolean KEM-AC setting, the universe  $\Omega$ is a set of atomic logical
+propositions  called /attributes/,  and the  universe of  expressible attributes
+$\cU$ is a subset of the universe $\Omega$.
+#+end_definition
+
+#+attr_latex: :options [Policies]
+#+begin_definition
+The  space of  policies  $\cP_\Omega$  associated to  a  universe of  attributes
+$\Omega$ is  the closure  of $\Omega$  with respect  to both  logical operators:
+$\cP_\Omega =  \left< \Omega,  \land, \lor  \right>$.  A  policy is  therefore a
+boolean equation of attributes, and can be seen as a function from the power set
+of  $\Omega$   to  the   set  of  boolean   values  $\cB$:   $\cP_\Omega  \simeq
+\powerset{\Omega}^\cB$. A policy $p' \in \cP_\cU$  is said to be the restriction
+to a subspace  of expressible attributes $\cU \subset \Omega$  of some policy $p
+\in   \Omega$,  noted   $p'  =   p_{|\cU}$,  if   $p$  and   $p'$  coincide   in
+$\powerset{\cU}$:  \[\forall  (p, p')  \in  \cP_\Omega  \times  \cP_\cU :  p'  =
+p_{|\cU} \iff \forall X \subset \cU, p'(X) = p(X)\]
 #+end_definition
 
 #+attr_latex: :options [Implication in $\cU$]
 #+begin_definition
-Given  two logical  propositions $(p,  p') \in  \Omega^2$ for  some universe  of
-expressible attributes $\cU$  from $\Omega$ ($\cU \subset \Omega$),  $p$ is said
-to imply $p'$ in $\cU$ -- noted $p  \iwrt{\cU} p'$ -- if and only if $p$ implies
-$p'$ when all events outside of $\cU$  cannot be true: \[ \forall (p_u, p_e) \in
-\cU^2, (p_u \iwrt{\cU}  p_e) \iff \left( \bigwedge_{p \in  \Omega \setminus \cU}
-\neg p \land p_u \Longrightarrow p_e \right) \]
+Given two logical propositions $(p, p') \in \left<\Omega, \land, \lor \right>^2$
+and a  universe of expressible attributes  $\cU \subset \Omega$, $p$  is said to
+imply $p'$ in  $\cU$, noted $p \iwrt{\cU}  p'$, if and only if  $p$ implies $p'$
+when restricted to $\cU$: \[ \forall (p_u, p_e) \in \cU^2, (p \iwrt{\cU} p) \iff
+\left( p_{|\cU} \Longrightarrow p_{|\cU}' \right) \]
 #+end_definition
 
 In  order  to  structure  the set  of  expressible  policies,  logically-related
@@ -374,9 +395,10 @@ attributes can be grouped by dimension, which come in two kinds:
 
 #+attr_latex: :options [Dimension]
 #+begin_definition
-A dimension  $D$ of a universe  of attributes $\cU$,  is a set of  attributes in
-$\cU$. In  other words,  the set  of dimensions  $\cD_\cU$ is  the power  set of
-$\cU$: $\cD_\cU = \mathbb P(\cU)$.
+A  dimension $D$  of a  universe  of attributes  $\cU$,  is a  non-empty set  of
+attributes in $\cU$  such that at least  one of its attribute is  true. In other
+words,  the set  of dimensions  $\cD_\cU$ is:  \[\cD_\cU =  \left\{ \{a_i\}  \in
+\powerset{\cU}^* : \bigvee_i a_i = \True \right\}\]
 #+end_definition
 
 #+attr_latex: :options [Hierarchy]
@@ -385,7 +407,7 @@ A hierarchical  dimension of  a universe  $\cU$, noted $D  \in \cH_{\cU}$,  is a
 dimension of $\cU$ which attributes are strictly increasing in $\cU$:
 #+begin_export latex
 \[
-  \cH_{\cU} = \left\{ D \in \cD_\cU \mid D = \emptyset \lor \exists a \in D :
+  \cH_{\cU} = \left\{ D \in \cD_\cU \mid \exists a \in D :
     \begin{array}{l}
       \forall a' \in D,\, a \iwrt{\cU} a' \\
       D \setminus \{a\} \in \cH_{\cU}
@@ -404,21 +426,12 @@ hierarchical dimensions.
 #+attr_latex: :options [Anarchy]
 #+begin_definition
 An  anarchical dimension  of a  universe $\cU$,  noted $D  \in \cA_{\cU}$,  is a
-dimensions of $\cU$ containing mutually exclusive propositions which disjunction
-is true in $\cU$:
+dimensions of $\cU$ containing mutually exclusive propositions:
 #+begin_export latex
 \[
-  \cA_{\cU} = \left\{ D \in \cD_\cU \left |
-      \begin{array}{l}
-        \forall (a, a') \in D^2, a = a' \lor \left(a \iwrt{\cU} \neg a'  \right) \\
-        \bigvee_{a \in D} a \iwrt{\cU} \mathsf{true}
-      \end{array}
-    \right.
+  \cA_{\cU} = \left\{ D \in \cD_\cU \mid
+      \forall (a, a') \in D^2, a = a' \lor \left(a \iwrt{\cU} \neg a'  \right)
   \right\}
-  \begin{array}{l}
-    \textit{at most one is true} \\
-    \textit{at least one is true}
-  \end{array}
 \]
 #+end_export
 #+end_definition
@@ -437,10 +450,55 @@ dimensions: \[ \cS = \{S \in \mathbb P(\cD) \mid \forall (D_i, D_j) \in S^2, D_i
 
 #+attr_latex: :options [Valid Policy]
 #+begin_definition
-A policy $p = \bigcup_i \left(\bigcap_j a_{i,j}\right)$ is said to be valid with
-respect to an access structure $S$ if  and only if for all $(i,j)$, there exists
-a dimension $D$ in $S$ such that $p_{i,j} \in D$.
+A policy $p$ is said to be valid with respect to a set of expressible attributes
+$\cU$,  if and  only if  $p$  restricted to  $\cU$  is not  the constant  policy
+$K_\false : X \rightarrow \false$.
 #+end_definition
+
+** KEM-AC
+
+In the boolean KEM-AC setting, a  user secret key $\usk{p_u}{\cU}$ associated to
+a  policy  $p_u  \in  \cP_\cU$   can  open  an  encapsulation  $\enc{p_e}{\cU'}$
+associated to a policy  $p_e \in \cP_{\cU'}$ if and only if  $p_u$ is valid with
+respect to $\cU'$ and $p_u \iwrt{\cU'} p_e$.
+
+#+begin_remark
+It  is important  to  distinguish the  universe in  which  an encapsulation  was
+created from the one  in which a user secret key was  created since the universe
+of expressible attributes can be both extended and expanded in such a way that a
+access policy that  is valid in a first  universe $\cU$ may not be  valid in the
+new universe $\cU'$.
+#+end_remark
+
+*** Examples
+
+**** Without expressible universe modification
+
+Let  $\cU  =  D_1  \cup  D_2  \subset \Omega$,  where  $D_1  =  \{  \attr{1}{1},
+\attr{1}{2}, \attr{1}{3} \} \subset \cA_\Omega$  is an anarchical dimension, and
+$D_2  = \{  \attr{2}{1}, \attr{2}{2}  \} \subset  \cH_\Omega$ is  a hierarchical
+dimension with $\attr{2}{2} \iwrt{\cU} \attr{2}{1}$.
+
+- Let  $p_u  = \attr{1}{1}  \land  \attr{2}{2}$  and  $p_e =  \attr{1}{1}  \land
+  \attr{2}{1}$. In this  case, a user secret key $\usk{p_u}{\cU}$  /can/ open an
+  encapsulation  $\enc{p_e}{\cU}$  since $(\attr{2}{2}  \iwrt{\cU}  \attr{2}{1})
+  \iff   (\attr{1}{1}    \land   \attr{2}{2}   \iwrt{\cU}    \attr{1}{1}   \land
+  \attr{2}{1})$.
+
+- Let $p_u =  \attr{1}{1} = \attr{1}{1} \land \attr{2}{1}$  using the definition
+  of a hierarchical dimension. Let $p_e = \attr{2}{2} = \attr{2}{2} \land \left(
+  \lor_{i=1}^{3} \attr{1}{i}  \right) = \lor_{i=2}^{3} \left(  \attr{2}{2} \land
+  \attr{1}{i} \right)$ using the definition of an anarchical dimension.
+
+  In  this   case,  a  user   secret  key  $\usk{p_u}{\cU}$  /cannot/   open  an
+  encapsulation   $\enc{p_e}{\cU}$    since   $\neg    (\attr{2}{1}   \iwrt{\cU}
+  \attr{2}{2})$ by definition of a hierarchical dimension.
+
+
+
+**** With expressible universe modification
+
+
 
 ** TODO Live universe modifications
 
