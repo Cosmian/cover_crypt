@@ -37,12 +37,13 @@
 #+latex_header: \newcommand{\cR}{\mathcal{R}}
 #+latex_header: \newcommand{\cS}{\mathcal{S}}
 #+latex_header: \newcommand{\cU}{\mathcal{U}}
+#+latex_header: \newcommand{\cV}{\mathcal{V}}
 #+latex_header: \newcommand{\bN}{\mathbb{N}}
 
 #+latex_header: \newcommand{\true}{\mathsf{true}}
 #+latex_header: \newcommand{\false}{\mathsf{false}}
 #+latex_header: \newcommand{\True}{\mathsf{True}}
-#+latex_header: \newcommand{\False}{\mathsf{Talse}}
+#+latex_header: \newcommand{\False}{\mathsf{False}}
 
 #+bibliography: references.bib
 
@@ -370,24 +371,33 @@ $\cU$ is a subset of the universe $\Omega$.
 #+attr_latex: :options [Policies]
 #+begin_definition
 The  space of  policies  $\cP_\Omega$  associated to  a  universe of  attributes
-$\Omega$ is  the closure  of $\Omega$  with respect  to both  logical operators:
-$\cP_\Omega =  \left< \Omega,  \land, \lor  \right>$.  A  policy is  therefore a
-boolean equation of attributes, and can be seen as a function from the power set
-of  $\Omega$   to  the   set  of  boolean   values  $\cB$:   $\cP_\Omega  \simeq
-\powerset{\Omega}^\cB$. A policy $p' \in \cP_\cU$  is said to be the restriction
-to a subspace  of expressible attributes $\cU \subset \Omega$  of some policy $p
-\in   \Omega$,  noted   $p'  =   p_{|\cU}$,  if   $p$  and   $p'$  coincide   in
-$\powerset{\cU}$:  \[\forall  (p, p')  \in  \cP_\Omega  \times  \cP_\cU :  p'  =
-p_{|\cU} \iff \forall X \subset \cU, p'(X) = p(X)\]
+$\Omega$ is the closure of $\Omega$ with respect to both logical operators /and/
+($\land$)  and /or/  ($\lor$), noted  $\cP_\Omega =  \left< \Omega,  \land, \lor
+\right>$. This  set has  two special policies,  noted $\True$  (resp. $\False$),
+that are always true (resp. false).
+
+# A policy is therefore  a boolean equation of attributes, and can  be seen as a
+# function from the  power set of $\Omega$  to the set of  boolean values $\cB$:
+# $\cP_\Omega \simeq \powerset{\Omega}^\cB$.  A policy $p' \in  \cP_\cU$ is said
+# to be  the restriction to  a subspace  of expressible attributes  $\cU \subset
+# \Omega$ of some policy $p \in \Omega$,  noted $p' = p_{|\cU}$, if $p$ and $p'$
+# coincide  in  $\powerset{\cU}$:  \[\forall   (p,  p')  \in  \cP_\Omega  \times
+# \cP_\cU :  p' = p_{|\cU} \iff  \forall X \subset  \cU, p'(X) = p(X)\]  In what
+# follows,  we note  $\True$ (resp.  $\False$) the  policy that  is always  true
+# (resp. false).
 #+end_definition
 
 #+attr_latex: :options [Implication in $\cU$]
 #+begin_definition
-Given two logical propositions $(p, p') \in \left<\Omega, \land, \lor \right>^2$
-and a  universe of expressible attributes  $\cU \subset \Omega$, $p$  is said to
-imply $p'$ in  $\cU$, noted $p \iwrt{\cU}  p'$, if and only if  $p$ implies $p'$
-when restricted to $\cU$: \[ \forall (p_u, p_e) \in \cU^2, (p \iwrt{\cU} p) \iff
-\left( p_{|\cU} \Longrightarrow p_{|\cU}' \right) \]
+Given two  logical propositions  $(p, p')  \in \cP_\Omega^2$  and a  universe of
+expressible attributes $\cU \subset \Omega$, $p$ is said to imply $p'$ in $\cU$,
+noted $p  \iwrt{\cU} p'$,  if and only  if $p$ implies  $p'$ when  restricted to
+$\cU$: \[  \forall (p_u, p_e) \in  \cU^2, (p \iwrt{\cU} p)  \iff \left( p_{|\cU}
+\implies p_{|\cU}' \right) \]
+
+TODO: I feel like I want to come  back to the view that the implication in $\cU$
+is the  implication /knowing that/  all attributes outside  of $\cU$ are  set to
+$\false$.
 #+end_definition
 
 In  order  to  structure  the set  of  expressible  policies,  logically-related
@@ -395,10 +405,13 @@ attributes can be grouped by dimension, which come in two kinds:
 
 #+attr_latex: :options [Dimension]
 #+begin_definition
-A  dimension $D$  of a  universe  of attributes  $\cU$,  is a  non-empty set  of
-attributes in $\cU$  such that at least  one of its attribute is  true. In other
-words,  the set  of dimensions  $\cD_\cU$ is:  \[\cD_\cU =  \left\{ \{a_i\}  \in
-\powerset{\cU}^* : \bigvee_i a_i = \True \right\}\]
+A dimension  $D$ of  a universe  of attributes  $\Omega$ is  a non-empty  set of
+attributes from $\Omega$  such that at least  one of its attributes  is true. In
+other  words, the  set  of dimensions  $\cD$  is: \[\cD  =  \left\{ \{a_i\}  \in
+\powerset{\Omega}^* : \bigvee_i a_i = \True \right\}\]
+
+TODO: we  need to  add the  fact that attributes  from different  dimensions are
+/not/ exclusive.
 #+end_definition
 
 #+attr_latex: :options [Hierarchy]
@@ -410,17 +423,21 @@ dimension of $\cU$ which attributes are strictly increasing in $\cU$:
   \cH_{\cU} = \left\{ D \in \cD_\cU \mid \exists a \in D :
     \begin{array}{l}
       \forall a' \in D,\, a \iwrt{\cU} a' \\
-      D \setminus \{a\} \in \cH_{\cU}
+      \forall a' \in D,\, a \ne a' \implies \neg \left(a' \iwrt{\cU} a \right) \\
+      \left( D = \{a\} \right) \lor \left(D \setminus \{a\} \in \cH_{\cU} \right)
     \end{array}
   \right\}
   \begin{array}{l}
-    \textit{it is ordered} \\
-    \textit{its order is total}
+    \textit{ordered} \\
+    \textit{strictly} \\
+    \textit{totally}
   \end{array}
 \]
 #+end_export
-In other words, the logical implication  in $\cU$ defines an order relation over
-hierarchical dimensions.
+In other  words, the  logical implication  in $\cU$ defines  a strict  and total
+order  relation  over  hierarchical  dimensions, and  in  particular,  for  each
+hierarchical  dimension  $D \in  \cH_\cU$,  there  exists a  smallest  attribute
+$a_\bot^D \in D$ that is always true in $\cU$: $a_\bot^D = \True$.
 #+end_definition
 
 #+attr_latex: :options [Anarchy]
@@ -451,16 +468,17 @@ dimensions: \[ \cS = \{S \in \mathbb P(\cD) \mid \forall (D_i, D_j) \in S^2, D_i
 #+attr_latex: :options [Valid Policy]
 #+begin_definition
 A policy $p$ is said to be valid with respect to a set of expressible attributes
-$\cU$,  if and  only if  $p$  restricted to  $\cU$  is not  the constant  policy
-$K_\false : X \rightarrow \false$.
+$\cU$, noted $p \in  \cV_\cU$ if and only if $p$ restricted to  $\cU$ is not the
+constant policy $\False$: \[ p \in \cV_\cU \iff p =_\cU \False \]
 #+end_definition
 
 ** KEM-AC
 
 In the boolean KEM-AC setting, a  user secret key $\usk{p_u}{\cU}$ associated to
 a  policy  $p_u  \in  \cP_\cU$   can  open  an  encapsulation  $\enc{p_e}{\cU'}$
-associated to a policy  $p_e \in \cP_{\cU'}$ if and only if  $p_u$ is valid with
-respect to $\cU'$ and $p_u \iwrt{\cU'} p_e$.
+associated to a  policy $p_e \in \cP_{\cU'}$  if and only if  the conjunction of
+$p_u$ and $p_e$ is valid in both $\cU$ and $\cU'$: \[ (p_u, p_e) \in R \iff (p_u
+\land p_e) \in (\cV_\cU \cap \cV_{\cU'})\]
 
 #+begin_remark
 It  is important  to  distinguish the  universe in  which  an encapsulation  was
@@ -481,13 +499,12 @@ dimension with $\attr{2}{2} \iwrt{\cU} \attr{2}{1}$.
 
 - Let  $p_u  = \attr{1}{1}  \land  \attr{2}{2}$  and  $p_e =  \attr{1}{1}  \land
   \attr{2}{1}$. In this  case, a user secret key $\usk{p_u}{\cU}$  /can/ open an
-  encapsulation  $\enc{p_e}{\cU}$  since $(\attr{2}{2}  \iwrt{\cU}  \attr{2}{1})
-  \iff   (\attr{1}{1}    \land   \attr{2}{2}   \iwrt{\cU}    \attr{1}{1}   \land
-  \attr{2}{1})$.
+  encapsulation  $\enc{p_e}{\cU}$  since  $p_u  \land p_e  =  \attr{1}{1}  \land
+  \attr{2}{2} \ne \False$.
 
 - Let $p_u =  \attr{1}{1} = \attr{1}{1} \land \attr{2}{1}$  using the definition
   of a hierarchical dimension. Let $p_e = \attr{2}{2} = \attr{2}{2} \land \left(
-  \lor_{i=1}^{3} \attr{1}{i}  \right) = \lor_{i=2}^{3} \left(  \attr{2}{2} \land
+  \lor_{i=1}^{3} \attr{1}{i}  \right) = \lor_{i=1}^{3} \left(  \attr{2}{2} \land
   \attr{1}{i} \right)$ using the definition of an anarchical dimension.
 
   In  this   case,  a  user   secret  key  $\usk{p_u}{\cU}$  /cannot/   open  an
@@ -495,9 +512,26 @@ dimension with $\attr{2}{2} \iwrt{\cU} \attr{2}{1}$.
   \attr{2}{2})$ by definition of a hierarchical dimension.
 
 
-
 **** With expressible universe modification
 
+***** Additive transformation
+
+Let $\cU' = \cU  \cup D_3$, where $D_3 = \{  \attr{3}{1}, \attr{3}{2} \} \subset
+\cA_\Omega$ is an anarchical dimension.
+- Let  $p_u  = \attr{1}{1}  \land  \attr{2}{2}$  and  $p_e =  \attr{1}{1}  \land
+  \attr{2}{2}  \land  \attr{3}{2}$.  Then  a  user  secret key  $\usk{p_u}{\cU}$
+  /cannot/ decrypt  $\enc{p_e}{\cU'}$ since  $p_e =_{\cU} \False$  and $\neg(p_u
+  \iwrt{\cU} \False)$.
+
+  $p_u   =_{\cU'}  \attr{1}{1}   \land  \attr{2}{2}   \land  (\attr{3}{1}   \lor
+  \attr{3}{2})$
+
+- Let  $p_u  = \attr{1}{1}  \land  \attr{2}{2}$  and  $p_e =  \attr{1}{1}  \land
+  \attr{2}{2}  \land  \attr{3}{2}$.  Then  a user  secret  key  $\usk{p_u}{\cU}$
+  /cannot/ decrypt $\enc{p_e}{\cU'}$ since
+
+
+***** Destructive transformation
 
 
 ** TODO Live universe modifications
