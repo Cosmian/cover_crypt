@@ -1,9 +1,13 @@
 #+title: Covercrypt
 #+subtitle:An efficient ABE-like encryption scheme.
 #+options: toc:t
+#+latex_compiler: lualatex
+
 #+latex_class: article
 #+latex_class_options: [a4paper]
-#+latex_compiler: lualatex
+
+#+latex_header: \usepackage[left=1in, right=1in, top=1in, bottom=1in]{geometry}
+
 #+latex_header: \usepackage{fontspec}
 #+latex_header: \usepackage{amsmath, amsfonts, amssymb}
 #+latex_header: \usepackage{amsthm}
@@ -22,7 +26,7 @@
 #+latex_header: \newcommand{\sfusk}{\mathsf{usk}}
 #+latex_header: \newcommand{\sfenc}{\mathsf{enc}}
 #+latex_header: \newcommand{\iwrt}[1]{\,\Longrightarrow_{#1}\,}
-#+latex_header: \newcommand{\attr}[2]{a_{#2}^{#1}}
+#+latex_header: \newcommand{\attr}[2]{#1_{#2}}
 #+latex_header: \newcommand{\powerset}[1]{\mathbb P(#1)}
 
 
@@ -33,9 +37,11 @@
 #+latex_header: \newcommand{\cH}{\mathcal{H}}
 #+latex_header: \newcommand{\cE}{\mathcal{E}}
 #+latex_header: \newcommand{\cK}{\mathcal{K}}
+#+latex_header: \newcommand{\cO}{\mathcal{O}}
 #+latex_header: \newcommand{\cP}{\mathcal{P}}
 #+latex_header: \newcommand{\cR}{\mathcal{R}}
 #+latex_header: \newcommand{\cS}{\mathcal{S}}
+#+latex_header: \newcommand{\cT}{\mathcal{T}}
 #+latex_header: \newcommand{\cU}{\mathcal{U}}
 #+latex_header: \newcommand{\cV}{\mathcal{V}}
 #+latex_header: \newcommand{\bN}{\mathbb{N}}
@@ -80,12 +86,12 @@ same  problem  while  relaxing  some  formal constraints  in  order  to  achieve
 efficiency in most practical use-cases  while offering both CCA and post-quantum
 security, attribute-hiding ciphertexts and key tracing.
 
-Covercrypt assumes  the existence of a  centralized KMS holding a  master secret
-key with  which all other  keys are  created: the master  public key is  used to
-encrypt data under its access policy  while user secret keys are also associated
-to access policies and can decrypt  all Covercrypt ciphertexts with a compatible
-access  policy.   Covercrypt follows  the  KEM-DEM  approach  in which  data  is
-symmetrically  encrypted under  a key  which  encapsulation is  appended to  the
+Covercrypt assumes  the existence  of a centralized  master authority  holding a
+master secret key with  which all other keys are created:  the master public key
+is used to encrypt data under its  access policy while user secret keys are also
+associated to access policies and can  decrypt all Covercrypt ciphertexts with a
+compatible access policy.  Covercrypt follows the KEM-DEM approach in which data
+is symmetrically  encrypted under a key  which encapsulation is appended  to the
 symmetric ciphertext. More precisely, Covercrypt is a actually Key-Encapsulation
 Mechanism with  Access Control  (KEM-AC) --  as defined  in [[kem-ac-definition]] --
 that can be  combined with a Data-Encryption Mechanism (DEM)  to obtain a Public
@@ -96,9 +102,76 @@ denote  an  access  policy  associated  to   a  user  secret  and  a  Covercrypt
 encapsulation respectively, and  use the term policy the context  makes it clear
 whether we refer to a user or encapsulation policy.
 
-* Subset-cover KEM-AC
+* Preliminaries
 
-** Key-Encapsulation Mechanism with Access Control (KEM-AC)
+** Non-Interactive Key Exchange (NIKE)
+
+- Note taken on [2026-07-21 Tue 19:32] \\
+  The key-homomorphic definition  from the ETSI document is  insufficient to allow
+  for an  easy computation of  $\beta =  (s - \alpha  \cdot s_1) *  s_2^{-1}$. For
+  this, we really  need the notion of  field since secret keys  must be invertible
+  with respect  to the multiplicative  law.  Then, we  need the notion  that there
+  exists a  group generator $\mathfrak  g$ for the public  keys such that  for any
+  pair of secret and public keys $(sk, pk)$, $pk = sk \cdot \mathfrak g$.
+#+attr_latex: :option [Non-Interactive Key Exchange (NIKE)]
+#+begin_definition
+A NIKE is  a cryptographic scheme allowing to privately  establish a session key
+between  two  parties in  a  non-interactive  fashion  using the  following  two
+primitives:
+- keygen: :: $\bot \rightarrow \cK_S \times \cK_P$
+
+  This randomized algorithm  returns a new pair of secret  and public keys $(sk,
+  pk)$.
+
+- session-key: :: $\cK_P \times \cK_S \rightarrow \cK$
+
+  Upon receiving a  public key $pk \in  \cK_P$ and a secret key  $sk \in \cK_S$,
+  returns the associated session  key $K \in \cK$ such that  for any given pairs
+  of keys $(sk_1, pk_1)$  and $(sk_2, pk_2)$, $\mathrm{session\text{-}key}(pk_1,
+  sk_2) = \mathrm{session\text{-}key}(pk_2, sk_1)$.
+Additionally, a NIKE is said to be  /key-homomorphic/ if its public keys form an
+Abelian group which scalars are its secret keys.
+#+end_definition
+
+#+attr_latex: :option [Elliptic-Curve based NIKE (EC-NIKE)]
+#+begin_remark
+One instantiation of a key-homomorphic NIKE  is based on an elliptic-curve group
+$G$ with prime order  $p$ and group generator $\mathfrak g$  and a hash function
+$\cH : G \rightarrow \{0,1\}^\lambda$:
+
+- keygen: :: returns $sk  \overset{\mathdollar}{\longleftarrow} \cU(0, p-1)$ and
+  $pk \gets sk \cdot \mathfrak g$.
+
+- session-key: ::  upon receiving $pk = sk \cdot \mathfrak g$ and $sk'$, returns
+  $K \gets \cH(sk \cdot sk' \cdot \mathfrak g)$.
+#+end_remark
+
+** Key-Encapsulation Mechanism (KEM)
+
+#+attr_latex: :option [Key-Encapsulation Mechanism (KEM)]
+#+begin_definition
+A KEM  is a cryptographic scheme  associated to the key  spaces $\cK_D$, $\cK_E$
+and $\cK$, and encapsulation space $\cE$, that exposes the following primitives:
+- keygen: :: $\bot \rightarrow \cK_D \times \cK_E$
+
+  This  randomized   algorithm  returns   a  new   pair  of   decapsulation  and
+  encapsulation keys $(dk, ek)$.
+
+- encaps: :: $\cK_P \rightarrow \cK \times \cE$
+
+  This randomized algorithm  takes as input an encapsulation key  $ek \in \cK_E$
+  and returns a  new session key $K  \in \cK$ and its  encapsulation $\sfenc \in
+  \cE$.
+
+- decaps: :: $\cK_S \times \cE \rightarrow \cK$ or $\bot$
+
+  This  algorithm takes  as input  a  decapsulation key  $dk \in  \cK_D$ and  an
+  encapsulation $\sfenc \in  \cE$, and returns the encapsulated  session key $K$
+  if  and only  if  the  encapsulation was  created  for  the encapsulation  key
+  associated to $dk$.
+#+end_definition
+
+** KEM with Access Control (KEM-AC)
 
 A Key-Encapsulation Mechanism with  Access Control (KEM-AC) allows encapsulating
 a secret  with respect to an  /encapsulation policy/, such that  user secret key
@@ -139,17 +212,17 @@ an encapsulation space $\cE$, and exposes the following operations:
   $(p_u,p_e) \in R_e$, and $\bot$ otherwise.
 #+end_definition
 
-Covercrypt is a  subset-cover algorithm: it implements a KEM-AC  with respect to
-an access structure $S$ defining a  set of rights $\cU$ called /universe/, which
-policy  space  is   $\mathbb  P(\cU)$  and  binary  relation  is   the  test  of
-intersection: $R_{\cU}  = \{(p_u, p_e) \in  \mathbb P(\cU)^2 : p_u  \cap p_e \ne
-\emptyset \}$.  More precisely, the  Covercrypt setup  is as follows  (the other
-primitives remain the same):
-- setup: :: $\cS \rightarrow \cK_S \times \cK_P$
+* Subset-Cover KEM-AC (SC-KEM-AC)
 
-  This randomized  algorithm takes as input  an access structure $S$  defining a
-  universe $\cU$,  and returns a  master secret  key $\msk{R_\cU}$ and  a master
-  public key $\mpk{R_\cU}$.
+** KEM-AC specification
+
+Covercrypt is a  subset-cover algorithm: it implements a KEM-AC  with respect to
+an  access structure  $S$ defining  a  set of  rights $\cU  = \{r_i\}_i$  called
+/universe/, which  policy space is $\mathbb  P(\cU)$ and binary relation  is the
+test of  intersection: $R_{\cU} = \{(p_u,  p_e) \in \mathbb P(\cU)^2  : p_u \cap
+p_e  \ne \emptyset  \}$.   The  complete reference  implementation  is given  in
+Section [[*SC-KEM-AC reference implementation]] (note that the format of the keys is
+dictated by the additional requirements listed in the following sections).
 
 ** Key and encapsulation life-cycle management
 
@@ -164,23 +237,23 @@ use-secret-key compromise, a key rotation with respect to its entire policy must
 be performed.  Due to the particular  structure of Covercrypt keys, this process
 implies: (1)  the rotation of all  associated secrets in the  master secret key,
 (2) the propagation of this rotation to  the master public key to prevent future
-encapsulations from being generated with respect to compromised secrets, (3) the
-propagation of this rotation to all user secret keys which policy intersects the
-ones  of  the  compromised  key  to  allow  legitimate  users  opening  the  new
-encapsulations generated with respect to the new secrets, and (4) optionally the
-refresh of all encapsulations which associated  policy intersects the one of the
-compromised key  to prevent an eventual  attacker from opening them  if it still
-hasn't  accessed  them.    The  entire  key-rotation  process   is  depicted  in
+encapsulations from being using compromised secrets, (3) the propagation of this
+rotation  to all  user  secret keys  which  policy intersects  the  ones of  the
+compromised  key  to  allow  legitimate users  opening  the  new  encapsulations
+generated with respect to the new secrets, and (4) optionally the refresh of all
+encapsulations which associated policy intersects the one of the compromised key
+to prevent  an eventual attacker from  opening them if it  still hasn't accessed
+them.      The     entire     key-rotation    process     is     depicted     in
 Figure \ref{rotation-flow}, and leverages the following primitives:
 - usk-policy: :: $\cK_U \rightarrow \mathbb P(\cU)$
 
   This function  takes as input a  Covercrypt user secret key  $usk_p \in \cK_U$
-  and returns its associated policy $p \in \cU$.
+  and returns its associated policy $p \subset \cU$.
 
 - rotate: :: $\cK_S \times \mathbb P(\cU) \rightarrow \cK_S \times \cK_P$
 
   This randomized  algorithm takes as input  a master secret key  $\msk{\cU} \in
-  \cK_S$ and  an access policy  $p^* \in \cU$,  refreshes every secrets  in this
+  \cK_S$ and an access policy $p^* \subset \cU$, refreshes every secrets in this
   given master secret key that are associated  to a right in this policy (/i.e./
   each secret associated to a right in  $s \cap p^*$), and returns the refreshed
   master secret key along with its associated master public key.
@@ -188,7 +261,7 @@ Figure \ref{rotation-flow}, and leverages the following primitives:
 - usk-refresh: :: $\cK_S \times \cK_U \rightarrow \cK_U$ or $\bot$
 
   This algorithm takes as  input a master secret key $msk \in  \cK_S$ and a user
-  secret  key $usk_p  \in \cK_U$  associated to  a policy  $p \in  \cU$. If  the
+  secret key $usk_p  \in \cK_U$ associated to  a policy $p \subset  \cU$. If the
   integrity of the  given user secret key  can be verified by  the master secret
   key, it returns a  new user secret key $usk_p'$ associated  to the same access
   policy containing all secrets that are contained in the given user secret key,
@@ -200,10 +273,11 @@ Figure \ref{rotation-flow}, and leverages the following primitives:
 
   This randomized algorithm takes as input  a master secret key $msk \in \cK_S$,
   a  master public  key $mpk  \in \cK_S$  and an  encapsulation $enc_p  \in \cE$
-  associated to a policy $p \in \cU$.  If the integrity of the master public key
-  can be  verified, that its revision  number matches that of  the master secret
-  key, and  that the encapsulation can  be open, it returns  a new encapsulation
-  $enc_p'$ associated to the same access policy. Otherwise $\bot$ is returned.
+  associated to a policy $p \subset \cU$.  If the integrity of the master public
+  key  can be  verified, that  its revision  number matches  that of  the master
+  secret  key,  and  that the  encapsulation  can  be  open,  it returns  a  new
+  encapsulation $enc_p'$ associated to the  same access policy. Otherwise $\bot$
+  is returned.
 
 #+begin_export latex
 \tikzset{
@@ -232,11 +306,11 @@ Figure \ref{rotation-flow}, and leverages the following primitives:
     \node [output, below of=urf] (uski_new){};
     \draw [->] (rot) -- node{$msk'$} (urf);
     \draw [->] (rot) -- node{$\left(msk', mpk'\right)$} (mout);
-    \draw [->] (erf) -- node{$enc_{p^j}$ or $\bot$} (eout);
-    \draw [->] (uski_old) -- node{$usk_{p^i}^*$} (urf);
+    \draw [->] (erf) -- node{$enc_{p_j}$ or $\bot$} (eout);
+    \draw [->] (uski_old) -- node{$usk_{p_i}^*$} (urf);
     \draw [->] (usk) -- node{$usk_{p^*}^*$} (pol);
-    \draw [->] (enc) -- node{$enc_{p^j}^*$} (erf);
-    \draw [->] (urf) -- node{$usk_{p^i}$ or $\bot$} (uski_new);
+    \draw [->] (enc) -- node{$enc_{p_j}^*$} (erf);
+    \draw [->] (urf) -- node{$usk_{p_i}$ or $\bot$} (uski_new);
     \draw [->] (pol) -- node{$p^*$} (rot);
     \draw [->] (msk) -- node{$msk$} (rot);
   \end{tikzpicture}
@@ -335,22 +409,131 @@ leverage  master public  keys  prior to  the  removal of  some  rights from  the
 universe to trick users create encapsulations for compromised secrets.
 #+end_remark
 
+** SC-KEM-AC reference implementation
+
+In this section, we give a reference implementation for the Covercrypt SC-KEM-AC
+algorithm.   This implementation  is optimized  for  simplicity and  may not  be
+optimized for speed. It presupposes the  existence of a key-homomorphic NIKE and
+KEM schemes as described in the Section [[*Preliminaries]].
+
+*** Key format
+
+*** SC-KEM-AC primitives
+
+This implementation presuppose the existence of hash functions $\mathtt{G, H, J,
+U, T}$ which signatures are as follows:
+- $G : \{0,1\}^* \rightarrow \cK_S^\mathrm{nike}$
+- $T : (\cE^\mathrm{kem})^* \rightarrow \cT_T$
+- $U : (\{0,1\}^*)^* \rightarrow \cT_U$
+- $H : \cK^\mathrm{nike} \times \cK^{kem} \times \cK_P^\mathrm{nike} \times
+  \cK_P^\mathrm{nike} \times \cT_T \rightarrow \{0,1\}^*$
+- $J : \{0,1\}^* \times \cK_P^\mathrm{nike} \times \cK_P^\mathrm{nike} \times
+  \cT_U \rightarrow \{0,1\}^* \times \{0,1\}^*$
+Or, alternatively:
+  #+begin_src ocaml
+    module type G = sig
+      val hash : bytes -> Nike.sk
+    end
+
+    module type T = sig
+      type t
+
+      val hash : Kem.enc list -> t
+    end
+
+    module type U = sig
+      type t
+
+      val hash : bytes list -> t:T.t -> t
+    end
+
+    module type H = sig
+      val hash : Nike.key -> Kem.key -> c1:Nike.pk -> c2:Nike.pk -> T.t -> bytes
+    end
+
+    module type J = sig
+      type key
+      type tag
+
+      val hash : secret:bytes -> c1:Nike.pk -> c2:Nike.pk -> U.t -> key * tag
+    end
+  #+end_src
+Notice that the output  of ~T~ and ~U~ are abstract and  thus different from any
+other type, and that the ~key~ output of  ~J~ is the type of the key returned by
+the  ~encaps~  and  ~decaps~  primitives.   With this  in  mind,  the  reference
+implementation of the primitives of Covercrypt SC-KEM-AC is as follows:
+
+- setup: :: $\cU \rightarrow \cK_S \times \cK_P$
+
+  This  randomized algorithm  takes as  input a  universe $\cU$,  and returns  a
+  master secret  key $\msk{R_\cU}$  and a master  public key  $\mpk{R_\cU}$.
+
+  #+include: "covercrypt.ml" src ocaml :lines "332-359"
+
+  Note the  companion procedure ~get_mpk msk~  that can be used  to the generate
+  master public keys from the master secret key after the setup.
+
+- keygen: :: $\cK_S \times \cP_U \rightarrow \cK_U$
+
+  #+include: "covercrypt.ml" src ocaml :lines "360-376"
+
+- encaps: ::  $\cK_P \times \cP_E \rightarrow \cK \times \cE$
+
+  #+include: "covercrypt.ml" src ocaml :lines "377-409"
+
+- decaps: :: $\cK_U \times \cE \rightarrow \cK$ or $\bot$
+
+  #+include: "covercrypt.ml" src ocaml :lines "429-444"
+
+  Where ~try_decaps~ attempts opening a right encapsulation as follows:
+
+  #+include: "covercrypt.ml" src ocaml :lines "415-428"
+
+
+*** Key-rotation primitives
+
+- usk-policy: :: $\cK_U \rightarrow \mathbb P(\cU)$
+
+  Extracting the policy out of a user secret key simply resorts to retrieving
+  the rights for which it holds secrets:
+
+  #+include: "covercrypt.ml" src ocaml :lines "490-492"
+
+- rotate: :: $\cK_S \times \mathbb P(\cU) \rightarrow \cK_S \times \cK_P$
+
+  #+include: "covercrypt.ml" src ocaml :lines "493-501"
+
+- usk-refresh: :: $\cK_S \times \cK_U \rightarrow \cK_U$ or $\bot$
+
+  #+include: "covercrypt.ml" src ocaml :lines "502-529"
+
+- enc-refresh: :: $\cK_S \times \cK_P \times \cE \rightarrow (\cK \times \cE)$
+  or $\bot$
+
+  #+include: "covercrypt.ml" src ocaml :lines "475-484"
+
+  Where ~enc_policy~ allows retrieving the policy of an encapsulation along with
+  the encapsulated key:
+
+  #+include: "covercrypt.ml" src ocaml :lines "453-474"
+
+*** Live-universe-modification primitive
+
 * Boolean KEM-AC
 
 In order to  make expressing policies more ergonomic, we  introduce KEM-AC which
 policy space  is a  set of  logical propositions  that is  closed under  the two
 logical  operators /and/  ($\land$) and  /or/ ($\lor$).   Then, we  show how  to
 implement  this  boolean KEM-AC  on  top  of  the  set-based KEM-AC  defined  in
-Section [[*Subset-cover  KEM-AC]]  via  compiling   boolean  policies  to  set-based
-policies.
+Section [[*Subset-Cover  KEM-AC  (SC-KEM-AC)]]  via compiling  boolean  policies  to
+set-based policies.
 
 ** Syntax and semantics
 
-The policy  language has a  very simple syntax  which specification is  given in
-Figure [[policy-language-syntax]], and which semantics is defined thereafter.
+The policy language has a very simple syntax which specification is given below,
+and which semantics is defined thereafter.
 #+name: policy-language-syntax
 #+caption: Syntax of the policy language.
-#+begin_figure
 #+begin_example
   <policy>    ::= <attribute> | <policy> <operator> <policy>
   <operator>  ::= "&&" | "||"
@@ -359,13 +542,11 @@ Figure [[policy-language-syntax]], and which semantics is defined thereafter.
   <name>      ::= <word> \ { "&&" | "||" | <word>::<word> }
   <word>      ::= char+
 #+end_example
-#+end_figure
 
 #+attr_latex: :options [Universe]
 #+begin_definition
 In the boolean KEM-AC setting, the universe  $\Omega$ is a set of atomic logical
-propositions  called /attributes/,  and the  universe of  expressible attributes
-$\cU$ is a subset of the universe $\Omega$.
+propositions called /attributes/.
 #+end_definition
 
 #+attr_latex: :options [Policies]
@@ -373,90 +554,76 @@ $\cU$ is a subset of the universe $\Omega$.
 The  space of  policies  $\cP_\Omega$  associated to  a  universe of  attributes
 $\Omega$ is the closure of $\Omega$ with respect to both logical operators /and/
 ($\land$)  and /or/  ($\lor$), noted  $\cP_\Omega =  \left< \Omega,  \land, \lor
-\right>$. This  set has  two special policies,  noted $\True$  (resp. $\False$),
-that are always true (resp. false).
-
-# A policy is therefore  a boolean equation of attributes, and can  be seen as a
-# function from the  power set of $\Omega$  to the set of  boolean values $\cB$:
-# $\cP_\Omega \simeq \powerset{\Omega}^\cB$.  A policy $p' \in  \cP_\cU$ is said
-# to be  the restriction to  a subspace  of expressible attributes  $\cU \subset
-# \Omega$ of some policy $p \in \Omega$,  noted $p' = p_{|\cU}$, if $p$ and $p'$
-# coincide  in  $\powerset{\cU}$:  \[\forall   (p,  p')  \in  \cP_\Omega  \times
-# \cP_\cU :  p' = p_{|\cU} \iff  \forall X \subset  \cU, p'(X) = p(X)\]  In what
-# follows,  we note  $\True$ (resp.  $\False$) the  policy that  is always  true
-# (resp. false).
+\right>$. In other words,  a policy is a function of sets  of true attributes in
+$\Omega$   to   the   set   of  boolean   values   $\cB$:   $\cP_\Omega   \simeq
+\powerset{\Omega}^\cB$. Given  a set of  true attributes $X \subset  \Omega$, we
+therefore use $p(X)$  to denote the value  taken by a policy  $p \in \cP_\Omega$
+when exactly those attributes are set to true.
 #+end_definition
 
-#+attr_latex: :options [Implication in $\cU$]
-#+begin_definition
-Given two  logical propositions  $(p, p')  \in \cP_\Omega^2$  and a  universe of
-expressible attributes $\cU \subset \Omega$, $p$ is said to imply $p'$ in $\cU$,
-noted $p  \iwrt{\cU} p'$,  if and only  if $p$ implies  $p'$ when  restricted to
-$\cU$: \[  \forall (p_u, p_e) \in  \cU^2, (p \iwrt{\cU} p)  \iff \left( p_{|\cU}
-\implies p_{|\cU}' \right) \]
+#+begin_remark
+$\cP_\Omega$  has two  special policies,  noted $\True$  and $\False$,  that are
+respectively always true and false.
+#+end_remark
 
-TODO: I feel like I want to come  back to the view that the implication in $\cU$
-is the  implication /knowing that/  all attributes outside  of $\cU$ are  set to
-$\false$.
-#+end_definition
+# #+attr_latex: :options [Implication in $\cU$]
+# #+begin_definition
+# Given two  logical propositions  $(p, p')  \in \cP_\Omega^2$  and a  universe of
+# expressible attributes $\cU \subset \Omega$, $p$ is said to imply $p'$ in $\cU$,
+# noted  $p \iwrt{\cU}  p'$, if  and only  if  $p$ implies  $p'$ when  the set  of
+# attributes that are possibly true is restricted to $\cU$: \[ \forall (p, p') \in
+# \cP_\Omega^2, (p \iwrt{\cU} p') \iff \forall  X \subset \cU, p(X) \implies p'(X)
+# \]
+# #+end_definition
 
-In  order  to  structure  the set  of  expressible  policies,  logically-related
-attributes can be grouped by dimension, which come in two kinds:
+In order to structure the set of expressible policies, the values attributes can
+take  can be  constrained  by the  definition of  an  access structure  grouping
+logically-related  attributes  together  by either  anarchical  or  hierarchical
+dimensions.
 
 #+attr_latex: :options [Dimension]
 #+begin_definition
-A dimension  $D$ of  a universe  of attributes  $\Omega$ is  a non-empty  set of
-attributes from $\Omega$  such that at least  one of its attributes  is true. In
-other  words, the  set  of dimensions  $\cD$  is: \[\cD  =  \left\{ \{a_i\}  \in
-\powerset{\Omega}^* : \bigvee_i a_i = \True \right\}\]
-
-TODO: we  need to  add the  fact that attributes  from different  dimensions are
-/not/ exclusive.
+A  dimension $D$  of a  universe of  attributes $\Omega$  is a  constraint on  a
+non-empty set of attributes from $\Omega$ requiring that at least one of them be
+true:
+#+begin_export latex
+\begin{equation}
+  \tag{dimension}
+  \bigvee_{a \in D} a = \True
+\end{equation}
+#+end_export
+The set  of dimensions of $\Omega$, noted $\cD_\Omega$,  is therefore the
+set of its non-empty parts:  $\cD_\Omega = \powerset{\Omega}^*$.
 #+end_definition
 
 #+attr_latex: :options [Hierarchy]
 #+begin_definition
-A hierarchical  dimension of  a universe  $\cU$, noted $D  \in \cH_{\cU}$,  is a
-dimension of $\cU$ which attributes are strictly increasing in $\cU$:
+A dimension $D \in \cD_\Omega$ defined by  an access structure $S$ is said to be
+a hierarchy if it is associated  a bijective function $\iota \in D^{[1,|D|]}$ in
+$S$.  In that  case, it additionally requires that the  logical implication be a
+strict total order over $D$:
 #+begin_export latex
-\[
-  \cH_{\cU} = \left\{ D \in \cD_\cU \mid \exists a \in D :
-    \begin{array}{l}
-      \forall a' \in D,\, a \iwrt{\cU} a' \\
-      \forall a' \in D,\, a \ne a' \implies \neg \left(a' \iwrt{\cU} a \right) \\
-      \left( D = \{a\} \right) \lor \left(D \setminus \{a\} \in \cH_{\cU} \right)
-    \end{array}
-  \right\}
-  \begin{array}{l}
-    \textit{ordered} \\
-    \textit{strictly} \\
-    \textit{totally}
-  \end{array}
-\]
+\begin{equation}
+  \tag{hierarchy}
+  \forall (a, a') \in D^2, a  \implies a' \iff \iota(a) > \iota(a')
+\end{equation}
 #+end_export
-In other  words, the  logical implication  in $\cU$ defines  a strict  and total
-order  relation  over  hierarchical  dimensions, and  in  particular,  for  each
-hierarchical  dimension  $D \in  \cH_\cU$,  there  exists a  smallest  attribute
-$a_\bot^D \in D$ that is always true in $\cU$: $a_\bot^D = \True$.
 #+end_definition
 
 #+attr_latex: :options [Anarchy]
 #+begin_definition
-An  anarchical dimension  of a  universe $\cU$,  noted $D  \in \cA_{\cU}$,  is a
-dimensions of $\cU$ containing mutually exclusive propositions:
+Otherwise,  a  dimension  $D \in  \cD_\Omega$  is  said  to  be an  anarchy  and
+additionally requires its attributes to be mutually exclusive:
 #+begin_export latex
-\[
-  \cA_{\cU} = \left\{ D \in \cD_\cU \mid
-      \forall (a, a') \in D^2, a = a' \lor \left(a \iwrt{\cU} \neg a'  \right)
-  \right\}
-\]
+\begin{equation}
+  \tag{anarchy}
+  \forall (a, a') \in D^2,
+  \left( a = a' \right) \lor \left( a \implies \neg a' \right)
+\end{equation}
 #+end_export
 #+end_definition
 
-Not  all combinations  of  dimensions  can be  used  within  a given  Covercrypt
-instance.  The access structure associated to  the master secret and public keys
-defines which dimensions  are expressible, and must respect  the constraint that
-expressible dimensions are mutually disjoint.
+Not all combinations of dimensions can be defined by a given access structure.
 
 #+attr_latex: :options [Access Structure]
 #+begin_definition
@@ -465,51 +632,61 @@ dimensions: \[ \cS = \{S \in \mathbb P(\cD) \mid \forall (D_i, D_j) \in S^2, D_i
 \cap D_j = \emptyset \}\]
 #+end_definition
 
+#+attr_latex: :options [Set of Expressible Postulates]
+#+begin_definition
+The set of expressible postulates $\cU_S \subset \powerset{\Omega}$ described by
+an access  structure $S$ is  the set  of parts of  $\Omega$ that are  valid with
+respect to each dimension in $S$.
+# :  \[\cU = \left\{X \in  \powerset{\Omega} \mid
+# (D,  \iota) \in  S, a  \in X  \cap  D \implies  \forall a'  \in D  : \iota(a)  >
+# \iota(a'), a' \in X \right\}\]
+#+end_definition
+
 #+attr_latex: :options [Valid Policy]
 #+begin_definition
-A policy $p$ is said to be valid with respect to a set of expressible attributes
-$\cU$, noted $p \in  \cV_\cU$ if and only if $p$ restricted to  $\cU$ is not the
-constant policy $\False$: \[ p \in \cV_\cU \iff p =_\cU \False \]
+A policy $p$ is said to be valid  with respect to an access structure $S$, noted
+$p \in \cV_S$ if and only if  there exists a postulate in $\cU_S$ that validates
+$p$: \[ p \in \cV_S \iff \exists X \in \cU_S : p(X) = \true \]
 #+end_definition
 
 ** KEM-AC
 
-In the boolean KEM-AC setting, a  user secret key $\usk{p_u}{\cU}$ associated to
-a  policy  $p_u  \in  \cP_\cU$   can  open  an  encapsulation  $\enc{p_e}{\cU'}$
-associated to a  policy $p_e \in \cP_{\cU'}$  if and only if  the conjunction of
-$p_u$ and $p_e$ is valid in both $\cU$ and $\cU'$: \[ (p_u, p_e) \in R \iff (p_u
-\land p_e) \in (\cV_\cU \cap \cV_{\cU'})\]
+In the boolean KEM-AC setting, a  user secret key $\usk{p_u}{S}$ associated to a
+policy $p_u \in \cP_\cU$ can open an encapsulation $\enc{p_e}{S'}$ associated to
+a policy $p_e \in \cP_\Omega$ if and  only if the conjunction of $p_u$ and $p_e$
+is valid with respect to both $S$ and  $S'$: \[ (p_u, p_e) \in R \iff (p_u \land
+p_e) \in (\cV_S \cap \cV_{S'})\]
 
 #+begin_remark
-It  is important  to  distinguish the  universe in  which  an encapsulation  was
-created from the one  in which a user secret key was  created since the universe
-of expressible attributes can be both extended and expanded in such a way that a
-access policy that  is valid in a first  universe $\cU$ may not be  valid in the
-new universe $\cU'$.
+It is  important to distinguish the  access structure in which  an encapsulation
+was  created from  the one  in which  a user  secret key  was created  since the
+universe of expressible postulates can be modified  in such a way that an access
+policy that is valid w.r.t.  a first access structure $S$ becomes invalid w.r.t.
+the new access structure $S'$.
 #+end_remark
 
 *** Examples
 
-**** Without expressible universe modification
+**** Without access structure modification
 
-Let  $\cU  =  D_1  \cup  D_2  \subset \Omega$,  where  $D_1  =  \{  \attr{1}{1},
-\attr{1}{2}, \attr{1}{3} \} \subset \cA_\Omega$  is an anarchical dimension, and
-$D_2  = \{  \attr{2}{1}, \attr{2}{2}  \} \subset  \cH_\Omega$ is  a hierarchical
-dimension with $\attr{2}{2} \iwrt{\cU} \attr{2}{1}$.
+Let $S = \{A, (H, \iota)\}$, where $A = \{ \attr{a}{1}, \attr{a}{2}, \attr{a}{3}
+\}$ is an  anarchical dimension, and $H  = \{ \attr{1}{h}, \attr{2}{h}  \}$ is a
+hierarchical dimension with $\iota(\attr{2}{h}) > \iota(\attr{1}{h})$.
 
-- Let  $p_u  = \attr{1}{1}  \land  \attr{2}{2}$  and  $p_e =  \attr{1}{1}  \land
-  \attr{2}{1}$. In this  case, a user secret key $\usk{p_u}{\cU}$  /can/ open an
-  encapsulation  $\enc{p_e}{\cU}$  since  $p_u  \land p_e  =  \attr{1}{1}  \land
-  \attr{2}{2} \ne \False$.
+- Let  $p_u  = \attr{a}{1}  \land  \attr{2}{h}$  and  $p_e =  \attr{a}{1}  \land
+  \attr{2}{h}$. In this  case, a user secret key $\usk{p_u}{\cU}$  /can/ open an
+  encapsulation  $\enc{p_e}{\cU}$  since  $p_u  \land p_e  =  \attr{a}{1}  \land
+  \attr{2}{h} \ne \False$.
 
-- Let $p_u =  \attr{1}{1} = \attr{1}{1} \land \attr{2}{1}$  using the definition
-  of a hierarchical dimension. Let $p_e = \attr{2}{2} = \attr{2}{2} \land \left(
-  \lor_{i=1}^{3} \attr{1}{i}  \right) = \lor_{i=1}^{3} \left(  \attr{2}{2} \land
-  \attr{1}{i} \right)$ using the definition of an anarchical dimension.
+- Let $p_u =  \attr{a}{1} = \attr{a}{1} \land \attr{1}{h}$  using the definition
+  of a hierarchical dimension. Let $p_e = \attr{2}{h} = \attr{2}{h} \land \left(
+  \lor_{i=1}^{3}   \attr{a}{i}  \right)   =   (\attr{2}{h}  \land   \attr{a}{1})
+  \lor_{i=2}^{3}  \left(  \attr{2}{h}  \land   \attr{a}{i}  \right)$  using  the
+  definition of an anarchical dimension.
 
   In  this   case,  a  user   secret  key  $\usk{p_u}{\cU}$  /cannot/   open  an
-  encapsulation   $\enc{p_e}{\cU}$    since   $\neg    (\attr{2}{1}   \iwrt{\cU}
-  \attr{2}{2})$ by definition of a hierarchical dimension.
+  encapsulation   $\enc{p_e}{\cU}$    since   $\neg    (\attr{1}{h}   \iwrt{\cU}
+  \attr{2}{h})$ by definition of a hierarchical dimension.
 
 
 **** With expressible universe modification
@@ -532,7 +709,6 @@ Let $\cU' = \cU  \cup D_3$, where $D_3 = \{  \attr{3}{1}, \attr{3}{2} \} \subset
 
 
 ***** Destructive transformation
-
 
 ** TODO Live universe modifications
 
@@ -585,8 +761,32 @@ instance can be done through one of those functions:
 ** TODO Hybridization à la carte
 
 * TODO Optional key tracing
-* TODO Hierarchical Covercrypt and interoperability
-* TODO Implementation considerations
+* TODO Cooperating Covercrypt authorities
+
+Covercrypt  suppose  the  existence  of   an  central  authority  in  charge  of
+maintaining the master secret key, and  generating the master public key and all
+user secret keys. However, in some use  cases, it is desirable to distribute the
+power over  multiple authorities: users managed  by a given authority  should be
+able to create encapsulations for attributes defined by a different authority.
+
+Doing so requires  (1) generating fragments of a master  public key by selecting
+the subset of the rights from the original key that is targeted for sharing, and
+(2) combining master public key fragments together to create a new master public
+key:
+- ~select:~ :: ~mpk -> policy -> mpk~
+- ~combine:~ :: ~mpk -> mpk -> mpk~
+Doing so requires a broader acception of  what a master public key is since such
+key may not contain all rights hold by its associated master secret key, and may
+not even be associated to a single master secret key anymore.
+
+#+latex: \newpage
+#+latex: \appendix
+
+* Reference implementation
+
+#+include: "covercrypt.ml" src ocaml
+
+* TODO COMMENT Implementation considerations
 ** Key and encapsulation formats
 
 Covercrypt is parameterized by:
@@ -834,4 +1034,5 @@ A KEM-AC  can be defined by  the following signature:
     val decaps : usk -> enc -> secret option
   end
 #+end_src
-* TODO Wish-list
+
+* TODO COMMENT Wish-list
