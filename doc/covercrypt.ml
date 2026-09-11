@@ -1,3 +1,15 @@
+module Nat = struct
+  type z = Z
+  type 'a s = S of 'a
+  type 'a t = Zero : z -> z t | More : 'a t -> 'a s t
+  type any = Any : 'a t -> any
+
+  let succ (Any n) = Any (More n)
+  let rec size = function Any (Zero Z) -> 0 | Any (More n) -> 1 + size (Any n)
+end
+
+type nat = Nat.any
+
 module NonEmptyList : sig
   type 'v t
 
@@ -241,7 +253,7 @@ module SC_KEM_AC
   type tag = J.tag
 
   type msk = {
-    v : int32;
+    v : nat;
     s : Nike.sk;
     s1 : Nike.sk;
     s2 : Nike.sk;
@@ -250,7 +262,7 @@ module SC_KEM_AC
   }
 
   type mpk = {
-    v : int32;
+    v : nat;
     h : Nike.pk;
     h1 : Nike.pk;
     h2 : Nike.pk;
@@ -329,7 +341,20 @@ module SC_KEM_AC
     Sig.verify (Sig.get_vk msk.sk) usk.seal
       ~msg:(Bytes.concat Bytes.empty bytes)
 
-  let rec setup rng universe =
+  let get_mpk (msk : msk) =
+    let v = msk.v in
+    let h = Nike.get_pk msk.s in
+    let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
+    let rpk =
+      RightMM.fold
+        (fun r secrets ->
+          let sk, dk = NonEmptyList.head secrets in
+          RightMap.add r (Nike.get_pk sk, Kem.get_ek dk))
+        msk.rsk RightMap.empty
+    in
+    { v; h; h1; h2; rpk; seal = sign_mpk ~sk:msk.sk ~v ~h ~h1 ~h2 ~rpk }
+
+  let setup rng universe =
     let msk =
       let v = Int32.zero in
       let s = Nike.gen_sk rng in
@@ -343,19 +368,6 @@ module SC_KEM_AC
       { v; s; s1; s2; sk; rsk }
     in
     (msk, get_mpk msk)
-
-  and get_mpk msk =
-    let v = msk.v in
-    let h = Nike.get_pk msk.s in
-    let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
-    let rpk =
-      RightMM.fold
-        (fun r secrets ->
-          let sk, dk = NonEmptyList.head secrets in
-          RightMap.add r (Nike.get_pk sk, Kem.get_ek dk))
-        msk.rsk RightMap.empty
-    in
-    { v; h; h1; h2; rpk; seal = sign_mpk ~sk:msk.sk ~v ~h ~h1 ~h2 ~rpk }
 
   let keygen rng msk policy =
     let u1 = Nike.gen_sk rng in
