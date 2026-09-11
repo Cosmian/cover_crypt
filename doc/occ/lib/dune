@@ -1,2 +1,3 @@
 (library
- (name occ))
+ (name occ)
+ (libraries zarith))

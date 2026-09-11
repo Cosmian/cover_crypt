@@ -1,215 +1,7 @@
-module Nat = struct
-  type z = Z
-  type 'a s = S of 'a
-  type 'a t = Zero : z -> z t | More : 'a t -> 'a s t
-  type any = Any : 'a t -> any
+open Core
+open Utils
 
-  let succ (Any n) = Any (More n)
-  let rec size = function Any (Zero Z) -> 0 | Any (More n) -> 1 + size (Any n)
-end
-
-type nat = Nat.any
-
-module NonEmptyList : sig
-  type 'v t
-
-  val init : 'v -> 'v t
-  val cons : 'v -> 'v t -> 'v t
-  val head : 'v t -> 'v
-  val to_list : 'v t -> 'v list
-  val take_while : ('v -> bool) -> 'v t -> 'v list
-  val append_list : 'v list -> 'v t -> 'v t
-  val fold_right : ('v -> 'acc -> 'acc) -> 'v t -> 'acc -> 'acc
-end = struct
-  type 'v t = 'v list
-
-  let init a = a :: []
-  let cons a b = a :: b
-  let head = List.hd
-  let to_list = Fun.id
-  let take_while = List.take_while
-  let append_list = List.append
-  let fold_right = List.fold_right
-end
-
-(** Flattens the given lists into a single lists which values alternatively come
-    from each of those lists. *)
-let interleave (values : 'v list list) : 'v list =
-  let rec loop acc = function
-    | [], [] -> List.rev acc
-    | [], rhs -> loop acc (List.rev rhs, [])
-    | [] :: lhs, rhs -> loop acc (lhs, rhs)
-    | (secrets :: more_secrets) :: lhs, rhs ->
-        loop (secrets :: acc) (lhs, more_secrets :: rhs)
-  in
-  loop [] (values, [])
-
-let xor b1 b2 =
-  let length =
-    if Bytes.length b1 = Bytes.length b2 then Bytes.length b1
-    else invalid_arg "byte-strings of different lengts"
-  in
-  Bytes.init length (fun i ->
-      let c1 = Bytes.get b1 i |> Char.code in
-      let c2 = Bytes.get b2 i |> Char.code in
-      Int.logxor c1 c2 |> Char.chr)
-
-module MakeSet (Key : Stdlib.Set.OrderedType) () : sig
-  include Stdlib.Set.S with type elt = Key.t
-
-  val contains : t -> Key.t -> bool
-end = struct
-  include Stdlib.Set.Make (Key)
-
-  let contains s r = mem r s
-end
-
-module MakeMM (Key : Stdlib.Set.OrderedType) () : sig
-  type 'v t
-
-  val empty : 'v t
-  val get : 'v t -> Key.t -> 'v NonEmptyList.t option
-  val add : Key.t -> 'v -> 'v t -> 'v t
-  val set : Key.t -> 'v NonEmptyList.t -> 'v t -> 'v t
-  val map : (Key.t -> 'v NonEmptyList.t -> 'v NonEmptyList.t) -> 'v t -> 'v t
-
-  val fold :
-    (Key.t -> 'v NonEmptyList.t -> 'acc -> 'acc) -> 'v t -> 'acc -> 'acc
-
-  val to_seq : 'v t -> (Key.t * 'v NonEmptyList.t) Seq.t
-  val to_val_seq : 'v t -> 'v NonEmptyList.t Seq.t
-end = struct
-  module Map = Stdlib.Map.Make (Key)
-
-  type 'v t = MM of 'v NonEmptyList.t Map.t
-
-  let empty = MM Map.empty
-  let get (MM m) k = Map.find_opt k m
-
-  let add k v (MM m) =
-    match Map.find_opt k m with
-    | None -> MM (Map.add k (NonEmptyList.init v) m)
-    | Some vs -> MM (Map.add k (NonEmptyList.cons v vs) m)
-
-  let set k vs (MM m) = MM (Map.add k vs m)
-  let fold f (MM m) a = Map.fold f m a
-
-  let map f m =
-    let (MM m) = m in
-    MM (Map.fold (fun r vs -> Map.add r (f r vs)) m Map.empty)
-
-  let to_seq (MM m) = Map.to_seq m
-  let to_val_seq m = to_seq m |> Seq.map Pair.snd
-end
-
-module MakeMap (Key : Stdlib.Set.OrderedType) () : sig
-  type 'v t
-
-  val empty : 'v t
-  val get : 'v t -> Key.t -> 'v option
-  val add : Key.t -> 'v -> 'v t -> 'v t
-  val fold : (Key.t -> 'v -> 'acc -> 'acc) -> 'v t -> 'acc -> 'acc
-  val to_val_seq : 'v t -> 'v Seq.t
-end = struct
-  module Map = Stdlib.Map.Make (Key)
-
-  type 'v t = M of 'v Map.t
-
-  let empty = M Map.empty
-  let get (M m) k = Map.find_opt k m
-  let add k v (M m) = M (Map.add k v m)
-  let fold f (M m) a = Map.fold f m a
-  let to_val_seq (M m) = Map.to_seq m |> Seq.map Pair.snd
-end
-
-module type RNG = sig
-  val gen : int -> bytes
-  val next : unit -> int
-end
-
-let shuffle (module Rng : RNG) = List.sort (fun _ _ -> (Rng.next () mod 2) - 1)
-let gen_bytes (module Rng : RNG) = Rng.gen
-
-module type Hash = sig
-  val hash : bytes -> bytes
-end
-
-module type KEM = sig
-  type dk
-  type ek
-  type enc
-  type key
-
-  val gen_dk : (module RNG) -> dk
-  val get_ek : dk -> ek
-  val encaps : (module RNG) -> ek -> key * enc
-  val decaps : dk -> enc -> key option
-  val dk_to_bytes : dk -> bytes
-  val ek_to_bytes : ek -> bytes
-  val ss_to_bytes : key -> bytes
-  val enc_to_bytes : enc -> bytes
-end
-
-module type Group = sig
-  type t
-
-  val zero : t
-  val ( + ) : t -> t -> t
-  val ( - ) : t -> t -> t
-end
-
-module type Field = sig
-  include Group
-
-  val one : t
-  val ( * ) : t -> t -> t
-  val ( / ) : t -> t -> t
-end
-
-module type NIKE = sig
-  module Point : Group
-  module Scalar : Field
-
-  type pk = Point.t
-  type sk = Scalar.t
-  type key
-
-  val ( * ) : sk -> pk -> pk
-  val gen_sk : (module RNG) -> sk
-  val get_pk : sk -> pk
-  val session_key : pk -> sk -> key
-  val sk_to_bytes : sk -> bytes
-  val pk_to_bytes : pk -> bytes
-  val sk_of_bytes : bytes -> sk option
-  val pk_of_bytes : bytes -> pk option
-end
-
-module type KEM_AC = sig
-  type msk
-  type mpk
-  type usk
-  type enc
-  type key
-  type universe
-  type policy
-
-  val setup : (module RNG) -> universe -> msk * mpk
-  val keygen : (module RNG) -> msk -> policy -> usk
-  val encaps : (module RNG) -> mpk -> policy -> key * enc
-end
-
-module type Signature = sig
-  type sk
-  type vk
-  type seal
-
-  val gen_sk : (module RNG) -> sk
-  val get_vk : sk -> vk
-  val sign : sk -> msg:bytes -> seal
-  val verify : vk -> msg:bytes -> seal -> bool
-end
-
-module SC_KEM_AC
+module S
     (Right : sig
       include Stdlib.Map.OrderedType
 
@@ -271,7 +63,7 @@ module SC_KEM_AC
   }
 
   type usk = {
-    v : int32;
+    v : nat;
     u1 : Nike.sk;
     u2 : Nike.sk;
     h1 : Nike.pk;
@@ -282,7 +74,7 @@ module SC_KEM_AC
   }
 
   type enc = {
-    v : int32;
+    v : nat;
     tag : tag;
     c1 : Nike.pk;
     c2 : Nike.pk;
@@ -316,27 +108,26 @@ module SC_KEM_AC
   let sign_mpk ~sk ~v ~h ~h1 ~h2 ~rpk =
     let h = Nike.pk_to_bytes h in
     let h1, h2 = (Nike.pk_to_bytes h1, Nike.pk_to_bytes h2) in
-    let bytes = int32_to_le_bytes v :: h :: h1 :: h2 :: rpk_to_bytes rpk in
+    let bytes = Nat.to_bytes v :: h :: h1 :: h2 :: rpk_to_bytes rpk in
     Sig.sign sk ~msg:(Bytes.concat Bytes.empty bytes)
 
   let is_valid_mpk vk mpk =
     let h = Nike.pk_to_bytes mpk.h in
     let h1, h2 = (Nike.pk_to_bytes mpk.h1, Nike.pk_to_bytes mpk.h2) in
-    let v = int32_to_le_bytes mpk.v in
+    let v = Nat.to_bytes mpk.v in
     let bytes = v :: h :: h1 :: h2 :: rpk_to_bytes mpk.rpk in
     Sig.verify vk mpk.seal ~msg:(Bytes.concat Bytes.empty bytes)
 
   let sign_usk ~sk ~v ~u1 ~u2 ~h1 ~h2 ~rsk =
-    let v = int32_to_le_bytes v in
     let u1, u2 = (Nike.sk_to_bytes u1, Nike.sk_to_bytes u2) in
     let h1, h2 = (Nike.pk_to_bytes h1, Nike.pk_to_bytes h2) in
-    let bytes = v :: u1 :: u2 :: h1 :: h2 :: rsk_to_bytes rsk in
+    let bytes = Nat.to_bytes v :: u1 :: u2 :: h1 :: h2 :: rsk_to_bytes rsk in
     Sig.sign sk ~msg:(Bytes.concat Bytes.empty bytes)
 
-  let is_valid_usk msk usk =
+  let is_valid_usk (msk : msk) (usk : usk) =
+    let v = Nat.to_bytes usk.v in
     let u1, u2 = (Nike.sk_to_bytes usk.u1, Nike.sk_to_bytes usk.u2) in
     let h1, h2 = (Nike.pk_to_bytes usk.h1, Nike.pk_to_bytes usk.h2) in
-    let v = int32_to_le_bytes usk.v in
     let bytes = v :: u1 :: u2 :: h1 :: h2 :: rsk_to_bytes usk.rsk in
     Sig.verify (Sig.get_vk msk.sk) usk.seal
       ~msg:(Bytes.concat Bytes.empty bytes)
@@ -356,7 +147,7 @@ module SC_KEM_AC
 
   let setup rng universe =
     let msk =
-      let v = Int32.zero in
+      let v = Nat.Any Nat.Zero in
       let s = Nike.gen_sk rng in
       let s1, s2 = (Nike.gen_sk rng, Nike.gen_sk rng) in
       let sk = Sig.gen_sk rng in
@@ -451,8 +242,7 @@ module SC_KEM_AC
             | None -> try_decaps enc p usk.h1 usk.h2 t u sk dk e f
             | Some key -> Some key)
           enc.xenc key)
-      None
-    @@ usk_secrets usk
+      None (usk_secrets usk)
 
   let msk_secrets (msk : msk) =
     (* TODO: once a key in a history has opened the encapsulation, other keys
@@ -503,7 +293,7 @@ module SC_KEM_AC
     RightMM.fold (fun r _ -> Policy.add r) usk.rsk Policy.empty
 
   let rotate rng (msk : msk) policy =
-    let v = Int32.succ msk.v in
+    let v = Nat.succ msk.v in
     let rsk =
       Policy.fold
         (fun r -> RightMM.add r (Nike.gen_sk rng, Kem.gen_dk rng))

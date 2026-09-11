@@ -458,37 +458,43 @@ Or, alternatively:
       val hash : secret:bytes -> c1:Nike.pk -> c2:Nike.pk -> U.t -> key * tag
     end
   #+end_src
-Notice that the output  of ~T~ and ~U~ are abstract and  thus different from any
+Note that  the output of ~T~  and ~U~ are  abstract and thus different  from any
 other type, and that the ~key~ output of  ~J~ is the type of the key returned by
 the  ~encaps~  and  ~decaps~  primitives.   With this  in  mind,  the  reference
 implementation of the primitives of Covercrypt SC-KEM-AC is as follows:
 
 - setup: :: $\cU \rightarrow \cK_S \times \cK_P$
 
-  This  randomized algorithm  takes as  input a  universe $\cU$,  and returns  a
-  master secret  key $\msk{R_\cU}$  and a master  public key  $\mpk{R_\cU}$.
+  Given the following master secret and public key types,
 
-  #+include: "covercrypt.ml" src ocaml :lines "332-359"
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "47-64"
 
-  Note the  companion procedure ~get_mpk msk~  that can be used  to the generate
-  master public keys from the master secret key after the setup.
+  the setup is a randomized algorithm that  takes as input a universe $\cU$, and
+  returns  a   master  secret  key   $\msk{R_\cU}$  and  a  master   public  key
+  $\mpk{R_\cU}$.
+
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "148-162"
+
+  Note the companion procedure ~get_mpk msk~ given below can be used to the
+  generate master public keys from the master secret key after the setup.
+
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "135-147"
 
 - keygen: :: $\cK_S \times \cP_U \rightarrow \cK_U$
 
-  #+include: "covercrypt.ml" src ocaml :lines "360-376"
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "163-179"
 
 - encaps: ::  $\cK_P \times \cP_E \rightarrow \cK \times \cE$
 
-  #+include: "covercrypt.ml" src ocaml :lines "377-409"
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "180-212"
 
 - decaps: :: $\cK_U \times \cE \rightarrow \cK$ or $\bot$
 
-  #+include: "covercrypt.ml" src ocaml :lines "429-444"
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "232-246"
 
   Where ~try_decaps~ attempts opening a right encapsulation as follows:
 
-  #+include: "covercrypt.ml" src ocaml :lines "415-428"
-
+  #+include: "occ/lib/sc_kem_ac.ml" src ocaml :lines "218-231"
 
 *** Key-rotation primitives
 
@@ -781,10 +787,6 @@ not even be associated to a single master secret key anymore.
 
 #+latex: \newpage
 #+latex: \appendix
-
-* Reference implementation
-
-#+include: "covercrypt.ml" src ocaml
 
 * TODO COMMENT Implementation considerations
 ** Key and encapsulation formats
