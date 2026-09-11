@@ -2,7 +2,7 @@
 
 use core::{fmt::Display, num::TryFromIntError};
 
-use cosmian_crypto_core::CryptoCoreError;
+use cosmian_crypto_core::{CryptoBaseError, CryptoCoreError};
 
 #[derive(Debug)]
 pub enum Error {
@@ -50,6 +50,12 @@ impl From<TryFromIntError> for Error {
 impl From<CryptoCoreError> for Error {
     fn from(e: CryptoCoreError) -> Self {
         Self::CryptoCoreError(e)
+    }
+}
+
+impl From<CryptoBaseError> for Error {
+    fn from(e: CryptoBaseError) -> Self {
+        Self::CryptoCoreError(e.into())
     }
 }
 

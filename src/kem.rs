@@ -32,10 +32,10 @@ impl Serializable for PreQuantumKemTag {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        match self {
-            Self::P256 => ser.write(&1_u64),
-            Self::R25519 => ser.write(&2_u64),
-        }
+        Ok(match self {
+            Self::P256 => ser.write(&1_u64)?,
+            Self::R25519 => ser.write(&2_u64)?,
+        })
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -63,10 +63,10 @@ impl Serializable for PostQuantumKemTag {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        match self {
-            Self::MlKem512 => ser.write(&1_u64),
-            Self::MlKem768 => ser.write(&2_u64),
-        }
+        Ok(match self {
+            Self::MlKem512 => ser.write(&1_u64)?,
+            Self::MlKem768 => ser.write(&2_u64)?,
+        })
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -114,17 +114,17 @@ impl Serializable for KemTag {
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        match de.read::<usize>()? {
-            1 => de.read::<PreQuantumKemTag>().map(Self::PreQuantum),
-            2 => de.read::<PostQuantumKemTag>().map(Self::PostQuantum),
+        Ok(match de.read::<usize>()? {
+            1 => de.read::<PreQuantumKemTag>().map(Self::PreQuantum)?,
+            2 => de.read::<PostQuantumKemTag>().map(Self::PostQuantum)?,
             3 => de
                 .read::<(PreQuantumKemTag, PostQuantumKemTag)>()
-                .map(|(tag1, tag2)| Self::Hybridized(tag1, tag2)),
-            4 => Ok(Self::Abe),
+                .map(|(tag1, tag2)| Self::Hybridized(tag1, tag2))?,
+            4 => Self::Abe,
             n => Err(CryptoCoreError::GenericDeserializationError(format!(
                 "{n} is not a valid KEM tag"
-            ))),
-        }
+            )))?,
+        })
     }
 }
 
@@ -150,10 +150,12 @@ impl ConfigurableKemDk {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
                 <P256Kem as KEM<{ P256Kem::KEY_LENGTH }>>::DecapsulationKey::deserialize(&bytes)
                     .map(|_| ())
+                    .map_err(CryptoCoreError::from)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
                 <R25519Kem as KEM<{ R25519Kem::KEY_LENGTH }>>::DecapsulationKey::deserialize(&bytes)
                     .map(|_| ())
+                    .map_err(CryptoCoreError::from)
             }
             KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
                 <MlKem512 as KEM<{ MlKem512::KEY_LENGTH }>>::DecapsulationKey::deserialize(&bytes)
@@ -168,24 +170,28 @@ impl ConfigurableKemDk {
                     { P256Kem::KEY_LENGTH },
                 >>::DecapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
                 <KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768> as KEM<
                     { P256Kem::KEY_LENGTH },
                 >>::DecapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
                 <KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512> as KEM<
                     { R25519Kem::KEY_LENGTH },
                 >>::DecapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
                 <KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768> as KEM<
                     { R25519Kem::KEY_LENGTH },
                 >>::DecapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Abe => {
                 // For Covercrypt, the bytes can either be a valid MSK or USK.
@@ -243,10 +249,12 @@ impl ConfigurableKemEk {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
                 <P256Kem as KEM<{ P256Kem::KEY_LENGTH }>>::EncapsulationKey::deserialize(&bytes)
                     .map(|_| ())
+                    .map_err(CryptoCoreError::from)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
                 <R25519Kem as KEM<{ R25519Kem::KEY_LENGTH }>>::EncapsulationKey::deserialize(&bytes)
                     .map(|_| ())
+                    .map_err(CryptoCoreError::from)
             }
             KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
                 <MlKem512 as KEM<{ MlKem512::KEY_LENGTH }>>::EncapsulationKey::deserialize(&bytes)
@@ -261,24 +269,28 @@ impl ConfigurableKemEk {
                     { P256Kem::KEY_LENGTH },
                 >>::EncapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
                 <KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768> as KEM<
                     { P256Kem::KEY_LENGTH },
                 >>::EncapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
                 <KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512> as KEM<
                     { R25519Kem::KEY_LENGTH },
                 >>::EncapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
                 <KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768> as KEM<
                     { R25519Kem::KEY_LENGTH },
                 >>::EncapsulationKey::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Abe => MasterPublicKey::deserialize(&bytes)
                 .map(|_| ())
@@ -330,10 +342,12 @@ impl ConfigurableKemEnc {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
                 <P256Kem as KEM<{ P256Kem::KEY_LENGTH }>>::Encapsulation::deserialize(&bytes)
                     .map(|_| ())
+                    .map_err(CryptoCoreError::from)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
                 <R25519Kem as KEM<{ R25519Kem::KEY_LENGTH }>>::Encapsulation::deserialize(&bytes)
                     .map(|_| ())
+                    .map_err(CryptoCoreError::from)
             }
             KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
                 <MlKem512 as KEM<{ MlKem512::KEY_LENGTH }>>::Encapsulation::deserialize(&bytes)
@@ -348,24 +362,28 @@ impl ConfigurableKemEnc {
                     { P256Kem::KEY_LENGTH },
                 >>::Encapsulation::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
                 <KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768> as KEM<
                     { P256Kem::KEY_LENGTH },
                 >>::Encapsulation::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
                 <KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512> as KEM<
                     { R25519Kem::KEY_LENGTH },
                 >>::Encapsulation::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
                 <KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768> as KEM<
                     { R25519Kem::KEY_LENGTH },
                 >>::Encapsulation::deserialize(&bytes)
                 .map(|_| ())
+                .map_err(CryptoCoreError::from)
             }
             KemTag::Abe => {
                 // For Covercrypt, the bytes can either be a valid MSK or USK.

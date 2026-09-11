@@ -19,7 +19,7 @@ pub const KEY_LENGTH: usize = 32;
 
 macro_rules! make_mlkem {
     ($base: ident, $ek: ident, $ek_len: literal, $dk: ident, $dk_len: literal, $enc: ident, $enc_len:literal) => {
-        #[derive(Debug, PartialEq, Clone)]
+        #[derive(Debug, Clone, PartialEq)]
         pub struct $ek(Box<<ml_kem::$base as KemCore>::EncapsulationKey>);
 
         impl From<&$dk> for $ek {
@@ -104,7 +104,7 @@ macro_rules! make_mlkem {
             }
 
             fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-                ser.write_array(&self.0)
+                Ok(ser.write_array(&self.0)?)
             }
 
             fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {

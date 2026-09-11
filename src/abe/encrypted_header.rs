@@ -40,7 +40,8 @@ impl EncryptedHeader {
 
         let encrypted_metadata = metadata
             .map(|bytes| {
-                let key = SymmetricKey::derive(&seed, &[0u8])?;
+                let mut key = SymmetricKey::default();
+                kdf256!(&mut *key, &*seed, &[0u8]);
                 let nonce = Nonce::new(&mut *cc.rng());
                 let ctx = Aes256Gcm::new(&key).encrypt(&nonce, bytes, authentication_data)?;
                 Ok::<_, Error>([nonce.as_bytes(), &ctx].concat())
@@ -82,7 +83,8 @@ impl EncryptedHeader {
                                 min: Aes256Gcm::NONCE_LENGTH as u64,
                             })
                         } else {
-                            let key = SymmetricKey::derive(&seed, &[0u8])?;
+                            let mut key = SymmetricKey::default();
+                            kdf256!(&mut *key, &*seed, &[0u8]);
                             Aes256Gcm::new(&key).decrypt(
                                 &Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?,
                                 &ctx[Aes256Gcm::NONCE_LENGTH..],

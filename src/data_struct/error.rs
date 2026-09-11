@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use cosmian_crypto_core::CryptoCoreError;
+use cosmian_crypto_core::{CryptoBaseError, CryptoCoreError};
 
 type Key = String;
 
@@ -53,5 +53,11 @@ impl std::error::Error for Error {}
 impl From<CryptoCoreError> for Error {
     fn from(error: CryptoCoreError) -> Self {
         Self::Serialization(error)
+    }
+}
+
+impl From<CryptoBaseError> for Error {
+    fn from(error: CryptoBaseError) -> Self {
+        Self::Serialization(error.into())
     }
 }
