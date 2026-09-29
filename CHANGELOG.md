@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [16.0.1] - 2026-09-29
+
+### Bug Fixes
+
+- Fix a bug due to unproper handling of UTF-8 characters in the policy parsing
+  that causes a runtime panic. The fix restricts the range of expressible
+  policies to the ones only using ASCII characters.
+
 ## [16.0.0] - 2026-02-13
 
 ### 🚀 Features

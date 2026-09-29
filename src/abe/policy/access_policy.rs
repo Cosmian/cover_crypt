@@ -91,6 +91,11 @@ impl AccessPolicy {
     ///
     /// - "DPT::MKG DPT::FIN"
     pub fn parse(mut e: &str) -> Result<Self, Error> {
+        if !e.is_ascii() {
+            return Err(Error::InvalidBooleanExpression(
+                "non-ascii character used".to_owned(),
+            ));
+        }
         let seeker = |c: &char| !"()|&".contains(*c);
         let mut q = LinkedList::<Self>::new();
         loop {
@@ -303,5 +308,6 @@ mod tests {
         assert!(AccessPolicy::parse("D1").is_err());
         assert!(AccessPolicy::parse("D1::A (&& D2::A || D2::B)").is_err());
         assert!(AccessPolicy::parse("|| D2::B").is_err());
+        assert!(AccessPolicy::parse("(é::à && (ó::ï) || ø::ú)").is_err());
     }
 }
