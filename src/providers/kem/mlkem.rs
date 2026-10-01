@@ -115,7 +115,6 @@ macro_rules! make_mlkem {
             }
         }
 
-        #[allow(dead_code)]
         #[derive(Debug, Copy, Clone)]
         pub struct $base;
 
