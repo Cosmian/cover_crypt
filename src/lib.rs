@@ -22,7 +22,7 @@ pub mod test_utils;
 pub use abe::*;
 pub use error::Error;
 
-#[cfg(all(feature = "generic-kem", feature = "mlkem-512", feature = "mlkem-768"))]
+#[cfg(feature = "generic-kem")]
 mod kem;
-#[cfg(all(feature = "generic-kem", feature = "mlkem-512", feature = "mlkem-768"))]
+#[cfg(feature = "generic-kem")]
 pub use kem::*;
