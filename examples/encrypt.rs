@@ -4,8 +4,8 @@ use std::{
 };
 
 use cosmian_cover_crypt::{
-    api::Covercrypt, cc_keygen, traits::PkeAc, AccessPolicy, MasterPublicKey, MasterSecretKey,
-    UserSecretKey, XEnc,
+    api::Covercrypt, test_utils::cc_keygen, traits::PkeAc, AccessPolicy, MasterPublicKey,
+    MasterSecretKey, UserSecretKey, XEnc,
 };
 use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
@@ -18,11 +18,22 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
 
     let usk = cc.generate_user_secret_key(msk, &ap).unwrap();
-    let ctx = PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(cc, mpk, &ap, b"gotcha")
-        .expect("cannot encrypt!");
+    let ctx = PkeAc::<
+        { Aes256Gcm::KEY_LENGTH },
+        { Aes256Gcm::NONCE_LENGTH },
+        { Aes256Gcm::MAC_LENGTH },
+        Aes256Gcm,
+    >::encrypt(cc, mpk, &ap, b"gotcha")
+    .expect("cannot encrypt!");
 
     // Ensure decryption is OK
-    PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(cc, &usk, &ctx).unwrap();
+    PkeAc::<
+        { Aes256Gcm::KEY_LENGTH },
+        { Aes256Gcm::NONCE_LENGTH },
+        { Aes256Gcm::MAC_LENGTH },
+        Aes256Gcm,
+    >::decrypt(cc, &usk, &ctx)
+    .unwrap();
 
     {
         File::create("./usk.txt")
@@ -41,7 +52,13 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
         .unwrap();
 
         // Ensure decryption is OK
-        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(cc, &usk, &ctx).unwrap();
+        PkeAc::<
+            { Aes256Gcm::KEY_LENGTH },
+            { Aes256Gcm::NONCE_LENGTH },
+            { Aes256Gcm::MAC_LENGTH },
+            Aes256Gcm,
+        >::decrypt(cc, &usk, &ctx)
+        .unwrap();
 
         File::create("./ctx.txt")
             .unwrap()
@@ -64,7 +81,13 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
         };
 
         // Ensure decryption is OK
-        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(cc, &usk, &ctx).unwrap();
+        PkeAc::<
+            { Aes256Gcm::KEY_LENGTH },
+            { Aes256Gcm::NONCE_LENGTH },
+            { Aes256Gcm::MAC_LENGTH },
+            Aes256Gcm,
+        >::decrypt(cc, &usk, &ctx)
+        .unwrap();
     }
 }
 
@@ -80,7 +103,12 @@ fn main() {
     let ptx = "testing encryption/decryption".as_bytes();
 
     for _ in 0..100 {
-        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::encrypt(&cc, &mpk, &ap, ptx)
-            .expect("cannot encrypt!");
+        PkeAc::<
+            { Aes256Gcm::KEY_LENGTH },
+            { Aes256Gcm::NONCE_LENGTH },
+            { Aes256Gcm::MAC_LENGTH },
+            Aes256Gcm,
+        >::encrypt(&cc, &mpk, &ap, ptx)
+        .expect("cannot encrypt!");
     }
 }

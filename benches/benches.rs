@@ -1,5 +1,18 @@
-use cosmian_cover_crypt::{api::Covercrypt, test_utils::cc_keygen, traits::KemAc, AccessPolicy};
+use cosmian_cover_crypt::{
+    api::Covercrypt, traits::KemAc, AccessPolicy, Error, MasterPublicKey, MasterSecretKey,
+    QualifiedAttribute,
+};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+
+fn cc_keygen(cc: &Covercrypt, complete: bool) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+    let (mut msk, _) = cosmian_cover_crypt::test_utils::cc_keygen(cc, complete)?;
+    // Remove the `SEC::MED` attribute to keep using the same access policy as
+    // before.
+    msk.access_structure
+        .del_attribute(&QualifiedAttribute::new("SEC", "MED"))?;
+    let mpk = cc.update_msk(&mut msk)?;
+    Ok((msk, mpk))
+}
 
 const C_ENC_APS: [(&str, usize); 5] = [
     ("SEC::LOW && (DPT::MKG) ", 1),
