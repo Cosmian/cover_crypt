@@ -1,6 +1,8 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
-use cosmian_cover_crypt::{api::Covercrypt, test_utils::cc_keygen, AccessPolicy, EncryptedHeader};
+use cosmian_cover_crypt::{
+    api::Covercrypt, encrypted_header::EncryptedHeader, test_utils::cc_keygen, AccessPolicy,
+};
 
 fn main() {
     let cc = Covercrypt::default();
