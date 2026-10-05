@@ -1,38 +1,13 @@
 open Core
 open Utils
 
-module S
-    (Right : sig
-      include Stdlib.Map.OrderedType
+module type Right = sig
+  include Stdlib.Map.OrderedType
+  include To_bytes with type t := t
+end
 
-      val to_bytes : t -> bytes
-    end)
-    (Nike : NIKE)
-    (Kem : KEM)
-    (Sig : Signature)
-    (G : sig
-      val hash : bytes -> Nike.sk
-    end)
-    (T : sig
-      type t
-
-      val hash : Kem.enc list -> t
-    end)
-    (U : sig
-      type t
-
-      val hash : bytes list -> t:T.t -> t
-    end)
-    (H : sig
-      val hash : Nike.key -> Kem.key -> c1:Nike.pk -> c2:Nike.pk -> T.t -> bytes
-    end)
-    (J : sig
-      type key
-      type tag
-
-      val hash : secret:bytes -> c1:Nike.pk -> c2:Nike.pk -> U.t -> key * tag
-    end)
-    () : KEM_AC = struct
+module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
+  include Provider
   module RightMM = MakeMM (Right) ()
   module RightMap = MakeMap (Right) ()
   module Universe = MakeSet (Right) ()
@@ -78,7 +53,7 @@ module S
     tag : tag;
     c1 : Nike.pk;
     c2 : Nike.pk;
-    xenc : (Kem.enc * bytes) list;
+    xenc : (Kem.enc * keylen sbytes) list;
   }
 
   let rpk_to_bytes rpk =
@@ -97,13 +72,6 @@ module S
                Nike.sk_to_bytes sk :: Kem.dk_to_bytes dk :: bytes)
              keys bytes)
       rsk []
-
-  let int32_to_le_bytes n =
-    let bytes = Bytes.create 4 in
-    Bytes.set_int32_le bytes 0 n;
-    bytes
-
-  let int32_of_le_bytes bytes = Bytes.get_int32_le bytes 0
 
   let sign_mpk ~sk ~v ~h ~h1 ~h2 ~rpk =
     let h = Nike.pk_to_bytes h in
@@ -147,13 +115,13 @@ module S
 
   let setup rng universe =
     let msk =
-      let v = Nat.Any Nat.Zero in
+      let v = Nat.Any Nat.zero in
       let s = Nike.gen_sk rng in
       let s1, s2 = (Nike.gen_sk rng, Nike.gen_sk rng) in
       let sk = Sig.gen_sk rng in
       let rsk =
         Universe.fold
-          (fun r rsk -> RightMM.add r (Nike.gen_sk rng, Kem.gen_dk rng) rsk)
+          (fun r -> RightMM.add r (Nike.gen_sk rng, Kem.gen_dk rng))
           universe RightMM.empty
       in
       { v; s; s1; s2; sk; rsk }
@@ -178,34 +146,38 @@ module S
     { v; u1; u2; h1; h2; vk; rsk; seal }
 
   let encaps rng mpk policy =
-    let secret = gen_bytes rng 32 in
-    let r = G.hash secret in
-    let tmp_encs =
-      shuffle rng
-      @@ Policy.fold
-           (fun right tmp_encs ->
-             let pk, ek =
-               match RightMap.get mpk.rpk right with
-               | Some (pk, ek) -> (pk, ek)
-               | None -> invalid_arg "invalid policy"
-             in
-             let k = Nike.session_key pk r in
-             let k', enc = Kem.encaps rng ek in
-             (k, k', enc) :: tmp_encs)
-           policy []
+    let pks =
+      Policy.fold
+        (fun right acc ->
+          match RightMap.get mpk.rpk right with
+          | Some (pk, ek) -> (pk, ek) :: acc
+          | None -> invalid_arg "invalid policy")
+        policy []
     in
+    let secret = SBytes.gen rng keylen in
+    let r = G.hash secret in
     let c1 = Nike.(r * mpk.h1) in
     let c2 = Nike.(r * mpk.h2) in
-    let t = T.hash @@ List.map (fun (_, _, enc) -> enc) tmp_encs in
+    let encs =
+      shuffle rng
+      @@ List.map
+           (fun (pk, ek) ->
+             let k = Nike.session_key pk r in
+             let k', enc = Kem.encaps rng ek in
+             (k, k', enc))
+           pks
+    in
+    let t = T.hash @@ List.map (fun (_, _, e) -> e) encs in
     let xenc =
       List.map
         (fun (k, k', e) ->
-          let f = xor secret @@ H.hash k k' ~c1 ~c2 t in
+          let h = H.hash k k' ~c1 ~c2 t in
+          let f = SBytes.xor secret h in
           (e, f))
-        tmp_encs
+        encs
     in
     let key, tag =
-      let u = U.hash ~t @@ List.map (fun (_, f) -> f) xenc in
+      let u = U.hash ~t @@ List.map Pair.snd xenc in
       J.hash ~secret ~c1 ~c2 u
     in
     (key, { v = mpk.v; tag; c1; c2; xenc })
@@ -220,7 +192,7 @@ module S
     | None -> None
     | Some k' ->
         let k = Nike.session_key p sk in
-        let secret = xor f @@ H.hash k k' ~c1:enc.c1 ~c2:enc.c2 t in
+        let secret = SBytes.xor f @@ H.hash k k' ~c1:enc.c1 ~c2:enc.c2 t in
         let key, tag = J.hash ~secret ~c1:enc.c1 ~c2:enc.c2 u in
         if tag = enc.tag then
           let r = G.hash secret in
@@ -234,7 +206,7 @@ module S
     let p2 = Nike.(usk.u2 * enc.c2) in
     let p = Nike.Point.(p1 + p2) in
     let t = T.hash @@ List.map (fun (e, _) -> e) enc.xenc in
-    let u = U.hash ~t @@ List.map (fun (_, f) -> f) enc.xenc in
+    let u = U.hash ~t @@ List.map Pair.snd enc.xenc in
     List.fold_left
       (fun key (sk, dk) ->
         List.fold_right
@@ -259,7 +231,7 @@ module S
     let h2 = Nike.get_pk msk.s2 in
     let p = Nike.Point.(p1 + p2) in
     let t = T.hash @@ List.map (fun (e, _) -> e) enc.xenc in
-    let u = U.hash ~t @@ List.map (fun (_, f) -> f) enc.xenc in
+    let u = U.hash ~t @@ List.map Pair.snd enc.xenc in
     List.fold_left
       (fun acc (r, sk, dk) ->
         List.fold_left
@@ -274,15 +246,16 @@ module S
       None
     @@ msk_secrets msk
 
-  let enc_refresh rng msk mpk enc =
+  let recaps rng msk mpk enc =
     if not (is_valid_mpk (Sig.get_vk msk.sk) mpk) then
       invalid_arg "invalid master public key"
     else if msk.v != mpk.v then invalid_arg "outdated master public key"
     else
-      enc_policy msk enc
-      |> Option.map (fun (old_key, policy) ->
+      match enc_policy msk enc with
+      | None -> invalid_arg "could not open encapsulation"
+      | Some (old_key, policy) ->
           let new_key, enc = encaps rng mpk policy in
-          (~old_key, ~new_key, enc))
+          (~old:old_key, new_key, enc)
 
   let msk_revision (msk : msk) = msk.v
   let mpk_revision (mpk : mpk) = mpk.v
@@ -301,7 +274,7 @@ module S
     in
     { msk with v; rsk }
 
-  let usk_refresh (msk : msk) usk keep_old_secrets =
+  let update msk usk ~keep_old =
     if not (is_valid_usk msk usk) then invalid_arg "invalid user secret key"
     else
       let v = msk.v in
@@ -311,7 +284,7 @@ module S
             match RightMM.get msk.rsk r with
             | None -> rsk
             | Some master_secrets ->
-                if keep_old_secrets then
+                if keep_old then
                   let newer_secrets =
                     NonEmptyList.take_while
                       (fun s -> s != NonEmptyList.head secrets)
