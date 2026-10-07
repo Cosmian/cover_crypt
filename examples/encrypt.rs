@@ -11,9 +11,10 @@ use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     Aes256Gcm,
 };
+use cosmian_openssl_provider::hash::Sha256;
 
-#[allow(dead_code)]
 /// Generates a new USK and encrypted header and prints them.
+#[allow(dead_code)]
 fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKey) {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
 
@@ -22,6 +23,7 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::MAC_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::encrypt(cc, mpk, &ap, b"gotcha")
     .expect("cannot encrypt!");
@@ -31,6 +33,7 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::MAC_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::decrypt(cc, &usk, &ctx)
     .unwrap();
@@ -56,6 +59,7 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
+            Sha256,
             Aes256Gcm,
         >::decrypt(cc, &usk, &ctx)
         .unwrap();
@@ -85,6 +89,7 @@ fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKe
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
+            Sha256,
             Aes256Gcm,
         >::decrypt(cc, &usk, &ctx)
         .unwrap();
@@ -107,6 +112,7 @@ fn main() {
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
+            Sha256,
             Aes256Gcm,
         >::encrypt(&cc, &mpk, &ap, ptx)
         .expect("cannot encrypt!");

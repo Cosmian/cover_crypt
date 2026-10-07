@@ -6,6 +6,8 @@ cargo fmt --check || exit 1
 
 cargo install --locked cargo-deny && cargo deny check || exit 1
 
+cargo build --target wasm32-unknown-unknown || exit 1
+
 cargo clippy --no-deps --all-targets -- -D warnings                                                       || exit 1
 cargo clippy --no-deps --all-targets --no-default-features --features curve25519,mlkem-768 -- -D warnings || exit 1
 cargo clippy --no-deps --all-targets --no-default-features --features p-256,mlkem-512      -- -D warnings || exit 1
