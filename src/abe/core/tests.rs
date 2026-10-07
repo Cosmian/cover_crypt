@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
-
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, traits::AE_InPlace, Aes256Gcm, CsRng};
-
+use super::{
+    primitives::{setup, usk_keygen},
+    MIN_TRACING_LEVEL,
+};
 use crate::{
     abe::{
         core::{
@@ -14,11 +14,9 @@ use crate::{
     },
     test_utils::cc_keygen,
 };
-
-use super::{
-    primitives::{setup, usk_keygen},
-    MIN_TRACING_LEVEL,
-};
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, traits::AE_InPlace, Aes256Gcm, CsRng};
+use cosmian_openssl_provider::hash::Sha256;
+use std::collections::{HashMap, HashSet};
 
 #[test]
 fn security_mode_ordering() {
@@ -353,6 +351,7 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::encrypt(&cc, &mpk, &ap, ptx)
     .expect("cannot encrypt!");
@@ -363,6 +362,7 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::decrypt(&cc, &usk, &ctx)
     .expect("cannot decrypt the ciphertext");

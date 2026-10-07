@@ -18,7 +18,7 @@ use cosmian_crypto_core::{
         tiny_keccak::{Hasher, Kmac, Sha3},
     },
     traits::{Seedable, KEM, NIKE},
-    RandomFixedSizeCBytes, Secret, SymmetricKey,
+    Secret, SymmetricKey,
 };
 use std::{
     collections::{HashMap, HashSet, LinkedList},
