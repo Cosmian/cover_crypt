@@ -207,7 +207,7 @@ where
         // Locking Covercrypt RNG must be performed after encapsulation since
         // this encapsulation also requires locking the RNG.
         let mut rng = self.rng();
-        let key = Kdf::derive(&*seed, &[b"Covercrypt AE key"])?;
+        let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])?;
         let mut nonce = [0; NONCE_LENGTH];
         rng.fill_bytes(&mut nonce);
         let ctx = E::encrypt(&key, ptx, &nonce)?;
@@ -221,7 +221,7 @@ where
     ) -> Result<Option<E::Plaintext>, Self::Error> {
         self.decaps(usk, &ctx.0)?
             .map(|seed| {
-                let key = Kdf::derive(&*seed, &[b"Covercrypt AE key"])?;
+                let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])?;
                 E::decrypt(&key, ctx.1.as_ref()).map_err(Self::Error::from)
             })
             .transpose()
