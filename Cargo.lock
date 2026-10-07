@@ -188,7 +188,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_base"
 version = "3.1.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#8ddf770a99f2a979c03d764eea862a435e5cfebf"
+source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#223aa16637af88a0168d96ce3470c8cd47f1f64d"
 dependencies = [
  "gensym",
  "getrandom 0.2.17",
@@ -201,7 +201,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "12.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#8ddf770a99f2a979c03d764eea862a435e5cfebf"
+source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#223aa16637af88a0168d96ce3470c8cd47f1f64d"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -217,7 +217,7 @@ dependencies = [
 [[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#8ddf770a99f2a979c03d764eea862a435e5cfebf"
+source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#223aa16637af88a0168d96ce3470c8cd47f1f64d"
 dependencies = [
  "cosmian_crypto_base",
  "openssl",
@@ -226,7 +226,7 @@ dependencies = [
 [[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#8ddf770a99f2a979c03d764eea862a435e5cfebf"
+source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fadd-libcrux-hash-provider#223aa16637af88a0168d96ce3470c8cd47f1f64d"
 dependencies = [
  "cosmian_crypto_base",
  "curve25519-dalek",
