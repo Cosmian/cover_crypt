@@ -1,11 +1,12 @@
 use std::{fs::File, io::Read};
 
-use cosmian_cover_crypt::{XEnc, traits::PkeAc};
-use cosmian_crypto_core::{Aes256Gcm, bytes_ser_de::Deserializer};
+use cosmian_cover_crypt::{traits::PkeAc, XEnc};
+use cosmian_crypto_core::{bytes_ser_de::Deserializer, Aes256Gcm};
+use cosmian_openssl_provider::hash::Sha256;
 
 fn main() {
-    use cosmian_cover_crypt::UserSecretKey;
     use cosmian_cover_crypt::api::Covercrypt;
+    use cosmian_cover_crypt::UserSecretKey;
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     let cc = Covercrypt::default();
@@ -35,6 +36,7 @@ fn main() {
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
+            Sha256,
             Aes256Gcm,
         >::decrypt(&cc, &usk, &ctx)
         .expect("cannot decrypt hybrid header");

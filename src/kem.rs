@@ -1,15 +1,15 @@
 #![allow(clippy::type_complexity)]
 use crate::{
-    AccessPolicy, AccessStructure, Covercrypt, Error, MasterPublicKey,
-    MasterSecretKey, UserSecretKey, XEnc,
     providers::kem::mlkem::{MlKem512, MlKem768},
     traits::KemAc,
+    AccessPolicy, AccessStructure, Covercrypt, Error, MasterPublicKey, MasterSecretKey,
+    UserSecretKey, XEnc,
 };
 use cosmian_crypto_core::{
-    CryptoCoreError, CsRng,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::rand_core::SeedableRng,
-    traits::{KEM, cyclic_group_to_kem::GenericKem},
+    traits::{cyclic_group_to_kem::GenericKem, KEM},
+    CryptoBaseError, CsRng,
 };
 use cosmian_openssl_provider::{hash::Sha256, kem::MonadicKEM, p256::P256};
 use cosmian_rust_curve25519_provider::R25519;
@@ -25,7 +25,7 @@ pub enum PreQuantumKemTag {
 }
 
 impl Serializable for PreQuantumKemTag {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         1
@@ -42,7 +42,7 @@ impl Serializable for PreQuantumKemTag {
         match de.read::<u64>()? {
             1 => Ok(Self::P256),
             2 => Ok(Self::R25519),
-            n => Err(CryptoCoreError::GenericDeserializationError(format!(
+            n => Err(CryptoBaseError::GenericDeserializationError(format!(
                 "{n} is not a valid pre-quantum-KEM tag"
             ))),
         }
@@ -56,7 +56,7 @@ pub enum PostQuantumKemTag {
 }
 
 impl Serializable for PostQuantumKemTag {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         1
@@ -73,7 +73,7 @@ impl Serializable for PostQuantumKemTag {
         match de.read::<u64>()? {
             1 => Ok(Self::MlKem512),
             2 => Ok(Self::MlKem768),
-            n => Err(CryptoCoreError::GenericDeserializationError(format!(
+            n => Err(CryptoBaseError::GenericDeserializationError(format!(
                 "{n} is not a valid post-quantum-KEM tag"
             ))),
         }
@@ -89,7 +89,7 @@ pub enum KemTag {
 }
 
 impl Serializable for KemTag {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         match self {
@@ -121,7 +121,7 @@ impl Serializable for KemTag {
                 .read::<(PreQuantumKemTag, PostQuantumKemTag)>()
                 .map(|(tag1, tag2)| Self::Hybridized(tag1, tag2)),
             4 => Ok(Self::Abe),
-            n => Err(CryptoCoreError::GenericDeserializationError(format!(
+            n => Err(CryptoBaseError::GenericDeserializationError(format!(
                 "{n} is not a valid KEM tag"
             ))),
         }
@@ -194,7 +194,7 @@ impl ConfigurableKemDk {
                         |_| UserSecretKey::deserialize(&bytes).map(|_| ()),
                         |_| Ok(()),
                     )
-                    .map_err(|e| CryptoCoreError::GenericDeserializationError(e.to_string()))
+                    .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string()))
             }
         }
         .map_err(|_| {
@@ -217,7 +217,7 @@ impl ConfigurableKemDk {
 }
 
 impl Serializable for ConfigurableKemDk {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         self.0.length() + self.1.length()
@@ -282,7 +282,7 @@ impl ConfigurableKemEk {
             }
             KemTag::Abe => MasterPublicKey::deserialize(&bytes)
                 .map(|_| ())
-                .map_err(|e| CryptoCoreError::GenericDeserializationError(e.to_string())),
+                .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string())),
         }
         .map_err(|_| {
             Error::KeyError(format!(
@@ -304,7 +304,7 @@ impl ConfigurableKemEk {
 }
 
 impl Serializable for ConfigurableKemEk {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         self.0.length() + self.1.length()
@@ -371,7 +371,7 @@ impl ConfigurableKemEnc {
                 // For Covercrypt, the bytes can either be a valid MSK or USK.
                 XEnc::deserialize(&bytes)
                     .map(|_| ())
-                    .map_err(|e| CryptoCoreError::GenericDeserializationError(e.to_string()))
+                    .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string()))
             }
         }
         .map_err(|_| {
@@ -394,7 +394,7 @@ impl ConfigurableKemEnc {
 }
 
 impl Serializable for ConfigurableKemEnc {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         self.0.length() + self.1.length()
@@ -417,8 +417,7 @@ where
     Kem::DecapsulationKey: Serializable,
 {
     let mut rng = CsRng::from_entropy();
-    let (dk, ek) =
-        Kem::keygen(&mut rng).map_err(|e| Error::Kem(e.to_string()))?;
+    let (dk, ek) = Kem::keygen(&mut rng).map_err(|e| Error::Kem(e.to_string()))?;
     Ok((
         ConfigurableKemDk(
             tag,
@@ -451,9 +450,8 @@ fn generic_enc<const KEY_LENGTH: usize, Kem: KEM<KEY_LENGTH>>(
         })?;
 
     let mut rng = CsRng::from_entropy();
-    let (key, enc) = Kem::enc(&ek, &mut rng).map_err(|e| {
-        Error::Kem(format!("configurable-KEM encapsulation error: {e}"))
-    })?;
+    let (key, enc) = Kem::enc(&ek, &mut rng)
+        .map_err(|e| Error::Kem(format!("configurable-KEM encapsulation error: {e}")))?;
 
     Ok((
         key.serialize()?,
@@ -491,18 +489,15 @@ where
             ))
         })?;
 
-    let enc = <Kem as KEM<KEY_LENGTH>>::Encapsulation::deserialize(
-        enc.get_bytes(),
-    )
-    .map_err(|e| {
-        Error::ConversionFailed(format!(
-            "failed deserializing the encapsulation in configurable KEM: {e}"
-        ))
-    })?;
+    let enc =
+        <Kem as KEM<KEY_LENGTH>>::Encapsulation::deserialize(enc.get_bytes()).map_err(|e| {
+            Error::ConversionFailed(format!(
+                "failed deserializing the encapsulation in configurable KEM: {e}"
+            ))
+        })?;
 
-    let key = Kem::dec(&dk, &enc).map_err(|e| {
-        Error::Kem(format!("configurable-KEM decapsulation error: {e}"))
-    })?;
+    let key = Kem::dec(&dk, &enc)
+        .map_err(|e| Error::Kem(format!("configurable-KEM decapsulation error: {e}")))?;
 
     Ok(key.serialize()?)
 }
@@ -551,34 +546,30 @@ impl ConfigurableKEM {
             KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
                 generic_keygen::<{ MlKem768::KEY_LENGTH }, MlKem768>(tag)
             }
-            KemTag::Hybridized(
-                PreQuantumKemTag::P256,
-                PostQuantumKemTag::MlKem512,
-            ) => generic_keygen::<
-                { P256Kem::KEY_LENGTH },
-                KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
-            >(tag),
-            KemTag::Hybridized(
-                PreQuantumKemTag::P256,
-                PostQuantumKemTag::MlKem768,
-            ) => generic_keygen::<
-                { P256Kem::KEY_LENGTH },
-                KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
-            >(tag),
-            KemTag::Hybridized(
-                PreQuantumKemTag::R25519,
-                PostQuantumKemTag::MlKem512,
-            ) => generic_keygen::<
-                { R25519Kem::KEY_LENGTH },
-                KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
-            >(tag),
-            KemTag::Hybridized(
-                PreQuantumKemTag::R25519,
-                PostQuantumKemTag::MlKem768,
-            ) => generic_keygen::<
-                { R25519Kem::KEY_LENGTH },
-                KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
-            >(tag),
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem512) => {
+                generic_keygen::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
+                >(tag)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
+                generic_keygen::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
+                >(tag)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
+                generic_keygen::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
+                >(tag)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
+                generic_keygen::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
+                >(tag)
+            }
             KemTag::Abe => {
                 let access_structure = access_structure.ok_or_else(|| {
                     Error::OperationNotPermitted(
@@ -615,34 +606,30 @@ impl ConfigurableKEM {
             KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
                 generic_enc::<{ MlKem768::KEY_LENGTH }, MlKem768>(ek)
             }
-            KemTag::Hybridized(
-                PreQuantumKemTag::P256,
-                PostQuantumKemTag::MlKem512,
-            ) => generic_enc::<
-                { P256Kem::KEY_LENGTH },
-                KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
-            >(ek),
-            KemTag::Hybridized(
-                PreQuantumKemTag::P256,
-                PostQuantumKemTag::MlKem768,
-            ) => generic_enc::<
-                { P256Kem::KEY_LENGTH },
-                KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
-            >(ek),
-            KemTag::Hybridized(
-                PreQuantumKemTag::R25519,
-                PostQuantumKemTag::MlKem512,
-            ) => generic_enc::<
-                { R25519Kem::KEY_LENGTH },
-                KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
-            >(ek),
-            KemTag::Hybridized(
-                PreQuantumKemTag::R25519,
-                PostQuantumKemTag::MlKem768,
-            ) => generic_enc::<
-                { R25519Kem::KEY_LENGTH },
-                KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
-            >(ek),
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem512) => {
+                generic_enc::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
+                >(ek)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
+                generic_enc::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
+                >(ek)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
+                generic_enc::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
+                >(ek)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
+                generic_enc::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
+                >(ek)
+            }
             KemTag::Abe => {
                 let ap = access_policy.ok_or_else(|| {
                     Error::OperationNotPermitted(
@@ -653,10 +640,7 @@ impl ConfigurableKEM {
                 let tag = ek.get_tag();
                 let mpk = MasterPublicKey::deserialize(ek.get_bytes())?;
                 let (key, enc) = Covercrypt::default().encaps(&mpk, ap)?;
-                Ok((
-                    key.serialize()?,
-                    ConfigurableKemEnc(tag, enc.serialize()?),
-                ))
+                Ok((key.serialize()?, ConfigurableKemEnc(tag, enc.serialize()?)))
             }
         }
     }
@@ -678,34 +662,30 @@ impl ConfigurableKEM {
             KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
                 generic_dec::<{ MlKem768::KEY_LENGTH }, MlKem768>(dk, enc)
             }
-            KemTag::Hybridized(
-                PreQuantumKemTag::P256,
-                PostQuantumKemTag::MlKem512,
-            ) => generic_dec::<
-                { P256Kem::KEY_LENGTH },
-                KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
-            >(dk, enc),
-            KemTag::Hybridized(
-                PreQuantumKemTag::P256,
-                PostQuantumKemTag::MlKem768,
-            ) => generic_dec::<
-                { P256Kem::KEY_LENGTH },
-                KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
-            >(dk, enc),
-            KemTag::Hybridized(
-                PreQuantumKemTag::R25519,
-                PostQuantumKemTag::MlKem512,
-            ) => generic_dec::<
-                { R25519Kem::KEY_LENGTH },
-                KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
-            >(dk, enc),
-            KemTag::Hybridized(
-                PreQuantumKemTag::R25519,
-                PostQuantumKemTag::MlKem768,
-            ) => generic_dec::<
-                { R25519Kem::KEY_LENGTH },
-                KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
-            >(dk, enc),
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem512) => {
+                generic_dec::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
+                >(dk, enc)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::P256, PostQuantumKemTag::MlKem768) => {
+                generic_dec::<
+                    { P256Kem::KEY_LENGTH },
+                    KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
+                >(dk, enc)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem512) => {
+                generic_dec::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
+                >(dk, enc)
+            }
+            KemTag::Hybridized(PreQuantumKemTag::R25519, PostQuantumKemTag::MlKem768) => {
+                generic_dec::<
+                    { R25519Kem::KEY_LENGTH },
+                    KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
+                >(dk, enc)
+            }
             KemTag::Abe => {
                 if enc.get_tag() != KemTag::Abe {
                     return Err(Error::OperationNotPermitted(format!(
@@ -750,12 +730,9 @@ mod tests {
     #[test]
     fn test_tag_serialization() {
         // Exhaustively test serializations.
-        test_serialization(&KemTag::PreQuantum(PreQuantumKemTag::P256))
-            .unwrap();
-        test_serialization(&KemTag::PreQuantum(PreQuantumKemTag::R25519))
-            .unwrap();
-        test_serialization(&KemTag::PostQuantum(PostQuantumKemTag::MlKem512))
-            .unwrap();
+        test_serialization(&KemTag::PreQuantum(PreQuantumKemTag::P256)).unwrap();
+        test_serialization(&KemTag::PreQuantum(PreQuantumKemTag::R25519)).unwrap();
+        test_serialization(&KemTag::PostQuantum(PostQuantumKemTag::MlKem512)).unwrap();
         test_serialization(&KemTag::Hybridized(
             PreQuantumKemTag::P256,
             PostQuantumKemTag::MlKem512,
@@ -814,18 +791,14 @@ mod tests {
         let usk_access_policy = AccessPolicy::parse("DPT::MKG").unwrap();
         let enc_access_policy = AccessPolicy::parse("*").unwrap();
 
-        let (msk, mpk) =
-            ConfigurableKEM::keygen(KemTag::Abe, Some(access_structure))
-                .unwrap();
+        let (msk, mpk) = ConfigurableKEM::keygen(KemTag::Abe, Some(access_structure)).unwrap();
         let tag = msk.get_tag();
         let mut msk = MasterSecretKey::deserialize(msk.get_bytes()).unwrap();
         let usk = Covercrypt::default()
             .generate_user_secret_key(&mut msk, &usk_access_policy)
             .unwrap();
-        let usk =
-            ConfigurableKemDk::new(tag, usk.serialize().unwrap()).unwrap();
-        let (key, enc) =
-            ConfigurableKEM::enc(&mpk, Some(&enc_access_policy)).unwrap();
+        let usk = ConfigurableKemDk::new(tag, usk.serialize().unwrap()).unwrap();
+        let (key, enc) = ConfigurableKEM::enc(&mpk, Some(&enc_access_policy)).unwrap();
         let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
         assert_eq!(key, key_);
     }

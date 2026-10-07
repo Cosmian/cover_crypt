@@ -1,18 +1,18 @@
 use crate::Error;
 use core::ops::Deref;
 use cosmian_crypto_core::{
-    CryptoCoreError, Secret, SymmetricKey,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::{
         rand_core::CryptoRngCore,
         zeroize::{Zeroize, ZeroizeOnDrop},
     },
     traits::KEM,
+    CryptoBaseError, Secret, SymmetricKey,
 };
 use ml_kem::{
-    EncodedSizeUser, KemCore,
     array::Array,
     kem::{Decapsulate, Encapsulate},
+    EncodedSizeUser, KemCore,
 };
 
 pub const KEY_LENGTH: usize = 32;
@@ -29,16 +29,13 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $ek {
-            type Error = CryptoCoreError;
+            type Error = CryptoBaseError;
 
             fn length(&self) -> usize {
                 $ek_len
             }
 
-            fn write(
-                &self,
-                ser: &mut Serializer,
-            ) -> Result<usize, Self::Error> {
+            fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
                 let mut bytes = self.0.as_bytes();
                 let n = ser.write_array(&bytes)?;
                 bytes.zeroize();
@@ -47,10 +44,7 @@ macro_rules! make_mlkem {
 
             fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
                 let mut bytes = Array::from(de.read_array::<$ek_len>()?);
-                let ek =
-                    <<ml_kem::$base as KemCore>::EncapsulationKey>::from_bytes(
-                        &bytes,
-                    );
+                let ek = <<ml_kem::$base as KemCore>::EncapsulationKey>::from_bytes(&bytes);
                 bytes.zeroize();
                 Ok(Self(Box::new(ek)))
             }
@@ -70,16 +64,13 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $dk {
-            type Error = CryptoCoreError;
+            type Error = CryptoBaseError;
 
             fn length(&self) -> usize {
                 $dk_len
             }
 
-            fn write(
-                &self,
-                ser: &mut Serializer,
-            ) -> Result<usize, Self::Error> {
+            fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
                 let mut bytes = self.0.as_bytes();
                 let n = ser.write_array(&bytes)?;
                 bytes.zeroize();
@@ -88,19 +79,14 @@ macro_rules! make_mlkem {
 
             fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
                 let mut bytes = Array::from(de.read_array::<$dk_len>()?);
-                let dk =
-                    <<ml_kem::$base as KemCore>::DecapsulationKey>::from_bytes(
-                        &bytes,
-                    );
+                let dk = <<ml_kem::$base as KemCore>::DecapsulationKey>::from_bytes(&bytes);
                 bytes.zeroize();
                 Ok(Self(Box::new(dk)))
             }
         }
 
         #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-        pub struct $enc(
-            Box<Array<u8, <ml_kem::$base as KemCore>::CiphertextSize>>,
-        );
+        pub struct $enc(Box<Array<u8, <ml_kem::$base as KemCore>::CiphertextSize>>);
 
         impl Deref for $enc {
             type Target = [u8];
@@ -111,16 +97,13 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $enc {
-            type Error = CryptoCoreError;
+            type Error = CryptoBaseError;
 
             fn length(&self) -> usize {
                 $enc_len
             }
 
-            fn write(
-                &self,
-                ser: &mut Serializer,
-            ) -> Result<usize, Self::Error> {
+            fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
                 ser.write_array(&self.0)
             }
 
@@ -143,10 +126,7 @@ macro_rules! make_mlkem {
 
             fn keygen(
                 rng: &mut impl CryptoRngCore,
-            ) -> Result<
-                (Self::DecapsulationKey, Self::EncapsulationKey),
-                Self::Error,
-            > {
+            ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error> {
                 let (dk, ek) = <ml_kem::$base as KemCore>::generate(rng);
                 Ok(($dk(Box::new(dk)), $ek(Box::new(ek))))
             }
@@ -154,10 +134,7 @@ macro_rules! make_mlkem {
             fn enc(
                 ek: &Self::EncapsulationKey,
                 rng: &mut impl CryptoRngCore,
-            ) -> Result<
-                (SymmetricKey<KEY_LENGTH>, Self::Encapsulation),
-                Self::Error,
-            > {
+            ) -> Result<(SymmetricKey<KEY_LENGTH>, Self::Encapsulation), Self::Error> {
                 let (enc, mut ss) =
                     ek.0.encapsulate(rng)
                         .map_err(|e| Error::Kem(format!("{:?}", e)))?;
@@ -204,8 +181,7 @@ make_mlkem!(
 #[cfg(test)]
 mod tests {
     use cosmian_crypto_core::{
-        CsRng, bytes_ser_de::test_serialization,
-        reexport::rand_core::SeedableRng,
+        bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng, CsRng,
     };
 
     use super::*;
