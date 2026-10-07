@@ -1,8 +1,7 @@
 use std::{
     borrow::Borrow,
-    collections::{hash_map::Entry, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     fmt::{self, Debug},
-    hash::Hash,
     marker::PhantomData,
     mem::swap,
 };
@@ -17,33 +16,20 @@ use serde::{
 use super::error::Error;
 
 type Index = usize;
-/// `HashMap` keeping insertion order inspired by Python dictionary.
+
+/// Map keeping insertion order inspired by Python dictionary.
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
-pub struct Dict<K, V>
-where
-    K: Hash + PartialEq + Eq + Clone + Debug,
-{
-    indices: HashMap<K, Index>,
+pub struct Dict<K: Ord, V> {
+    indices: BTreeMap<K, Index>,
     entries: Vec<(K, V)>,
 }
 
-impl<K, V> Dict<K, V>
-where
-    K: Hash + PartialEq + Eq + Clone + Debug,
-{
+impl<K: Ord, V> Dict<K, V> {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            indices: HashMap::new(),
+            indices: BTreeMap::new(),
             entries: Vec::new(),
-        }
-    }
-
-    #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            indices: HashMap::with_capacity(capacity),
-            entries: Vec::with_capacity(capacity),
         }
     }
 
@@ -59,7 +45,10 @@ where
     /// If a given key already exists, the entry will be overwritten without
     /// changing the order.
     /// Otherwise, new entries are simply pushed at the end.
-    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+    pub fn insert(&mut self, key: K, value: V) -> Option<V>
+    where
+        K: Clone,
+    {
         match self.indices.entry(key.clone()) {
             Entry::Occupied(e) => {
                 // replace existing entry value in vector
@@ -90,7 +79,10 @@ where
     }
 
     /// Updates the key for a given entry while retaining the current order.
-    pub fn update_key(&mut self, old_key: &K, mut new_key: K) -> Result<(), Error> {
+    pub fn update_key(&mut self, old_key: &K, mut new_key: K) -> Result<(), Error>
+    where
+        K: Clone + Debug,
+    {
         // Get index from old_key
         let index_entry = *self
             .indices
@@ -114,7 +106,7 @@ where
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + ?Sized,
     {
         self.indices.contains_key(key)
     }
@@ -122,7 +114,7 @@ where
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + ?Sized,
     {
         let entry_index = self.indices.get(key)?;
         self.entries.get(*entry_index).map(|(_, v)| v)
@@ -131,7 +123,7 @@ where
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + ?Sized,
     {
         let entry_index = self.indices.get(key)?;
         self.entries.get_mut(*entry_index).map(|(_, v)| v)
@@ -140,7 +132,7 @@ where
     pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + ?Sized,
     {
         let entry_index = self.indices.get(key)?;
         let (key, value) = self.entries.get(*entry_index)?;
@@ -163,10 +155,7 @@ where
     }
 }
 
-impl<K, V> IntoIterator for Dict<K, V>
-where
-    K: Hash + PartialEq + Eq + Clone + Debug,
-{
+impl<K: Ord, V> IntoIterator for Dict<K, V> {
     type IntoIter = std::vec::IntoIter<(K, V)>;
     type Item = (K, V);
 
@@ -176,13 +165,10 @@ where
     }
 }
 
-impl<K, V> FromIterator<(K, V)> for Dict<K, V>
-where
-    K: Hash + PartialEq + Eq + Clone + Debug,
-{
+impl<K: Ord + Clone, V> FromIterator<(K, V)> for Dict<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let iterator = iter.into_iter();
-        let mut dict = Self::with_capacity(iterator.size_hint().0);
+        let mut dict = Self::new();
         for (key, value) in iterator {
             dict.insert(key, value);
         }
@@ -192,7 +178,7 @@ where
 
 impl<K, V> Serialize for Dict<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug + Serialize,
+    K: Ord + Serialize,
     V: Serialize,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -209,14 +195,14 @@ where
 
 struct DictVisitor<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug,
+    K: Ord,
 {
     marker: PhantomData<fn() -> Dict<K, V>>,
 }
 
 impl<K, V> DictVisitor<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug,
+    K: Ord,
 {
     fn new() -> Self {
         Self {
@@ -227,7 +213,7 @@ where
 
 impl<'de, K, V> Visitor<'de> for DictVisitor<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug + Deserialize<'de>,
+    K: Ord + Clone + Deserialize<'de>,
     V: Deserialize<'de>,
 {
     type Value = Dict<K, V>;
@@ -243,7 +229,7 @@ where
     where
         M: MapAccess<'de>,
     {
-        let mut map = Dict::with_capacity(access.size_hint().unwrap_or(0));
+        let mut map = Dict::new();
 
         while let Some((key, value)) = access.next_entry()? {
             map.insert(key, value);
@@ -255,7 +241,7 @@ where
 
 impl<'de, K, V> Deserialize<'de> for Dict<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug + Deserialize<'de>,
+    K: Ord + Clone + Deserialize<'de>,
     V: Deserialize<'de>,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -266,9 +252,10 @@ where
     }
 }
 
-impl<K: Serializable, V: Serializable> Serializable for Dict<K, V>
+impl<K, V> Serializable for Dict<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug,
+    K: Ord + Serializable,
+    V: Serializable,
 {
     type Error = Error;
 
@@ -371,7 +358,7 @@ mod tests {
         let data = serde_json::to_vec(&d).unwrap();
 
         // can be read as a hashmap but this the order will be lost
-        let map: HashMap<String, String> = serde_json::from_slice(&data).unwrap();
+        let map: BTreeMap<String, String> = serde_json::from_slice(&data).unwrap();
         assert_eq!(map.len(), d.len());
         assert!(map.contains_key("ID1"));
         assert!(map.contains_key("ID3"));

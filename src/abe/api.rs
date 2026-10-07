@@ -228,6 +228,13 @@ where
     }
 }
 
+/// Select a single feature combination.
+#[cfg(all(
+    feature = "curve25519",
+    feature = "mlkem-512",
+    not(feature = "p-256"),
+    not(feature = "mlkem-768")
+))]
 #[cfg(test)]
 mod tests {
     use crate::{test_utils::cc_keygen, traits::KemAc, AccessPolicy, Covercrypt};
@@ -238,6 +245,33 @@ mod tests {
 
     #[test]
     fn test_regressions() {
+        {
+            // Ensure the (MSK, MPK) couple can be deterministically generated.
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_1, mpk_1) = cc.setup().unwrap();
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_2, mpk_2) = cc.setup().unwrap();
+
+            assert_eq!(msk_1, msk_2);
+            assert_eq!(mpk_1, mpk_2);
+        }
+
+        {
+            // Ensure the (MSK, MPK) couple can be deterministically populated.
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_1, mpk_1) = cc_keygen(&cc, true).unwrap();
+
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_2, mpk_2) = cc_keygen(&cc, true).unwrap();
+
+            assert_eq!(msk_1, msk_2);
+            assert_eq!(mpk_1, mpk_2);
+        }
+
         let rng = CsRng::from_seed([0; 32]);
         let cc = Covercrypt::new(rng);
         let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
@@ -274,26 +308,26 @@ mod tests {
 
         RegTest::new("./test-data/msk")
             .unwrap()
-            .regtest_dbg(msk.serialize().unwrap());
+            .regtest_dbg(msk.serialize().unwrap().to_vec());
 
         RegTest::new("./test-data/mpk")
             .unwrap()
-            .regtest_dbg(mpk.serialize().unwrap());
+            .regtest_dbg(mpk.serialize().unwrap().to_vec());
 
         RegTest::new("./test-data/usk_1")
             .unwrap()
-            .regtest_dbg(usk_1.serialize().unwrap());
+            .regtest_dbg(usk_1.serialize().unwrap().to_vec());
 
         RegTest::new("./test-data/usk_2")
             .unwrap()
-            .regtest_dbg(usk_2.serialize().unwrap());
+            .regtest_dbg(usk_2.serialize().unwrap().to_vec());
 
         RegTest::new("./test-data/enc_1")
             .unwrap()
-            .regtest_dbg(enc_1.serialize().unwrap());
+            .regtest_dbg(enc_1.serialize().unwrap().to_vec());
 
         RegTest::new("./test-data/enc_2")
             .unwrap()
-            .regtest_dbg(enc_2.serialize().unwrap());
+            .regtest_dbg(enc_2.serialize().unwrap().to_vec());
     }
 }

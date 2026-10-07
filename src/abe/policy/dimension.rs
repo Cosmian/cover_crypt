@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     fmt::Debug,
 };
 
@@ -42,7 +42,7 @@ impl Attribute {
 /// A dimension is an object that contains attributes. It can be ordered or unordered.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Dimension {
-    Anarchy(HashMap<Name, Attribute>),
+    Anarchy(BTreeMap<Name, Attribute>),
     Hierarchy(Dict<Name, Attribute>),
 }
 
@@ -95,7 +95,7 @@ impl Dimension {
                 attributes.insert(attr_name, params);
                 Ok(Self::Hierarchy(attributes))
             }
-            Self::Anarchy(_) => Ok(Self::Anarchy(HashMap::from_iter([(attr_name, params)]))),
+            Self::Anarchy(_) => Ok(Self::Anarchy(BTreeMap::from_iter([(attr_name, params)]))),
         }
     }
 
@@ -326,7 +326,7 @@ mod serialization {
             .unwrap();
         test_serialization(&d).unwrap();
 
-        let mut d = Dimension::Anarchy(HashMap::new());
+        let mut d = Dimension::Anarchy(BTreeMap::new());
         d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
             .unwrap();
         d.add_attribute("B".to_string(), EncryptionHint::Hybridized, None, 1)
