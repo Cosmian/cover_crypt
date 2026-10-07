@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use cosmian_crypto_core::CryptoCoreError;
+use cosmian_crypto_core::CryptoBaseError;
 
 type Key = String;
 
@@ -9,7 +9,7 @@ pub enum Error {
     EntryNotFound(Key),
     ExistingEntry(Key),
     AlreadyHasChild(Key),
-    Serialization(CryptoCoreError),
+    Serialization(CryptoBaseError),
 }
 
 impl Display for Error {
@@ -50,8 +50,8 @@ impl Error {
 
 impl std::error::Error for Error {}
 
-impl From<CryptoCoreError> for Error {
-    fn from(error: CryptoCoreError) -> Self {
+impl From<CryptoBaseError> for Error {
+    fn from(error: CryptoBaseError) -> Self {
         Self::Serialization(error)
     }
 }

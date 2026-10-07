@@ -9,7 +9,7 @@ use cosmian_crypto_core::{
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::rand_core::SeedableRng,
     traits::{cyclic_group_to_kem::GenericKem, KEM},
-    CryptoCoreError, CsRng,
+    CryptoBaseError, CsRng,
 };
 use cosmian_openssl_provider::{hash::Sha256, kem::MonadicKEM, p256::P256};
 use cosmian_rust_curve25519_provider::R25519;
@@ -25,7 +25,7 @@ pub enum PreQuantumKemTag {
 }
 
 impl Serializable for PreQuantumKemTag {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         1
@@ -42,7 +42,7 @@ impl Serializable for PreQuantumKemTag {
         match de.read::<u64>()? {
             1 => Ok(Self::P256),
             2 => Ok(Self::R25519),
-            n => Err(CryptoCoreError::GenericDeserializationError(format!(
+            n => Err(CryptoBaseError::GenericDeserializationError(format!(
                 "{n} is not a valid pre-quantum-KEM tag"
             ))),
         }
@@ -56,7 +56,7 @@ pub enum PostQuantumKemTag {
 }
 
 impl Serializable for PostQuantumKemTag {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         1
@@ -73,7 +73,7 @@ impl Serializable for PostQuantumKemTag {
         match de.read::<u64>()? {
             1 => Ok(Self::MlKem512),
             2 => Ok(Self::MlKem768),
-            n => Err(CryptoCoreError::GenericDeserializationError(format!(
+            n => Err(CryptoBaseError::GenericDeserializationError(format!(
                 "{n} is not a valid post-quantum-KEM tag"
             ))),
         }
@@ -89,7 +89,7 @@ pub enum KemTag {
 }
 
 impl Serializable for KemTag {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         match self {
@@ -121,7 +121,7 @@ impl Serializable for KemTag {
                 .read::<(PreQuantumKemTag, PostQuantumKemTag)>()
                 .map(|(tag1, tag2)| Self::Hybridized(tag1, tag2)),
             4 => Ok(Self::Abe),
-            n => Err(CryptoCoreError::GenericDeserializationError(format!(
+            n => Err(CryptoBaseError::GenericDeserializationError(format!(
                 "{n} is not a valid KEM tag"
             ))),
         }
@@ -194,7 +194,7 @@ impl ConfigurableKemDk {
                         |_| UserSecretKey::deserialize(&bytes).map(|_| ()),
                         |_| Ok(()),
                     )
-                    .map_err(|e| CryptoCoreError::GenericDeserializationError(e.to_string()))
+                    .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string()))
             }
         }
         .map_err(|_| {
@@ -217,7 +217,7 @@ impl ConfigurableKemDk {
 }
 
 impl Serializable for ConfigurableKemDk {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         self.0.length() + self.1.length()
@@ -282,7 +282,7 @@ impl ConfigurableKemEk {
             }
             KemTag::Abe => MasterPublicKey::deserialize(&bytes)
                 .map(|_| ())
-                .map_err(|e| CryptoCoreError::GenericDeserializationError(e.to_string())),
+                .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string())),
         }
         .map_err(|_| {
             Error::KeyError(format!(
@@ -304,7 +304,7 @@ impl ConfigurableKemEk {
 }
 
 impl Serializable for ConfigurableKemEk {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         self.0.length() + self.1.length()
@@ -371,7 +371,7 @@ impl ConfigurableKemEnc {
                 // For Covercrypt, the bytes can either be a valid MSK or USK.
                 XEnc::deserialize(&bytes)
                     .map(|_| ())
-                    .map_err(|e| CryptoCoreError::GenericDeserializationError(e.to_string()))
+                    .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string()))
             }
         }
         .map_err(|_| {
@@ -394,7 +394,7 @@ impl ConfigurableKemEnc {
 }
 
 impl Serializable for ConfigurableKemEnc {
-    type Error = CryptoCoreError;
+    type Error = CryptoBaseError;
 
     fn length(&self) -> usize {
         self.0.length() + self.1.length()

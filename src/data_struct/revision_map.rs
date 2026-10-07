@@ -1,20 +1,17 @@
+use crate::Error;
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use std::{
     borrow::Borrow,
     collections::{
-        hash_map::{Entry, OccupiedEntry, VacantEntry},
-        HashMap, LinkedList,
+        btree_map::{Entry, OccupiedEntry, VacantEntry},
+        BTreeMap, LinkedList,
     },
     fmt::Debug,
-    hash::Hash,
 };
 
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-
-use crate::Error;
-
-/// A `RevisionMap` is a `HashMap` which keys are mapped to sequences of values.
-/// Upon insertion for an existing key, the new value is prepended to the
-/// sequence of older values instead of replacing it.
+/// A `RevisionMap` is a `BTreeMap` which keys are mapped to sequences of
+/// values. Upon insertion for an existing key, the new value is prepended to
+/// the sequence of older values instead of replacing it.
 ///
 /// Map {
 ///     key2: b
@@ -26,43 +23,31 @@ use crate::Error;
 /// Deletions can only happen at the end of the linked list.
 ///
 /// This guarantees that the entry versions are always ordered.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct RevisionMap<K, V>
-where
-    K: Debug + PartialEq + Eq + Hash,
-    V: Debug,
-{
-    pub(crate) map: HashMap<K, LinkedList<V>>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionMap<K: Ord, V> {
+    pub(crate) map: BTreeMap<K, LinkedList<V>>,
 }
 
 impl<K, V> Default for RevisionMap<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug,
-    V: Clone + Debug,
+    K: Ord + Debug,
+    V: Debug,
 {
     fn default() -> Self {
         Self {
-            map: HashMap::default(),
+            map: BTreeMap::default(),
         }
     }
 }
 
 impl<K, V> RevisionMap<K, V>
 where
-    K: Hash + PartialEq + Eq + Clone + Debug,
-    V: Clone + Debug,
+    K: Ord,
 {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
-        }
-    }
-
-    #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            map: HashMap::with_capacity(capacity),
+            map: BTreeMap::new(),
         }
     }
 
@@ -111,7 +96,7 @@ where
     pub fn get_latest<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + Eq + ?Sized,
     {
         self.map.get(key).and_then(LinkedList::front)
     }
@@ -120,7 +105,7 @@ where
     pub fn get_latest_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + Eq + ?Sized,
     {
         self.map.get_mut(key).and_then(LinkedList::front_mut)
     }
@@ -144,7 +129,7 @@ where
     pub fn get<Q>(&self, key: &Q) -> Option<&LinkedList<V>>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + Eq + ?Sized,
     {
         self.map.get(key)
     }
@@ -154,7 +139,7 @@ where
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut LinkedList<V>>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + Eq + ?Sized,
     {
         self.map.get_mut(key)
     }
@@ -163,7 +148,7 @@ where
     pub fn remove<Q>(&mut self, key: &Q) -> Option<impl Iterator<Item = V>>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + Eq + ?Sized,
     {
         self.map.remove(key).map(LinkedList::into_iter)
     }
@@ -173,7 +158,7 @@ where
     pub fn keep<Q>(&mut self, key: &Q, n: usize) -> Option<impl Iterator<Item = V>>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Ord + Eq + ?Sized,
     {
         let chain = self.map.get_mut(key)?;
         if n <= chain.len() {
@@ -191,8 +176,8 @@ where
 
 impl<K, V> Serializable for RevisionMap<K, V>
 where
-    K: Hash + PartialEq + Eq + Debug + Serializable,
-    V: Debug + Serializable,
+    K: Ord + Serializable,
+    V: Serializable,
 {
     type Error = Error;
 
