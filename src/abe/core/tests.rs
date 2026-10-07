@@ -1,26 +1,22 @@
-use std::collections::{HashMap, HashSet};
-
-use cosmian_crypto_core::{
-    Aes256Gcm, CsRng, reexport::rand_core::SeedableRng, traits::AE_InPlace,
+use super::{
+    primitives::{setup, usk_keygen},
+    MIN_TRACING_LEVEL,
 };
-
 use crate::{
     abe::{
-        Covercrypt,
         core::{
-            EncryptionHint,
             primitives::{decaps, encaps, refresh, rekey, update_msk},
+            EncryptionHint,
         },
         policy::{AccessPolicy, EncryptionStatus, Right},
         traits::{KemAc, PkeAc},
+        Covercrypt,
     },
     test_utils::cc_keygen,
 };
-
-use super::{
-    MIN_TRACING_LEVEL,
-    primitives::{setup, usk_keygen},
-};
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, traits::AE_InPlace, Aes256Gcm, CsRng};
+use cosmian_openssl_provider::hash::Sha256;
+use std::collections::{HashMap, HashSet};
 
 #[test]
 fn security_mode_ordering() {
@@ -134,8 +130,7 @@ fn test_update() {
     assert_eq!(mpk.encryption_keys.len(), 15);
 
     // Keep only 10 coordinates.
-    let coordinates =
-        coordinates.into_iter().take(10).collect::<HashMap<_, _>>();
+    let coordinates = coordinates.into_iter().take(10).collect::<HashMap<_, _>>();
     update_msk(&mut rng, &mut msk, coordinates).unwrap();
     assert_eq!(msk.secrets.len(), 10);
     let mpk = msk.mpk().unwrap();
@@ -152,8 +147,7 @@ fn test_rekey() {
     let coordinate_2 = Right::random(&mut rng);
     let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
     let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
-    let universe =
-        HashSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
+    let universe = HashSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
@@ -357,6 +351,7 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::encrypt(&cc, &mpk, &ap, ptx)
     .expect("cannot encrypt!");
@@ -367,6 +362,7 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::decrypt(&cc, &usk, &ctx)
     .expect("cannot decrypt the ciphertext");
