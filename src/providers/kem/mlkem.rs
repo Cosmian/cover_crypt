@@ -156,7 +156,7 @@ macro_rules! make_mlkem {
     };
 }
 
-#[cfg(feature = "mlkem-512")]
+#[cfg(any(feature = "mlkem-512", feature = "generic-kem"))]
 make_mlkem!(
     MlKem512,
     EncapsulationKey512,
@@ -167,7 +167,7 @@ make_mlkem!(
     768
 );
 
-#[cfg(feature = "mlkem-768")]
+#[cfg(any(feature = "mlkem-768", feature = "generic-kem"))]
 make_mlkem!(
     MlKem768,
     EncapsulationKey768,
@@ -202,8 +202,8 @@ mod tests {
         };
     }
 
-    #[cfg(feature = "mlkem-512")]
+    #[cfg(any(feature = "mlkem-512", feature = "generic-kem"))]
     test_mlkem!(MlKem512, test_mlkem512);
-    #[cfg(feature = "mlkem-768")]
+    #[cfg(any(feature = "mlkem-768", feature = "generic-kem"))]
     test_mlkem!(MlKem768, test_mlkem768);
 }
