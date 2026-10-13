@@ -11,7 +11,7 @@ use cosmian_crypto_core::{
     traits::{Sampling, Zero, KEM, NIKE},
     SymmetricKey,
 };
-use std::collections::{HashMap, HashSet, LinkedList};
+use std::collections::{BTreeMap, BTreeSet, LinkedList};
 
 mod serialization;
 
@@ -453,7 +453,7 @@ impl MasterSecretKey {
 #[derive(Debug, PartialEq, Clone)]
 pub struct MasterPublicKey {
     tpk: TracingPublicKey,
-    encryption_keys: HashMap<Right, RightPublicKey>,
+    encryption_keys: BTreeMap<Right, RightPublicKey>,
     pub access_structure: AccessStructure,
 }
 
@@ -478,7 +478,7 @@ impl MasterPublicKey {
     /// or these rights do not define an homogeneous set of keys.
     fn select_subkeys(
         &self,
-        targets: &HashSet<Right>,
+        targets: &BTreeSet<Right>,
     ) -> Result<(EncryptionHint, Vec<&RightPublicKey>), Error> {
         let subkeys = targets
             .iter()

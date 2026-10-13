@@ -1,5 +1,8 @@
 use crate::AccessPolicy;
-use cosmian_crypto_core::{traits::AE, Secret};
+use cosmian_crypto_core::{
+    traits::{AE, KDF},
+    Secret,
+};
 
 pub trait KemAc<const LENGTH: usize> {
     type EncapsulationKey;
@@ -33,6 +36,7 @@ pub trait PkeAc<
     const KEY_LENGTH: usize,
     const NONCE_LENGTH: usize,
     const TAG_LENGTH: usize,
+    Kdf: KDF<KEY_LENGTH>,
     E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
 >
 {

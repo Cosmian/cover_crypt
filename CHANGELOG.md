@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### 🚀 Features
+
+- Add regression tests for MSK, MPK, USK and encapsulations.
+
 ## [16.0.1] - 2026-09-29
 
 ### Bug Fixes
