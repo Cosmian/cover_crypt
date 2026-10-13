@@ -7,7 +7,7 @@ module type S = sig
 
   module Nike : NIKE
   module Kem : KEM with type n = keylen
-  module Sig : Signature with type n = keylen
+  module Signature : Signature with type n = keylen
 
   module G : sig
     val hash : keylen sbytes -> Nike.sk
