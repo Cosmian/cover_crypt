@@ -163,13 +163,22 @@ module type KEM = sig
   type e
   type dk = Dk.t
   type ek = Ek.t
-  type enc = e sbytes
-  type key = k sbytes
+  type enc = private e sbytes
+  type key = private k sbytes
 
   val gen_dk : (module RNG) -> dk
   val get_ek : dk -> ek
   val encaps : (module RNG) -> ek -> key * enc
   val decaps : dk -> enc -> key option
+end
+
+module type OTP = sig
+  type keylen
+  type key = private keylen sbytes
+  type ctx = private keylen sbytes
+
+  val mask : key -> keylen sbytes -> ctx
+  val unmask : key -> ctx -> keylen sbytes
 end
 
 module type Group = sig
@@ -201,11 +210,12 @@ module type NIKE = sig
 
   type pk = Pk.t
   type sk = Sk.t
-  type key
+  type keylen
+  type key = private keylen sbytes
 
   val ( * ) : sk -> pk -> pk
   val gen_sk : (module RNG) -> sk
-  val get_pk : sk -> pk
+  val gen_pk : sk -> pk
   val session_key : pk -> sk -> key
 end
 
@@ -217,7 +227,7 @@ module type KEM_AC = sig
   type universe
   type policy
   type keylen
-  type key = keylen sbytes
+  type key = private keylen sbytes
 
   val keylen : keylen Nat.t
 
@@ -266,7 +276,7 @@ module type Signature = sig
   type n
   type sk
   type vk
-  type seal = n sbytes
+  type seal = private n sbytes
 
   val gen_sk : (module RNG) -> sk
   val get_vk : sk -> vk
