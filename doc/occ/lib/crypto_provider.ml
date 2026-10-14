@@ -6,8 +6,8 @@ module type S = sig
   val keylen : keylen Nat.t
 
   module Nike : NIKE
-  module Kem : KEM with type n = keylen
-  module Signature : Signature with type n = keylen
+  module Kem : KEM with type k = keylen
+  module Signature : Signature
 
   module G : sig
     val hash : keylen sbytes -> Nike.sk
