@@ -50,7 +50,7 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
     tag : tag;
     c1 : Nike.pk;
     c2 : Nike.pk;
-    xenc : (Kem.enc * keylen sbytes) list;
+    xenc : (Kem.enc * Otp.ctx) list;
   }
 
   type 'a signer = Signer : 'a * Signature.sk -> 'a signer
@@ -129,8 +129,10 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
         let c1, c2 = (Nike.Pk.to_bytes enc.c1, Nike.Pk.to_bytes enc.c2) in
         let xenc =
           List.fold_right
-            (fun (enc, mask) bytes ->
-              SBytes.to_bytes enc :: SBytes.to_bytes mask :: bytes)
+            (fun ((enc : Kem.enc), (mask : Otp.ctx)) bytes ->
+              SBytes.to_bytes (enc :> Kem.e sbytes)
+              :: SBytes.to_bytes (mask :> keylen sbytes)
+              :: bytes)
             enc.xenc []
         in
         let bytes = v :: tag :: c1 :: c2 :: xenc in
@@ -153,13 +155,13 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
   let gen_pk rng msk (policy : policy) =
     let mpk =
       let (Signer (msk, _)) = msk in
-      let h = Nike.get_pk msk.s in
-      let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
+      let h = Nike.gen_pk msk.s in
+      let h1, h2 = (Nike.gen_pk msk.s1, Nike.gen_pk msk.s2) in
       let rpk =
         RightMM.fold
           (fun r secrets ->
             let sk, dk = NonEmptyList.head secrets in
-            RightMap.add r (Nike.get_pk sk, Kem.get_ek dk))
+            RightMap.add r (Nike.gen_pk sk, Kem.get_ek dk))
           msk.rsk RightMap.empty
       in
       { v = msk.v; h; h1; h2; rpk }
@@ -171,7 +173,7 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
       let (Signer (msk, sk)) = msk in
       let u1 = Nike.gen_sk rng in
       let u2 = Nike.Sk.((msk.s - (u1 * msk.s1)) / msk.s2) in
-      let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
+      let h1, h2 = (Nike.gen_pk msk.s1, Nike.gen_pk msk.s2) in
       let vk = Signature.get_vk sk in
       let rsk =
         Policy.fold
@@ -212,7 +214,7 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
       List.map
         (fun (k, k', e) ->
           let h = H.hash k k' ~c1 ~c2 t in
-          let f = SBytes.xor secret h in
+          let f = Otp.mask h secret in
           (e, f))
         encs
     in
@@ -232,7 +234,7 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
     | None -> None
     | Some k' ->
         let k = Nike.session_key p sk in
-        let secret = SBytes.xor f @@ H.hash k k' ~c1:enc.c1 ~c2:enc.c2 t in
+        let secret = Otp.unmask (H.hash k k' ~c1:enc.c1 ~c2:enc.c2 t) f in
         let key, tag = J.hash ~secret ~c1:enc.c1 ~c2:enc.c2 u in
         if tag = enc.tag then
           let r = G.hash secret in
@@ -267,8 +269,8 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
   let enc_policy msk enc =
     let p1 = Nike.(enc.c1) in
     let p2 = Nike.(Sk.((msk.s - msk.s1) / msk.s2) * enc.c2) in
-    let h1 = Nike.get_pk msk.s1 in
-    let h2 = Nike.get_pk msk.s2 in
+    let h1 = Nike.gen_pk msk.s1 in
+    let h2 = Nike.gen_pk msk.s2 in
     let p = Nike.Pk.(p1 + p2) in
     let t = T.hash @@ List.map (fun (e, _) -> e) enc.xenc in
     let u = U.hash ~t @@ List.map Pair.snd enc.xenc in

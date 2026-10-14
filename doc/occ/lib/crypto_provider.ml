@@ -5,7 +5,7 @@ module type S = sig
 
   val keylen : keylen Nat.t
 
-  module Nike : NIKE
+  module Nike : NIKE with type keylen = keylen
   module Kem : KEM with type k = keylen
   module Signature : Signature
 
@@ -19,16 +19,18 @@ module type S = sig
     val hash : Kem.enc list -> t
   end
 
+  module H : sig
+    type t = private keylen sbytes
+
+    val hash : Nike.key -> Kem.key -> c1:Nike.pk -> c2:Nike.pk -> T.t -> t
+  end
+
+  module Otp : OTP with type keylen = keylen and type key = H.t
+
   module U : sig
     type t
 
-    val hash : keylen sbytes list -> t:T.t -> t
-  end
-
-  module H : sig
-    type hash = keylen sbytes
-
-    val hash : Nike.key -> Kem.key -> c1:Nike.pk -> c2:Nike.pk -> T.t -> hash
+    val hash : Otp.ctx list -> t:T.t -> t
   end
 
   module J : sig
