@@ -3,10 +3,11 @@ module type RNG = sig
   val next : unit -> int
 end
 
-module type To_bytes = sig
+module type Serializable = sig
   type t
 
   val to_bytes : t -> bytes
+  val of_bytes : bytes -> t
 end
 
 module Nat = struct
@@ -155,20 +156,20 @@ module type Hash = sig
 end
 
 module type KEM = sig
-  type n
-  type dk
-  type ek
-  type enc
-  type key = n sbytes
+  module Dk : Serializable
+  module Ek : Serializable
+
+  type k
+  type e
+  type dk = Dk.t
+  type ek = Ek.t
+  type enc = e sbytes
+  type key = k sbytes
 
   val gen_dk : (module RNG) -> dk
   val get_ek : dk -> ek
   val encaps : (module RNG) -> ek -> key * enc
   val decaps : dk -> enc -> key option
-  val dk_to_bytes : dk -> bytes
-  val ek_to_bytes : ek -> bytes
-  val ss_to_bytes : key -> bytes
-  val enc_to_bytes : enc -> bytes
 end
 
 module type Group = sig
@@ -188,21 +189,24 @@ module type Field = sig
 end
 
 module type NIKE = sig
-  module Point : Group
-  module Scalar : Field
+  module Pk : sig
+    include Group
+    include Serializable with type t := t
+  end
 
-  type pk = Point.t
-  type sk = Scalar.t
+  module Sk : sig
+    include Field
+    include Serializable with type t := t
+  end
+
+  type pk = Pk.t
+  type sk = Sk.t
   type key
 
   val ( * ) : sk -> pk -> pk
   val gen_sk : (module RNG) -> sk
   val get_pk : sk -> pk
   val session_key : pk -> sk -> key
-  val sk_to_bytes : sk -> bytes
-  val pk_to_bytes : pk -> bytes
-  val sk_of_bytes : bytes -> sk option
-  val pk_of_bytes : bytes -> pk option
 end
 
 module type KEM_AC = sig
@@ -210,18 +214,52 @@ module type KEM_AC = sig
   type mpk
   type usk
   type enc
-  type keylen
-  type key = keylen sbytes
   type universe
   type policy
+  type keylen
+  type key = keylen sbytes
 
-  val setup : (module RNG) -> universe -> msk * mpk
-  val rotate : (module RNG) -> msk -> policy -> msk
-  val keygen : (module RNG) -> msk -> policy -> usk
-  val encaps : (module RNG) -> mpk -> policy -> key * enc
+  val keylen : keylen Nat.t
+
+  (* Signing primitives, using a typed state machine to enforce proper client
+     verifications. *)
+
+  type _ signer
+  type _ opener
+  type _ sealed
+
+  val promote : _ signer -> 't -> 't opener
+  val demote : 't signer -> 't opener
+  val to_raw : 't opener -> 't
+  val verify : ('t -> bytes) -> _ opener -> 't sealed -> 't option
+  val auto_verify : ('t -> bytes) -> 't opener sealed -> 't option
+
+  (* KEM-AC primitives. *)
+
+  val setup : (module RNG) -> universe -> msk signer
+  val rotate : (module RNG) -> msk signer -> policy -> msk signer
+  val gen_pk : (module RNG) -> msk signer -> policy -> mpk sealed
+  val keygen : (module RNG) -> msk signer -> policy -> usk sealed
+  val update : (module RNG) -> msk signer -> usk -> keep_old:bool -> usk sealed
   val recaps : (module RNG) -> msk -> mpk -> enc -> (old:key * key * enc)
+  val encaps : (module RNG) -> mpk -> policy -> key * enc
   val decaps : usk -> enc -> key option
-  val update : msk -> usk -> keep_old:bool -> usk
+
+  (* Key-lifecycle primitives. *)
+
+  val usk_policy : usk -> policy
+
+  (* We also want to be able to know the version of any covercrypt object. *)
+
+  type _ cc_obj =
+    | MSK : msk -> msk cc_obj
+    | MPK : mpk -> mpk cc_obj
+    | USK : usk -> usk cc_obj
+    | ENC : enc -> enc cc_obj
+
+  type any = Any : _ cc_obj -> any
+
+  val version : any -> Nat.any
 end
 
 module type Signature = sig
@@ -232,6 +270,12 @@ module type Signature = sig
 
   val gen_sk : (module RNG) -> sk
   val get_vk : sk -> vk
-  val sign : sk -> msg:bytes -> seal
+  val sign : (module RNG) -> sk -> msg:bytes -> seal
   val verify : vk -> msg:bytes -> seal -> bool
+
+  type _ key = SK : sk -> sk key | VK : vk -> vk key
+  type any = Any : _ key -> any
+
+  val serialize : any -> bytes
+  val deserialize : bytes -> any
 end

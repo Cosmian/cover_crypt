@@ -3,7 +3,7 @@ open Utils
 
 module type Right = sig
   include Stdlib.Map.OrderedType
-  include To_bytes with type t := t
+  include Serializable with type t := t
 end
 
 module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
@@ -24,7 +24,6 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
     s : Nike.sk;
     s1 : Nike.sk;
     s2 : Nike.sk;
-    sk : Signature.sk;
     rsk : (Nike.sk * Kem.dk) RightMM.t;
   }
 
@@ -34,7 +33,6 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
     h1 : Nike.pk;
     h2 : Nike.pk;
     rpk : (Nike.pk * Kem.ek) RightMap.t;
-    seal : Signature.seal;
   }
 
   type usk = {
@@ -45,7 +43,6 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
     h2 : Nike.pk;
     vk : Signature.vk;
     rsk : (Nike.sk * Kem.dk) RightMM.t;
-    seal : Signature.seal;
   }
 
   type enc = {
@@ -56,94 +53,137 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
     xenc : (Kem.enc * keylen sbytes) list;
   }
 
-  let rpk_to_bytes rpk =
-    RightMap.fold
-      (fun right (pk, ek) bytes ->
-        Right.to_bytes right :: Nike.pk_to_bytes pk :: Kem.ek_to_bytes ek
-        :: bytes)
-      rpk []
+  type 'a signer = Signer : 'a * Signature.sk -> 'a signer
+  type 'a opener = Opener : 'a * Signature.vk -> 'a opener
+  type 'a sealed = Sealed : 'a * Signature.seal -> 'a sealed
 
-  let rsk_to_bytes rsk =
-    RightMM.fold
-      (fun right keys bytes ->
-        Right.to_bytes right
-        :: NonEmptyList.fold_right
-             (fun (sk, dk) bytes ->
-               Nike.sk_to_bytes sk :: Kem.dk_to_bytes dk :: bytes)
-             keys bytes)
-      rsk []
+  let promote (Signer (_, sk)) t = Opener (t, Signature.get_vk sk)
+  let demote (Signer (t, sk)) = Opener (t, Signature.get_vk sk)
+  let to_raw (Opener (t, _)) = t
 
-  let sign_mpk ~sk ~v ~h ~h1 ~h2 ~rpk =
-    let h = Nike.pk_to_bytes h in
-    let h1, h2 = (Nike.pk_to_bytes h1, Nike.pk_to_bytes h2) in
-    let bytes = Nat.to_bytes v :: h :: h1 :: h2 :: rpk_to_bytes rpk in
-    Signature.sign sk ~msg:(Bytes.concat Bytes.empty bytes)
+  let seal rng to_bytes (Signer (_, sk)) t =
+    Sealed (t, Signature.sign rng sk ~msg:(to_bytes t))
 
-  let is_valid_mpk vk mpk =
-    let h = Nike.pk_to_bytes mpk.h in
-    let h1, h2 = (Nike.pk_to_bytes mpk.h1, Nike.pk_to_bytes mpk.h2) in
-    let v = Nat.to_bytes mpk.v in
-    let bytes = v :: h :: h1 :: h2 :: rpk_to_bytes mpk.rpk in
-    Signature.verify vk mpk.seal ~msg:(Bytes.concat Bytes.empty bytes)
+  let auto_verify to_bytes (Sealed (Opener (t, vk), seal)) =
+    if Signature.verify vk ~msg:(to_bytes t) seal then Some t else None
 
-  let sign_usk ~sk ~v ~u1 ~u2 ~h1 ~h2 ~rsk =
-    let u1, u2 = (Nike.sk_to_bytes u1, Nike.sk_to_bytes u2) in
-    let h1, h2 = (Nike.pk_to_bytes h1, Nike.pk_to_bytes h2) in
-    let bytes = Nat.to_bytes v :: u1 :: u2 :: h1 :: h2 :: rsk_to_bytes rsk in
-    Signature.sign sk ~msg:(Bytes.concat Bytes.empty bytes)
+  let verify to_bytes (Opener (_, vk)) (Sealed (t, seal)) =
+    if Signature.verify vk ~msg:(to_bytes t) seal then Some t else None
 
-  let is_valid_usk (msk : msk) (usk : usk) =
-    let v = Nat.to_bytes usk.v in
-    let u1, u2 = (Nike.sk_to_bytes usk.u1, Nike.sk_to_bytes usk.u2) in
-    let h1, h2 = (Nike.pk_to_bytes usk.h1, Nike.pk_to_bytes usk.h2) in
-    let bytes = v :: u1 :: u2 :: h1 :: h2 :: rsk_to_bytes usk.rsk in
-    Signature.verify (Signature.get_vk msk.sk) usk.seal
-      ~msg:(Bytes.concat Bytes.empty bytes)
+  type _ cc_obj =
+    | MSK : msk -> msk cc_obj
+    | MPK : mpk -> mpk cc_obj
+    | USK : usk -> usk cc_obj
+    | ENC : enc -> enc cc_obj
 
-  let get_mpk (msk : msk) =
-    let v = msk.v in
-    let h = Nike.get_pk msk.s in
-    let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
-    let rpk =
+  type any = Any : _ cc_obj -> any
+
+  let version = function
+    | Any (MSK { v }) -> v
+    | Any (MPK { v }) -> v
+    | Any (USK { v }) -> v
+    | Any (ENC { v }) -> v
+
+  let serialize =
+    let rsk_to_bytes rsk =
       RightMM.fold
-        (fun r secrets ->
-          let sk, dk = NonEmptyList.head secrets in
-          RightMap.add r (Nike.get_pk sk, Kem.get_ek dk))
-        msk.rsk RightMap.empty
+        (fun right keys bytes ->
+          List.cons (Right.to_bytes right)
+          @@ NonEmptyList.fold_right
+               (fun (sk, dk) bytes ->
+                 Nike.Sk.to_bytes sk :: Kem.Dk.to_bytes dk :: bytes)
+               keys bytes)
+        rsk []
     in
-    { v; h; h1; h2; rpk; seal = sign_mpk ~sk:msk.sk ~v ~h ~h1 ~h2 ~rpk }
+    let rpk_to_bytes rpk =
+      RightMap.fold
+        (fun right (pk, ek) bytes ->
+          let right = Right.to_bytes right in
+          let pk = Nike.Pk.to_bytes pk in
+          let ek = Kem.Ek.to_bytes ek in
+          right :: pk :: ek :: bytes)
+        rpk []
+    in
+    function
+    | Any (MSK msk) ->
+        let v = Nat.to_bytes msk.v in
+        let h = Nike.Sk.to_bytes msk.s in
+        let h1, h2 = (Nike.Sk.to_bytes msk.s1, Nike.Sk.to_bytes msk.s2) in
+        let bytes = v :: h :: h1 :: h2 :: rsk_to_bytes msk.rsk in
+        Bytes.concat Bytes.empty bytes
+    | Any (MPK mpk) ->
+        let v = Nat.to_bytes mpk.v in
+        let h = Nike.Pk.to_bytes mpk.h in
+        let h1, h2 = (Nike.Pk.to_bytes mpk.h1, Nike.Pk.to_bytes mpk.h2) in
+        let rpk = rpk_to_bytes mpk.rpk in
+        Bytes.concat Bytes.empty (v :: h :: h1 :: h2 :: rpk)
+    | Any (USK usk) ->
+        let v = Nat.to_bytes usk.v in
+        let u1, u2 = (Nike.Sk.to_bytes usk.u1, Nike.Sk.to_bytes usk.u2) in
+        let h1, h2 = (Nike.Pk.to_bytes usk.h1, Nike.Pk.to_bytes usk.h2) in
+        let bytes = v :: u1 :: u2 :: h1 :: h2 :: rsk_to_bytes usk.rsk in
+        Bytes.concat Bytes.empty bytes
+    | Any (ENC enc) ->
+        let v = Nat.to_bytes enc.v in
+        let tag = SBytes.to_bytes enc.tag in
+        let c1, c2 = (Nike.Pk.to_bytes enc.c1, Nike.Pk.to_bytes enc.c2) in
+        let xenc =
+          List.fold_right
+            (fun (enc, mask) bytes ->
+              SBytes.to_bytes enc :: SBytes.to_bytes mask :: bytes)
+            enc.xenc []
+        in
+        let bytes = v :: tag :: c1 :: c2 :: xenc in
+        Bytes.concat Bytes.empty bytes
+
+  let mpk_to_bytes mpk = serialize (Any (MPK mpk))
+  let usk_to_bytes usk = serialize (Any (USK usk))
 
   let setup rng universe =
-    let msk =
-      let v = Nat.Any Nat.zero in
-      let s = Nike.gen_sk rng in
-      let s1, s2 = (Nike.gen_sk rng, Nike.gen_sk rng) in
-      let sk = Signature.gen_sk rng in
-      let rsk =
-        Universe.fold
-          (fun r -> RightMM.add r (Nike.gen_sk rng, Kem.gen_dk rng))
-          universe RightMM.empty
-      in
-      { v; s; s1; s2; sk; rsk }
+    let v = Nat.Any Nat.zero in
+    let s = Nike.gen_sk rng in
+    let s1, s2 = (Nike.gen_sk rng, Nike.gen_sk rng) in
+    let rsk =
+      Universe.fold
+        (fun r -> RightMM.add r (Nike.gen_sk rng, Kem.gen_dk rng))
+        universe RightMM.empty
     in
-    (msk, get_mpk msk)
+    Signer ({ v; s; s1; s2; rsk }, Signature.gen_sk rng)
+
+  let gen_pk rng msk (policy : policy) =
+    let mpk =
+      let (Signer (msk, _)) = msk in
+      let h = Nike.get_pk msk.s in
+      let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
+      let rpk =
+        RightMM.fold
+          (fun r secrets ->
+            let sk, dk = NonEmptyList.head secrets in
+            RightMap.add r (Nike.get_pk sk, Kem.get_ek dk))
+          msk.rsk RightMap.empty
+      in
+      { v = msk.v; h; h1; h2; rpk }
+    in
+    seal rng mpk_to_bytes msk mpk
 
   let keygen rng msk policy =
-    let u1 = Nike.gen_sk rng in
-    let u2 = Nike.Scalar.((msk.s - (u1 * msk.s1)) / msk.s2) in
-    let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
-    let vk = Signature.get_vk msk.sk in
-    let rsk =
-      Policy.fold
-        (fun r ->
-          match RightMM.get msk.rsk r with
-          | None -> invalid_arg "invalid policy"
-          | Some secrets -> RightMM.add r (NonEmptyList.head secrets))
-        policy msk.rsk
+    let usk =
+      let (Signer (msk, sk)) = msk in
+      let u1 = Nike.gen_sk rng in
+      let u2 = Nike.Sk.((msk.s - (u1 * msk.s1)) / msk.s2) in
+      let h1, h2 = (Nike.get_pk msk.s1, Nike.get_pk msk.s2) in
+      let vk = Signature.get_vk sk in
+      let rsk =
+        Policy.fold
+          (fun r ->
+            match RightMM.get msk.rsk r with
+            | None -> invalid_arg "invalid policy"
+            | Some secrets -> RightMM.add r (NonEmptyList.head secrets))
+          policy msk.rsk
+      in
+      { v = msk.v; u1; u2; h1; h2; vk; rsk }
     in
-    let v = msk.v in
-    let seal = sign_usk ~sk:msk.sk ~v ~u1 ~u2 ~h1 ~h2 ~rsk in
-    { v; u1; u2; h1; h2; vk; rsk; seal }
+    seal rng usk_to_bytes msk usk
 
   let encaps rng mpk policy =
     let pks =
@@ -204,7 +244,7 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
   let decaps usk enc =
     let p1 = Nike.(usk.u1 * enc.c1) in
     let p2 = Nike.(usk.u2 * enc.c2) in
-    let p = Nike.Point.(p1 + p2) in
+    let p = Nike.Pk.(p1 + p2) in
     let t = T.hash @@ List.map (fun (e, _) -> e) enc.xenc in
     let u = U.hash ~t @@ List.map Pair.snd enc.xenc in
     List.fold_left
@@ -226,10 +266,10 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
 
   let enc_policy msk enc =
     let p1 = Nike.(enc.c1) in
-    let p2 = Nike.(Scalar.((msk.s - msk.s1) / msk.s2) * enc.c2) in
+    let p2 = Nike.(Sk.((msk.s - msk.s1) / msk.s2) * enc.c2) in
     let h1 = Nike.get_pk msk.s1 in
     let h2 = Nike.get_pk msk.s2 in
-    let p = Nike.Point.(p1 + p2) in
+    let p = Nike.Pk.(p1 + p2) in
     let t = T.hash @@ List.map (fun (e, _) -> e) enc.xenc in
     let u = U.hash ~t @@ List.map Pair.snd enc.xenc in
     List.fold_left
@@ -246,58 +286,50 @@ module S (Right : Right) (Provider : Crypto_provider.S) () : KEM_AC = struct
       None
     @@ msk_secrets msk
 
-  let recaps rng msk mpk enc =
-    if not (is_valid_mpk (Signature.get_vk msk.sk) mpk) then
-      invalid_arg "invalid master public key"
-    else if msk.v != mpk.v then invalid_arg "outdated master public key"
-    else
+  let recaps rng (msk : msk) (mpk : mpk) enc =
+    if msk.v == mpk.v then
       match enc_policy msk enc with
       | None -> invalid_arg "could not open encapsulation"
       | Some (old_key, policy) ->
           let new_key, enc = encaps rng mpk policy in
           (~old:old_key, new_key, enc)
-
-  let msk_revision (msk : msk) = msk.v
-  let mpk_revision (mpk : mpk) = mpk.v
-  let usk_revision (usk : usk) = usk.v
-  let enc_revision (enc : enc) = enc.v
+    else invalid_arg "outdated master public key"
 
   let usk_policy usk =
     RightMM.fold (fun r _ -> Policy.add r) usk.rsk Policy.empty
 
-  let rotate rng (msk : msk) policy =
+  let rotate rng (Signer ((msk : msk), sk)) policy =
     let v = Nat.succ msk.v in
     let rsk =
       Policy.fold
         (fun r -> RightMM.add r (Nike.gen_sk rng, Kem.gen_dk rng))
         policy msk.rsk
     in
-    { msk with v; rsk }
+    Signer ({ msk with v; rsk }, sk)
 
-  let update msk usk ~keep_old =
-    assert (is_valid_usk msk usk);
-    let v = msk.v in
-    let rsk =
-      RightMM.fold
-        (fun r secrets rsk ->
-          match RightMM.get msk.rsk r with
-          | None -> rsk
-          | Some master_secrets ->
-              if keep_old then
-                let newer_secrets =
-                  NonEmptyList.take_while
-                    (fun s -> s != NonEmptyList.head secrets)
-                    master_secrets
-                in
-                RightMM.set r
-                  (NonEmptyList.append_list newer_secrets secrets)
-                  rsk
-              else RightMM.add r (NonEmptyList.head master_secrets) rsk)
-        usk.rsk RightMM.empty
+  let update rng (msk : msk signer) usk ~keep_old =
+    let usk =
+      let (Signer (msk, sk)) = msk in
+      let v = msk.v in
+      let rsk =
+        RightMM.fold
+          (fun r secrets rsk ->
+            match RightMM.get msk.rsk r with
+            | None -> rsk
+            | Some master_secrets ->
+                if keep_old then
+                  let newer_secrets =
+                    NonEmptyList.take_while
+                      (fun s -> s != NonEmptyList.head secrets)
+                      master_secrets
+                  in
+                  RightMM.set r
+                    (NonEmptyList.append_list newer_secrets secrets)
+                    rsk
+                else RightMM.add r (NonEmptyList.head master_secrets) rsk)
+          usk.rsk RightMM.empty
+      in
+      { usk with v; rsk }
     in
-    let seal =
-      sign_usk ~sk:msk.sk ~v:usk.v ~u1:usk.u1 ~u2:usk.u2 ~h1:usk.h1 ~h2:usk.h2
-        ~rsk
-    in
-    { usk with v; rsk; seal }
+    seal rng usk_to_bytes msk usk
 end
