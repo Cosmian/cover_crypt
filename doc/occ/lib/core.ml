@@ -1,5 +1,5 @@
 module type RNG = sig
-  val gen : int -> bytes
+  val draw : int -> bytes
   val next : unit -> int
 end
 
@@ -46,7 +46,7 @@ end = struct
     if Nat.size (Any n) = Bytes.length b then Bytes b
     else invalid_arg "incorrect byte size"
 
-  let gen (module Rng : RNG) n = Bytes (Rng.gen (Nat.size (Any n)))
+  let gen (module Rng : RNG) n = Bytes (Rng.draw (Nat.size (Any n)))
 
   let xor (Bytes b1) (Bytes b2) =
     Bytes
