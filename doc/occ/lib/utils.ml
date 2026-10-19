@@ -1,7 +1,7 @@
 open Core
 
 let shuffle (module Rng : RNG) = List.sort (fun _ _ -> (Rng.next () mod 2) - 1)
-let gen_bytes (module Rng : RNG) = Rng.gen
+let gen_bytes (module Rng : RNG) = Rng.draw
 
 (** Flattens the given lists into a single lists which values alternatively come
     from each of those lists. *)

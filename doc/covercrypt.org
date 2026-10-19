@@ -184,7 +184,7 @@ encapsulation policy with respect to some binary relation over the policy space.
 A KEM-AC  is defined over  a master-secret-key space  $\cK_S$, master-public-key
 space $\cK_P$ and a user-secret-key space $\cK_U$, a session-key space $\cK$ and
 an encapsulation space $\cE$, and exposes the following operations:
-- setup: :: $\mathbb P(\cP_U \times \cP_E) \rightarrow \cK_S \times \cK_P$
+- setup: :: $\powerset{\cP_U \times \cP_E} \rightarrow \cK_S \times \cK_P$
 
   This randomized algorithm takes as input  a binary relation $R$ over policies,
   and returns a master secret key $\msk{R}$ and a master public key $\mpk{R}$.
@@ -216,10 +216,12 @@ an encapsulation space $\cE$, and exposes the following operations:
 
 ** KEM-AC specification
 
+- Note taken on [2026-10-13 Tue 14:55] \\
+  *TODO*: List security claims somewhere.
 Covercrypt is a  subset-cover algorithm: it implements a KEM-AC  with respect to
 an  access structure  $S$ defining  a  set of  rights $\cU  = \{r_i\}_i$  called
-/universe/, which  policy space is $\mathbb  P(\cU)$ and binary relation  is the
-test of  intersection: $R_{\cU} = \{(p_u,  p_e) \in \mathbb P(\cU)^2  : p_u \cap
+/universe/, which policy space is  $\powerset{\cU}$ and which binary relation is
+the intersection test:  $R_{\cU} = \{(p_u, p_e) \in \powerset{\cU}^2  : p_u \cap
 p_e  \ne \emptyset  \}$.   The  complete reference  implementation  is given  in
 Section [[*SC-KEM-AC reference implementation]] (note that the format of the keys is
 dictated by the additional requirements listed in the following sections).
@@ -233,24 +235,24 @@ to be different from setting up a  new instance. The renewal procedure -- called
 /key rotation/ -- is described in the present section.
 
 Recall that  each user secret  key $usk_p$ is associated  to a policy  $p$. Upon
-use-secret-key compromise, a key rotation with respect to its entire policy must
-be performed.  Due to the particular  structure of Covercrypt keys, this process
-implies: (1)  the rotation of all  associated secrets in the  master secret key,
-(2) the propagation of this rotation to  the master public key to prevent future
-encapsulations from being using compromised secrets, (3) the propagation of this
-rotation  to all  user  secret keys  which  policy intersects  the  ones of  the
+compromise of user secret key, a key  rotation with respect to its entire policy
+must be  performed.  Due to  the particular  structure of Covercrypt  keys, this
+process implies: (1) the rotation of all associated secrets in the master secret
+key, (2) the  propagation of this rotation  to the master public  key to prevent
+future encapsulations from being using  compromised secrets, (3) the propagation
+of this rotation to all user secret keys which policy intersects the ones of the
 compromised  key  to  allow  legitimate users  opening  the  new  encapsulations
 generated with respect to the new secrets, and (4) optionally the refresh of all
 encapsulations which associated policy intersects the one of the compromised key
 to prevent  an eventual attacker from  opening them if it  still hasn't accessed
 them.      The     entire     key-rotation    process     is     depicted     in
 Figure \ref{rotation-flow}, and leverages the following primitives:
-- usk-policy: :: $\cK_U \rightarrow \mathbb P(\cU)$
+- usk-policy: :: $\cK_U \rightarrow \powerset{\cU}$
 
   This function  takes as input a  Covercrypt user secret key  $usk_p \in \cK_U$
   and returns its associated policy $p \subset \cU$.
 
-- rotate: :: $\cK_S \times \mathbb P(\cU) \rightarrow \cK_S \times \cK_P$
+- rotate: :: $\cK_S \times \powerset{\cU} \rightarrow \cK_S \times \cK_P$
 
   This randomized  algorithm takes as input  a master secret key  $\msk{\cU} \in
   \cK_S$ and an access policy $p^* \subset \cU$, refreshes every secrets in this
@@ -388,14 +390,14 @@ modified in order to open new compatible  encapsulations, or to be opened by new
 compatible user secret keys. In other words, additive universe modifications can
 be seen as the use of a right  that was present in the universe but unused until
 then.
-- add-rights: :: $\cK_S \times \mathbb P(\cR) \rightarrow \cK_S \times \cK_P$
+- add-rights: :: $\cK_S \times \powerset{\cR} \rightarrow \cK_S \times \cK_P$
 
   This randomized algorithm  takes as input a master secret  key $msk \in \cK_S$
   under a universe  $\cU$ and a set  of new rights $\{r_i\}_i  \subset \cR$, and
   returns new  master secret and  public keys under  a universe $\cU'  \gets \cU
   \cup \{r_i\}_i$.
 
-- del-rights: :: $\cK_S \times \mathbb P(\cR) \rightarrow \cK_S \times \cK_P$
+- del-rights: :: $\cK_S \times \powerawr{\cR} \rightarrow \cK_S \times \cK_P$
 
   This randomized algorithm  takes as input a master secret  key $msk \in \cK_S$
   under a universe  $\cU$ and a set  of new rights $\{r_i\}_i  \subset \cR$, and
@@ -498,14 +500,14 @@ implementation of the primitives of Covercrypt SC-KEM-AC is as follows:
 
 *** Key-rotation primitives
 
-- usk-policy: :: $\cK_U \rightarrow \mathbb P(\cU)$
+- usk-policy: :: $\cK_U \rightarrow \powerset{\cU}$
 
   Extracting the policy out of a user secret key simply resorts to retrieving
   the rights for which it holds secrets:
 
   #+include: "covercrypt.ml" src ocaml :lines "490-492"
 
-- rotate: :: $\cK_S \times \mathbb P(\cU) \rightarrow \cK_S \times \cK_P$
+- rotate: :: $\cK_S \times \poswerset{\cU} \rightarrow \cK_S \times \cK_P$
 
   #+include: "covercrypt.ml" src ocaml :lines "493-501"
 
@@ -634,7 +636,7 @@ Not all combinations of dimensions can be defined by a given access structure.
 #+attr_latex: :options [Access Structure]
 #+begin_definition
 In the boolean KEM-AC setting, an access structure is a set of mutually disjoint
-dimensions: \[ \cS = \{S \in \mathbb P(\cD) \mid \forall (D_i, D_j) \in S^2, D_i
+dimensions: \[ \cS = \{S \in \powerset{\cD} \mid \forall (D_i, D_j) \in S^2, D_i
 \cap D_j = \emptyset \}\]
 #+end_definition
 
@@ -720,9 +722,9 @@ Let $\cU' = \cU  \cup D_3$, where $D_3 = \{  \attr{3}{1}, \attr{3}{2} \} \subset
 
 Evolving  the access  structure  underlying  a given  revision  of a  Covercrypt
 instance can be done through one of those functions:
-- add-hierarchy: :: $\cK_S \times \mathbb P(\cR) \rightarrow
+- add-hierarchy: :: $\cK_S \times \powerset{\cR} \rightarrow
   \cK_S \times \cK_P$ or $\bot$
-- del-hierarchy: :: $\cK_S \times \mathbb P(\cR) \rightarrow
+- del-hierarchy: :: $\cK_S \times \powerset{\cR} \rightarrow
   \cK_S \times \cK_P$ or $\bot$
 
   This randomized algorithm  takes as input a master secret  key $msk \in \cK_S$
