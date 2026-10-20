@@ -91,6 +91,11 @@ impl AccessPolicy {
     ///
     /// - "DPT::MKG DPT::FIN"
     pub fn parse(mut e: &str) -> Result<Self, Error> {
+        if !e.is_ascii() {
+            return Err(Error::InvalidBooleanExpression(
+                "non-ascii character used".to_owned(),
+            ));
+        }
         let seeker = |c: &char| !"()|&".contains(*c);
         let mut q = LinkedList::<Self>::new();
         loop {
@@ -135,12 +140,11 @@ impl AccessPolicy {
                                 "invalid leading separator in: '{e}'"
                             )));
                         }
-                        if q.is_empty() {
-                            return Err(Error::InvalidBooleanExpression(format!(
-                                "leading AND operand in '{e}'"
-                            )));
-                        }
-                        e = &e[2..];
+                        let base = q.pop_front().ok_or_else(|| {
+                            Error::InvalidBooleanExpression(format!("leading AND operand in '{e}'"))
+                        })?;
+                        let lhs = Self::conjugate(base, q.into_iter());
+                        return Ok(lhs & Self::parse(&e[2..])?);
                     }
                     ")" => {
                         return Err(Error::InvalidBooleanExpression(format!(
@@ -280,7 +284,11 @@ mod tests {
     #[test]
     fn test_access_policy_parsing() {
         // These are valid access policies.
+        let ap = AccessPolicy::parse("*").unwrap();
+        println!("{ap:#?}");
         let ap = AccessPolicy::parse("(D1::A && (D2::A) || D2::B)").unwrap();
+        println!("{ap:#?}");
+        let ap = AccessPolicy::parse("(D1::A && ((D2::A) && D2::B))").unwrap();
         println!("{ap:#?}");
         test_serialization(&ap).unwrap();
         let ap = AccessPolicy::parse("D1::A && D2::A || D2::B").unwrap();
@@ -296,12 +304,15 @@ mod tests {
         test_serialization(&ap).unwrap();
         assert_eq!(ap, AccessPolicy::Broadcast);
 
-        assert!(AccessPolicy::parse("").is_err());
-
         // These are invalid access policies.
         // TODO: make this one valid (change the parsing rule of the attribute).
+        assert!(AccessPolicy::parse("").is_err());
+        assert!(AccessPolicy::parse("()").is_err());
         assert!(AccessPolicy::parse("D1").is_err());
+        assert!(AccessPolicy::parse("D1::A || ").is_err());
+        assert!(AccessPolicy::parse("D1::A && ").is_err());
         assert!(AccessPolicy::parse("D1::A (&& D2::A || D2::B)").is_err());
         assert!(AccessPolicy::parse("|| D2::B").is_err());
+        assert!(AccessPolicy::parse("(é::à && (ó::ï) || ø::ú)").is_err());
     }
 }

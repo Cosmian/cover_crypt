@@ -31,7 +31,12 @@ fn main() {
     };
 
     for _ in 0..1_000_000 {
-        PkeAc::<{ Aes256Gcm::KEY_LENGTH }, Aes256Gcm>::decrypt(&cc, &usk, &ctx)
-            .expect("cannot decrypt hybrid header");
+        PkeAc::<
+            { Aes256Gcm::KEY_LENGTH },
+            { Aes256Gcm::NONCE_LENGTH },
+            { Aes256Gcm::MAC_LENGTH },
+            Aes256Gcm,
+        >::decrypt(&cc, &usk, &ctx)
+        .expect("cannot decrypt hybrid header");
     }
 }
