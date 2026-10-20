@@ -22,7 +22,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     with:
       toolchain: 1.89.0
-    secrets: inherit
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
   cleanup:
     needs:
       - cargo-test
