@@ -51,7 +51,7 @@ fn test_encapsulation() {
         ]),
     )
     .unwrap();
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
 
     let (key, enc) = encaps(
         &mut rng,
@@ -94,7 +94,7 @@ fn test_update() {
     assert_eq!(msk.tsk.tracing_level(), MIN_TRACING_LEVEL);
     assert_eq!(msk.secrets.len(), 0);
 
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
     assert_eq!(mpk.tpk.tracing_level(), MIN_TRACING_LEVEL);
     assert_eq!(mpk.encryption_keys.len(), 0);
 
@@ -111,7 +111,7 @@ fn test_update() {
     update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
 
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
     assert_eq!(mpk.encryption_keys.len(), 30);
 
     // Deprecate half coordinates.
@@ -128,7 +128,7 @@ fn test_update() {
         });
     update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
     assert_eq!(mpk.encryption_keys.len(), 15);
 
     // Keep only 10 coordinates.
@@ -136,7 +136,7 @@ fn test_update() {
         coordinates.into_iter().take(10).collect::<BTreeMap<_, _>>();
     update_msk(&mut rng, &mut msk, coordinates).unwrap();
     assert_eq!(msk.secrets.len(), 10);
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
     assert_eq!(mpk.encryption_keys.len(), 5);
 }
 
@@ -169,7 +169,7 @@ fn test_rekey() {
         ]),
     )
     .unwrap();
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
     let mut usk_1 = usk_keygen(&mut rng, &mut msk, subspace_1.clone()).unwrap();
     let mut usk_2 = usk_keygen(&mut rng, &mut msk, subspace_2.clone()).unwrap();
 
@@ -190,7 +190,7 @@ fn test_rekey() {
 
     // Re-key all space coordinates.
     rekey(&mut rng, &mut msk, universe).unwrap();
-    let mpk = msk.mpk().unwrap();
+    let mpk = msk.mpk(None).unwrap();
 
     let (new_key_1, new_enc_1) = encaps(&mut rng, &mpk, &subspace_1).unwrap();
     let (new_key_2, new_enc_2) = encaps(&mut rng, &mpk, &subspace_2).unwrap();
@@ -294,7 +294,7 @@ fn test_reencrypt_with_msk() {
     );
 
     cc.rekey(&mut msk, &ap).unwrap();
-    let new_mpk = msk.mpk().unwrap();
+    let new_mpk = msk.mpk(None).unwrap();
     let (new_key, new_enc) = cc.recaps(&msk, &new_mpk, &old_enc).unwrap();
     cc.refresh_usk(&mut msk, &mut usk, true).unwrap();
     assert_eq!(Some(new_key), decaps(&mut rng, &usk, &new_enc).unwrap());
