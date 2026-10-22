@@ -41,3 +41,14 @@ module type S = sig
       secret:keylen sbytes -> c1:Nike.pk -> c2:Nike.pk -> U.t -> key * tag
   end
 end
+
+module Make
+    (Hash : Hash)
+    (Sign : Signature)
+    (Kem : KEM)
+    (Nike : NIKE with type keylen = Kem.k) =
+struct
+  module Kem = Kem
+  module Nike = Nike
+  module Signature = Sign
+end
