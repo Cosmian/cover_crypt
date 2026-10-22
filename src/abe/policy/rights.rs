@@ -1,5 +1,7 @@
 use crate::Error;
-use cosmian_crypto_core::bytes_ser_de::{to_leb128_len, Deserializer, Serializable, Serializer};
+use cosmian_crypto_core::bytes_ser_de::{
+    Deserializer, Serializable, Serializer, to_leb128_len,
+};
 use std::{hash::Hash, ops::Deref};
 
 /// A right is a combination of the IDs of its associated attributes.
@@ -63,7 +65,9 @@ impl Serializable for Right {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{bytes_ser_de::Deserializer, reexport::rand_core::CryptoRngCore};
+    use cosmian_crypto_core::{
+        bytes_ser_de::Deserializer, reexport::rand_core::CryptoRngCore,
+    };
 
     use super::*;
 

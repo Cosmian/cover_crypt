@@ -1,20 +1,22 @@
 use super::{
-    primitives::{setup, usk_keygen},
     MIN_TRACING_LEVEL,
+    primitives::{setup, usk_keygen},
 };
 use crate::{
     abe::{
+        Covercrypt,
         core::{
-            primitives::{decaps, encaps, refresh, rekey, update_msk},
             EncryptionHint,
+            primitives::{decaps, encaps, refresh, rekey, update_msk},
         },
         policy::{AccessPolicy, EncryptionStatus, Right},
         traits::{KemAc, PkeAc},
-        Covercrypt,
     },
     test_utils::cc_keygen,
 };
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, traits::AE_InPlace, Aes256Gcm, CsRng};
+use cosmian_crypto_core::{
+    Aes256Gcm, CsRng, reexport::rand_core::SeedableRng, traits::AE_InPlace,
+};
 use cosmian_openssl_provider::hash::Sha256;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -130,7 +132,8 @@ fn test_update() {
     assert_eq!(mpk.encryption_keys.len(), 15);
 
     // Keep only 10 coordinates.
-    let coordinates = coordinates.into_iter().take(10).collect::<BTreeMap<_, _>>();
+    let coordinates =
+        coordinates.into_iter().take(10).collect::<BTreeMap<_, _>>();
     update_msk(&mut rng, &mut msk, coordinates).unwrap();
     assert_eq!(msk.secrets.len(), 10);
     let mpk = msk.mpk().unwrap();
@@ -147,7 +150,8 @@ fn test_rekey() {
     let coordinate_2 = Right::random(&mut rng);
     let subspace_1 = BTreeSet::from_iter([coordinate_1.clone()]);
     let subspace_2 = BTreeSet::from_iter([coordinate_2.clone()]);
-    let universe = BTreeSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
+    let universe =
+        BTreeSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
