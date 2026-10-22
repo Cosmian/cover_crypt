@@ -153,6 +153,13 @@ module type Hash = sig
   type hash = n sbytes
 
   val hash : bytes -> hash
+
+  type state
+  (** Internal hash state. *)
+
+  val init : bytes -> state
+  val updt : state -> bytes -> state
+  val finl : state -> hash
 end
 
 module type KEM = sig
