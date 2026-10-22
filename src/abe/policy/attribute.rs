@@ -103,14 +103,24 @@ impl Serializable for EncryptionStatus {
     }
 }
 
-/// A qualified attribute is composed of a dimension an attribute name.
+#[derive(
+    Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize,
+)]
+pub enum Version {
+    Tag(String),
+    Num(usize),
+}
+
+/// A qualified attribute is composed of a dimension and attribute names and an
+/// optional version number or tag.
 #[derive(
     Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize,
 )]
 #[serde(try_from = "&str", into = "String")]
 pub struct QualifiedAttribute {
     pub dimension: String,
-    pub name: String,
+    pub attribute: String,
+    pub version: Option<Version>,
 }
 
 impl QualifiedAttribute {
@@ -119,20 +129,34 @@ impl QualifiedAttribute {
     pub fn new(dimension: &str, name: &str) -> Self {
         Self {
             dimension: dimension.to_owned(),
-            name: name.to_owned(),
+            attribute: name.to_owned(),
+            version: None,
         }
     }
 }
 
 impl Debug for QualifiedAttribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}::{}", &self.dimension, &self.name))
+        match &self.version {
+            Some(Version::Tag(tag)) => f.write_fmt(format_args!(
+                "{}::{}@{}",
+                &self.dimension, &self.attribute, tag
+            )),
+            Some(Version::Num(num)) => f.write_fmt(format_args!(
+                "{}::{}@{}",
+                &self.dimension, &self.attribute, num
+            )),
+            None => f.write_fmt(format_args!(
+                "{}::{}",
+                &self.dimension, &self.attribute,
+            )),
+        }
     }
 }
 
 impl std::fmt::Display for QualifiedAttribute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::{}", self.dimension, self.name)
+        write!(f, "{:?}", self)
     }
 }
 
@@ -146,7 +170,8 @@ impl From<(&str, &str)> for QualifiedAttribute {
     fn from(input: (&str, &str)) -> Self {
         Self {
             dimension: input.0.to_owned(),
-            name: input.1.to_owned(),
+            attribute: input.1.to_owned(),
+            version: None,
         }
     }
 }
@@ -155,7 +180,8 @@ impl From<(String, String)> for QualifiedAttribute {
     fn from(input: (String, String)) -> Self {
         Self {
             dimension: input.0,
-            name: input.1,
+            attribute: input.1,
+            version: None,
         }
     }
 }
@@ -190,17 +216,18 @@ impl Serializable for QualifiedAttribute {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.dimension.length() + self.name.length()
+        self.dimension.length() + self.attribute.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(ser.write(&self.dimension)? + ser.write(&self.name)?)
+        Ok(ser.write(&self.dimension)? + ser.write(&self.attribute)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self {
             dimension: de.read()?,
-            name: de.read()?,
+            attribute: de.read()?,
+            version: None,
         })
     }
 }

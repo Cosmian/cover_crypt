@@ -1,5 +1,5 @@
 use crate::{
-    Error,
+    Error, QualifiedAttribute,
     abe::policy::{AccessStructure, EncryptionHint},
 };
 
@@ -10,26 +10,17 @@ pub fn gen_structure(
     policy.add_hierarchy("SEC".to_string())?;
 
     policy.add_attribute(
-        crate::abe::policy::QualifiedAttribute {
-            dimension: "SEC".to_string(),
-            name: "LOW".to_string(),
-        },
+        QualifiedAttribute::new("SEC", "LOW"),
         EncryptionHint::Classic,
         None,
     )?;
     policy.add_attribute(
-        crate::abe::policy::QualifiedAttribute {
-            dimension: "SEC".to_string(),
-            name: "MED".to_string(),
-        },
+        QualifiedAttribute::new("SEC", "MED"),
         EncryptionHint::PostQuantum,
         Some("LOW"),
     )?;
     policy.add_attribute(
-        crate::abe::policy::QualifiedAttribute {
-            dimension: "SEC".to_string(),
-            name: "TOP".to_string(),
-        },
+        QualifiedAttribute::new("SEC", "TOP"),
         EncryptionHint::Hybridized,
         Some("MED"),
     )?;
@@ -45,10 +36,7 @@ pub fn gen_structure(
     .into_iter()
     .try_for_each(|(attribute, mode)| {
         policy.add_attribute(
-            crate::abe::policy::QualifiedAttribute {
-                dimension: "DPT".to_string(),
-                name: attribute.to_string(),
-            },
+            QualifiedAttribute::new("DPT", attribute),
             mode,
             None,
         )
@@ -66,10 +54,7 @@ pub fn gen_structure(
         .into_iter()
         .try_for_each(|(attribute, mode)| {
             policy.add_attribute(
-                crate::abe::policy::QualifiedAttribute {
-                    dimension: "CTR".to_string(),
-                    name: attribute.to_string(),
-                },
+                QualifiedAttribute::new("CTR", attribute),
                 mode,
                 None,
             )
@@ -81,8 +66,6 @@ pub fn gen_structure(
 
 #[test]
 fn test_edit_anarchic_attributes() {
-    use super::QualifiedAttribute;
-
     let mut structure = AccessStructure::new();
     gen_structure(&mut structure, false).unwrap();
 
@@ -111,7 +94,7 @@ fn test_edit_anarchic_attributes() {
     let order: Vec<_> = structure
         .attributes()
         .filter(|a| a.dimension.as_str() == "SEC")
-        .map(|a| a.name)
+        .map(|a| a.attribute)
         .collect();
 
     assert!(order.len() == 3);
@@ -208,18 +191,9 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "LOW".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "MED".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "TOP".to_string(),
-            },
+            QualifiedAttribute::new("SEC", "LOW",),
+            QualifiedAttribute::new("SEC", "MED",),
+            QualifiedAttribute::new("SEC", "TOP",),
         ]
     );
 
@@ -233,7 +207,10 @@ fn test_edit_hierarchic_attributes() {
             .is_ok()
     );
 
-    let order = structure.attributes().map(|q| q.name).collect::<Vec<_>>();
+    let order = structure
+        .attributes()
+        .map(|q| q.attribute)
+        .collect::<Vec<_>>();
     assert!(order.contains(&"WOL".to_string()));
     assert!(!order.contains(&"LOW".to_string()));
 
@@ -256,18 +233,9 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "OTHER".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "MED".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "TOP".to_string(),
-            },
+            QualifiedAttribute::new("SEC", "OTHER",),
+            QualifiedAttribute::new("SEC", "MED",),
+            QualifiedAttribute::new("SEC", "TOP",),
         ]
     );
 
@@ -285,22 +253,10 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "LOW".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "OTHER".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "MED".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "TOP".to_string(),
-            },
+            QualifiedAttribute::new("SEC", "LOW",),
+            QualifiedAttribute::new("SEC", "OTHER",),
+            QualifiedAttribute::new("SEC", "MED",),
+            QualifiedAttribute::new("SEC", "TOP",),
         ]
     );
 
@@ -322,22 +278,10 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "LOW".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "MID".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "MED".to_string(),
-            },
-            QualifiedAttribute {
-                dimension: "SEC".to_string(),
-                name: "TOP".to_string(),
-            },
+            QualifiedAttribute::new("SEC", "LOW",),
+            QualifiedAttribute::new("SEC", "MID",),
+            QualifiedAttribute::new("SEC", "MED",),
+            QualifiedAttribute::new("SEC", "TOP",),
         ]
     );
 

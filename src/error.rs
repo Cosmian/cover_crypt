@@ -7,16 +7,17 @@ use cosmian_crypto_core::{CryptoBaseError, CryptoCoreError};
 #[derive(Debug)]
 pub enum Error {
     Kem(String),
+    Kdf(String),
+    Ae(String),
     CryptoCoreError(CryptoCoreError),
     CryptoBaseError(CryptoBaseError),
-    #[cfg(any(test, feature = "test-utils"))]
-    OpenSSL(cosmian_openssl_provider::error::Error),
     KeyError(String),
     AttributeNotFound(String),
     ExistingDimension(String),
     OperationNotPermitted(String),
     InvalidBooleanExpression(String),
     InvalidAttribute(String),
+    InvalidAccessPolicy(String),
     DimensionNotFound(String),
     ConversionFailed(String),
     Tracing(String),
@@ -26,10 +27,10 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Kem(err) => write!(f, "Kyber error: {err}"),
+            Self::Kdf(err) => write!(f, "KDF error: {err}"),
+            Self::Ae(err) => write!(f, "AE error: {err}"),
             Self::CryptoCoreError(err) => write!(f, "CryptoCore error: {err}"),
             Self::CryptoBaseError(err) => write!(f, "CryptoBase error: {err}"),
-            #[cfg(any(test, feature = "test-utils"))]
-            Self::OpenSSL(err) => write!(f, "OpenSSL error: {err}"),
             Self::KeyError(err) => write!(f, "{err}"),
             Self::AttributeNotFound(err) => {
                 write!(f, "attribute not found: {err}")
@@ -42,6 +43,9 @@ impl Display for Error {
             }
             Self::InvalidAttribute(attr) => {
                 write!(f, "invalid attribute: {attr}")
+            }
+            Self::InvalidAccessPolicy(ap) => {
+                write!(f, "invalid attribute: {ap}")
             }
             Self::DimensionNotFound(dim_str) => {
                 write!(f, "cannot find dimension: {dim_str}")
@@ -72,13 +76,6 @@ impl From<CryptoCoreError> for Error {
 impl From<CryptoBaseError> for Error {
     fn from(e: CryptoBaseError) -> Self {
         Self::CryptoBaseError(e)
-    }
-}
-
-#[cfg(any(test, feature = "test-utils"))]
-impl From<cosmian_openssl_provider::error::Error> for Error {
-    fn from(e: cosmian_openssl_provider::error::Error) -> Self {
-        Self::OpenSSL(e)
     }
 }
 
