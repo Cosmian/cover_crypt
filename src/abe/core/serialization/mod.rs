@@ -358,7 +358,7 @@ mod tests {
 
             let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
             update_msk(&mut rng, &mut msk, universe.clone()).unwrap();
-            let mpk = msk.mpk().unwrap();
+            let mpk = msk.mpk(None).unwrap();
             let usk = usk_keygen(&mut rng, &mut msk, user_set).unwrap();
             let (_, enc) = encaps(&mut rng, &mpk, &target_set).unwrap();
 

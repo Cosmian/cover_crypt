@@ -470,14 +470,22 @@ impl MasterSecretKey {
         self.tsk.tracers.iter().map(|(_, P)| P)
     }
 
-    /// Generates a new MPK holding the latest public information of each right in Omega.
-    pub fn mpk(&self) -> Result<MasterPublicKey, Error> {
+    /// Generates a new MPK holding the latest public information of each right
+    /// defined by the given access policy or each right defined in Omega if
+    /// none is given.
+    pub(crate) fn mpk(
+        &self,
+        rights: Option<&BTreeSet<Right>>,
+    ) -> Result<MasterPublicKey, Error> {
         let h = self.tsk.binding_point();
         Ok(MasterPublicKey {
             tpk: self.tsk.tpk(),
             encryption_keys: self
                 .secrets
                 .iter()
+                .filter(|(r, _)| {
+                    rights.map(|rights| rights.contains(r)).unwrap_or(true)
+                })
                 .filter_map(|(r, secrets)| {
                     secrets.front().and_then(|(status, csk)| {
                         if &EncryptionStatus::EncryptDecrypt == status {
