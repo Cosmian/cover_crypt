@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use cosmian_crypto_core::CryptoCoreError;
+use cosmian_crypto_core::CryptoBaseError;
 
 type Key = String;
 
@@ -9,14 +9,18 @@ pub enum Error {
     EntryNotFound(Key),
     ExistingEntry(Key),
     AlreadyHasChild(Key),
-    Serialization(CryptoCoreError),
+    Serialization(CryptoBaseError),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            Self::EntryNotFound(key) => write!(f, "Entry not found with key: {key}."),
-            Self::ExistingEntry(key) => write!(f, "Already existing entry with key: {key}."),
+            Self::EntryNotFound(key) => {
+                write!(f, "Entry not found with key: {key}.")
+            }
+            Self::ExistingEntry(key) => {
+                write!(f, "Already existing entry with key: {key}.")
+            }
             Self::AlreadyHasChild(key) => {
                 write!(f, "Entry with key {key} already has a child.")
             }
@@ -50,8 +54,8 @@ impl Error {
 
 impl std::error::Error for Error {}
 
-impl From<CryptoCoreError> for Error {
-    fn from(error: CryptoCoreError) -> Self {
+impl From<CryptoBaseError> for Error {
+    fn from(error: CryptoBaseError) -> Self {
         Self::Serialization(error)
     }
 }

@@ -1,11 +1,15 @@
 use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_crypto_core::bytes_ser_de::{
+    Deserializer, Serializable, Serializer,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub enum EncryptionHint {
     Classic,
     PostQuantum,
@@ -44,7 +48,9 @@ impl Serializable for EncryptionHint {
 
 /// Whether to provide an encryption key in the master public key for this
 /// attribute.
-#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(
+    Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq,
+)]
 pub enum EncryptionStatus {
     #[default]
     EncryptDecrypt,
@@ -98,7 +104,9 @@ impl Serializable for EncryptionStatus {
 }
 
 /// A qualified attribute is composed of a dimension an attribute name.
-#[derive(Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize,
+)]
 #[serde(try_from = "&str", into = "String")]
 pub struct QualifiedAttribute {
     pub dimension: String,
@@ -157,7 +165,9 @@ impl TryFrom<&str> for QualifiedAttribute {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         let (dimension, component) = s.split_once("::").ok_or_else(|| {
-            Error::InvalidAttribute(format!("at least one separator '::' expected in {s}"))
+            Error::InvalidAttribute(format!(
+                "at least one separator '::' expected in {s}"
+            ))
         })?;
 
         if component.contains("::") {

@@ -1,12 +1,12 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{BTreeMap, btree_map::Entry},
     fmt::Debug,
 };
 
 use serde::{Deserialize, Serialize};
 
 use super::{EncryptionHint, EncryptionStatus};
-use crate::{data_struct::Dict, Error};
+use crate::{Error, data_struct::Dict};
 
 type Name = String;
 
@@ -42,7 +42,7 @@ impl Attribute {
 /// A dimension is an object that contains attributes. It can be ordered or unordered.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Dimension {
-    Anarchy(HashMap<Name, Attribute>),
+    Anarchy(BTreeMap<Name, Attribute>),
     Hierarchy(Dict<Name, Attribute>),
 }
 
@@ -90,12 +90,16 @@ impl Dimension {
                 let mut attributes = attributes
                     .iter()
                     .take_while(|(name, _)| *name != &attr_name)
-                    .map(|(ref_name, ref_params)| (ref_name.clone(), ref_params.clone()))
+                    .map(|(ref_name, ref_params)| {
+                        (ref_name.clone(), ref_params.clone())
+                    })
                     .collect::<Dict<Name, Attribute>>();
                 attributes.insert(attr_name, params);
                 Ok(Self::Hierarchy(attributes))
             }
-            Self::Anarchy(_) => Ok(Self::Anarchy(HashMap::from_iter([(attr_name, params)]))),
+            Self::Anarchy(_) => {
+                Ok(Self::Anarchy(BTreeMap::from_iter([(attr_name, params)])))
+            }
         }
     }
 
@@ -150,7 +154,8 @@ impl Dimension {
                     .take_while(|a| Some(a) != higher_attributes.last())
                     .collect::<Dict<_, _>>();
 
-                new_attributes.insert(attribute, Attribute::new(security_mode, id));
+                new_attributes
+                    .insert(attribute, Attribute::new(security_mode, id));
                 higher_attributes.into_iter().rev().for_each(|(name, dim)| {
                     new_attributes.insert(name, dim);
                 });
@@ -185,11 +190,15 @@ impl Dimension {
         match self {
             Self::Anarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
+                .map(|attr| {
+                    attr.encryption_status = EncryptionStatus::DecryptOnly
+                })
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
                 .get_mut(name)
-                .map(|attr| attr.encryption_status = EncryptionStatus::DecryptOnly)
+                .map(|attr| {
+                    attr.encryption_status = EncryptionStatus::DecryptOnly
+                })
                 .ok_or(Error::AttributeNotFound(name.to_string())),
         }
     }
@@ -199,7 +208,11 @@ impl Dimension {
     /// # Errors
     /// Returns an error if the new name is already used in the same dimension or if no attribute
     /// with the given old name is found.
-    pub fn rename_attribute(&mut self, old_name: &Name, new_name: Name) -> Result<(), Error> {
+    pub fn rename_attribute(
+        &mut self,
+        old_name: &Name,
+        new_name: Name,
+    ) -> Result<(), Error> {
         match self {
             Self::Anarchy(attributes) => {
                 if attributes.contains_key(&new_name) {
@@ -240,7 +253,9 @@ mod serialization {
         type Error = Error;
 
         fn length(&self) -> usize {
-            self.id.length() + self.security_mode.length() + self.encryption_status.length()
+            self.id.length()
+                + self.security_mode.length()
+                + self.encryption_status.length()
         }
 
         fn write(
@@ -289,7 +304,9 @@ mod serialization {
             ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
         ) -> Result<usize, Self::Error> {
             match self {
-                Dimension::Anarchy(inner) => Ok(ser.write(&0usize)? + ser.write(inner)?),
+                Dimension::Anarchy(inner) => {
+                    Ok(ser.write(&0usize)? + ser.write(inner)?)
+                }
                 Dimension::Hierarchy(inner) => Ok(ser.write(&1usize)?
                     + ser
                         .write(inner)
@@ -304,7 +321,9 @@ mod serialization {
             match t {
                 0 => Ok(Self::Anarchy(de.read()?)),
                 1 => Ok(Self::Hierarchy(de.read().map_err(
-                    |e: crate::data_struct::error::Error| Error::ConversionFailed(e.to_string()),
+                    |e: crate::data_struct::error::Error| {
+                        Error::ConversionFailed(e.to_string())
+                    },
                 )?)),
                 n => Err(Error::ConversionFailed(format!(
                     "invalid dimension type: {n}"
@@ -320,13 +339,23 @@ mod serialization {
         let mut d = Dimension::Hierarchy(Dict::new());
         d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
             .unwrap();
-        d.add_attribute("B".to_string(), EncryptionHint::Hybridized, Some("A"), 1)
-            .unwrap();
-        d.add_attribute("C".to_string(), EncryptionHint::Hybridized, Some("B"), 2)
-            .unwrap();
+        d.add_attribute(
+            "B".to_string(),
+            EncryptionHint::Hybridized,
+            Some("A"),
+            1,
+        )
+        .unwrap();
+        d.add_attribute(
+            "C".to_string(),
+            EncryptionHint::Hybridized,
+            Some("B"),
+            2,
+        )
+        .unwrap();
         test_serialization(&d).unwrap();
 
-        let mut d = Dimension::Anarchy(HashMap::new());
+        let mut d = Dimension::Anarchy(BTreeMap::new());
         d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
             .unwrap();
         d.add_attribute("B".to_string(), EncryptionHint::Hybridized, None, 1)

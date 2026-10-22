@@ -40,7 +40,9 @@ impl Serializable for Version {
         }
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(
+        de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+    ) -> Result<Self, Self::Error> {
         let version = de.read::<usize>()?;
         match version {
             1 => Ok(Self::V1),

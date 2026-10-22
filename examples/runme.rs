@@ -1,7 +1,8 @@
 //! This is the demo given in `README.md` and `lib.rs`
 
 use cosmian_cover_crypt::{
-    api::Covercrypt, encrypted_header::EncryptedHeader, test_utils::cc_keygen, AccessPolicy,
+    AccessPolicy, api::Covercrypt, encrypted_header::EncryptedHeader,
+    test_utils::cc_keygen,
 };
 
 fn main() {
@@ -11,14 +12,21 @@ fn main() {
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).
     let access_policy =
-        AccessPolicy::parse("Security Level::Top Secret && Department::FIN").unwrap();
+        AccessPolicy::parse("Security Level::Top Secret && Department::FIN")
+            .unwrap();
     let mut usk = cc
         .generate_user_secret_key(&mut msk, &access_policy)
         .unwrap();
 
     // Encrypt
-    let (_, encrypted_header) =
-        EncryptedHeader::generate(&cc, &mpk, &access_policy.clone(), None, None).unwrap();
+    let (_, encrypted_header) = EncryptedHeader::generate(
+        &cc,
+        &mpk,
+        &access_policy.clone(),
+        None,
+        None,
+    )
+    .unwrap();
 
     // The user is able to decrypt the encrypted header.
     assert!(encrypted_header.decrypt(&cc, &usk, None).unwrap().is_some());
@@ -33,19 +41,23 @@ fn main() {
         EncryptedHeader::generate(&cc, &mpk, &enc_policy, None, None).unwrap();
 
     // user cannot decrypt the newly encrypted header
-    assert!(new_encrypted_header
-        .decrypt(&cc, &usk, None)
-        .unwrap()
-        .is_none());
+    assert!(
+        new_encrypted_header
+            .decrypt(&cc, &usk, None)
+            .unwrap()
+            .is_none()
+    );
 
     // refresh user secret key, do not grant old encryption access
     cc.refresh_usk(&mut msk, &mut usk, false).unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
-    assert!(new_encrypted_header
-        .decrypt(&cc, &usk, None)
-        .unwrap()
-        .is_some());
+    assert!(
+        new_encrypted_header
+            .decrypt(&cc, &usk, None)
+            .unwrap()
+            .is_some()
+    );
 
     // But it cannot decrypt old ciphertexts
     assert!(encrypted_header.decrypt(&cc, &usk, None).unwrap().is_none());
