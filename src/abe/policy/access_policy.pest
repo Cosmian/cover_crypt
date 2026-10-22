@@ -1,0 +1,22 @@
+WHITESPACE   =  _{ " " | "\t" | "\n" }
+
+alpha = { 'a'..'z' | 'A'..'Z' }
+digit = { '0'..'9' }
+separator = { "-" }
+ident = _{ alpha ~ (alpha | digit | separator)* }
+
+and = { "&&" }
+or  = { "||" }
+op  = _{ and | or }
+
+dimension           = @{ ident }
+attribute           = @{ ident }
+version_number      = @{ digit+ }
+tag                 = @{ ident }
+delim               = _{ "::" }
+version             = _{ "@" ~ (version_number | tag) }
+qualified_attribute = { dimension ~ delim ~ attribute ~ !delim  ~ version? }
+block               = _{ qualified_attribute | "(" ~ eq ~ ")" }
+eq                  = { block ~ (op ~ block)* }
+broadcast           = @{ "*" }
+policy              = _{ broadcast | eq }
