@@ -15,8 +15,12 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            Self::EntryNotFound(key) => write!(f, "Entry not found with key: {key}."),
-            Self::ExistingEntry(key) => write!(f, "Already existing entry with key: {key}."),
+            Self::EntryNotFound(key) => {
+                write!(f, "Entry not found with key: {key}.")
+            }
+            Self::ExistingEntry(key) => {
+                write!(f, "Already existing entry with key: {key}.")
+            }
             Self::AlreadyHasChild(key) => {
                 write!(f, "Entry with key {key} already has a child.")
             }

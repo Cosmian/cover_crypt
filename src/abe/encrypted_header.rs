@@ -1,15 +1,15 @@
 use cosmian_crypto_core::{
-    kdf256, Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce,
-    RandomFixedSizeCBytes, Secret, SymmetricKey,
+    Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce,
+    RandomFixedSizeCBytes, Secret, SymmetricKey, kdf256,
 };
 
 use crate::{
-    abe::{
-        core::{XEnc, SHARED_SECRET_LENGTH},
-        traits::KemAc,
-        AccessPolicy, Covercrypt, MasterPublicKey, UserSecretKey,
-    },
     Error,
+    abe::{
+        AccessPolicy, Covercrypt, MasterPublicKey, UserSecretKey,
+        core::{SHARED_SECRET_LENGTH, XEnc},
+        traits::KemAc,
+    },
 };
 
 /// Encrypted header holding a `Covercrypt` encapsulation of a 256-byte secret, and metadata
@@ -42,7 +42,11 @@ impl EncryptedHeader {
             .map(|bytes| {
                 let key = SymmetricKey::derive(&seed, &[0u8])?;
                 let nonce = Nonce::new(&mut *cc.rng());
-                let ctx = Aes256Gcm::new(&key).encrypt(&nonce, bytes, authentication_data)?;
+                let ctx = Aes256Gcm::new(&key).encrypt(
+                    &nonce,
+                    bytes,
+                    authentication_data,
+                )?;
                 Ok::<_, Error>([nonce.as_bytes(), &ctx].concat())
             })
             .transpose()?;
@@ -84,7 +88,9 @@ impl EncryptedHeader {
                         } else {
                             let key = SymmetricKey::derive(&seed, &[0u8])?;
                             Aes256Gcm::new(&key).decrypt(
-                                &Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?,
+                                &Nonce::try_from_slice(
+                                    &ctx[..Aes256Gcm::NONCE_LENGTH],
+                                )?,
                                 &ctx[Aes256Gcm::NONCE_LENGTH..],
                                 authentication_data,
                             )
@@ -112,7 +118,7 @@ mod serialization {
 
     use super::*;
     use cosmian_crypto_core::bytes_ser_de::{
-        to_leb128_len, Deserializer, Serializable, Serializer,
+        Deserializer, Serializable, Serializer, to_leb128_len,
     };
 
     impl Serializable for EncryptedHeader {
@@ -170,7 +176,8 @@ mod serialization {
         }
 
         fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-            let mut n = ser.write_array(&self.secret[..SHARED_SECRET_LENGTH])?;
+            let mut n =
+                ser.write_array(&self.secret[..SHARED_SECRET_LENGTH])?;
             match &self.metadata {
                 Some(bytes) => n += ser.write_vec(bytes)?,
                 None => n += ser.write_vec(&[])?,
@@ -179,8 +186,9 @@ mod serialization {
         }
 
         fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-            let seed =
-                Secret::from_unprotected_bytes(&mut de.read_array::<SHARED_SECRET_LENGTH>()?);
+            let seed = Secret::from_unprotected_bytes(
+                &mut de.read_array::<SHARED_SECRET_LENGTH>()?,
+            );
             let metadata = de.read_vec()?;
             let metadata = if metadata.is_empty() {
                 None
@@ -202,7 +210,8 @@ mod serialization {
         let cc = Covercrypt::default();
         let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
 
-        let ap = AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
+        let ap =
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
         let usk = cc.generate_user_secret_key(&mut msk, &ap).unwrap();
 
         //
@@ -210,8 +219,14 @@ mod serialization {
         //
 
         let test_encrypted_header = |ap, metadata, authentication_data| {
-            let (secret, encrypted_header) =
-                EncryptedHeader::generate(&cc, &mpk, &ap, metadata, authentication_data).unwrap();
+            let (secret, encrypted_header) = EncryptedHeader::generate(
+                &cc,
+                &mpk,
+                &ap,
+                metadata,
+                authentication_data,
+            )
+            .unwrap();
             test_serialization(&encrypted_header)
                 .expect("failed serialization test for the encrypted header");
             let decrypted_header = encrypted_header
@@ -231,7 +246,11 @@ mod serialization {
             );
         };
 
-        test_encrypted_header(AccessPolicy::parse("DPT::MKG").unwrap(), None, None);
+        test_encrypted_header(
+            AccessPolicy::parse("DPT::MKG").unwrap(),
+            None,
+            None,
+        );
         test_encrypted_header(
             AccessPolicy::parse("DPT::MKG").unwrap(),
             Some("metadata".as_bytes()),

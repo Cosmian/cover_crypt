@@ -1,21 +1,22 @@
 use crate::{
+    Error,
     abe::{
         core::{
+            MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
+            SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
             primitives::{
-                self, master_decaps, prune, refresh, rekey, setup, update_msk, usk_keygen,
+                self, master_decaps, prune, refresh, rekey, setup, update_msk,
+                usk_keygen,
             },
-            MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
-            SHARED_SECRET_LENGTH,
         },
         policy::AccessPolicy,
         traits::{KemAc, PkeAc},
     },
-    Error,
 };
 use cosmian_crypto_core::{
+    CsRng, Secret, SymmetricKey,
     reexport::rand_core::{RngCore, SeedableRng},
     traits::AE,
-    CsRng, Secret, SymmetricKey,
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -65,7 +66,10 @@ impl Covercrypt {
     /// structure.
     // TODO: this function should be internalized and replaced by specialized
     // functions.
-    pub fn update_msk(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
+    pub fn update_msk(
+        &self,
+        msk: &mut MasterSecretKey,
+    ) -> Result<MasterPublicKey, Error> {
         update_msk(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             msk,
@@ -177,7 +181,8 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         &self,
         ek: &Self::EncapsulationKey,
         ap: &AccessPolicy,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
+    {
         primitives::encaps(
             &mut *self.rng.lock().expect("Mutex lock failed!"),
             ek,
@@ -190,16 +195,20 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-        primitives::decaps(&mut *self.rng.lock().expect("Mutex lock failed!"), dk, enc)
+        primitives::decaps(
+            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            dk,
+            enc,
+        )
     }
 }
 
 impl<
-        const KEY_LENGTH: usize,
-        const NONCE_LENGTH: usize,
-        const TAG_LENGTH: usize,
-        E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
-    > PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, E> for Covercrypt
+    const KEY_LENGTH: usize,
+    const NONCE_LENGTH: usize,
+    const TAG_LENGTH: usize,
+    E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
+> PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, E> for Covercrypt
 where
     Error: From<E::Error>,
 {
@@ -218,7 +227,8 @@ where
         // Locking Covercrypt RNG must be performed after encapsulation since
         // this encapsulation also requires locking the RNG.
         let mut rng = self.rng.lock().expect("poisoned lock");
-        let key = SymmetricKey::<KEY_LENGTH>::derive(&seed, b"Covercrypt AE key")?;
+        let key =
+            SymmetricKey::<KEY_LENGTH>::derive(&seed, b"Covercrypt AE key")?;
         let mut nonce = [0; NONCE_LENGTH];
         rng.fill_bytes(&mut nonce);
         let ctx = E::encrypt(&key, ptx, &nonce)?;

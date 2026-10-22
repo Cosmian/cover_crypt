@@ -1,7 +1,7 @@
 use crate::{
+    Error,
     abe::gen_structure,
     abe::{Covercrypt, MasterPublicKey, MasterSecretKey},
-    Error,
 };
 
 /// Creates the test access structure.
@@ -20,8 +20,8 @@ mod tests {
 
     use super::*;
     use crate::abe::{
-        encrypted_header::EncryptedHeader, traits::KemAc, AccessPolicy, Covercrypt, EncryptionHint,
-        QualifiedAttribute,
+        AccessPolicy, Covercrypt, EncryptionHint, QualifiedAttribute,
+        encrypted_header::EncryptedHeader, traits::KemAc,
     };
 
     #[test]
@@ -30,7 +30,8 @@ mod tests {
         let (mut msk, _mpk) = cc_keygen(&cc, false)?;
 
         let decryption_policy = AccessPolicy::parse("SEC::LOW")?;
-        let mut low_secret_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
+        let mut low_secret_usk =
+            cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         let _ = &mut msk.access_structure.add_attribute(
             QualifiedAttribute::new("DPT", "Sales"),
@@ -44,17 +45,21 @@ mod tests {
             EncryptedHeader::generate(&cc, &mpk, &secret_sales_ap, None, None)?;
 
         // User cannot decrypt new message without refreshing its key
-        assert!(encrypted_header
-            .decrypt(&cc, &low_secret_usk, None)
-            .unwrap()
-            .is_none());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &low_secret_usk, None)
+                .unwrap()
+                .is_none()
+        );
 
         cc.refresh_usk(&mut msk, &mut low_secret_usk, false)?;
 
-        assert!(encrypted_header
-            .decrypt(&cc, &low_secret_usk, None)
-            .unwrap()
-            .is_none());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &low_secret_usk, None)
+                .unwrap()
+                .is_none()
+        );
 
         Ok(())
     }
@@ -65,8 +70,10 @@ mod tests {
         let (mut msk, mpk) = cc_keygen(&cc, false)?;
 
         // New user secret key
-        let decryption_policy = AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?;
-        let mut top_secret_fin_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
+        let decryption_policy =
+            AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?;
+        let mut top_secret_fin_usk =
+            cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
@@ -80,20 +87,25 @@ mod tests {
         // update the master keys
         let _ = cc.update_msk(&mut msk)?;
 
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
-        let _new_decryption_policy = AccessPolicy::parse("SEC::TOP && DPT::HR")?;
+        let _new_decryption_policy =
+            AccessPolicy::parse("SEC::TOP && DPT::HR")?;
 
         // Refreshing the USK removes the keys associated to rights that do not exist anymore in
         // the MSK, even if it is asked to preserve the old secrets.
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, true)?;
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_none());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_none()
+        );
 
         Ok(())
     }
@@ -105,8 +117,10 @@ mod tests {
 
         //
         // New user secret key
-        let decryption_policy = AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?;
-        let mut top_secret_fin_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
+        let decryption_policy =
+            AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?;
+        let mut top_secret_fin_usk =
+            cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         //
         // Encrypt
@@ -121,29 +135,38 @@ mod tests {
         // update the master keys
         let mpk = cc.update_msk(&mut msk)?;
 
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
         // Can not encrypt using deactivated attribute
         let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
 
-        assert!(EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None).is_err());
+        assert!(
+            EncryptedHeader::generate(&cc, &mpk, &top_secret_ap, None, None)
+                .is_err()
+        );
 
         // refresh the user key and preserve old secrets
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, true)?;
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
         // refresh the user key and remove old secrets
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
         Ok(())
     }
@@ -155,7 +178,8 @@ mod tests {
 
         // New user secret key
         let decryption_policy = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
-        let mut top_secret_fin_usk = cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
+        let mut top_secret_fin_usk =
+            cc.generate_user_secret_key(&mut msk, &decryption_policy)?;
 
         // Encrypt
         let top_secret_ap = AccessPolicy::parse("SEC::TOP && DPT::FIN")?;
@@ -171,32 +195,42 @@ mod tests {
         // update the master keys
         let _ = cc.update_msk(&mut msk)?;
 
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
         // refresh the user key and preserve old secrets
-        let _new_decryption_policy = AccessPolicy::parse("SEC::TOP && DPT::Finance")?;
+        let _new_decryption_policy =
+            AccessPolicy::parse("SEC::TOP && DPT::Finance")?;
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
         Ok(())
     }
 
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        let access_policy = AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
+        let access_policy =
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
         let cc = Covercrypt::default();
         let (mut msk, mpk) = cc_keygen(&cc, false)?;
         let ap = AccessPolicy::parse("DPT::MKG && SEC::TOP")?;
         let (sym_key, encrypted_key) = cc.encaps(&mpk, &ap)?;
         let usk = cc.generate_user_secret_key(&mut msk, &access_policy)?;
         let recovered_key = cc.decaps(&usk, &encrypted_key)?;
-        assert_eq!(Some(sym_key), recovered_key, "Wrong decryption of the key!");
+        assert_eq!(
+            Some(sym_key),
+            recovered_key,
+            "Wrong decryption of the key!"
+        );
         Ok(())
     }
 
@@ -207,7 +241,10 @@ mod tests {
 
         //
         // New user secret key
-        let _user_key = cc.generate_user_secret_key(&mut msk, &AccessPolicy::parse("SEC::TOP")?)?;
+        let _user_key = cc.generate_user_secret_key(
+            &mut msk,
+            &AccessPolicy::parse("SEC::TOP")?,
+        )?;
 
         Ok(())
     }
@@ -221,41 +258,59 @@ mod tests {
 
         //
         // New user secret key
-        let mut top_secret_fin_usk =
-            cc.generate_user_secret_key(&mut msk, &AccessPolicy::parse("SEC::TOP && DPT::FIN")?)?;
+        let mut top_secret_fin_usk = cc.generate_user_secret_key(
+            &mut msk,
+            &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
+        )?;
 
         //
         // Encrypt
-        let (_, encrypted_header) =
-            EncryptedHeader::generate(&cc, &mpk, &top_secret_ap.clone(), None, None)?;
+        let (_, encrypted_header) = EncryptedHeader::generate(
+            &cc,
+            &mpk,
+            &top_secret_ap.clone(),
+            None,
+            None,
+        )?;
 
-        let _plaintext_header = encrypted_header.decrypt(&cc, &top_secret_fin_usk, None)?;
+        let _plaintext_header =
+            encrypted_header.decrypt(&cc, &top_secret_fin_usk, None)?;
 
         assert!(_plaintext_header.is_some());
 
         //
         // Rotate argument (must update master keys)
-        let rekey_ap = AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP")));
+        let rekey_ap =
+            AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP")));
         let mpk = cc.rekey(&mut msk, &rekey_ap)?;
 
         //
         // Encrypt with new attribute
-        let (_, encrypted_header) =
-            EncryptedHeader::generate(&cc, &mpk, &top_secret_ap.clone(), None, None)?;
+        let (_, encrypted_header) = EncryptedHeader::generate(
+            &cc,
+            &mpk,
+            &top_secret_ap.clone(),
+            None,
+            None,
+        )?;
 
         // Decryption fails without refreshing the user key
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_none());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_none()
+        );
 
         cc.refresh_usk(&mut msk, &mut top_secret_fin_usk, false)?;
 
         // The refreshed key can decrypt the header
-        assert!(encrypted_header
-            .decrypt(&cc, &top_secret_fin_usk, None)
-            .unwrap()
-            .is_some());
+        assert!(
+            encrypted_header
+                .decrypt(&cc, &top_secret_fin_usk, None)
+                .unwrap()
+                .is_some()
+        );
 
         Ok(())
     }
