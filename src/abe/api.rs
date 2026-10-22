@@ -47,7 +47,7 @@ impl Covercrypt {
         let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
         let rights = msk.access_structure.omega()?;
         update_msk(&mut *rng, &mut msk, rights)?;
-        let mpk = msk.mpk()?;
+        let mpk = msk.mpk(None)?;
         Ok((msk, mpk))
     }
 
@@ -71,7 +71,7 @@ impl Covercrypt {
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         update_msk(&mut *self.rng(), msk, msk.access_structure.omega()?)?;
-        msk.mpk()
+        msk.mpk(None)
     }
 
     /// Generates new secrets for each right a USK associated to the given
@@ -89,7 +89,7 @@ impl Covercrypt {
             msk,
             msk.access_structure.ap_to_usk_rights(ap)?,
         )?;
-        msk.mpk()
+        msk.mpk(None)
     }
 
     /// Removes from the master secret key all but the latest secret of each
@@ -104,7 +104,19 @@ impl Covercrypt {
         ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
         prune(msk, &msk.access_structure.ap_to_usk_rights(ap)?);
-        msk.mpk()
+        msk.mpk(None)
+    }
+
+    pub fn gen_mpk(
+        &self,
+        msk: &MasterSecretKey,
+        ap: Option<&AccessPolicy>,
+    ) -> Result<MasterPublicKey, Error> {
+        msk.mpk(
+            ap.map(|ap| msk.access_structure.ap_to_enc_rights(ap))
+                .transpose()?
+                .as_ref(),
+        )
     }
 
     /// Generates a USK associated to the given access policy.

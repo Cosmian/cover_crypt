@@ -1,6 +1,6 @@
 #+title: Covercrypt Road-Map
 
-* Features [1/4]
+* Planned [2/4]
 
 ** DONE Access-policy parser generation                          :compatible:
 DEADLINE: <2026-10-23 Fri>
@@ -14,13 +14,28 @@ change should bring the following overall improvements:
   - [X] specifying a version number for each qualified attribute
   - [X] specifying a version tag for each qualified attribute
 
-** TODO Lazy Covercypt keys [0/2]                                  :breaking:
-DEADLINE: <2026-11-06 Fri>
 
-- [ ] *BREAKING*: allow generating MPKs for a subset of the universe
-- [ ] only generate right secret keys for MPK or USK requiring them
+** DONE Allow generating subspace MPKs                             :breaking:
+DEADLINE: <2026-10-23 Fri>
 
-** TODO Crypto-provider [0/2]                                      :breaking:
+The proposed implementation makes the MSK method ~mpk~ private outside of the CC
+crate and exposes instead a procedure ~gen_mpk : msk -> policy option -> (mpk,
+error) result~ in the CC interface (~api.rs~).
+
+The behavior of ~gen_mpk msk None~ is identical to the old ~msk.mpk()~ while
+~gen_mpk msk Some(ap)~ returns an MPK that limits the encapsulation power to a
+subset of the ~ap~ policy.
+
+
+** TODO Decryption hints [0/3]                                     :breaking:
+DEADLINE: <2026-10-30 Fri>
+
+Allow users to pass hints upon decapsulation to guide space exploration upon
+decapsulation:
+- [ ] Define and specify the hint semantics
+- [ ] *BREAKING*: Use hint upon decapsulation
+
+** TODO Crypto-provider [0/2]                          :breaking:refactoring:
 DEADLINE: <2026-11-13 Fri>
 
 Covercrypt does not use a crypto-provider yet
@@ -29,10 +44,12 @@ Covercrypt does not use a crypto-provider yet
   version.
 - [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
 
-** TODO Decryption hints [0/2]                                     :breaking:
-DEADLINE: <2026-10-30 Fri>
 
-Allow users to pass hints upon decapsulation to guide the space exploration.
+* Unplanned
 
-- [ ] Define and specify the hint semantics
-- [ ] *BREAKING*: Use hint upon decapsulation
+** Lazy Covercrypt MSK [0/1]                                       :breaking:
+DEADLINE: <2026-11-06 Fri>
+
+- [ ] *BREAKING*: only generate right secret keys for MPK or USK requiring them.
+  This is a breaking change since it implies making right secrets in the MSK
+  optional.
