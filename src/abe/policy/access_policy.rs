@@ -12,7 +12,7 @@ use std::{
 
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 
-use crate::{abe::policy::QualifiedAttribute, Error};
+use crate::{Error, abe::policy::QualifiedAttribute};
 
 /// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +26,9 @@ pub enum AccessPolicy {
 impl AccessPolicy {
     /// Find the corresponding closing parenthesis in the boolean expression
     /// given as a string.
-    fn find_matching_closing_parenthesis(boolean_expression: &str) -> Result<usize, Error> {
+    fn find_matching_closing_parenthesis(
+        boolean_expression: &str,
+    ) -> Result<usize, Error> {
         let mut count = 0;
         for (index, c) in boolean_expression.chars().enumerate() {
             match c {
@@ -114,34 +116,41 @@ impl AccessPolicy {
             } else {
                 match &e[..1] {
                     "(" => {
-                        let offset = Self::find_matching_closing_parenthesis(&e[1..])?;
-                        q.push_back(Self::parse(&e[1..1 + offset]).map_err(|err| {
-                            Error::InvalidBooleanExpression(format!(
-                                "error while parsing '{e}': {err}"
-                            ))
-                        })?);
+                        let offset =
+                            Self::find_matching_closing_parenthesis(&e[1..])?;
+                        q.push_back(Self::parse(&e[1..1 + offset]).map_err(
+                            |err| {
+                                Error::InvalidBooleanExpression(format!(
+                                    "error while parsing '{e}': {err}"
+                                ))
+                            },
+                        )?);
                         e = &e[2 + offset..];
                     }
                     "|" => {
                         if e[1..].is_empty() || &e[1..2] != "|" {
-                            return Err(Error::InvalidBooleanExpression(format!(
-                                "invalid separator in: '{e}'"
-                            )));
+                            return Err(Error::InvalidBooleanExpression(
+                                format!("invalid separator in: '{e}'"),
+                            ));
                         }
                         let base = q.pop_front().ok_or_else(|| {
-                            Error::InvalidBooleanExpression(format!("leading OR operand in '{e}'"))
+                            Error::InvalidBooleanExpression(format!(
+                                "leading OR operand in '{e}'"
+                            ))
                         })?;
                         let lhs = Self::conjugate(base, q.into_iter());
                         return Ok(lhs | Self::parse(&e[2..])?);
                     }
                     "&" => {
                         if e[1..].is_empty() || &e[1..2] != "&" {
-                            return Err(Error::InvalidBooleanExpression(format!(
-                                "invalid leading separator in: '{e}'"
-                            )));
+                            return Err(Error::InvalidBooleanExpression(
+                                format!("invalid leading separator in: '{e}'"),
+                            ));
                         }
                         let base = q.pop_front().ok_or_else(|| {
-                            Error::InvalidBooleanExpression(format!("leading AND operand in '{e}'"))
+                            Error::InvalidBooleanExpression(format!(
+                                "leading AND operand in '{e}'"
+                            ))
                         })?;
                         let lhs = Self::conjugate(base, q.into_iter());
                         return Ok(lhs & Self::parse(&e[2..])?);
@@ -152,8 +161,11 @@ impl AccessPolicy {
                         )));
                     }
                     _ => {
-                        let attr: String = e.chars().take_while(seeker).collect();
-                        q.push_back(Self::Term(QualifiedAttribute::try_from(attr.as_str())?));
+                        let attr: String =
+                            e.chars().take_while(seeker).collect();
+                        q.push_back(Self::Term(QualifiedAttribute::try_from(
+                            attr.as_str(),
+                        )?));
                         e = &e[attr.len()..];
                     }
                 }
@@ -179,16 +191,22 @@ impl AccessPolicy {
             Self::Conjunction(lhs, rhs) => {
                 let combinations_left = lhs.to_dnf();
                 let combinations_right = rhs.to_dnf();
-                let mut res =
-                    Vec::with_capacity(combinations_left.len() * combinations_right.len());
+                let mut res = Vec::with_capacity(
+                    combinations_left.len() * combinations_right.len(),
+                );
                 for value_left in combinations_left {
                     for value_right in &combinations_right {
-                        res.push([value_left.as_slice(), value_right.as_slice()].concat());
+                        res.push(
+                            [value_left.as_slice(), value_right.as_slice()]
+                                .concat(),
+                        );
                     }
                 }
                 res
             }
-            Self::Disjunction(lhs, rhs) => [lhs.to_dnf(), rhs.to_dnf()].concat(),
+            Self::Disjunction(lhs, rhs) => {
+                [lhs.to_dnf(), rhs.to_dnf()].concat()
+            }
             Self::Broadcast => vec![vec![]],
         }
     }
@@ -228,7 +246,9 @@ impl Serializable for AccessPolicy {
     fn length(&self) -> usize {
         match self {
             AccessPolicy::Broadcast => 1,
-            AccessPolicy::Term(qualified_attribute) => 1 + qualified_attribute.length(),
+            AccessPolicy::Term(qualified_attribute) => {
+                1 + qualified_attribute.length()
+            }
             AccessPolicy::Conjunction(access_policy, access_policy1) => {
                 1 + access_policy.length() + access_policy1.length()
             }
@@ -247,16 +267,20 @@ impl Serializable for AccessPolicy {
             AccessPolicy::Term(qualified_attribute) => {
                 Ok(ser.write(&1_u64)? + ser.write(qualified_attribute)?)
             }
-            AccessPolicy::Conjunction(access_policy, access_policy1) => Ok(ser.write(&2_u64)?
+            AccessPolicy::Conjunction(access_policy, access_policy1) => Ok(ser
+                .write(&2_u64)?
                 + ser.write(access_policy.deref())?
                 + ser.write(access_policy1.deref())?),
-            AccessPolicy::Disjunction(access_policy, access_policy1) => Ok(ser.write(&3_u64)?
+            AccessPolicy::Disjunction(access_policy, access_policy1) => Ok(ser
+                .write(&3_u64)?
                 + ser.write(access_policy.deref())?
                 + ser.write(access_policy1.deref())?),
         }
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(
+        de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+    ) -> Result<Self, Self::Error> {
         match de.read::<u64>()? {
             0 => Ok(Self::Broadcast),
             1 => Ok(Self::Term(de.read()?)),

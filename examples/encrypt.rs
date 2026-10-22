@@ -4,17 +4,21 @@ use std::{
 };
 
 use cosmian_cover_crypt::{
-    api::Covercrypt, test_utils::cc_keygen, traits::PkeAc, AccessPolicy, MasterPublicKey,
-    MasterSecretKey, UserSecretKey, XEnc,
+    AccessPolicy, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
+    api::Covercrypt, test_utils::cc_keygen, traits::PkeAc,
 };
 use cosmian_crypto_core::{
-    bytes_ser_de::{Deserializer, Serializable, Serializer},
     Aes256Gcm,
+    bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
 
 #[allow(dead_code)]
 /// Generates a new USK and encrypted header and prints them.
-fn generate_new(cc: &Covercrypt, msk: &mut MasterSecretKey, mpk: &MasterPublicKey) {
+fn generate_new(
+    cc: &Covercrypt,
+    msk: &mut MasterSecretKey,
+    mpk: &MasterPublicKey,
+) {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
 
     let usk = cc.generate_user_secret_key(msk, &ap).unwrap();

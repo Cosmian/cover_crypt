@@ -1,13 +1,15 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer};
+use cosmian_crypto_core::bytes_ser_de::{
+    Deserializer, Serializable, Serializer,
+};
 
 use crate::{
-    abe::core::{
-        MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey, TracingPublicKey,
-        TracingSecretKey, UserId, UserSecretKey, XEnc,
-    },
     Error,
+    abe::core::{
+        MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
+        TracingPublicKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
+    },
 };
 
 impl Serializable for TracingPublicKey {
@@ -43,7 +45,9 @@ impl Serializable for RightPublicKey {
         match self {
             Self::PreQuantum { H } => Ok(0usize.write(ser)? + H.write(ser)?),
             Self::PostQuantum { ek } => Ok(2usize.write(ser)? + ek.write(ser)?),
-            Self::Hybridized { H, ek } => Ok(1usize.write(ser)? + H.write(ser)? + ek.write(ser)?),
+            Self::Hybridized { H, ek } => {
+                Ok(1usize.write(ser)? + H.write(ser)? + ek.write(ser)?)
+            }
         }
     }
 
@@ -67,7 +71,9 @@ impl Serializable for MasterPublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.tpk.length() + self.encryption_keys.length() + self.access_structure.length()
+        self.tpk.length()
+            + self.encryption_keys.length()
+            + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -93,7 +99,9 @@ impl Serializable for TracingSecretKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(self.s.write(ser)? + self.tracers.write(ser)? + self.users.write(ser)?)
+        Ok(self.s.write(ser)?
+            + self.tracers.write(ser)?
+            + self.users.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
@@ -191,7 +199,10 @@ impl Serializable for UserSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.id.length() + self.ps.length() + self.secrets.length() + self.signature.length()
+        self.id.length()
+            + self.ps.length()
+            + self.secrets.length()
+            + self.signature.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
@@ -246,7 +257,9 @@ impl Serializable for XEnc {
             XEnc::PostQuantum {
                 tag,
                 encapsulations,
-            } => Ok(1usize.write(ser)? + tag.write(ser)? + encapsulations.write(ser)?),
+            } => Ok(1usize.write(ser)?
+                + tag.write(ser)?
+                + encapsulations.write(ser)?),
             XEnc::Hybridized {
                 tag,
                 c,
@@ -287,15 +300,16 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use cosmian_crypto_core::{
-        bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng, CsRng,
+        CsRng, bytes_ser_de::test_serialization,
+        reexport::rand_core::SeedableRng,
     };
 
     use crate::{
         abe::{
             api::Covercrypt,
             core::{
-                primitives::{encaps, rekey, setup, update_msk, usk_keygen},
                 MIN_TRACING_LEVEL,
+                primitives::{encaps, rekey, setup, update_msk, usk_keygen},
             },
             policy::{AccessPolicy, EncryptionHint, EncryptionStatus, Right},
             traits::KemAc,
@@ -314,19 +328,29 @@ mod tests {
             let universe = HashMap::from([
                 (
                     coordinate_1.clone(),
-                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (
+                        EncryptionHint::Hybridized,
+                        EncryptionStatus::EncryptDecrypt,
+                    ),
                 ),
                 (
                     coordinate_2.clone(),
-                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (
+                        EncryptionHint::Hybridized,
+                        EncryptionStatus::EncryptDecrypt,
+                    ),
                 ),
                 (
                     coordinate_3.clone(),
-                    (EncryptionHint::Hybridized, EncryptionStatus::EncryptDecrypt),
+                    (
+                        EncryptionHint::Hybridized,
+                        EncryptionStatus::EncryptDecrypt,
+                    ),
                 ),
             ]);
 
-            let user_set = HashSet::from([coordinate_1.clone(), coordinate_3.clone()]);
+            let user_set =
+                HashSet::from([coordinate_1.clone(), coordinate_3.clone()]);
             let target_set = HashSet::from([coordinate_1, coordinate_3]);
             let mut rng = CsRng::from_entropy();
 
@@ -341,7 +365,8 @@ mod tests {
             test_serialization(&usk).unwrap();
             test_serialization(&enc).unwrap();
 
-            rekey(&mut rng, &mut msk, universe.keys().cloned().collect()).unwrap();
+            rekey(&mut rng, &mut msk, universe.keys().cloned().collect())
+                .unwrap();
             test_serialization(&msk).unwrap();
         }
 
@@ -349,7 +374,10 @@ mod tests {
             let cc = Covercrypt::default();
             let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
             let usk = cc
-                .generate_user_secret_key(&mut msk, &AccessPolicy::parse("SEC::TOP").unwrap())
+                .generate_user_secret_key(
+                    &mut msk,
+                    &AccessPolicy::parse("SEC::TOP").unwrap(),
+                )
                 .unwrap();
             let (_, enc) = cc
                 .encaps(&mpk, &AccessPolicy::parse("DPT::MKG").unwrap())

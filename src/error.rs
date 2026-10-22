@@ -25,17 +25,27 @@ impl Display for Error {
             Self::Kem(err) => write!(f, "Kyber error: {err}"),
             Self::CryptoCoreError(err) => write!(f, "CryptoCore error: {err}"),
             Self::KeyError(err) => write!(f, "{err}"),
-            Self::AttributeNotFound(err) => write!(f, "attribute not found: {err}"),
+            Self::AttributeNotFound(err) => {
+                write!(f, "attribute not found: {err}")
+            }
             Self::ExistingDimension(dimension) => {
                 write!(f, "dimension {dimension} already exists")
             }
             Self::InvalidBooleanExpression(expr_str) => {
                 write!(f, "invalid boolean expression: {expr_str}")
             }
-            Self::InvalidAttribute(attr) => write!(f, "invalid attribute: {attr}"),
-            Self::DimensionNotFound(dim_str) => write!(f, "cannot find dimension: {dim_str}"),
-            Self::ConversionFailed(err) => write!(f, "Conversion failed: {err}"),
-            Self::OperationNotPermitted(err) => write!(f, "Operation not permitted: {err}"),
+            Self::InvalidAttribute(attr) => {
+                write!(f, "invalid attribute: {attr}")
+            }
+            Self::DimensionNotFound(dim_str) => {
+                write!(f, "cannot find dimension: {dim_str}")
+            }
+            Self::ConversionFailed(err) => {
+                write!(f, "Conversion failed: {err}")
+            }
+            Self::OperationNotPermitted(err) => {
+                write!(f, "Operation not permitted: {err}")
+            }
             Self::Tracing(err) => write!(f, "tracing error: {err}"),
         }
     }

@@ -1,11 +1,11 @@
 use std::{fs::File, io::Read};
 
-use cosmian_cover_crypt::{traits::PkeAc, XEnc};
-use cosmian_crypto_core::{bytes_ser_de::Deserializer, Aes256Gcm};
+use cosmian_cover_crypt::{XEnc, traits::PkeAc};
+use cosmian_crypto_core::{Aes256Gcm, bytes_ser_de::Deserializer};
 
 fn main() {
-    use cosmian_cover_crypt::api::Covercrypt;
     use cosmian_cover_crypt::UserSecretKey;
+    use cosmian_cover_crypt::api::Covercrypt;
     use cosmian_crypto_core::bytes_ser_de::Serializable;
 
     let cc = Covercrypt::default();
