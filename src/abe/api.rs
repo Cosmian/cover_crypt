@@ -14,28 +14,28 @@ use crate::{
     },
 };
 use cosmian_crypto_core::{
-    CsRng, Secret, SymmetricKey,
+    CsRng, Secret,
     reexport::rand_core::{RngCore, SeedableRng},
-    traits::AE,
+    traits::{AE, KDF},
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Debug, Clone)]
-pub struct Covercrypt {
-    rng: Arc<Mutex<CsRng>>,
-}
+pub struct Covercrypt(Arc<Mutex<CsRng>>);
 
 impl Default for Covercrypt {
     fn default() -> Self {
-        Self {
-            rng: Arc::new(Mutex::new(CsRng::from_entropy())),
-        }
+        Self(Arc::new(Mutex::new(CsRng::from_entropy())))
     }
 }
 
 impl Covercrypt {
+    pub fn new(rng: CsRng) -> Self {
+        Self(Arc::new(Mutex::new(rng)))
+    }
+
     pub fn rng(&self) -> MutexGuard<'_, CsRng> {
-        self.rng.lock().expect("poisoned mutex")
+        self.0.lock().expect("poisoned mutex")
     }
 
     /// Sets up the Covercrypt scheme.
@@ -43,7 +43,7 @@ impl Covercrypt {
     /// Generates a MSK and a MPK only holing broadcasting keys, and with a
     /// tracing level of [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
     pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        let mut rng = self.rng.lock().expect("Mutex lock failed!");
+        let mut rng = self.rng();
         let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
         let rights = msk.access_structure.omega()?;
         update_msk(&mut *rng, &mut msk, rights)?;
@@ -70,11 +70,7 @@ impl Covercrypt {
         &self,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
-        update_msk(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            msk.access_structure.omega()?,
-        )?;
+        update_msk(&mut *self.rng(), msk, msk.access_structure.omega()?)?;
         msk.mpk()
     }
 
@@ -89,7 +85,7 @@ impl Covercrypt {
         ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
         rekey(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &mut *self.rng(),
             msk,
             msk.access_structure.ap_to_usk_rights(ap)?,
         )?;
@@ -122,7 +118,7 @@ impl Covercrypt {
         ap: &AccessPolicy,
     ) -> Result<UserSecretKey, Error> {
         usk_keygen(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &mut *self.rng(),
             msk,
             msk.access_structure.ap_to_usk_rights(ap)?,
         )
@@ -146,12 +142,7 @@ impl Covercrypt {
         usk: &mut UserSecretKey,
         keep_old_secrets: bool,
     ) -> Result<(), Error> {
-        refresh(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            msk,
-            usk,
-            keep_old_secrets,
-        )
+        refresh(&mut *self.rng(), msk, usk, keep_old_secrets)
     }
 
     /// Returns a new encapsulation with the same rights as the one given, along
@@ -163,11 +154,7 @@ impl Covercrypt {
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
         let (_ss, rights) = master_decaps(msk, encapsulation, true)?;
-        primitives::encaps(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            mpk,
-            &rights,
-        )
+        primitives::encaps(&mut *self.rng(), mpk, &rights)
     }
 }
 
@@ -184,7 +171,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
     {
         primitives::encaps(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
+            &mut *self.rng(),
             ek,
             &ek.access_structure.ap_to_enc_rights(ap)?,
         )
@@ -195,11 +182,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-        primitives::decaps(
-            &mut *self.rng.lock().expect("Mutex lock failed!"),
-            dk,
-            enc,
-        )
+        primitives::decaps(&mut *self.rng(), dk, enc)
     }
 }
 
@@ -207,9 +190,11 @@ impl<
     const KEY_LENGTH: usize,
     const NONCE_LENGTH: usize,
     const TAG_LENGTH: usize,
+    Kdf: KDF<KEY_LENGTH>,
     E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
-> PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, E> for Covercrypt
+> PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, Kdf, E> for Covercrypt
 where
+    Error: From<Kdf::Error>,
     Error: From<E::Error>,
 {
     type EncryptionKey = MasterPublicKey;
@@ -226,9 +211,8 @@ where
         let (seed, enc) = self.encaps(mpk, ap)?;
         // Locking Covercrypt RNG must be performed after encapsulation since
         // this encapsulation also requires locking the RNG.
-        let mut rng = self.rng.lock().expect("poisoned lock");
-        let key =
-            SymmetricKey::<KEY_LENGTH>::derive(&seed, b"Covercrypt AE key")?;
+        let mut rng = self.rng();
+        let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])?;
         let mut nonce = [0; NONCE_LENGTH];
         rng.fill_bytes(&mut nonce);
         let ctx = E::encrypt(&key, ptx, &nonce)?;
@@ -242,9 +226,116 @@ where
     ) -> Result<Option<E::Plaintext>, Self::Error> {
         self.decaps(usk, &ctx.0)?
             .map(|seed| {
-                let key = SymmetricKey::derive(&seed, b"Covercrypt AE key")?;
+                let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])?;
                 E::decrypt(&key, ctx.1.as_ref()).map_err(Self::Error::from)
             })
             .transpose()
+    }
+}
+
+/// Select a single feature combination.
+#[cfg(all(
+    feature = "curve25519",
+    feature = "mlkem-512",
+    not(feature = "p-256"),
+    not(feature = "mlkem-768")
+))]
+#[cfg(test)]
+mod tests {
+    use crate::{
+        AccessPolicy, Covercrypt, test_utils::cc_keygen, traits::KemAc,
+    };
+    use cosmian_crypto_core::{
+        CsRng, bytes_ser_de::Serializable, reexport::rand_core::SeedableRng,
+    };
+    use regression_test::RegTest;
+
+    #[test]
+    fn test_regressions() {
+        {
+            // Ensure the (MSK, MPK) couple can be deterministically generated.
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_1, mpk_1) = cc.setup().unwrap();
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_2, mpk_2) = cc.setup().unwrap();
+
+            assert_eq!(msk_1, msk_2);
+            assert_eq!(mpk_1, mpk_2);
+        }
+
+        {
+            // Ensure the (MSK, MPK) couple can be deterministically populated.
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_1, mpk_1) = cc_keygen(&cc, true).unwrap();
+
+            let rng = CsRng::from_seed([0; 32]);
+            let cc = Covercrypt::new(rng);
+            let (msk_2, mpk_2) = cc_keygen(&cc, true).unwrap();
+
+            assert_eq!(msk_1, msk_2);
+            assert_eq!(mpk_1, mpk_2);
+        }
+
+        let rng = CsRng::from_seed([0; 32]);
+        let cc = Covercrypt::new(rng);
+        let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+
+        let usk_1 = cc
+            .generate_user_secret_key(
+                &mut msk,
+                &AccessPolicy::parse(
+                    "SEC::LOW || (SEC::TOP && ((CTR::FR || CTR::EN) || DPT::FIN))",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        let usk_2 = cc
+            .generate_user_secret_key(
+                &mut msk,
+                &AccessPolicy::parse("(SEC::LOW && DPT::FIN) || (SEC::MED && CTR::FR && DPT::DEV)")
+                    .unwrap(),
+            )
+            .unwrap();
+
+        let enc_1 = cc
+            .encaps(
+                &mpk,
+                &AccessPolicy::parse(
+                    "SEC::TOP && (((CTR::FR || CTR::EN) && DPT::DEV) || DPT::FIN)",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        let enc_2 =
+            cc.encaps(&mpk, &AccessPolicy::parse("*").unwrap()).unwrap();
+
+        RegTest::new("./test-data/msk")
+            .unwrap()
+            .regtest_dbg(msk.serialize().unwrap().to_vec());
+
+        RegTest::new("./test-data/mpk")
+            .unwrap()
+            .regtest_dbg(mpk.serialize().unwrap().to_vec());
+
+        RegTest::new("./test-data/usk_1")
+            .unwrap()
+            .regtest_dbg(usk_1.serialize().unwrap().to_vec());
+
+        RegTest::new("./test-data/usk_2")
+            .unwrap()
+            .regtest_dbg(usk_2.serialize().unwrap().to_vec());
+
+        RegTest::new("./test-data/enc_1")
+            .unwrap()
+            .regtest_dbg(enc_1.serialize().unwrap().to_vec());
+
+        RegTest::new("./test-data/enc_2")
+            .unwrap()
+            .regtest_dbg(enc_2.serialize().unwrap().to_vec());
     }
 }

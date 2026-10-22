@@ -1,9 +1,8 @@
+use crate::Error;
 use cosmian_crypto_core::bytes_ser_de::{
     Deserializer, Serializable, Serializer, to_leb128_len,
 };
 use std::{hash::Hash, ops::Deref};
-
-use crate::Error;
 
 /// A right is a combination of the IDs of its associated attributes.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]

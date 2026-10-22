@@ -297,14 +297,16 @@ impl Serializable for XEnc {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, BTreeSet};
 
     use cosmian_crypto_core::{
-        CsRng, bytes_ser_de::test_serialization,
+        CsRng,
+        bytes_ser_de::{Serializable, test_serialization},
         reexport::rand_core::SeedableRng,
     };
 
     use crate::{
+        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
         abe::{
             api::Covercrypt,
             core::{
@@ -325,7 +327,7 @@ mod tests {
             let coordinate_2 = Right::random(&mut rng);
             let coordinate_3 = Right::random(&mut rng);
 
-            let universe = HashMap::from([
+            let universe = BTreeMap::from([
                 (
                     coordinate_1.clone(),
                     (
@@ -350,8 +352,8 @@ mod tests {
             ]);
 
             let user_set =
-                HashSet::from([coordinate_1.clone(), coordinate_3.clone()]);
-            let target_set = HashSet::from([coordinate_1, coordinate_3]);
+                BTreeSet::from([coordinate_1.clone(), coordinate_3.clone()]);
+            let target_set = BTreeSet::from([coordinate_1, coordinate_3]);
             let mut rng = CsRng::from_entropy();
 
             let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
@@ -387,6 +389,26 @@ mod tests {
             test_serialization(&mpk).unwrap();
             test_serialization(&usk).unwrap();
             test_serialization(&enc).unwrap();
+
+            let msk_bytes_1 = msk.serialize().unwrap().to_vec();
+            let msk_2 = MasterSecretKey::deserialize(&msk_bytes_1).unwrap();
+            let msk_bytes_2 = msk_2.serialize().unwrap().to_vec();
+            assert_eq!(msk_bytes_1, msk_bytes_2);
+
+            let mpk_bytes_1 = mpk.serialize().unwrap().to_vec();
+            let mpk_2 = MasterPublicKey::deserialize(&mpk_bytes_1).unwrap();
+            let mpk_bytes_2 = mpk_2.serialize().unwrap().to_vec();
+            assert_eq!(mpk_bytes_1, mpk_bytes_2);
+
+            let usk_bytes_1 = usk.serialize().unwrap().to_vec();
+            let usk_2 = UserSecretKey::deserialize(&usk_bytes_1).unwrap();
+            let usk_bytes_2 = usk_2.serialize().unwrap().to_vec();
+            assert_eq!(usk_bytes_1, usk_bytes_2);
+
+            let enc_bytes_1 = enc.serialize().unwrap().to_vec();
+            let enc_2 = XEnc::deserialize(&enc_bytes_1).unwrap();
+            let enc_bytes_2 = enc_2.serialize().unwrap().to_vec();
+            assert_eq!(enc_bytes_1, enc_bytes_2);
         }
     }
 }

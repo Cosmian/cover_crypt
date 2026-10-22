@@ -13,7 +13,7 @@ use crate::{
     providers::{ElGamal, MlKem},
 };
 use cosmian_crypto_core::{
-    RandomFixedSizeCBytes, Secret, SymmetricKey,
+    Secret, SymmetricKey,
     bytes_ser_de::Serializable,
     reexport::{
         rand_core::{CryptoRngCore, RngCore},
@@ -22,7 +22,7 @@ use cosmian_crypto_core::{
     traits::{KEM, NIKE, Seedable},
 };
 use std::{
-    collections::{HashMap, HashSet, LinkedList},
+    collections::{BTreeMap, BTreeSet, LinkedList},
     mem::take,
 };
 
@@ -206,7 +206,7 @@ pub fn setup(
 pub fn usk_keygen(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    coordinates: HashSet<Right>,
+    coordinates: BTreeSet<Right>,
 ) -> Result<UserSecretKey, Error> {
     // Extract keys first to avoid unnecessary computation in case those cannot be found.
     let coordinate_keys = msk
@@ -351,7 +351,7 @@ fn pre_quantum_encaps<'a>(
 pub fn encaps(
     rng: &mut impl CryptoRngCore,
     mpk: &MasterPublicKey,
-    encryption_set: &HashSet<Right>,
+    encryption_set: &BTreeSet<Right>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     // A typed key container would avoid the need for casting in the match arms
     // but would also involve additional overhead.
@@ -651,7 +651,7 @@ pub fn master_decaps(
     msk: &MasterSecretKey,
     encapsulation: &XEnc,
     full: bool,
-) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+) -> Result<(Secret<SHARED_SECRET_LENGTH>, BTreeSet<Right>), Error> {
     /// Opens the given encapsulation with the provided secrets. Returns both
     /// the encapsulated secret and the right associated to the first secret
     /// allowing opening this encapsulation, or returns an error if no secret
@@ -696,7 +696,7 @@ pub fn master_decaps(
         c: &[<ElGamal as NIKE>::PublicKey],
         encapsulations: &[[u8; 32]],
         full: bool,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, BTreeSet<Right>), Error> {
         let A = generate_tracing_closure(msk, c)?;
         let T = generate_T(Some(c), None::<Vec<_>>)?;
         let U = generate_U(&T, encapsulations);
@@ -716,7 +716,7 @@ pub fn master_decaps(
         };
 
         let mut enc_ss = None;
-        let mut rights = HashSet::with_capacity(encapsulations.len());
+        let mut rights = BTreeSet::new();
         let mut secrets = msk.secrets.clone();
 
         for F in encapsulations {
@@ -755,7 +755,7 @@ pub fn master_decaps(
             [u8; SHARED_SECRET_LENGTH],
         )],
         full: bool,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, BTreeSet<Right>), Error> {
         let T = generate_T(None, Some(encapsulations.iter().map(|(E, _)| E)))?;
         let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
 
@@ -764,7 +764,7 @@ pub fn master_decaps(
         };
 
         let mut enc_ss = None;
-        let mut rights = HashSet::with_capacity(encapsulations.len());
+        let mut rights = BTreeSet::new();
         let mut secrets = msk.secrets.clone();
 
         for (E, F) in encapsulations {
@@ -804,7 +804,7 @@ pub fn master_decaps(
             [u8; SHARED_SECRET_LENGTH],
         )],
         full: bool,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, HashSet<Right>), Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, BTreeSet<Right>), Error> {
         let A = generate_tracing_closure(msk, c)?;
         let T =
             generate_T(Some(c), Some(encapsulations.iter().map(|(E, _)| E)))?;
@@ -825,7 +825,7 @@ pub fn master_decaps(
         };
 
         let mut enc_ss = None;
-        let mut rights = HashSet::with_capacity(encapsulations.len());
+        let mut rights = BTreeSet::new();
         let mut secrets = msk.secrets.clone();
 
         for (E, F) in encapsulations {
@@ -880,7 +880,7 @@ pub fn master_decaps(
 pub fn update_msk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: HashMap<Right, (EncryptionHint, EncryptionStatus)>,
+    rights: BTreeMap<Right, (EncryptionHint, EncryptionStatus)>,
 ) -> Result<(), Error> {
     let mut secrets = take(&mut msk.secrets);
     secrets.retain(|r| rights.contains_key(r));
@@ -913,7 +913,7 @@ pub fn update_msk(
 pub fn rekey(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: HashSet<Right>,
+    rights: BTreeSet<Right>,
 ) -> Result<(), Error> {
     for r in rights {
         if msk.secrets.contains_key(&r) {
@@ -948,7 +948,7 @@ pub fn rekey(
 /// # Safety
 ///
 /// This operation *permanently* deletes old keys, this is thus not reversible!
-pub fn prune(msk: &mut MasterSecretKey, coordinates: &HashSet<Right>) {
+pub fn prune(msk: &mut MasterSecretKey, coordinates: &BTreeSet<Right>) {
     for coordinate in coordinates {
         msk.secrets.keep(coordinate, 1);
     }

@@ -12,6 +12,7 @@ jobs:
         with:
           toolchain: 1.89.0
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - name: Run test script
         run: |
           bash .github/scripts/cargo.sh

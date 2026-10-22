@@ -1,9 +1,7 @@
-use std::collections::{HashMap, HashSet};
-
-use cosmian_crypto_core::{
-    Aes256Gcm, CsRng, reexport::rand_core::SeedableRng, traits::AE_InPlace,
+use super::{
+    MIN_TRACING_LEVEL,
+    primitives::{setup, usk_keygen},
 };
-
 use crate::{
     abe::{
         Covercrypt,
@@ -16,11 +14,11 @@ use crate::{
     },
     test_utils::cc_keygen,
 };
-
-use super::{
-    MIN_TRACING_LEVEL,
-    primitives::{setup, usk_keygen},
+use cosmian_crypto_core::{
+    Aes256Gcm, CsRng, reexport::rand_core::SeedableRng, traits::AE_InPlace,
 };
+use cosmian_openssl_provider::hash::Sha256;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[test]
 fn security_mode_ordering() {
@@ -41,7 +39,7 @@ fn test_encapsulation() {
     update_msk(
         &mut rng,
         &mut msk,
-        HashMap::from_iter([
+        BTreeMap::from_iter([
             (
                 other_coordinate.clone(),
                 (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
@@ -58,7 +56,7 @@ fn test_encapsulation() {
     let (key, enc) = encaps(
         &mut rng,
         &mpk,
-        &HashSet::from_iter([target_coordinate.clone()]),
+        &BTreeSet::from_iter([target_coordinate.clone()]),
     )
     .unwrap();
     assert_eq!(enc.count(), 1);
@@ -67,7 +65,7 @@ fn test_encapsulation() {
         let usk = usk_keygen(
             &mut rng,
             &mut msk,
-            HashSet::from_iter([target_coordinate.clone()]),
+            BTreeSet::from_iter([target_coordinate.clone()]),
         )
         .unwrap();
         assert_eq!(usk.secrets.len(), 1);
@@ -77,7 +75,7 @@ fn test_encapsulation() {
     let usk = usk_keygen(
         &mut rng,
         &mut msk,
-        HashSet::from_iter([other_coordinate.clone()]),
+        BTreeSet::from_iter([other_coordinate.clone()]),
     )
     .unwrap();
     assert_eq!(usk.secrets.len(), 1);
@@ -109,7 +107,7 @@ fn test_update() {
                 (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
             )
         })
-        .collect::<HashMap<_, _>>();
+        .collect::<BTreeMap<_, _>>();
     update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
 
@@ -135,7 +133,7 @@ fn test_update() {
 
     // Keep only 10 coordinates.
     let coordinates =
-        coordinates.into_iter().take(10).collect::<HashMap<_, _>>();
+        coordinates.into_iter().take(10).collect::<BTreeMap<_, _>>();
     update_msk(&mut rng, &mut msk, coordinates).unwrap();
     assert_eq!(msk.secrets.len(), 10);
     let mpk = msk.mpk().unwrap();
@@ -150,16 +148,16 @@ fn test_rekey() {
     let mut rng = CsRng::from_entropy();
     let coordinate_1 = Right::random(&mut rng);
     let coordinate_2 = Right::random(&mut rng);
-    let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
-    let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
+    let subspace_1 = BTreeSet::from_iter([coordinate_1.clone()]);
+    let subspace_2 = BTreeSet::from_iter([coordinate_2.clone()]);
     let universe =
-        HashSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
+        BTreeSet::from_iter([coordinate_1.clone(), coordinate_2.clone()]);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
         &mut rng,
         &mut msk,
-        HashMap::from_iter([
+        BTreeMap::from_iter([
             (
                 coordinate_1.clone(),
                 (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
@@ -236,14 +234,14 @@ fn test_integrity_check() {
     let mut rng = CsRng::from_entropy();
     let coordinate_1 = Right::random(&mut rng);
     let coordinate_2 = Right::random(&mut rng);
-    let subspace_1 = HashSet::from_iter([coordinate_1.clone()]);
-    let subspace_2 = HashSet::from_iter([coordinate_2.clone()]);
+    let subspace_1 = BTreeSet::from_iter([coordinate_1.clone()]);
+    let subspace_2 = BTreeSet::from_iter([coordinate_2.clone()]);
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
         &mut rng,
         &mut msk,
-        HashMap::from_iter([
+        BTreeMap::from_iter([
             (
                 coordinate_1.clone(),
                 (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
@@ -357,6 +355,7 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::encrypt(&cc, &mpk, &ap, ptx)
     .expect("cannot encrypt!");
@@ -367,6 +366,7 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
+        Sha256,
         Aes256Gcm,
     >::decrypt(&cc, &usk, &ctx)
     .expect("cannot decrypt the ciphertext");
