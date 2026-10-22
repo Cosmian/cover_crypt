@@ -4,15 +4,20 @@
 //! defined as a combination of a dimension name and a component name (belonging
 //! to the named dimension).
 
+use crate::{Error, abe::policy::QualifiedAttribute};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+use pest::iterators::{Pair, Pairs};
+use pest_derive::Parser;
 use std::{
-    collections::LinkedList,
     fmt::Debug,
+    num::ParseIntError,
     ops::{BitAnd, BitOr, Deref},
 };
 
-use cosmian_crypto_core::bytes_ser_de::Serializable;
-
-use crate::{Error, abe::policy::QualifiedAttribute};
+#[allow(dead_code)]
+#[derive(Parser)]
+#[grammar = "abe/policy/access_policy.pest"]
+pub struct AccessPolicyParser;
 
 /// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,49 +29,10 @@ pub enum AccessPolicy {
 }
 
 impl AccessPolicy {
-    /// Find the corresponding closing parenthesis in the boolean expression
-    /// given as a string.
-    fn find_matching_closing_parenthesis(
-        boolean_expression: &str,
-    ) -> Result<usize, Error> {
-        let mut count = 0;
-        for (index, c) in boolean_expression.chars().enumerate() {
-            match c {
-                '(' => count += 1,
-                ')' => count -= 1,
-                _ => {}
-            };
-            if count < 0 {
-                return Ok(index);
-            }
-        }
-        Err(Error::InvalidBooleanExpression(format!(
-            "Missing closing parenthesis in boolean expression {boolean_expression}"
-        )))
-    }
-
     /// Parses the given string into an access policy.
     ///
-    /// # Abstract grammar
-    ///
-    /// The following abstract grammar describes the valid access policies
-    /// syntax. The brackets are used to denote optional elements, the pipes
-    /// ('|') to denote options, slashes to denote REGEXP, and spaces to denote
-    /// concatenation. Spaces may be interleaved with elements. They are simply
-    /// ignored by the parser.
-    ///
-    /// - access_policy: [ attribute | group [ operator access_policy ]]
-    /// - attribute: dimension [ separator component ]
-    /// - group: ( access_policy )
-    /// - operator: OR | AND
-    /// - OR: ||
-    /// - AND: &&
-    /// - separator: ::
-    /// - dimension: /[^&|: ]+/
-    /// - component: /[^&|: ]+/
-    ///
-    /// The REGEXP used to describe the dimension and the component stands for:
-    /// "at least one character that is neither '&', '|', ':' nor ' '".
+    /// The abstract grammar defining what is a valid access policy can be found
+    /// in (access_policy.pest)[./access_policy.pest].
     ///
     /// # Precedence rule
     ///
@@ -80,7 +46,6 @@ impl AccessPolicy {
     /// The following expressions define valid access policies:
     ///
     /// - "DPT::MKG && (CTR::FR || CTR::DE)"
-    /// - ""
     /// - "SEC::Low Secret && CTR::FR"
     ///
     /// Notice that the arity of the operators is two. Therefore the following
@@ -92,93 +57,160 @@ impl AccessPolicy {
     /// access policy is *invalid*:
     ///
     /// - "DPT::MKG DPT::FIN"
-    pub fn parse(mut e: &str) -> Result<Self, Error> {
-        if !e.is_ascii() {
-            return Err(Error::InvalidBooleanExpression(
-                "non-ascii character used".to_owned(),
-            ));
-        }
-        let seeker = |c: &char| !"()|&".contains(*c);
-        let mut q = LinkedList::<Self>::new();
-        loop {
-            e = e.trim();
+    pub fn parse(ap: &str) -> Result<Self, Error> {
+        use crate::abe::policy::attribute::Version;
+        use pest::Parser;
 
-            if e.is_empty() {
-                if let Some(first) = q.pop_front() {
-                    return Ok(Self::conjugate(first, q.into_iter()));
-                } else {
-                    return Err(Error::InvalidBooleanExpression(
-                        "empty string is not a valid access policy".to_string(),
-                    ));
+        enum Operator {
+            Conj,
+            Disj,
+        }
+
+        fn get_operator(pair: Pair<Rule>) -> Result<Operator, Error> {
+            match pair.as_rule() {
+                Rule::and => Ok(Operator::Conj),
+                Rule::or => Ok(Operator::Disj),
+                _ => Err(Error::InvalidAccessPolicy(
+                    "unexpected rule".to_owned(),
+                )),
+            }
+        }
+
+        fn get_version(pair: Pair<Rule>) -> Result<Version, Error> {
+            match pair.as_rule() {
+                Rule::tag => Ok(Version::Tag(pair.as_str().to_owned())),
+                Rule::version_number => Ok(Version::Num(
+                    pair.as_str().parse().map_err(|e: ParseIntError| {
+                        Error::InvalidAccessPolicy(format!(
+                            "invalid version number: {:?} ({:?})",
+                            pair.as_str(),
+                            e.to_string()
+                        ))
+                    })?,
+                )),
+                _ => Err(Error::InvalidAccessPolicy(format!(
+                    "not a valid tag: '{:?}'",
+                    pair.as_str()
+                ))),
+            }
+        }
+
+        fn get_qualified_attribute(
+            pair: Pair<Rule>,
+        ) -> Result<AccessPolicy, Error> {
+            match pair.as_rule() {
+                Rule::qualified_attribute => {
+                    let mut pairs = pair.into_inner();
+
+                    let dimension = pairs
+                        .next()
+                        .ok_or_else(|| {
+                            Error::InvalidAccessPolicy(
+                                "missing dimension name".to_owned(),
+                            )
+                        })?
+                        .as_str()
+                        .to_string();
+
+                    let attribute = pairs
+                        .next()
+                        .ok_or_else(|| {
+                            Error::InvalidAccessPolicy(
+                                "missing dimension name".to_owned(),
+                            )
+                        })?
+                        .as_str()
+                        .to_string();
+
+                    let version = pairs.next().map(get_version).transpose()?;
+
+                    Ok(AccessPolicy::Term(QualifiedAttribute {
+                        dimension,
+                        attribute,
+                        version,
+                    }))
                 }
-            } else if e == "*" {
-                return Ok(Self::conjugate(Self::Broadcast, q.into_iter()));
-            } else {
-                match &e[..1] {
-                    "(" => {
-                        let offset =
-                            Self::find_matching_closing_parenthesis(&e[1..])?;
-                        q.push_back(Self::parse(&e[1..1 + offset]).map_err(
-                            |err| {
-                                Error::InvalidBooleanExpression(format!(
-                                    "error while parsing '{e}': {err}"
-                                ))
-                            },
-                        )?);
-                        e = &e[2 + offset..];
-                    }
-                    "|" => {
-                        if e[1..].is_empty() || &e[1..2] != "|" {
-                            return Err(Error::InvalidBooleanExpression(
-                                format!("invalid separator in: '{e}'"),
-                            ));
-                        }
-                        let base = q.pop_front().ok_or_else(|| {
-                            Error::InvalidBooleanExpression(format!(
-                                "leading OR operand in '{e}'"
+                _ => Err(Error::InvalidAccessPolicy(format!(
+                    "not a qualified attribute {:?}",
+                    pair.as_str()
+                ))),
+            }
+        }
+
+        fn get_block(pair: Pair<Rule>) -> Result<AccessPolicy, Error> {
+            match pair.as_rule() {
+                Rule::qualified_attribute => get_qualified_attribute(pair),
+                Rule::eq => get_eq(&mut pair.into_inner()),
+                _ => Err(Error::InvalidAccessPolicy(format!(
+                    "not a block {:?}",
+                    pair.as_str()
+                ))),
+            }
+        }
+
+        fn get_eq(pairs: &mut Pairs<Rule>) -> Result<AccessPolicy, Error> {
+            let mut access_policy =
+                get_block(pairs.next().ok_or_else(|| {
+                    Error::InvalidAccessPolicy(format!(
+                        "missing block in {}",
+                        pairs
+                    ))
+                })?)?;
+
+            while !Pairs::is_empty(pairs) {
+                let op = pairs.next().expect("iterator is not empty");
+
+                match get_operator(op)? {
+                    Operator::Conj => {
+                        // Conjunction is eager since it takes precedence.
+                        let block = pairs.next().ok_or_else(|| {
+                            Error::InvalidAccessPolicy(format!(
+                                "missing block in {}",
+                                pairs
                             ))
                         })?;
-                        let lhs = Self::conjugate(base, q.into_iter());
-                        return Ok(lhs | Self::parse(&e[2..])?);
+
+                        access_policy = AccessPolicy::Conjunction(
+                            Box::new(access_policy),
+                            Box::new(get_block(block)?),
+                        )
                     }
-                    "&" => {
-                        if e[1..].is_empty() || &e[1..2] != "&" {
-                            return Err(Error::InvalidBooleanExpression(
-                                format!("invalid leading separator in: '{e}'"),
-                            ));
-                        }
-                        let base = q.pop_front().ok_or_else(|| {
-                            Error::InvalidBooleanExpression(format!(
-                                "leading AND operand in '{e}'"
-                            ))
-                        })?;
-                        let lhs = Self::conjugate(base, q.into_iter());
-                        return Ok(lhs & Self::parse(&e[2..])?);
-                    }
-                    ")" => {
-                        return Err(Error::InvalidBooleanExpression(format!(
-                            "unmatched closing parenthesis in '{e}'"
-                        )));
-                    }
-                    _ => {
-                        let attr: String =
-                            e.chars().take_while(seeker).collect();
-                        q.push_back(Self::Term(QualifiedAttribute::try_from(
-                            attr.as_str(),
-                        )?));
-                        e = &e[attr.len()..];
+                    Operator::Disj => {
+                        // Conjunction is eager since it takes precedence.
+                        access_policy = AccessPolicy::Disjunction(
+                            Box::new(access_policy),
+                            Box::new(get_eq(pairs)?),
+                        )
                     }
                 }
             }
-        }
-    }
 
-    /// Conjugate the access policies from the given iterator.
-    fn conjugate(first: Self, policies: impl Iterator<Item = Self>) -> Self {
-        policies.fold(first, |mut res, operand| {
-            res = res & operand;
-            res
-        })
+            Ok(access_policy)
+        }
+
+        let ap = ap.trim();
+
+        let policy = AccessPolicyParser::parse(Rule::policy, ap)
+            .map_err(|_| Error::InvalidAccessPolicy(ap.to_owned()))?
+            .next()
+            .ok_or_else(|| Error::InvalidAccessPolicy(ap.to_owned()))?;
+
+        if ap != policy.as_span().as_str() {
+            return Err(Error::InvalidAccessPolicy(format!(
+                "failed to match a valid token in '{}' after '{}'",
+                ap.to_owned(),
+                policy.as_span().as_str()
+            )));
+        }
+
+        match policy.as_rule() {
+            Rule::eq => get_eq(&mut policy.into_inner()),
+            Rule::broadcast => Ok(AccessPolicy::Broadcast),
+            _ => Err(Error::InvalidAccessPolicy(format!(
+                "not a policy {:?}",
+                policy.as_str()
+            ))),
+        }
     }
 
     /// Converts the access policy into the Disjunctive Normal Form (DNF) of its
@@ -303,33 +335,182 @@ impl Serializable for AccessPolicy {
 mod tests {
     use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
+    use crate::{QualifiedAttribute, abe::policy::attribute::Version};
+
     use super::AccessPolicy;
 
     #[test]
     fn test_access_policy_parsing() {
+        //
         // These are valid access policies.
-        let ap = AccessPolicy::parse("*").unwrap();
-        println!("{ap:#?}");
-        let ap = AccessPolicy::parse("(D1::A && (D2::A) || D2::B)").unwrap();
-        println!("{ap:#?}");
-        let ap = AccessPolicy::parse("(D1::A && ((D2::A) && D2::B))").unwrap();
-        println!("{ap:#?}");
-        test_serialization(&ap).unwrap();
-        let ap = AccessPolicy::parse("D1::A && D2::A || D2::B").unwrap();
-        println!("{ap:#?}");
-        test_serialization(&ap).unwrap();
-        let ap = AccessPolicy::parse("D1::A && (D2::A || D2::B)").unwrap();
-        println!("{ap:#?}");
-        test_serialization(&ap).unwrap();
-        let ap = AccessPolicy::parse("D1::A (D2::A || D2::B)").unwrap();
-        println!("{ap:#?}");
-        test_serialization(&ap).unwrap();
+        //
+
         let ap = AccessPolicy::parse("*").unwrap();
         test_serialization(&ap).unwrap();
         assert_eq!(ap, AccessPolicy::Broadcast);
 
+        let ap = AccessPolicy::parse("(D1::A)").unwrap();
+        assert_eq!(ap, AccessPolicy::Term(QualifiedAttribute::new("D1", "A")));
+
+        let ap = AccessPolicy::parse("D1::A && (D2::B)").unwrap();
+        assert_eq!(
+            ap,
+            AccessPolicy::Conjunction(
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D1", "A"
+                ),)),
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D2", "B"
+                ),))
+            ),
+        );
+
+        let ap = AccessPolicy::parse("D1::A && (D2::B) && (D3::C)").unwrap();
+        assert_eq!(
+            ap,
+            AccessPolicy::Conjunction(
+                Box::new(AccessPolicy::Conjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D1", "A"
+                    ),)),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "B"
+                    ),))
+                )),
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D3", "C"
+                ),))
+            ),
+        );
+
+        let ap = AccessPolicy::parse("(D1::A && ((D2::A) && D2::B))").unwrap();
+        println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
+        assert_eq!(
+            ap,
+            AccessPolicy::Conjunction(
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D1", "A"
+                ),)),
+                Box::new(AccessPolicy::Conjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "A"
+                    ),)),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "B"
+                    ),)),
+                )),
+            )
+        );
+
+        let ap = AccessPolicy::parse("D1::A && D2::A || D2::B").unwrap();
+        println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
+        assert_eq!(
+            ap,
+            AccessPolicy::Disjunction(
+                Box::new(AccessPolicy::Conjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D1", "A"
+                    ),)),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "A"
+                    ),)),
+                )),
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D2", "B"
+                ),)),
+            )
+        );
+
+        let ap = AccessPolicy::parse("D1::A || D2::A && D2::B").unwrap();
+        println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
+        assert_eq!(
+            ap,
+            AccessPolicy::Disjunction(
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D1", "A"
+                ),)),
+                Box::new(AccessPolicy::Conjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "A"
+                    ),)),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "B"
+                    ),)),
+                ))
+            )
+        );
+
+        let ap = AccessPolicy::parse("D1::A && (D2::A || D2::B)").unwrap();
+        println!("{ap:#?}");
+        test_serialization(&ap).unwrap();
+        assert_eq!(
+            ap,
+            AccessPolicy::Conjunction(
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D1", "A"
+                ),)),
+                Box::new(AccessPolicy::Disjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "A"
+                    ),)),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "B"
+                    )))
+                ),)
+            )
+        );
+
+        let ap = AccessPolicy::parse("(D1::A && (D2::A) || D2::B)").unwrap();
+        println!("{ap:#?}");
+        assert_eq!(
+            ap,
+            AccessPolicy::Disjunction(
+                Box::new(AccessPolicy::Conjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D1", "A"
+                    ),)),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D2", "A"
+                    ),))
+                )),
+                Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                    "D2", "B"
+                ),)),
+            )
+        );
+
+        let ap =
+            AccessPolicy::parse("D-1::A@1 && (D-2::A@version-1 || D-2::B)")
+                .unwrap();
+        println!("{ap:#?}");
+        assert_eq!(
+            ap,
+            AccessPolicy::Conjunction(
+                Box::new(AccessPolicy::Term(QualifiedAttribute {
+                    dimension: "D-1".to_string(),
+                    attribute: "A".to_string(),
+                    version: Some(Version::Num(1)),
+                })),
+                Box::new(AccessPolicy::Disjunction(
+                    Box::new(AccessPolicy::Term(QualifiedAttribute {
+                        dimension: "D-2".to_string(),
+                        attribute: "A".to_string(),
+                        version: Some(Version::Tag("version-1".to_string()))
+                    })),
+                    Box::new(AccessPolicy::Term(QualifiedAttribute::new(
+                        "D-2", "B"
+                    )))
+                ),)
+            )
+        );
+
+        //
         // These are invalid access policies.
-        // TODO: make this one valid (change the parsing rule of the attribute).
+        //
+
         assert!(AccessPolicy::parse("").is_err());
         assert!(AccessPolicy::parse("()").is_err());
         assert!(AccessPolicy::parse("D1").is_err());
@@ -338,5 +519,6 @@ mod tests {
         assert!(AccessPolicy::parse("D1::A (&& D2::A || D2::B)").is_err());
         assert!(AccessPolicy::parse("|| D2::B").is_err());
         assert!(AccessPolicy::parse("(é::à && (ó::ï) || ø::ú)").is_err());
+        assert!(AccessPolicy::parse("D1::A (D2::A || D2::B)").is_err());
     }
 }
