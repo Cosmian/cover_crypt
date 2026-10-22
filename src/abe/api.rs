@@ -1,21 +1,22 @@
 use crate::{
+    Error,
     abe::{
         core::{
+            MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
+            SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
             primitives::{
-                self, master_decaps, prune, refresh, rekey, setup, update_msk, usk_keygen,
+                self, master_decaps, prune, refresh, rekey, setup, update_msk,
+                usk_keygen,
             },
-            MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc, MIN_TRACING_LEVEL,
-            SHARED_SECRET_LENGTH,
         },
         policy::AccessPolicy,
         traits::{KemAc, PkeAc},
     },
-    Error,
 };
 use cosmian_crypto_core::{
+    CsRng, Secret,
     reexport::rand_core::{RngCore, SeedableRng},
     traits::{AE, KDF},
-    CsRng, Secret,
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -65,7 +66,10 @@ impl Covercrypt {
     /// structure.
     // TODO: this function should be internalized and replaced by specialized
     // functions.
-    pub fn update_msk(&self, msk: &mut MasterSecretKey) -> Result<MasterPublicKey, Error> {
+    pub fn update_msk(
+        &self,
+        msk: &mut MasterSecretKey,
+    ) -> Result<MasterPublicKey, Error> {
         update_msk(&mut *self.rng(), msk, msk.access_structure.omega()?)?;
         msk.mpk()
     }
@@ -164,7 +168,8 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         &self,
         ek: &Self::EncapsulationKey,
         ap: &AccessPolicy,
-    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error> {
+    ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
+    {
         primitives::encaps(
             &mut *self.rng(),
             ek,
@@ -182,12 +187,12 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
 }
 
 impl<
-        const KEY_LENGTH: usize,
-        const NONCE_LENGTH: usize,
-        const TAG_LENGTH: usize,
-        Kdf: KDF<KEY_LENGTH>,
-        E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
-    > PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, Kdf, E> for Covercrypt
+    const KEY_LENGTH: usize,
+    const NONCE_LENGTH: usize,
+    const TAG_LENGTH: usize,
+    Kdf: KDF<KEY_LENGTH>,
+    E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
+> PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, Kdf, E> for Covercrypt
 where
     Error: From<Kdf::Error>,
     Error: From<E::Error>,
@@ -237,9 +242,11 @@ where
 ))]
 #[cfg(test)]
 mod tests {
-    use crate::{test_utils::cc_keygen, traits::KemAc, AccessPolicy, Covercrypt};
+    use crate::{
+        AccessPolicy, Covercrypt, test_utils::cc_keygen, traits::KemAc,
+    };
     use cosmian_crypto_core::{
-        bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng,
+        CsRng, bytes_ser_de::Serializable, reexport::rand_core::SeedableRng,
     };
     use regression_test::RegTest;
 
@@ -304,7 +311,8 @@ mod tests {
             )
             .unwrap();
 
-        let enc_2 = cc.encaps(&mpk, &AccessPolicy::parse("*").unwrap()).unwrap();
+        let enc_2 =
+            cc.encaps(&mpk, &AccessPolicy::parse("*").unwrap()).unwrap();
 
         RegTest::new("./test-data/msk")
             .unwrap()

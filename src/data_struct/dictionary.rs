@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{BTreeMap, btree_map::Entry},
     fmt::{self, Debug},
     marker::PhantomData,
     mem::swap,
@@ -8,9 +8,9 @@ use std::{
 
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use serde::{
+    Deserialize, Deserializer, Serialize,
     de::{MapAccess, Visitor},
     ser::SerializeMap,
-    Deserialize, Deserializer, Serialize,
 };
 
 use super::error::Error;
@@ -79,7 +79,11 @@ impl<K: Ord, V> Dict<K, V> {
     }
 
     /// Updates the key for a given entry while retaining the current order.
-    pub fn update_key(&mut self, old_key: &K, mut new_key: K) -> Result<(), Error>
+    pub fn update_key(
+        &mut self,
+        old_key: &K,
+        mut new_key: K,
+    ) -> Result<(), Error>
     where
         K: Clone + Debug,
     {
@@ -270,7 +274,9 @@ where
         Ok(self.indices.write(ser)? + self.entries.write(ser)?)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(
+        de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             indices: de.read()?,
             entries: de.read()?,
@@ -358,7 +364,8 @@ mod tests {
         let data = serde_json::to_vec(&d).unwrap();
 
         // can be read as a hashmap but this the order will be lost
-        let map: BTreeMap<String, String> = serde_json::from_slice(&data).unwrap();
+        let map: BTreeMap<String, String> =
+            serde_json::from_slice(&data).unwrap();
         assert_eq!(map.len(), d.len());
         assert!(map.contains_key("ID1"));
         assert!(map.contains_key("ID3"));

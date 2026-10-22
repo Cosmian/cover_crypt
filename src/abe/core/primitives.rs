@@ -1,31 +1,35 @@
 use crate::{
+    Error,
     abe::{
         core::{
-            KmacSignature, MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
-            TracingSecretKey, UserId, UserSecretKey, XEnc, MIN_TRACING_LEVEL, SHARED_SECRET_LENGTH,
-            SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH,
+            KmacSignature, MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
+            RightPublicKey, RightSecretKey, SHARED_SECRET_LENGTH,
+            SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH, TracingSecretKey,
+            UserId, UserSecretKey, XEnc,
         },
         policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
     },
     data_struct::{RevisionMap, RevisionVec},
     providers::{ElGamal, MlKem},
-    Error,
 };
 use cosmian_crypto_core::{
+    Secret, SymmetricKey,
     bytes_ser_de::Serializable,
     reexport::{
         rand_core::{CryptoRngCore, RngCore},
         tiny_keccak::{Hasher, Kmac, Sha3},
     },
-    traits::{Seedable, KEM, NIKE},
-    Secret, SymmetricKey,
+    traits::{KEM, NIKE, Seedable},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, LinkedList},
     mem::take,
 };
 
-fn xor_2<const LENGTH: usize>(lhs: &[u8; LENGTH], rhs: &[u8; LENGTH]) -> [u8; LENGTH] {
+fn xor_2<const LENGTH: usize>(
+    lhs: &[u8; LENGTH],
+    rhs: &[u8; LENGTH],
+) -> [u8; LENGTH] {
     let mut out = [0; LENGTH];
     for pos in 0..LENGTH {
         out[pos] = lhs[pos] ^ rhs[pos];
@@ -82,7 +86,9 @@ fn verify(msk: &MasterSecretKey, usk: &UserSecretKey) -> Result<(), Error> {
     }
 }
 
-fn G_hash(seed: &Secret<SHARED_SECRET_LENGTH>) -> Result<<ElGamal as NIKE>::SecretKey, Error> {
+fn G_hash(
+    seed: &Secret<SHARED_SECRET_LENGTH>,
+) -> Result<<ElGamal as NIKE>::SecretKey, Error> {
     Ok(<<ElGamal as NIKE>::SecretKey as Seedable<
         SHARED_SECRET_LENGTH,
     >>::from_seed(seed))
@@ -132,7 +138,9 @@ fn J_hash(
 fn generate_T<'a>(
     c: Option<&[<ElGamal as NIKE>::PublicKey]>,
     encapsulations: Option<
-        impl IntoIterator<Item = &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation>,
+        impl IntoIterator<
+            Item = &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::Encapsulation,
+        >,
     >,
 ) -> Result<Secret<SHARED_SECRET_LENGTH>, Error> {
     let mut hasher = Sha3::v256();
@@ -166,7 +174,10 @@ fn generate_U<'a>(
 }
 
 /// Generates new MSK with the given tracing level.
-pub fn setup(tracing_level: usize, rng: &mut impl CryptoRngCore) -> Result<MasterSecretKey, Error> {
+pub fn setup(
+    tracing_level: usize,
+    rng: &mut impl CryptoRngCore,
+) -> Result<MasterSecretKey, Error> {
     if tracing_level < MIN_TRACING_LEVEL {
         return Err(Error::OperationNotPermitted(format!(
             "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -263,7 +274,9 @@ fn h_encaps<'a>(
 /// subkeys.
 fn post_quantum_encaps<'a>(
     S: Secret<SHARED_SECRET_LENGTH>,
-    subkeys: impl IntoIterator<Item = &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::EncapsulationKey>,
+    subkeys: impl IntoIterator<
+        Item = &'a <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::EncapsulationKey,
+    >,
     rng: &mut impl CryptoRngCore,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     let encs = subkeys
@@ -342,7 +355,8 @@ pub fn encaps(
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     // A typed key container would avoid the need for casting in the match arms
     // but would also involve additional overhead.
-    let (is_hybridized, mut coordinate_keys) = mpk.select_subkeys(encryption_set)?;
+    let (is_hybridized, mut coordinate_keys) =
+        mpk.select_subkeys(encryption_set)?;
 
     // Shuffling must be performed *before* generating the final encapsulations
     // in order to have a deterministic digest.
@@ -513,7 +527,9 @@ pub fn decaps(
             shuffle(&mut revision, rng);
             for (E, F) in &encs {
                 for (_, secret) in &revision {
-                    if let Some(ss) = attempt_post_quantum_decaps(secret, &U, &T, E, F, tag)? {
+                    if let Some(ss) =
+                        attempt_post_quantum_decaps(secret, &U, &T, E, F, tag)?
+                    {
                         return Ok(Some(ss));
                     }
                 }
@@ -642,7 +658,12 @@ pub fn master_decaps(
     /// allow opening this encapsulation.
     fn open(
         secrets: &RevisionMap<Right, (EncryptionStatus, RightSecretKey)>,
-        attempt_opening: impl Fn(&RightSecretKey) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error>,
+        attempt_opening: impl Fn(
+            &RightSecretKey,
+        ) -> Result<
+            Option<Secret<SHARED_SECRET_LENGTH>>,
+            Error,
+        >,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Right), Error> {
         for (right, secret_set) in secrets.iter() {
             for (_, secret) in secret_set {
@@ -658,15 +679,13 @@ pub fn master_decaps(
         msk: &MasterSecretKey,
         c: &[<ElGamal as NIKE>::PublicKey],
     ) -> Result<<ElGamal as NIKE>::PublicKey, Error> {
-        let c_0 = c
-            .first()
-            .ok_or_else(|| Error::Kem("invalid encapsulation: C is empty".to_string()))?;
-        let t_0 = msk
-            .tsk
-            .tracers
-            .front()
-            .map(|(si, _)| si)
-            .ok_or_else(|| Error::KeyError("MSK has no tracer".to_string()))?;
+        let c_0 = c.first().ok_or_else(|| {
+            Error::Kem("invalid encapsulation: C is empty".to_string())
+        })?;
+        let t_0 =
+            msk.tsk.tracers.front().map(|(si, _)| si).ok_or_else(|| {
+                Error::KeyError("MSK has no tracer".to_string())
+            })?;
 
         Ok(c_0 * &(&msk.tsk.s / t_0)?)
     }
@@ -684,7 +703,16 @@ pub fn master_decaps(
 
         // Attempts opening the encapsulation F with this right secret key.
         let attempt_opening = |F, secret: &RightSecretKey| {
-            attempt_pre_quantum_decaps(secret, &A, &U, &T, F, c, tag, msk.tracing_points())
+            attempt_pre_quantum_decaps(
+                secret,
+                &A,
+                &U,
+                &T,
+                F,
+                c,
+                tag,
+                msk.tracing_points(),
+            )
         };
 
         let mut enc_ss = None;
@@ -692,7 +720,8 @@ pub fn master_decaps(
         let mut secrets = msk.secrets.clone();
 
         for F in encapsulations {
-            let (ss, right) = open(&secrets, |secret| attempt_opening(F, secret))?;
+            let (ss, right) =
+                open(&secrets, |secret| attempt_opening(F, secret))?;
             if let Some(enc_ss) = &enc_ss {
                 if &ss != enc_ss {
                     return Err(Error::Kem(
@@ -730,15 +759,17 @@ pub fn master_decaps(
         let T = generate_T(None, Some(encapsulations.iter().map(|(E, _)| E)))?;
         let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
 
-        let attempt_opening =
-            |E, F, secret: &RightSecretKey| attempt_post_quantum_decaps(secret, &U, &T, E, F, tag);
+        let attempt_opening = |E, F, secret: &RightSecretKey| {
+            attempt_post_quantum_decaps(secret, &U, &T, E, F, tag)
+        };
 
         let mut enc_ss = None;
         let mut rights = BTreeSet::new();
         let mut secrets = msk.secrets.clone();
 
         for (E, F) in encapsulations {
-            let (ss, right) = open(&secrets, |secret| attempt_opening(E, F, secret))?;
+            let (ss, right) =
+                open(&secrets, |secret| attempt_opening(E, F, secret))?;
             if let Some(enc_ss) = &enc_ss {
                 if &ss != enc_ss {
                     return Err(Error::Kem(
@@ -775,11 +806,22 @@ pub fn master_decaps(
         full: bool,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, BTreeSet<Right>), Error> {
         let A = generate_tracing_closure(msk, c)?;
-        let T = generate_T(Some(c), Some(encapsulations.iter().map(|(E, _)| E)))?;
+        let T =
+            generate_T(Some(c), Some(encapsulations.iter().map(|(E, _)| E)))?;
         let U = generate_U(&T, encapsulations.iter().map(|(_, F)| F));
 
         let attempt_opening = |E, F, secret: &RightSecretKey| {
-            attempt_hybridized_decaps(secret, &A, &U, &T, E, F, c, tag, msk.tracing_points())
+            attempt_hybridized_decaps(
+                secret,
+                &A,
+                &U,
+                &T,
+                E,
+                F,
+                c,
+                tag,
+                msk.tracing_points(),
+            )
         };
 
         let mut enc_ss = None;
@@ -787,7 +829,8 @@ pub fn master_decaps(
         let mut secrets = msk.secrets.clone();
 
         for (E, F) in encapsulations {
-            let (ss, right) = open(&secrets, |secret| attempt_opening(E, F, secret))?;
+            let (ss, right) =
+                open(&secrets, |secret| attempt_opening(E, F, secret))?;
             if let Some(enc_ss) = &enc_ss {
                 if &ss != enc_ss {
                     return Err(Error::Kem(
@@ -845,7 +888,8 @@ pub fn update_msk(
     for (r, (mode, status)) in rights {
         if let Some(revisions) = secrets.get_mut(&r) {
             if let Some((_, secret)) = revisions.pop_front() {
-                revisions.push_front((status, secret.set_security_mode(mode, rng)?))
+                revisions
+                    .push_front((status, secret.set_security_mode(mode, rng)?))
             } else {
                 return Err(Error::OperationNotPermitted(
                     "empty revision list is illegal".to_string(),
@@ -878,7 +922,9 @@ pub fn rekey(
                 .get_latest(&r)
                 .map(|(_, k)| k.security_mode())
                 .ok_or_else(|| {
-                    Error::OperationNotPermitted(format!("no current key for coordinate {r:#?}"))
+                    Error::OperationNotPermitted(format!(
+                        "no current key for coordinate {r:#?}"
+                    ))
                 })?;
 
             msk.secrets.insert(

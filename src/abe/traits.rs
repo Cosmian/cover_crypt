@@ -1,7 +1,7 @@
 use crate::AccessPolicy;
 use cosmian_crypto_core::{
-    traits::{AE, KDF},
     Secret,
+    traits::{AE, KDF},
 };
 
 pub trait KemAc<const LENGTH: usize> {
