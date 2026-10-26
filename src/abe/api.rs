@@ -193,9 +193,6 @@ impl<
     Kdf: KDF<KEY_LENGTH>,
     E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
 > PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, Kdf, E> for Covercrypt
-where
-    Error: From<Kdf::Error>,
-    Error: From<E::Error>,
 {
     type EncryptionKey = MasterPublicKey;
     type DecryptionKey = UserSecretKey;
@@ -212,10 +209,12 @@ where
         // Locking Covercrypt RNG must be performed after encapsulation since
         // this encapsulation also requires locking the RNG.
         let mut rng = self.rng();
-        let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])?;
+        let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])
+            .map_err(|e| Self::Error::Kdf(e.to_string()))?;
         let mut nonce = [0; NONCE_LENGTH];
         rng.fill_bytes(&mut nonce);
-        let ctx = E::encrypt(&key, ptx, &nonce)?;
+        let ctx = E::encrypt(&key, ptx, &nonce)
+            .map_err(|e| Self::Error::Ae(e.to_string()))?;
         Ok((enc, ctx))
     }
 
@@ -226,8 +225,10 @@ where
     ) -> Result<Option<E::Plaintext>, Self::Error> {
         self.decaps(usk, &ctx.0)?
             .map(|seed| {
-                let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])?;
-                E::decrypt(&key, ctx.1.as_ref()).map_err(Self::Error::from)
+                let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])
+                    .map_err(|e| Self::Error::Kdf(e.to_string()))?;
+                E::decrypt(&key, ctx.1.as_ref())
+                    .map_err(|e| Self::Error::Ae(e.to_string()))
             })
             .transpose()
     }

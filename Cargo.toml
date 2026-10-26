@@ -51,6 +51,8 @@ cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", branch =
 cosmian_openssl_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/add-libcrux-hash-provider", optional = true }
 cosmian_rust_curve25519_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/add-libcrux-hash-provider" , optional = true }
 ml-kem = { version = "0.2", features = ["zeroize"] }
+pest = "2.9.4"
+pest_derive = "2.9.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 zeroize = "1.8"

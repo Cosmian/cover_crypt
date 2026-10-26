@@ -1,0 +1,38 @@
+#+title: Covercrypt Road-Map
+
+* Features [1/4]
+
+** DONE Access-policy parser generation                          :compatible:
+DEADLINE: <2026-10-23 Fri>
+
+For now, parsing access policies is performed by hand parser. We propose to use
+a parsing library to generate parsers from the abstract grammar instead. This
+change should bring the following overall improvements:
+- simplify and improve the overall robustness of access-policy parsing;
+- simplify auditing the compliance with the coming Covercrypt standard;
+- allow to add /new features/ to the language such as:
+  - [X] specifying a version number for each qualified attribute
+  - [X] specifying a version tag for each qualified attribute
+
+** TODO Lazy Covercypt keys [0/2]                                  :breaking:
+DEADLINE: <2026-11-06 Fri>
+
+- [ ] *BREAKING*: allow generating MPKs for a subset of the universe
+- [ ] only generate right secret keys for MPK or USK requiring them
+
+** TODO Crypto-provider [0/2]                                      :breaking:
+DEADLINE: <2026-11-13 Fri>
+
+Covercrypt does not use a crypto-provider yet
+- [ ] define a crypto-provider trait for Covercrypt and provide base
+  instantiations selected with features to remain compatible with the existing
+  version.
+- [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
+
+** TODO Decryption hints [0/2]                                     :breaking:
+DEADLINE: <2026-10-30 Fri>
+
+Allow users to pass hints upon decapsulation to guide the space exploration.
+
+- [ ] Define and specify the hint semantics
+- [ ] *BREAKING*: Use hint upon decapsulation
