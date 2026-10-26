@@ -1,11 +1,15 @@
 use cosmian_cover_crypt::{
-    api::Covercrypt, traits::KemAc, AccessPolicy, Error, MasterPublicKey, MasterSecretKey,
-    QualifiedAttribute,
+    AccessPolicy, Error, MasterPublicKey, MasterSecretKey, QualifiedAttribute,
+    api::Covercrypt, traits::KemAc,
 };
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
-fn cc_keygen(cc: &Covercrypt, complete: bool) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-    let (mut msk, _) = cosmian_cover_crypt::test_utils::cc_keygen(cc, complete)?;
+fn cc_keygen(
+    cc: &Covercrypt,
+    complete: bool,
+) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+    let (mut msk, _) =
+        cosmian_cover_crypt::test_utils::cc_keygen(cc, complete)?;
     // Remove the `SEC::MED` attribute to keep using the same access policy as
     // before.
     msk.access_structure
@@ -89,7 +93,10 @@ macro_rules! gen_enc {
 macro_rules! gen_usk {
     ($cc:ident, $msk:ident, $ap:ident, $cnt:ident) => {{
         let usk = $cc
-            .generate_user_secret_key(&mut $msk, &AccessPolicy::parse($ap).unwrap())
+            .generate_user_secret_key(
+                &mut $msk,
+                &AccessPolicy::parse($ap).unwrap(),
+            )
             .unwrap();
         assert_eq!(usk.count(), $cnt);
         usk
@@ -133,7 +140,8 @@ fn bench_pre_quantum_decapsulation(c: &mut Criterion) {
                         b.iter_batched(
                             || {
                                 (
-                                    cc.generate_user_secret_key(&mut msk, &uap).unwrap(),
+                                    cc.generate_user_secret_key(&mut msk, &uap)
+                                        .unwrap(),
                                     cc.encaps(&mpk, &eap).unwrap(),
                                 )
                             },
@@ -178,12 +186,16 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
                 assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
 
                 group.bench_function(
-                    format!("{:?} encapsulations vs {:?} secrets", enc_cnt, usk_cnt),
+                    format!(
+                        "{:?} encapsulations vs {:?} secrets",
+                        enc_cnt, usk_cnt
+                    ),
                     |b| {
                         b.iter_batched(
                             || {
                                 (
-                                    cc.generate_user_secret_key(&mut msk, &uap).unwrap(),
+                                    cc.generate_user_secret_key(&mut msk, &uap)
+                                        .unwrap(),
                                     cc.encaps(&mpk, &eap).unwrap(),
                                 )
                             },

@@ -1,5 +1,5 @@
 use crate::AccessPolicy;
-use cosmian_crypto_core::{traits::AE, Secret};
+use cosmian_crypto_core::{Secret, traits::AE};
 
 pub trait KemAc<const LENGTH: usize> {
     type EncapsulationKey;

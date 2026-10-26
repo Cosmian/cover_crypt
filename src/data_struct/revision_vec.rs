@@ -1,6 +1,6 @@
 use std::collections::{
-    linked_list::{self, Iter},
     LinkedList, VecDeque,
+    linked_list::{self, Iter},
 };
 
 use cosmian_crypto_core::bytes_ser_de::Serializable;
@@ -116,7 +116,9 @@ impl<K, T> RevisionVec<K, T> {
     }
 
     /// Returns an iterator over each key-chains pair that allow modifying chain
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut LinkedList<T>)> {
+    pub fn iter_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (&K, &mut LinkedList<T>)> {
         self.chains.iter_mut().map(|(ref key, chain)| (key, chain))
     }
 
@@ -220,7 +222,9 @@ impl<K: Serializable, T: Serializable> Serializable for RevisionVec<K, T> {
         Ok(self.chains.write(ser)?)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(
+        de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { chains: de.read()? })
     }
 }

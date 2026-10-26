@@ -1,15 +1,15 @@
 #![allow(non_snake_case)]
 
 use crate::{
+    Error,
     abe::policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
     data_struct::{RevisionMap, RevisionVec},
     providers::{ElGamal, MlKem},
-    Error,
 };
 use cosmian_crypto_core::{
-    reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
-    traits::{Sampling, Zero, KEM, NIKE},
     SymmetricKey,
+    reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
+    traits::{KEM, NIKE, Sampling, Zero},
 };
 use std::collections::{HashMap, HashSet, LinkedList};
 
@@ -68,7 +68,10 @@ enum RightSecretKey {
 impl RightSecretKey {
     /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
     /// point `h`.
-    fn random(rng: &mut impl CryptoRngCore, security_mode: EncryptionHint) -> Result<Self, Error> {
+    fn random(
+        rng: &mut impl CryptoRngCore,
+        security_mode: EncryptionHint,
+    ) -> Result<Self, Error> {
         match security_mode {
             EncryptionHint::Classic => {
                 let sk = <ElGamal as NIKE>::SecretKey::random(rng);
@@ -94,7 +97,9 @@ impl RightSecretKey {
                 H: h * sk,
                 ek: dk.ek(),
             },
-            Self::PostQuantum { dk } => RightPublicKey::PostQuantum { ek: dk.ek() },
+            Self::PostQuantum { dk } => {
+                RightPublicKey::PostQuantum { ek: dk.ek() }
+            }
             Self::PreQuantum { sk } => RightPublicKey::PreQuantum { H: h * sk },
         }
     }
@@ -115,27 +120,43 @@ impl RightSecretKey {
         rng: &mut impl CryptoRngCore,
     ) -> Result<Self, Error> {
         Ok(match (self, security_mode) {
-            (Self::Hybridized { sk, .. }, EncryptionHint::Classic) => Self::PreQuantum { sk },
-            (Self::Hybridized { dk, .. }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
+            (Self::Hybridized { sk, .. }, EncryptionHint::Classic) => {
+                Self::PreQuantum { sk }
+            }
+            (Self::Hybridized { dk, .. }, EncryptionHint::PostQuantum) => {
+                Self::PostQuantum { dk }
+            }
             (Self::Hybridized { sk, dk }, EncryptionHint::Hybridized) => {
                 Self::Hybridized { sk, dk }
             }
-            (Self::PostQuantum { .. }, EncryptionHint::Classic) => Self::PostQuantum {
-                dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
-            },
-            (Self::PostQuantum { dk }, EncryptionHint::PostQuantum) => Self::PostQuantum { dk },
-            (Self::PostQuantum { dk }, EncryptionHint::Hybridized) => Self::Hybridized {
-                sk: <ElGamal as NIKE>::keygen(rng)?.0,
-                dk,
-            },
-            (Self::PreQuantum { sk }, EncryptionHint::Classic) => Self::PreQuantum { sk },
-            (Self::PreQuantum { .. }, EncryptionHint::PostQuantum) => Self::PostQuantum {
-                dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
-            },
-            (Self::PreQuantum { sk }, EncryptionHint::Hybridized) => Self::Hybridized {
-                sk,
-                dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
-            },
+            (Self::PostQuantum { .. }, EncryptionHint::Classic) => {
+                Self::PostQuantum {
+                    dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
+                }
+            }
+            (Self::PostQuantum { dk }, EncryptionHint::PostQuantum) => {
+                Self::PostQuantum { dk }
+            }
+            (Self::PostQuantum { dk }, EncryptionHint::Hybridized) => {
+                Self::Hybridized {
+                    sk: <ElGamal as NIKE>::keygen(rng)?.0,
+                    dk,
+                }
+            }
+            (Self::PreQuantum { sk }, EncryptionHint::Classic) => {
+                Self::PreQuantum { sk }
+            }
+            (Self::PreQuantum { .. }, EncryptionHint::PostQuantum) => {
+                Self::PostQuantum {
+                    dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
+                }
+            }
+            (Self::PreQuantum { sk }, EncryptionHint::Hybridized) => {
+                Self::Hybridized {
+                    sk,
+                    dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
+                }
+            }
         })
     }
 }
@@ -202,7 +223,10 @@ impl UserId {
 #[derive(Debug, PartialEq, Eq)]
 struct TracingSecretKey {
     s: <ElGamal as NIKE>::SecretKey,
-    tracers: LinkedList<(<ElGamal as NIKE>::SecretKey, <ElGamal as NIKE>::PublicKey)>,
+    tracers: LinkedList<(
+        <ElGamal as NIKE>::SecretKey,
+        <ElGamal as NIKE>::PublicKey,
+    )>,
     // Since `Hash` is not a fallible operation, it cannot be implemented on FFI
     // providers like OpenSSL. And since `Zeroizing<Vec<u8>>` does not implement
     // `Hash` either, a `HashSet` cannot be using without extracting the raw
@@ -218,7 +242,10 @@ struct TracingSecretKey {
 }
 
 impl TracingSecretKey {
-    fn new_with_level(level: usize, rng: &mut impl CryptoRngCore) -> Result<Self, Error> {
+    fn new_with_level(
+        level: usize,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<Self, Error> {
         let s = <ElGamal as NIKE>::SecretKey::random(rng);
         let tracers = (0..=level)
             .map(|_| <ElGamal as NIKE>::keygen(rng))
@@ -234,7 +261,10 @@ impl TracingSecretKey {
     }
 
     /// Generates a new tracer. Returns the associated trap.
-    fn _increase_tracing(&mut self, rng: &mut impl CryptoRngCore) -> Result<(), Error> {
+    fn _increase_tracing(
+        &mut self,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<(), Error> {
         self.tracers.push_back(<ElGamal as NIKE>::keygen(rng)?);
         Ok(())
     }
@@ -242,7 +272,10 @@ impl TracingSecretKey {
     /// Drops the oldest tracer and returns it.
     fn _decrease_tracing(
         &mut self,
-    ) -> Result<(<ElGamal as NIKE>::SecretKey, <ElGamal as NIKE>::PublicKey), Error> {
+    ) -> Result<
+        (<ElGamal as NIKE>::SecretKey, <ElGamal as NIKE>::PublicKey),
+        Error,
+    > {
         if self.tracing_level() == MIN_TRACING_LEVEL {
             Err(Error::OperationNotPermitted(format!(
                 "tracing level cannot be lower than {MIN_TRACING_LEVEL}"
@@ -296,7 +329,9 @@ impl TracingSecretKey {
     /// Generates the associated tracing public key.
     #[must_use]
     fn tpk(&self) -> TracingPublicKey {
-        TracingPublicKey(self.tracers.iter().map(|(_, Pi)| Pi).cloned().collect())
+        TracingPublicKey(
+            self.tracers.iter().map(|(_, Pi)| Pi).cloned().collect(),
+        )
     }
 
     /// Returns the binding points.
@@ -305,7 +340,10 @@ impl TracingSecretKey {
     }
 
     /// Generates a new ID and adds it to the list of known user IDs.
-    fn generate_user_id(&mut self, rng: &mut impl CryptoRngCore) -> Result<UserId, Error> {
+    fn generate_user_id(
+        &mut self,
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<UserId, Error> {
         if let Some((last_tracer, _)) = self.tracers.back() {
             // Generate all but the last marker at random.
             let mut markers = self
@@ -321,7 +359,10 @@ impl TracingSecretKey {
                     .iter()
                     .zip(markers.iter())
                     .map(|((sk_i, _), a_i)| sk_i * a_i)
-                    .fold(<ElGamal as NIKE>::SecretKey::zero(), |acc, x_i| acc + x_i))
+                    .fold(
+                        <ElGamal as NIKE>::SecretKey::zero(),
+                        |acc, x_i| acc + x_i,
+                    ))
                 / last_tracer)?;
 
             markers.push_back(last_marker);
@@ -350,7 +391,11 @@ impl TracingSecretKey {
     /// # Error
     ///
     /// Returns an error if the ID is unknown.
-    fn refresh_id(&mut self, rng: &mut impl CryptoRngCore, id: UserId) -> Result<UserId, Error> {
+    fn refresh_id(
+        &mut self,
+        rng: &mut impl CryptoRngCore,
+        id: UserId,
+    ) -> Result<UserId, Error> {
         if !self.is_known(&id) {
             Err(Error::Tracing("unknown user".to_string()))
         } else if id.tracing_level() != self.tracing_level() {
@@ -411,13 +456,17 @@ impl MasterSecretKey {
         rs.map(|r| {
             self.secrets
                 .get_latest(&r)
-                .ok_or(Error::KeyError(format!("MSK has no key for right {r:?}")))
+                .ok_or(Error::KeyError(format!(
+                    "MSK has no key for right {r:?}"
+                )))
                 .cloned()
                 .map(|(_, key)| (r, key))
         })
     }
 
-    fn tracing_points(&self) -> impl IntoIterator<Item = &<ElGamal as NIKE>::PublicKey> {
+    fn tracing_points(
+        &self,
+    ) -> impl IntoIterator<Item = &<ElGamal as NIKE>::PublicKey> {
         self.tsk.tracers.iter().map(|(_, P)| P)
     }
 
@@ -465,7 +514,10 @@ impl MasterPublicKey {
 
     /// Generates traps for the given scalar.
     // TODO: find a better concept.
-    fn set_traps(&self, r: &<ElGamal as NIKE>::SecretKey) -> Vec<<ElGamal as NIKE>::PublicKey> {
+    fn set_traps(
+        &self,
+        r: &<ElGamal as NIKE>::SecretKey,
+    ) -> Vec<<ElGamal as NIKE>::PublicKey> {
         self.tpk.0.iter().map(|Pi| Pi * r).collect()
     }
 
@@ -483,9 +535,9 @@ impl MasterPublicKey {
         let subkeys = targets
             .iter()
             .map(|r| {
-                self.encryption_keys
-                    .get(r)
-                    .ok_or_else(|| Error::KeyError(format!("no public key for right '{r:#?}'")))
+                self.encryption_keys.get(r).ok_or_else(|| {
+                    Error::KeyError(format!("no public key for right '{r:#?}'"))
+                })
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -500,14 +552,17 @@ impl MasterPublicKey {
                 }
             })
             .ok_or_else(|| {
-                Error::OperationNotPermitted("target set cannot be empty".to_string())
+                Error::OperationNotPermitted(
+                    "target set cannot be empty".to_string(),
+                )
             })?;
 
         if is_homogeneous {
             Ok((security_mode, subkeys))
         } else {
             Err(Error::OperationNotPermitted(
-                "cannot select subkeys with different security modes".to_string(),
+                "cannot select subkeys with different security modes"
+                    .to_string(),
             ))
         }
     }

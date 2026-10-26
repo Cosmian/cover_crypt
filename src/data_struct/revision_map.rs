@@ -1,8 +1,8 @@
 use std::{
     borrow::Borrow,
     collections::{
-        hash_map::{Entry, OccupiedEntry, VacantEntry},
         HashMap, LinkedList,
+        hash_map::{Entry, OccupiedEntry, VacantEntry},
     },
     fmt::Debug,
     hash::Hash,
@@ -170,7 +170,11 @@ where
 
     /// Keeps the n more recent values for a given key and returns an the list
     /// of removed values if the key was found.
-    pub fn keep<Q>(&mut self, key: &Q, n: usize) -> Option<impl Iterator<Item = V>>
+    pub fn keep<Q>(
+        &mut self,
+        key: &Q,
+        n: usize,
+    ) -> Option<impl Iterator<Item = V>>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -207,7 +211,9 @@ where
         Ok(self.map.write(ser)?)
     }
 
-    fn read(de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer) -> Result<Self, Self::Error> {
+    fn read(
+        de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { map: de.read()? })
     }
 }
