@@ -1,7 +1,7 @@
 use crate::Error;
 use core::ops::Deref;
 use cosmian_crypto_core::{
-    CryptoCoreError, Secret, SymmetricKey,
+    CryptoBaseError, Secret, SymmetricKey,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
     reexport::{
         rand_core::CryptoRngCore,
@@ -29,7 +29,7 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $ek {
-            type Error = CryptoCoreError;
+            type Error = CryptoBaseError;
 
             fn length(&self) -> usize {
                 $ek_len
@@ -70,7 +70,7 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $dk {
-            type Error = CryptoCoreError;
+            type Error = CryptoBaseError;
 
             fn length(&self) -> usize {
                 $dk_len
@@ -111,7 +111,7 @@ macro_rules! make_mlkem {
         }
 
         impl Serializable for $enc {
-            type Error = CryptoCoreError;
+            type Error = CryptoBaseError;
 
             fn length(&self) -> usize {
                 $enc_len
