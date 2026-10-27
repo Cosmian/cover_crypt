@@ -53,6 +53,13 @@ impl Default for Dimension {
 }
 
 impl Dimension {
+    pub fn is_hierarchical(&self) -> bool {
+        match self {
+            Self::Anarchy(_) => false,
+            Self::Hierarchy(_) => true,
+        }
+    }
+
     pub fn nb_attributes(&self) -> usize {
         match self {
             Self::Anarchy(attributes) => attributes.len(),

@@ -218,19 +218,54 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
-        let access_policy =
-            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
         let cc = Covercrypt::default();
         let (mut msk, mpk) = cc_keygen(&cc, false)?;
-        let ap = AccessPolicy::parse("DPT::MKG && SEC::TOP")?;
-        let (sym_key, encrypted_key) = cc.encaps(&mpk, &ap)?;
-        let usk = cc.generate_user_secret_key(&mut msk, &access_policy)?;
+
+        let (sym_key, encrypted_key) = cc.encaps(
+            &mpk,
+            &AccessPolicy::parse("DPT::MKG && SEC::TOP").unwrap(),
+        )?;
+
+        // A user secret key with matching access policy is able to open an
+        // encapsulation.
+        let user_policy =
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &user_policy)?;
         let recovered_key = cc.decaps(&usk, &encrypted_key)?;
-        assert_eq!(
-            Some(sym_key),
-            recovered_key,
-            "Wrong decryption of the key!"
-        );
+        assert_eq!(Some(&sym_key), recovered_key.as_ref());
+
+        // When left implicit, the bottom element of a hierarchical dimension is
+        // derived for user secret keys, which prevent them from opening
+        // encapsulations for higher attributes.
+        let user_policy = AccessPolicy::parse("DPT::MKG || DPT::FIN").unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &user_policy)?;
+        let recovered_key = cc.decaps(&usk, &encrypted_key)?;
+        assert!(recovered_key.is_none());
+
+        // When left implicit, the bottom element of a hierarchical dimension is
+        // derived for encapsulation, and acts as a broadcast, allowing all user
+        // secret keys to open it.
+        let (sym_key, encrypted_key) =
+            cc.encaps(&mpk, &AccessPolicy::parse("DPT::MKG").unwrap())?;
+
+        let user_policy =
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &user_policy)?;
+        let recovered_key = cc.decaps(&usk, &encrypted_key)?;
+        assert_eq!(Some(&sym_key), recovered_key.as_ref());
+
+        let user_policy =
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::LOW").unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &user_policy)?;
+        let recovered_key = cc.decaps(&usk, &encrypted_key)?;
+        assert_eq!(Some(&sym_key), recovered_key.as_ref());
+
+        let user_policy =
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN)").unwrap();
+        let usk = cc.generate_user_secret_key(&mut msk, &user_policy)?;
+        let recovered_key = cc.decaps(&usk, &encrypted_key)?;
+        assert_eq!(Some(&sym_key), recovered_key.as_ref());
+
         Ok(())
     }
 
