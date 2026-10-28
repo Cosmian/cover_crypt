@@ -1,6 +1,42 @@
 #+title: Covercrypt Road-Map
 
-* Planned [2/4]
+* Planned [3/5]
+
+** DONE Make hierarchical broadcasts bottom (⊥) attributes         :breaking:
+<2026-10-27 Tue>
+
+Currently, hierarchical dimensions (e.g. ~H~) include a broadcast element
+(e.g. ~H::*~) that is derived for all user secret keys and used to generate
+encapsulations for access policy that don't mention this dimension (e.g. ~D::A~
+for some dimension ~D~ different from ~H~ and attribute ~A~ in ~D~). However,
+both ~H::*~ and its lowest element ~H::⊥~ are redundant.
+
+Indeed a user secret key derived for an access policy ~D::A~ would be granted
+keys for all combinations of ~D::A~ with an attribute in ~H~, which includes
+both ~D::A && H::⊥~ and ~D::A && H::*~, while a user secret key derived for an
+access policy ~D::A && H::B~ (where ~B~ is some attribute in ~H~ that is not
+~H::*~) would also be granted the broadcast key in ~H~, /i.e./ ~D::A &&
+H::*~. In other word, there is no user secret key holding a key for some
+combination of attributes including ~H::⊥~ but not for the same combination of
+attributes including ~H::*~ instead.
+
+The size of the universe is therefore unnecessarily increased.
+
+This MR proposes to consider the broadcast attributes of hierarchical dimensions
+to be their bottom elements instead. As a consequence, when extending an access
+policy with attribute combinations from its complementary space, hierarchical
+dimensions are ignored.
+
+*BREAKING*: This is a breaking change since it changes the decapsulation power
+of all user secret keys which access policy does not mention a hierarchical
+dimension.
+
+An alternative implementation could have removed the broadcast element. The
+difference is that it would allow naming the bottom element of hierarchical
+dimensions. However, it would also allow changing its name for example by adding
+an attribute that is lower than the current bottom attribute, breaking the
+meaning of previous encapsulations for which this attribute was implicitly
+derived. Additionally, its implementation is slightly more involving.
 
 ** DONE Access-policy parser generation                          :compatible:
 DEADLINE: <2026-10-23 Fri>
@@ -14,7 +50,6 @@ change should bring the following overall improvements:
   - [X] specifying a version number for each qualified attribute
   - [X] specifying a version tag for each qualified attribute
 
-
 ** DONE Allow generating subspace MPKs                             :breaking:
 DEADLINE: <2026-10-23 Fri>
 
@@ -25,7 +60,6 @@ error) result~ in the CC interface (~api.rs~).
 The behavior of ~gen_mpk msk None~ is identical to the old ~msk.mpk()~ while
 ~gen_mpk msk Some(ap)~ returns an MPK that limits the encapsulation power to a
 subset of the ~ap~ policy.
-
 
 ** TODO Decryption hints [0/3]                                     :breaking:
 DEADLINE: <2026-10-30 Fri>
