@@ -78,6 +78,48 @@ Covercrypt does not use a crypto-provider yet
   version.
 - [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
 
+** TODO Strong authentication upon update                          :breaking:
+DEADLINE: <2026-11-06 Fri>
+
+*** Problematic
+
+As of now, the USK update procedure has the following signature:
+#+begin_src ocaml
+  val update: msk -> usk sealed -> usk sealed
+#+end_src
+
+It therefore relies on an external system for authenticating and filtering out
+users that have been expelled from the system. This is sub-optimal since
+authentication may not be linked user keys, in which case an authorized user
+could request an update of the key of an unauthorized user.
+
+*** Proposed solution
+
+Guaranteeing a user secret key cannot be updated after being excluded from the
+system can be done in two ways: using a block-list, or using an allow-list.
+Using an allow-list requires storing an information for each user in the system,
+which is O(|U|) space. Using a block-list requires storing an information for
+each expelled user, which is O(#ban). In other words, one solution is function
+of the working set while the other is function of the history of the system.
+The choice of the optimal solution may depend on the use-case, but in the worst
+case, the space usage of the block-list solution is /unbounded/ while it is safe
+to assume that the number of users present in the system to be /bounded/. Hence,
+we propose to adopt the allow-list approach.
+
+Concretely, we propose to store in the MSK the user ID (~uid = H(α,β)~) of each
+active user (which requires ~16·|U|~ space). Update request for keys which user
+ID is unknown are rejected. An additional ~ban : msk -> uid -> msk~ procedure is
+added to the Covercrypt API.
+
+*Note*: we might want to allow external user IDs to be used in which case the
+master secret keys stores the following map: ~uid -> H(α,β)~ (which requires
+~(16 + 16)·|U|~ space).
+
+*Note*: we might want to allow the MSK to re-generate any user secret key, in
+which case it needs to store the following map: ~uid -> (α, β, apᵤ)~.
+Alternatively, it can store the map ~uid -> (seedᵤ, apᵤ)~ where ~seedᵤ~ is the
+random seed used as source of random for generating the Covercrypt identity ~(α,
+β)~ of the user (which requires ~(16 + 16)·|U| + ∑ sizeof(apᵤ)~ space).
 
 * Unplanned
 
