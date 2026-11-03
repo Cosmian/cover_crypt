@@ -2,7 +2,7 @@ use crate::{
     Error,
     abe::policy::{
         AccessPolicy, Attribute, Dimension, EncryptionStatus,
-        QualifiedAttribute, Right, Version, attribute::EncryptionHint,
+        QualifiedAttribute, Right, Version, attribute::HybridizationStatus,
     },
     data_struct::Dict,
 };
@@ -111,7 +111,7 @@ impl AccessStructure {
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
-        security_mode: EncryptionHint,
+        security_mode: HybridizationStatus,
         after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
@@ -194,7 +194,7 @@ impl AccessStructure {
     /// hybridization and activation status.
     pub(crate) fn omega(
         &self,
-    ) -> Result<BTreeMap<Right, (EncryptionHint, EncryptionStatus)>, Error>
+    ) -> Result<BTreeMap<Right, (HybridizationStatus, EncryptionStatus)>, Error>
     {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
@@ -361,11 +361,11 @@ impl AccessStructure {
 /// - D2::B2
 fn combine(
     dimensions: &[(&String, &Dimension)],
-) -> Vec<(Vec<usize>, EncryptionHint, EncryptionStatus)> {
+) -> Vec<(Vec<usize>, HybridizationStatus, EncryptionStatus)> {
     if dimensions.is_empty() {
         vec![(
             vec![],
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             EncryptionStatus::EncryptDecrypt,
         )]
     } else {
@@ -460,9 +460,9 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", EncryptionHint::Classic),
-            ("Germany", EncryptionHint::Classic),
-            ("Spain", EncryptionHint::Classic),
+            ("France", HybridizationStatus::Classic),
+            ("Germany", HybridizationStatus::Classic),
+            ("Spain", HybridizationStatus::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, mode)| {

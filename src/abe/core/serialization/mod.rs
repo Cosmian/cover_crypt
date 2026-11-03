@@ -117,14 +117,18 @@ impl Serializable for MasterSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.tsk.length()
+        self.rev.length()
+            + self.tsk.length()
+            + self.seed.length()
             + self.secrets.length()
             + self.signing_key.length()
             + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(self.tsk.write(ser)?
+        Ok(self.rev.write(ser)?
+            + self.tsk.write(ser)?
+            + self.seed.write(ser)?
             + self.secrets.write(ser)?
             + self.signing_key.write(ser)?
             + self.access_structure.write(ser)?)
@@ -132,7 +136,9 @@ impl Serializable for MasterSecretKey {
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self {
+            rev: de.read()?,
             tsk: de.read()?,
+            seed: de.read()?,
             secrets: de.read()?,
             signing_key: de.read()?,
             access_structure: de.read()?,
@@ -313,7 +319,9 @@ mod tests {
                 MIN_TRACING_LEVEL,
                 primitives::{encaps, rekey, setup, update_msk, usk_keygen},
             },
-            policy::{AccessPolicy, EncryptionHint, EncryptionStatus, Right},
+            policy::{
+                AccessPolicy, EncryptionStatus, HybridizationStatus, Right,
+            },
             traits::KemAc,
         },
         test_utils::cc_keygen,
@@ -331,21 +339,21 @@ mod tests {
                 (
                     coordinate_1.clone(),
                     (
-                        EncryptionHint::Hybridized,
+                        HybridizationStatus::Hybridized,
                         EncryptionStatus::EncryptDecrypt,
                     ),
                 ),
                 (
                     coordinate_2.clone(),
                     (
-                        EncryptionHint::Hybridized,
+                        HybridizationStatus::Hybridized,
                         EncryptionStatus::EncryptDecrypt,
                     ),
                 ),
                 (
                     coordinate_3.clone(),
                     (
-                        EncryptionHint::Hybridized,
+                        HybridizationStatus::Hybridized,
                         EncryptionStatus::EncryptDecrypt,
                     ),
                 ),
@@ -357,7 +365,7 @@ mod tests {
             let mut rng = CsRng::from_entropy();
 
             let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
-            update_msk(&mut rng, &mut msk, universe.clone()).unwrap();
+            update_msk(&mut msk, universe.clone()).unwrap();
             let mpk = msk.mpk(None).unwrap();
             let usk = usk_keygen(&mut rng, &mut msk, user_set).unwrap();
             let (_, enc) = encaps(&mut rng, &mpk, &target_set).unwrap();
@@ -367,8 +375,7 @@ mod tests {
             test_serialization(&usk).unwrap();
             test_serialization(&enc).unwrap();
 
-            rekey(&mut rng, &mut msk, universe.keys().cloned().collect())
-                .unwrap();
+            rekey(&mut msk, universe.keys().cloned().collect()).unwrap();
             test_serialization(&msk).unwrap();
         }
 

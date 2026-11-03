@@ -9,7 +9,9 @@ mod tests;
 
 pub use access_policy::AccessPolicy;
 pub use access_structure::AccessStructure;
-pub use attribute::{EncryptionHint, EncryptionStatus, QualifiedAttribute};
+pub use attribute::{
+    EncryptionStatus, HybridizationStatus, QualifiedAttribute,
+};
 pub use dimension::{Attribute, Dimension};
 pub use rights::Right;
 
