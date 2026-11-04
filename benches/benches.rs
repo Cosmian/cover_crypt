@@ -109,26 +109,21 @@ fn bench_usk_keygen(c: &mut Criterion) {
     let (msk, _) = cc_keygen(&cc, true).unwrap();
 
     {
-        let mut group = c.benchmark_group("Hybridized Decapsulation");
+        let mut group = c.benchmark_group("USK key generation");
         for (usk_ap, usk_cnt) in H_USK_APS {
             let uap = AccessPolicy::parse(usk_ap).unwrap();
-            group.bench_function(
-                format!("USK key generation with {:?} secrets", usk_cnt),
-                |b| {
-                    b.iter_batched(
-                        || {
-                            MasterSecretKey::deserialize(
-                                &msk.serialize().unwrap(),
-                            )
+            group.bench_function(format!("{:?} secrets", usk_cnt), |b| {
+                b.iter_batched(
+                    || {
+                        MasterSecretKey::deserialize(&msk.serialize().unwrap())
                             .unwrap()
-                        },
-                        |mut msk| {
-                            cc.generate_user_secret_key(&mut msk, &uap).unwrap()
-                        },
-                        BatchSize::SmallInput,
-                    )
-                },
-            );
+                    },
+                    |mut msk| {
+                        cc.generate_user_secret_key(&mut msk, &uap).unwrap()
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
         }
     }
 }
