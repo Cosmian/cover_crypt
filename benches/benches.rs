@@ -2,6 +2,7 @@ use cosmian_cover_crypt::{
     AccessPolicy, Error, MasterPublicKey, MasterSecretKey, QualifiedAttribute,
     api::Covercrypt, traits::KemAc,
 };
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
 fn cc_keygen(
@@ -101,6 +102,35 @@ macro_rules! gen_usk {
         assert_eq!(usk.count(), $cnt);
         usk
     }};
+}
+
+fn bench_usk_keygen(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (msk, _) = cc_keygen(&cc, true).unwrap();
+
+    {
+        let mut group = c.benchmark_group("Hybridized Decapsulation");
+        for (usk_ap, usk_cnt) in H_USK_APS {
+            let uap = AccessPolicy::parse(usk_ap).unwrap();
+            group.bench_function(
+                format!("USK key generation with {:?} secrets", usk_cnt),
+                |b| {
+                    b.iter_batched(
+                        || {
+                            MasterSecretKey::deserialize(
+                                &msk.serialize().unwrap(),
+                            )
+                            .unwrap()
+                        },
+                        |mut msk| {
+                            cc.generate_user_secret_key(&mut msk, &uap).unwrap()
+                        },
+                        BatchSize::SmallInput,
+                    )
+                },
+            );
+        }
+    }
 }
 
 fn bench_pre_quantum_encapsulation(c: &mut Criterion) {
@@ -213,6 +243,7 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
+    bench_usk_keygen,
     bench_pre_quantum_encapsulation,
     bench_pre_quantum_decapsulation,
     bench_hybridized_encapsulation,

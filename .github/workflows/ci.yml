@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.89.0
+          toolchain: 1.97.0
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - name: Run test script
@@ -22,7 +22,7 @@ jobs:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-publish-workspace.yml@develop
     if: startsWith(github.ref, 'refs/tags/')
     with:
-      toolchain: 1.89.0
+      toolchain: 1.97.0
     secrets:
       token: ${{ secrets.CRATES_IO }}
   cleanup:

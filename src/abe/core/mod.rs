@@ -101,7 +101,7 @@ impl RightSecretKey {
                 <Sha3_512 as KDF_InPlace<{ MlKem::SEED_LENGTH }>>::derive(
                     &mut mlkem_seed,
                     &**seed,
-                    vec![b"MlKem part 1".as_slice(), &*info],
+                    vec![b"MlKem".as_slice(), &*info],
                 )
                 .map_err(|e| Error::Kdf(e.to_string()))?;
                 let (dk, _) = MlKem::keygen_from_seed(&mlkem_seed)?;

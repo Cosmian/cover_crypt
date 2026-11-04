@@ -8,6 +8,6 @@ jobs:
   bench-classic:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-bench.yml@develop
     with:
-      toolchain: stable
+      toolchain: 1.97.0
       features: test-utils
       force: true
