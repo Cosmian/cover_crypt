@@ -105,10 +105,14 @@ current ~KEM~ abstraction does not allow this. We therefore propose the new
 ~SeedableKEM~ abstraction:
 
 #+begin_src rust
-  trait SeedableKEM: KEM {
-      type Seed: Serializable;
+  trait SeedableKEM<const SEED_LENGTH: usize, const KEY_LENGTH: usize>:
+      KEM<KEY_LENGTH>
+  {
+      const SEED_LENGTH: usize = SEED_LENGTH;
 
-      fn keygen_from_seed(seed: &Seed) -> Result<(KEM::Dk, KEM::Ek), KEM::Error>;
+      fn keygen_from_seed(
+          seed: &Secret<SEED_LENGTH>,
+      ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error>;
   }
 #+end_src
 
