@@ -146,9 +146,7 @@ impl AccessStructure {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
     }
-}
 
-impl AccessStructure {
     /// Changes the name of an attribute.
     pub fn rename_attribute(
         &mut self,
@@ -204,9 +202,7 @@ impl AccessStructure {
             })
             .collect()
     }
-}
 
-impl AccessStructure {
     /// Returns the given attribute from the access structure.
     /// Fails if there is no such attribute.
     fn get_attribute(
@@ -385,6 +381,11 @@ fn combine(
         }
         [partial_combinations, res].concat()
     }
+}
+
+#[cfg(feature = "test-utils")]
+pub fn omega_size(access_structure: &AccessStructure) -> Result<usize, Error> {
+    access_structure.omega().map(|o| o.len())
 }
 
 impl Default for AccessStructure {

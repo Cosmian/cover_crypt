@@ -15,3 +15,6 @@ pub use policy::{
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use policy::gen_structure;
+
+#[cfg(feature = "test-utils")]
+pub use policy::omega_size;
