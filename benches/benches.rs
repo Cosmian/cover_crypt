@@ -110,7 +110,7 @@ macro_rules! gen_usk {
     }};
 }
 
-fn bench_master_serialization(c: &mut Criterion) {
+fn bench_serialization(c: &mut Criterion) {
     let cc = Covercrypt::default();
     let (msk, mpk) = cc_keygen(&cc, true).unwrap();
 
@@ -321,7 +321,7 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
-    bench_master_serialization,
+    bench_serialization,
     bench_usk_keygen,
     bench_pre_quantum_encapsulation,
     bench_pre_quantum_decapsulation,
