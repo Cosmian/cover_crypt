@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{EncryptionHint, EncryptionStatus};
+use super::{EncryptionStatus, HybridizationStatus};
 use crate::{Error, data_struct::Dict};
 
 type Name = String;
@@ -13,12 +13,12 @@ type Name = String;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Attribute {
     pub(crate) id: usize,
-    pub(crate) security_mode: EncryptionHint,
+    pub(crate) security_mode: HybridizationStatus,
     pub(crate) encryption_status: EncryptionStatus,
 }
 
 impl Attribute {
-    pub fn new(security_mode: EncryptionHint, id: usize) -> Self {
+    pub fn new(security_mode: HybridizationStatus, id: usize) -> Self {
         Self {
             id,
             security_mode,
@@ -30,7 +30,7 @@ impl Attribute {
         self.id
     }
 
-    pub fn get_security_mode(&self) -> EncryptionHint {
+    pub fn get_security_mode(&self) -> HybridizationStatus {
         self.security_mode
     }
 
@@ -117,7 +117,7 @@ impl Dimension {
     pub fn add_attribute(
         &mut self,
         attribute: Name,
-        security_mode: EncryptionHint,
+        security_mode: HybridizationStatus,
         after: Option<&str>,
         id: usize,
     ) -> Result<(), Error> {
@@ -289,10 +289,11 @@ mod serialization {
     fn test_attribute_serialization() {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
-        let attribute = Attribute::new(EncryptionHint::Classic, 13);
+        let attribute = Attribute::new(HybridizationStatus::Classic, 13);
         test_serialization(&attribute).unwrap();
 
-        let attribute = Attribute::new(EncryptionHint::Hybridized, usize::MAX);
+        let attribute =
+            Attribute::new(HybridizationStatus::Hybridized, usize::MAX);
         test_serialization(&attribute).unwrap();
     }
 
@@ -344,18 +345,18 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut d = Dimension::Hierarchy(Dict::new());
-        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
+        d.add_attribute("A".to_string(), HybridizationStatus::Classic, None, 0)
             .unwrap();
         d.add_attribute(
             "B".to_string(),
-            EncryptionHint::Hybridized,
+            HybridizationStatus::Hybridized,
             Some("A"),
             1,
         )
         .unwrap();
         d.add_attribute(
             "C".to_string(),
-            EncryptionHint::Hybridized,
+            HybridizationStatus::Hybridized,
             Some("B"),
             2,
         )
@@ -363,12 +364,22 @@ mod serialization {
         test_serialization(&d).unwrap();
 
         let mut d = Dimension::Anarchy(BTreeMap::new());
-        d.add_attribute("A".to_string(), EncryptionHint::Classic, None, 0)
+        d.add_attribute("A".to_string(), HybridizationStatus::Classic, None, 0)
             .unwrap();
-        d.add_attribute("B".to_string(), EncryptionHint::Hybridized, None, 1)
-            .unwrap();
-        d.add_attribute("C".to_string(), EncryptionHint::Hybridized, None, 2)
-            .unwrap();
+        d.add_attribute(
+            "B".to_string(),
+            HybridizationStatus::Hybridized,
+            None,
+            1,
+        )
+        .unwrap();
+        d.add_attribute(
+            "C".to_string(),
+            HybridizationStatus::Hybridized,
+            None,
+            2,
+        )
+        .unwrap();
         test_serialization(&d).unwrap();
     }
 }

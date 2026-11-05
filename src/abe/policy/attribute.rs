@@ -10,13 +10,13 @@ use crate::Error;
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
-pub enum EncryptionHint {
+pub enum HybridizationStatus {
     Classic,
     PostQuantum,
     Hybridized,
 }
 
-impl Serializable for EncryptionHint {
+impl Serializable for HybridizationStatus {
     type Error = Error;
 
     fn length(&self) -> usize {
@@ -140,15 +140,15 @@ impl Debug for QualifiedAttribute {
         match &self.version {
             Some(Version::Tag(tag)) => f.write_fmt(format_args!(
                 "{}::{}@{}",
-                &self.dimension, &self.attribute, tag
+                self.dimension, self.attribute, tag
             )),
             Some(Version::Num(num)) => f.write_fmt(format_args!(
                 "{}::{}@{}",
-                &self.dimension, &self.attribute, num
+                self.dimension, self.attribute, num
             )),
             None => f.write_fmt(format_args!(
                 "{}::{}",
-                &self.dimension, &self.attribute,
+                self.dimension, self.attribute,
             )),
         }
     }

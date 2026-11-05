@@ -1,6 +1,6 @@
 use crate::{
     Error, QualifiedAttribute,
-    abe::policy::{AccessStructure, EncryptionHint},
+    abe::policy::{AccessStructure, HybridizationStatus},
 };
 
 pub fn gen_structure(
@@ -11,27 +11,27 @@ pub fn gen_structure(
 
     policy.add_attribute(
         QualifiedAttribute::new("SEC", "LOW"),
-        EncryptionHint::Classic,
+        HybridizationStatus::Classic,
         None,
     )?;
     policy.add_attribute(
         QualifiedAttribute::new("SEC", "MED"),
-        EncryptionHint::PostQuantum,
+        HybridizationStatus::PostQuantum,
         Some("LOW"),
     )?;
     policy.add_attribute(
         QualifiedAttribute::new("SEC", "TOP"),
-        EncryptionHint::Hybridized,
+        HybridizationStatus::Hybridized,
         Some("MED"),
     )?;
 
     policy.add_anarchy("DPT".to_string())?;
     [
-        ("RD", EncryptionHint::Classic),
-        ("HR", EncryptionHint::Classic),
-        ("MKG", EncryptionHint::Classic),
-        ("FIN", EncryptionHint::Classic),
-        ("DEV", EncryptionHint::Classic),
+        ("RD", HybridizationStatus::Classic),
+        ("HR", HybridizationStatus::Classic),
+        ("MKG", HybridizationStatus::Classic),
+        ("FIN", HybridizationStatus::Classic),
+        ("DEV", HybridizationStatus::Classic),
     ]
     .into_iter()
     .try_for_each(|(attribute, mode)| {
@@ -45,11 +45,11 @@ pub fn gen_structure(
     if complete {
         policy.add_anarchy("CTR".to_string())?;
         [
-            ("EN", EncryptionHint::Classic),
-            ("DE", EncryptionHint::Classic),
-            ("IT", EncryptionHint::Classic),
-            ("FR", EncryptionHint::Classic),
-            ("SP", EncryptionHint::Classic),
+            ("EN", HybridizationStatus::Classic),
+            ("DE", HybridizationStatus::Classic),
+            ("IT", HybridizationStatus::Classic),
+            ("FR", HybridizationStatus::Classic),
+            ("SP", HybridizationStatus::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, mode)| {
@@ -103,7 +103,7 @@ fn test_edit_anarchic_attributes() {
     let new_attr = QualifiedAttribute::new("DPT", "Sales");
     assert!(
         structure
-            .add_attribute(new_attr.clone(), EncryptionHint::Classic, None)
+            .add_attribute(new_attr.clone(), HybridizationStatus::Classic, None)
             .is_ok()
     );
     assert_eq!(structure.attributes().count(), 9);
@@ -112,7 +112,7 @@ fn test_edit_anarchic_attributes() {
     let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
     assert!(
         structure
-            .add_attribute(duplicate_attr, EncryptionHint::Classic, None)
+            .add_attribute(duplicate_attr, HybridizationStatus::Classic, None)
             .is_err()
     );
 
@@ -122,7 +122,7 @@ fn test_edit_anarchic_attributes() {
         structure
             .add_attribute(
                 missing_dimension.clone(),
-                EncryptionHint::Classic,
+                HybridizationStatus::Classic,
                 None
             )
             .is_err()
@@ -157,14 +157,14 @@ fn test_edit_anarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr1"),
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             None,
         )
         .unwrap();
     structure
         .add_attribute(
             QualifiedAttribute::new("DimensionTest", "Attr2"),
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             None,
         )
         .unwrap();
@@ -222,7 +222,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "OTHER"),
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             None,
         )
         .unwrap();
@@ -242,7 +242,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "LOW"),
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             None,
         )
         .unwrap();
@@ -267,7 +267,7 @@ fn test_edit_hierarchic_attributes() {
     structure
         .add_attribute(
             QualifiedAttribute::new("SEC", "MID"),
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             Some("LOW"),
         )
         .unwrap();

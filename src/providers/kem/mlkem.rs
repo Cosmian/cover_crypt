@@ -7,10 +7,10 @@ use cosmian_crypto_core::{
         rand_core::CryptoRngCore,
         zeroize::{Zeroize, ZeroizeOnDrop},
     },
-    traits::KEM,
+    traits::{KEM, SeedableKEM},
 };
 use ml_kem::{
-    EncodedSizeUser, KemCore,
+    B32, EncodedSizeUser, KemCore,
     array::Array,
     kem::{Decapsulate, Encapsulate},
 };
@@ -174,6 +174,34 @@ macro_rules! make_mlkem {
                         .map_err(|e| Self::Error::Kem(format!("{e:?}")))?;
                 let ss = Secret::from_unprotected_bytes(ss.as_mut());
                 Ok(ss.into())
+            }
+        }
+
+        impl SeedableKEM<64, KEY_LENGTH> for $base {
+            fn keygen_from_seed(
+                seed: &Secret<64>,
+            ) -> Result<
+                (Self::DecapsulationKey, Self::EncapsulationKey),
+                Self::Error,
+            > {
+                let (dk, ek) = {
+                    let mut d = B32::from(
+                        <[u8; 32]>::try_from(&seed[..32])
+                            .expect("correct size"),
+                    );
+                    let mut z = B32::from(
+                        <[u8; 32]>::try_from(&seed[32..])
+                            .expect("correct size"),
+                    );
+                    let res =
+                        <ml_kem::$base as KemCore>::generate_deterministic(
+                            &d, &z,
+                        );
+                    d.zeroize();
+                    z.zeroize();
+                    res
+                };
+                Ok(($dk(Box::new(dk)), $ek(Box::new(ek))))
             }
         }
     };
