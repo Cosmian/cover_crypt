@@ -46,7 +46,7 @@ impl Covercrypt {
         let mut rng = self.rng();
         let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
         let rights = msk.access_structure.omega()?;
-        update_msk(&mut *rng, &mut msk, rights)?;
+        update_msk(&mut msk, rights)?;
         let mpk = msk.mpk(None)?;
         Ok((msk, mpk))
     }
@@ -70,7 +70,7 @@ impl Covercrypt {
         &self,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
-        update_msk(&mut *self.rng(), msk, msk.access_structure.omega()?)?;
+        update_msk(msk, msk.access_structure.omega()?)?;
         msk.mpk(None)
     }
 
@@ -84,11 +84,7 @@ impl Covercrypt {
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
-        rekey(
-            &mut *self.rng(),
-            msk,
-            msk.access_structure.ap_to_usk_rights(ap)?,
-        )?;
+        rekey(msk, msk.access_structure.ap_to_usk_rights(ap)?)?;
         msk.mpk(None)
     }
 

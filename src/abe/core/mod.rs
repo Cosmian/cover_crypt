@@ -2,15 +2,19 @@
 
 use crate::{
     Error,
-    abe::policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
+    abe::policy::{
+        AccessStructure, EncryptionStatus, HybridizationStatus, Right,
+    },
     data_struct::{RevisionMap, RevisionVec},
     providers::{ElGamal, MlKem},
 };
 use cosmian_crypto_core::{
-    SymmetricKey,
+    Secret, SymmetricKey,
+    bytes_ser_de::Serializer,
     reexport::{rand_core::CryptoRngCore, zeroize::ZeroizeOnDrop},
-    traits::{KEM, NIKE, Sampling, Zero},
+    traits::{KDF_InPlace, KEM, NIKE, Sampling, Seedable, SeedableKEM, Zero},
 };
+use cosmian_libcrux_provider::hash::{Sha3_256, Sha3_512};
 use std::collections::{BTreeMap, BTreeSet, LinkedList};
 
 mod serialization;
@@ -66,24 +70,69 @@ enum RightSecretKey {
 }
 
 impl RightSecretKey {
-    /// Generates a new random right secret key cryptographically bound to the Covercrypt binding
-    /// point `h`.
-    fn random(
-        rng: &mut impl CryptoRngCore,
-        security_mode: EncryptionHint,
+    fn from_seed(
+        seed: &Secret<SEED_LENGTH>,
+        r: &Right,
+        h_status: &HybridizationStatus,
+        rev: &Revision,
     ) -> Result<Self, Error> {
-        match security_mode {
-            EncryptionHint::Classic => {
-                let sk = <ElGamal as NIKE>::SecretKey::random(rng);
+        let info = {
+            let mut ser = Serializer::new();
+            ser.write(r)?;
+            ser.write(rev)?;
+            ser.finalize()
+        };
+        match h_status {
+            HybridizationStatus::Classic => {
+                let mut elgamal_seed = Secret::default();
+                <Sha3_256 as KDF_InPlace<
+                    { <ElGamal as NIKE>::SecretKey::SEED_LENGTH },
+                >>::derive(
+                    &mut elgamal_seed,
+                    &**seed,
+                    vec![b"ElGamal".as_slice(), &*info],
+                )
+                .map_err(|e| Error::Kdf(e.to_string()))?;
+                let sk = <ElGamal as NIKE>::SecretKey::from_seed(&elgamal_seed);
                 Ok(Self::PreQuantum { sk })
             }
-            EncryptionHint::PostQuantum => {
-                let (dk, _) = MlKem::keygen(rng)?;
+            HybridizationStatus::PostQuantum => {
+                let mut mlkem_seed = Secret::default();
+                <Sha3_512 as KDF_InPlace<{ MlKem::SEED_LENGTH }>>::derive(
+                    &mut mlkem_seed,
+                    &**seed,
+                    vec![b"MlKem".as_slice(), &*info],
+                )
+                .map_err(|e| Error::Kdf(e.to_string()))?;
+                let (dk, _) = MlKem::keygen_from_seed(&mlkem_seed)?;
                 Ok(Self::PostQuantum { dk })
             }
-            EncryptionHint::Hybridized => {
-                let sk = <ElGamal as NIKE>::SecretKey::random(rng);
-                let (dk, _) = MlKem::keygen(rng)?;
+            HybridizationStatus::Hybridized => {
+                let sk = {
+                    let mut elgamal_seed = Secret::default();
+                    <Sha3_256 as KDF_InPlace<
+                        { <ElGamal as NIKE>::SecretKey::SEED_LENGTH },
+                    >>::derive(
+                        &mut elgamal_seed,
+                        &**seed,
+                        vec![b"ElGamal".as_slice(), &*info],
+                    )
+                    .map_err(|e| Error::Kdf(e.to_string()))?;
+                    <ElGamal as NIKE>::SecretKey::from_seed(&elgamal_seed)
+                };
+
+                let dk = {
+                    let mut mlkem_seed = Secret::default();
+                    <Sha3_512 as KDF_InPlace<{ MlKem::SEED_LENGTH }>>::derive(
+                        &mut mlkem_seed,
+                        &**seed,
+                        vec![b"MlKem".as_slice(), &*info],
+                    )
+                    .map_err(|e| Error::Kdf(e.to_string()))?;
+                    let (dk, _) = MlKem::keygen_from_seed(&mlkem_seed)?;
+                    dk
+                };
+
                 Ok(Self::Hybridized { sk, dk })
             }
         }
@@ -102,62 +151,6 @@ impl RightSecretKey {
             }
             Self::PreQuantum { sk } => RightPublicKey::PreQuantum { H: h * sk },
         }
-    }
-
-    /// Returns the security mode of this right secret key.
-    fn security_mode(&self) -> EncryptionHint {
-        match self {
-            Self::Hybridized { .. } => EncryptionHint::Hybridized,
-            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
-            Self::PreQuantum { .. } => EncryptionHint::Classic,
-        }
-    }
-
-    /// Sets the security mode of this right secret key.
-    fn set_security_mode(
-        self,
-        security_mode: EncryptionHint,
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<Self, Error> {
-        Ok(match (self, security_mode) {
-            (Self::Hybridized { sk, .. }, EncryptionHint::Classic) => {
-                Self::PreQuantum { sk }
-            }
-            (Self::Hybridized { dk, .. }, EncryptionHint::PostQuantum) => {
-                Self::PostQuantum { dk }
-            }
-            (Self::Hybridized { sk, dk }, EncryptionHint::Hybridized) => {
-                Self::Hybridized { sk, dk }
-            }
-            (Self::PostQuantum { .. }, EncryptionHint::Classic) => {
-                Self::PostQuantum {
-                    dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
-                }
-            }
-            (Self::PostQuantum { dk }, EncryptionHint::PostQuantum) => {
-                Self::PostQuantum { dk }
-            }
-            (Self::PostQuantum { dk }, EncryptionHint::Hybridized) => {
-                Self::Hybridized {
-                    sk: <ElGamal as NIKE>::keygen(rng)?.0,
-                    dk,
-                }
-            }
-            (Self::PreQuantum { sk }, EncryptionHint::Classic) => {
-                Self::PreQuantum { sk }
-            }
-            (Self::PreQuantum { .. }, EncryptionHint::PostQuantum) => {
-                Self::PostQuantum {
-                    dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
-                }
-            }
-            (Self::PreQuantum { sk }, EncryptionHint::Hybridized) => {
-                Self::Hybridized {
-                    sk,
-                    dk: <MlKem as KEM<{ MlKem::KEY_LENGTH }>>::keygen(rng)?.0,
-                }
-            }
-        })
     }
 }
 
@@ -182,11 +175,11 @@ enum RightPublicKey {
 
 impl RightPublicKey {
     /// Returns the security mode of this right public key.
-    pub fn security_mode(&self) -> EncryptionHint {
+    pub fn security_mode(&self) -> HybridizationStatus {
         match self {
-            Self::Hybridized { .. } => EncryptionHint::Hybridized,
-            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
-            Self::PreQuantum { .. } => EncryptionHint::Classic,
+            Self::Hybridized { .. } => HybridizationStatus::Hybridized,
+            Self::PostQuantum { .. } => HybridizationStatus::PostQuantum,
+            Self::PreQuantum { .. } => HybridizationStatus::Classic,
         }
     }
 }
@@ -424,18 +417,17 @@ impl TracingPublicKey {
     }
 }
 
+pub const SEED_LENGTH: usize = 32;
+pub type Revision = usize;
+
 /// The Covercrypt Master Secret Key (MSK).
-///
-/// It is composed of:
-/// - the scalar `s` used to bind tracing and right secrets;
-/// - the tracing secret key used to produce challenges to trace user keys;
-/// - the secret associated to the each right in Omega;
-/// - an optional key for symmetric USK-signing;
-/// - the access structure.
 #[derive(Debug, PartialEq)]
 pub struct MasterSecretKey {
+    rev: Revision,
     tsk: TracingSecretKey,
-    secrets: RevisionMap<Right, (EncryptionStatus, RightSecretKey)>,
+    seed: Secret<SEED_LENGTH>,
+    secrets:
+        RevisionMap<Right, (EncryptionStatus, HybridizationStatus, Revision)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
     pub access_structure: AccessStructure,
 }
@@ -459,8 +451,12 @@ impl MasterSecretKey {
                 .ok_or(Error::KeyError(format!(
                     "MSK has no key for right {r:?}"
                 )))
-                .cloned()
-                .map(|(_, key)| (r, key))
+                .and_then(|(_, h_status, version)| {
+                    let key = RightSecretKey::from_seed(
+                        &self.seed, &r, h_status, version,
+                    )?;
+                    Ok((r, key))
+                })
         })
     }
 
@@ -478,24 +474,32 @@ impl MasterSecretKey {
         rights: Option<&BTreeSet<Right>>,
     ) -> Result<MasterPublicKey, Error> {
         let h = self.tsk.binding_point();
+        let encryption_keys = {
+            let mut ekeys = BTreeMap::new();
+            for (r, secrets) in self.secrets.iter() {
+                if rights.map(|rights| rights.contains(r)).unwrap_or(true) {
+                    if let Some((e_status, h_status, revision)) =
+                        secrets.front()
+                    {
+                        if &EncryptionStatus::EncryptDecrypt == e_status {
+                            let sk = RightSecretKey::from_seed(
+                                &self.seed, r, h_status, revision,
+                            )?;
+                            ekeys.insert(r.clone(), sk.cpk(&h));
+                        }
+                    } else {
+                        return Err(Error::KeyError(
+                            "missing right secrets".to_owned(),
+                        ));
+                    }
+                }
+            }
+            ekeys
+        };
+
         Ok(MasterPublicKey {
             tpk: self.tsk.tpk(),
-            encryption_keys: self
-                .secrets
-                .iter()
-                .filter(|(r, _)| {
-                    rights.map(|rights| rights.contains(r)).unwrap_or(true)
-                })
-                .filter_map(|(r, secrets)| {
-                    secrets.front().and_then(|(status, csk)| {
-                        if &EncryptionStatus::EncryptDecrypt == status {
-                            Some((r.clone(), csk.cpk(&h)))
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .collect(),
+            encryption_keys,
             access_structure: self.access_structure.clone(),
         })
     }
@@ -539,7 +543,7 @@ impl MasterPublicKey {
     fn select_subkeys(
         &self,
         targets: &BTreeSet<Right>,
-    ) -> Result<(EncryptionHint, Vec<&RightPublicKey>), Error> {
+    ) -> Result<(HybridizationStatus, Vec<&RightPublicKey>), Error> {
         let subkeys = targets
             .iter()
             .map(|r| {
@@ -659,11 +663,11 @@ impl XEnc {
         }
     }
 
-    pub fn security_mode(&self) -> EncryptionHint {
+    pub fn security_mode(&self) -> HybridizationStatus {
         match self {
-            Self::Hybridized { .. } => EncryptionHint::Hybridized,
-            Self::PostQuantum { .. } => EncryptionHint::PostQuantum,
-            Self::PreQuantum { .. } => EncryptionHint::Classic,
+            Self::Hybridized { .. } => HybridizationStatus::Hybridized,
+            Self::PostQuantum { .. } => HybridizationStatus::PostQuantum,
+            Self::PreQuantum { .. } => HybridizationStatus::Classic,
         }
     }
 }

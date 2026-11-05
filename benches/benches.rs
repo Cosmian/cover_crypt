@@ -1,7 +1,8 @@
 use cosmian_cover_crypt::{
     AccessPolicy, Error, MasterPublicKey, MasterSecretKey, QualifiedAttribute,
-    api::Covercrypt, traits::KemAc,
+    XEnc, api::Covercrypt, omega_size, traits::KemAc,
 };
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
 fn cc_keygen(
@@ -19,15 +20,18 @@ fn cc_keygen(
 }
 
 const C_ENC_APS: [(&str, usize); 5] = [
-    ("SEC::LOW && (DPT::MKG) ", 1),
-    ("SEC::LOW && (DPT::MKG || DPT::FIN) ", 2),
-    ("SEC::LOW && (DPT::MKG || DPT::FIN || DPT::DEV) ", 3),
+    ("SEC::LOW && CTR::EN && (DPT::MKG) ", 1),
+    ("SEC::LOW && CTR::EN && (DPT::MKG || DPT::FIN) ", 2),
     (
-        "SEC::LOW && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR) ",
+        "SEC::LOW && CTR::EN && (DPT::MKG || DPT::FIN || DPT::DEV) ",
+        3,
+    ),
+    (
+        "SEC::LOW && CTR::EN && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR) ",
         4,
     ),
     (
-        "SEC::LOW && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR || DPT::RD) ",
+        "SEC::LOW && CTR::EN && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR || DPT::RD) ",
         5,
     ),
 ];
@@ -50,15 +54,18 @@ const C_USK_APS: [(&str, usize); 5] = [
 ];
 
 const H_ENC_APS: [(&str, usize); 5] = [
-    ("SEC::TOP && (DPT::MKG) ", 1),
-    ("SEC::TOP && (DPT::MKG || DPT::FIN) ", 2),
-    ("SEC::TOP && (DPT::MKG || DPT::FIN || DPT::DEV) ", 3),
+    ("SEC::TOP && CTR::EN && (DPT::MKG) ", 1),
+    ("SEC::TOP && CTR::EN && (DPT::MKG || DPT::FIN) ", 2),
     (
-        "SEC::TOP && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR) ",
+        "SEC::TOP && CTR::EN && (DPT::MKG || DPT::FIN || DPT::DEV) ",
+        3,
+    ),
+    (
+        "SEC::TOP && CTR::EN && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR) ",
         4,
     ),
     (
-        "SEC::TOP && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR || DPT::RD) ",
+        "SEC::TOP && CTR::EN && (DPT::MKG || DPT::FIN || DPT::DEV || DPT::HR || DPT::RD) ",
         5,
     ),
 ];
@@ -103,6 +110,107 @@ macro_rules! gen_usk {
     }};
 }
 
+fn bench_serialization(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (msk, mpk) = cc_keygen(&cc, true).unwrap();
+
+    {
+        let mut group = c.benchmark_group(format!(
+            "MSK serialization ({} rights)",
+            omega_size(&msk.access_structure).unwrap()
+        ));
+        group.bench_function("serialize", |b| {
+            b.iter_batched(
+                || {},
+                |()| msk.serialize().unwrap(),
+                BatchSize::SmallInput,
+            )
+        });
+        let bytes = msk.serialize().unwrap();
+        group.bench_function("deserialize", |b| {
+            b.iter_batched(
+                || {},
+                |()| MasterSecretKey::deserialize(&bytes).unwrap(),
+                BatchSize::SmallInput,
+            )
+        });
+    }
+
+    {
+        let mut group = c.benchmark_group(format!(
+            "MPK serialization ({} rights)",
+            omega_size(&mpk.access_structure).unwrap()
+        ));
+        group.bench_function("serialize", |b| {
+            b.iter_batched(
+                || {},
+                |()| mpk.serialize().unwrap(),
+                BatchSize::SmallInput,
+            )
+        });
+        let bytes = mpk.serialize().unwrap();
+        group.bench_function("deserialize", |b| {
+            b.iter_batched(
+                || {},
+                |()| MasterPublicKey::deserialize(&bytes).unwrap(),
+                BatchSize::SmallInput,
+            )
+        });
+    }
+
+    {
+        let mut group = c.benchmark_group("Hybridized encapsulation");
+        for (enc_ap, cnt_enc) in H_ENC_APS {
+            let (_, enc) = gen_enc!(cc, mpk, enc_ap, cnt_enc);
+            group.bench_function(
+                format!("serialize ({} rights)", cnt_enc),
+                |b| {
+                    b.iter_batched(
+                        || {},
+                        |()| enc.serialize().unwrap(),
+                        BatchSize::SmallInput,
+                    )
+                },
+            );
+            let bytes = enc.serialize().unwrap();
+            group.bench_function(
+                format!("deserialize ({} rights)", cnt_enc),
+                |b| {
+                    b.iter_batched(
+                        || {},
+                        |()| XEnc::deserialize(&bytes).unwrap(),
+                        BatchSize::SmallInput,
+                    )
+                },
+            );
+        }
+    }
+}
+
+fn bench_usk_keygen(c: &mut Criterion) {
+    let cc = Covercrypt::default();
+    let (msk, _) = cc_keygen(&cc, true).unwrap();
+
+    {
+        let mut group = c.benchmark_group("USK key generation");
+        for (usk_ap, usk_cnt) in H_USK_APS {
+            let uap = AccessPolicy::parse(usk_ap).unwrap();
+            group.bench_function(format!("{:?} secrets", usk_cnt), |b| {
+                b.iter_batched(
+                    || {
+                        MasterSecretKey::deserialize(&msk.serialize().unwrap())
+                            .unwrap()
+                    },
+                    |mut msk| {
+                        cc.generate_user_secret_key(&mut msk, &uap).unwrap()
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+        }
+    }
+}
+
 fn bench_pre_quantum_encapsulation(c: &mut Criterion) {
     let cc = Covercrypt::default();
     let (_, mpk) = cc_keygen(&cc, true).unwrap();
@@ -131,8 +239,8 @@ fn bench_pre_quantum_decapsulation(c: &mut Criterion) {
                 let uap = AccessPolicy::parse(usk_ap).unwrap();
 
                 let usk = gen_usk!(cc, msk, usk_ap, cnt_secret);
-                let (k, enc) = gen_enc!(cc, mpk, enc_ap, cnt_enc);
-                assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
+                let (_, enc) = gen_enc!(cc, mpk, enc_ap, cnt_enc);
+                assert_eq!(None, cc.decaps(&usk, &enc).unwrap());
 
                 group.bench_function(
                     format!("{:?} encs vs {:?} secrets", cnt_enc, cnt_secret),
@@ -182,8 +290,8 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
             for (usk_ap, usk_cnt) in H_USK_APS {
                 let uap = AccessPolicy::parse(usk_ap).unwrap();
                 let usk = gen_usk!(cc, msk, usk_ap, usk_cnt);
-                let (k, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
-                assert_eq!(Some(k), cc.decaps(&usk, &enc).unwrap());
+                let (_, enc) = gen_enc!(cc, mpk, enc_ap, enc_cnt);
+                assert_eq!(None, cc.decaps(&usk, &enc).unwrap());
 
                 group.bench_function(
                     format!(
@@ -213,6 +321,8 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(5000);
     targets =
+    bench_serialization,
+    bench_usk_keygen,
     bench_pre_quantum_encapsulation,
     bench_pre_quantum_decapsulation,
     bench_hybridized_encapsulation,

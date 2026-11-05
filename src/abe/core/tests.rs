@@ -6,7 +6,7 @@ use crate::{
     abe::{
         Covercrypt,
         core::{
-            EncryptionHint,
+            HybridizationStatus,
             primitives::{decaps, encaps, refresh, rekey, update_msk},
         },
         policy::{AccessPolicy, EncryptionStatus, Right},
@@ -22,8 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[test]
 fn security_mode_ordering() {
-    assert!(EncryptionHint::Classic < EncryptionHint::PostQuantum);
-    assert!(EncryptionHint::PostQuantum < EncryptionHint::Hybridized);
+    assert!(HybridizationStatus::Classic < HybridizationStatus::PostQuantum);
+    assert!(HybridizationStatus::PostQuantum < HybridizationStatus::Hybridized);
 }
 
 /// This test asserts that it is possible to encapsulate a key for a given
@@ -37,16 +37,21 @@ fn test_encapsulation() {
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
-        &mut rng,
         &mut msk,
         BTreeMap::from_iter([
             (
                 other_coordinate.clone(),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             ),
             (
                 target_coordinate.clone(),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             ),
         ]),
     )
@@ -104,11 +109,14 @@ fn test_update() {
         .map(|_| {
             (
                 Right::random(&mut rng),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             )
         })
         .collect::<BTreeMap<_, _>>();
-    update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
+    update_msk(&mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
 
     let mpk = msk.mpk(None).unwrap();
@@ -126,7 +134,7 @@ fn test_update() {
                 *status = EncryptionStatus::DecryptOnly;
             }
         });
-    update_msk(&mut rng, &mut msk, coordinates.clone()).unwrap();
+    update_msk(&mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
     let mpk = msk.mpk(None).unwrap();
     assert_eq!(mpk.encryption_keys.len(), 15);
@@ -134,7 +142,7 @@ fn test_update() {
     // Keep only 10 coordinates.
     let coordinates =
         coordinates.into_iter().take(10).collect::<BTreeMap<_, _>>();
-    update_msk(&mut rng, &mut msk, coordinates).unwrap();
+    update_msk(&mut msk, coordinates).unwrap();
     assert_eq!(msk.secrets.len(), 10);
     let mpk = msk.mpk(None).unwrap();
     assert_eq!(mpk.encryption_keys.len(), 5);
@@ -155,16 +163,21 @@ fn test_rekey() {
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
-        &mut rng,
         &mut msk,
         BTreeMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             ),
         ]),
     )
@@ -189,7 +202,7 @@ fn test_rekey() {
     assert_eq!(None, decaps(&mut rng, &usk_2, &old_enc_1).unwrap());
 
     // Re-key all space coordinates.
-    rekey(&mut rng, &mut msk, universe).unwrap();
+    rekey(&mut msk, universe).unwrap();
     let mpk = msk.mpk(None).unwrap();
 
     let (new_key_1, new_enc_1) = encaps(&mut rng, &mpk, &subspace_1).unwrap();
@@ -239,16 +252,21 @@ fn test_integrity_check() {
 
     let mut msk = setup(MIN_TRACING_LEVEL, &mut rng).unwrap();
     update_msk(
-        &mut rng,
         &mut msk,
         BTreeMap::from_iter([
             (
                 coordinate_1.clone(),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             ),
             (
                 coordinate_2.clone(),
-                (EncryptionHint::Classic, EncryptionStatus::EncryptDecrypt),
+                (
+                    HybridizationStatus::Classic,
+                    EncryptionStatus::EncryptDecrypt,
+                ),
             ),
         ]),
     )
@@ -312,7 +330,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), EncryptionHint::Classic);
+    assert_eq!(enc.security_mode(), HybridizationStatus::Classic);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
@@ -325,7 +343,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), EncryptionHint::PostQuantum);
+    assert_eq!(enc.security_mode(), HybridizationStatus::PostQuantum);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
@@ -338,7 +356,7 @@ fn test_covercrypt_kem() {
         .generate_user_secret_key(&mut msk, &ap)
         .expect("cannot generate usk");
     let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
-    assert_eq!(enc.security_mode(), EncryptionHint::Hybridized);
+    assert_eq!(enc.security_mode(), HybridizationStatus::Hybridized);
     let res = cc.decaps(&usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 }

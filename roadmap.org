@@ -1,6 +1,6 @@
 #+title: Covercrypt Road-Map
 
-* Planned [3/5]
+* Planned [4/6]
 
 ** DONE Make hierarchical broadcasts bottom (⊥) attributes         :breaking:
 <2026-10-27 Tue>
@@ -79,10 +79,47 @@ Covercrypt does not use a crypto-provider yet
 - [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
 
 
+** DONE Space-efficient MSK representation                         :breaking:
+DEADLINE: <2026-11-06 Fri>
+DONE: <2026-11-03 Tue>
+
+Complex access structures can lead to huge universes. For example, an access
+structure holding 10 dimensions of 3 attributes requires a universe holding
+about 1.10^6 rights. When using a post-quantum KEM like ML-KEM768, each key
+right is associated to a key which size is in the order of 2KB, which leads to a
+memory requirement of the order of 2GB. This is not an acceptable requirement,
+but is even worsened by the rotations!
+
+To allow for complex access structures, we propose to trade time for space by
+generating all right key /on the fly/ from a single 32B secret seed ~s~ as
+follows: ~∀ r ∈ U and ∀ v ∈ rev(r), k(r, v) = KDF(s, r || v)~.
+
+As such, the space required to store the MSK is still in the order of the size
+of universe. The multiplicative factor is therefore no longer the key size
+(1KB), but is now in the order of the size of a right (currently 16B) plus the
+constant overhead due to the structure used to store the map (~8B), which should
+give a 100-times improvement.
+
+When using ML-KEM, generating keys then requires expanding the ML-KEM keypair
+using the ~ML-KEM.KeyGenᵢnternal~ algorithm 16 as specified in FIPS203. The
+current ~KEM~ abstraction does not allow this. We therefore propose the new
+~SeedableKEM~ abstraction:
+
+#+begin_src rust
+  trait SeedableKEM<const SEED_LENGTH: usize, const KEY_LENGTH: usize>:
+      KEM<KEY_LENGTH>
+  {
+      const SEED_LENGTH: usize = SEED_LENGTH;
+
+      fn keygen_from_seed(
+          seed: &Secret<SEED_LENGTH>,
+      ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error>;
+  }
+#+end_src
+
 * Unplanned
 
 ** Lazy Covercrypt MSK [0/1]                                       :breaking:
-DEADLINE: <2026-11-06 Fri>
 
 - [ ] *BREAKING*: only generate right secret keys for MPK or USK requiring them.
   This is a breaking change since it implies making right secrets in the MSK

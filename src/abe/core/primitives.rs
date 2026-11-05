@@ -3,11 +3,13 @@ use crate::{
     abe::{
         core::{
             KmacSignature, MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
-            RightPublicKey, RightSecretKey, SHARED_SECRET_LENGTH,
-            SIGNATURE_LENGTH, SIGNING_KEY_LENGTH, TAG_LENGTH, TracingSecretKey,
-            UserId, UserSecretKey, XEnc,
+            Revision, RightPublicKey, RightSecretKey, SEED_LENGTH,
+            SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH,
+            TAG_LENGTH, TracingSecretKey, UserId, UserSecretKey, XEnc,
         },
-        policy::{AccessStructure, EncryptionHint, EncryptionStatus, Right},
+        policy::{
+            AccessStructure, EncryptionStatus, HybridizationStatus, Right,
+        },
     },
     data_struct::{RevisionMap, RevisionVec},
     providers::{ElGamal, MlKem},
@@ -185,13 +187,15 @@ pub fn setup(
     }
 
     let tsk = TracingSecretKey::new_with_level(tracing_level, rng)?;
-    let policy = AccessStructure::default();
+    let seed = Secret::random(rng);
 
     Ok(MasterSecretKey {
+        rev: 0,
         tsk,
+        seed,
         secrets: RevisionMap::new(),
         signing_key: Some(SymmetricKey::<SIGNING_KEY_LENGTH>::new(rng)),
-        access_structure: policy,
+        access_structure: AccessStructure::default(),
     })
 }
 
@@ -365,7 +369,7 @@ pub fn encaps(
     let S = Secret::random(rng);
 
     match is_hybridized {
-        EncryptionHint::Classic => {
+        HybridizationStatus::Classic => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
@@ -378,7 +382,7 @@ pub fn encaps(
             });
             pre_quantum_encaps(S, c, r, subkeys)
         }
-        EncryptionHint::PostQuantum => {
+        HybridizationStatus::PostQuantum => {
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::PostQuantum { ek } = subkey {
                     ek
@@ -388,7 +392,7 @@ pub fn encaps(
             });
             post_quantum_encaps(S, subkeys, rng)
         }
-        EncryptionHint::Hybridized => {
+        HybridizationStatus::Hybridized => {
             let r = G_hash(&S)?;
             let c = mpk.set_traps(&r);
 
@@ -657,7 +661,11 @@ pub fn master_decaps(
     /// allowing opening this encapsulation, or returns an error if no secret
     /// allow opening this encapsulation.
     fn open(
-        secrets: &RevisionMap<Right, (EncryptionStatus, RightSecretKey)>,
+        seed: &Secret<SEED_LENGTH>,
+        secrets: &RevisionMap<
+            Right,
+            (EncryptionStatus, HybridizationStatus, Revision),
+        >,
         attempt_opening: impl Fn(
             &RightSecretKey,
         ) -> Result<
@@ -665,10 +673,11 @@ pub fn master_decaps(
             Error,
         >,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Right), Error> {
-        for (right, secret_set) in secrets.iter() {
-            for (_, secret) in secret_set {
-                if let Some(ss) = attempt_opening(secret)? {
-                    return Ok::<_, Error>((ss, right.clone()));
+        for (r, revisions) in secrets.iter() {
+            for (_, h_status, v) in revisions {
+                let secret = RightSecretKey::from_seed(seed, r, h_status, v)?;
+                if let Some(ss) = attempt_opening(&secret)? {
+                    return Ok::<_, Error>((ss, r.clone()));
                 }
             }
         }
@@ -721,7 +730,7 @@ pub fn master_decaps(
 
         for F in encapsulations {
             let (ss, right) =
-                open(&secrets, |secret| attempt_opening(F, secret))?;
+                open(&msk.seed, &secrets, |secret| attempt_opening(F, secret))?;
             if let Some(enc_ss) = &enc_ss {
                 if &ss != enc_ss {
                     return Err(Error::Kem(
@@ -768,8 +777,9 @@ pub fn master_decaps(
         let mut secrets = msk.secrets.clone();
 
         for (E, F) in encapsulations {
-            let (ss, right) =
-                open(&secrets, |secret| attempt_opening(E, F, secret))?;
+            let (ss, right) = open(&msk.seed, &secrets, |secret| {
+                attempt_opening(E, F, secret)
+            })?;
             if let Some(enc_ss) = &enc_ss {
                 if &ss != enc_ss {
                     return Err(Error::Kem(
@@ -829,8 +839,9 @@ pub fn master_decaps(
         let mut secrets = msk.secrets.clone();
 
         for (E, F) in encapsulations {
-            let (ss, right) =
-                open(&secrets, |secret| attempt_opening(E, F, secret))?;
+            let (ss, right) = open(&msk.seed, &secrets, |secret| {
+                attempt_opening(E, F, secret)
+            })?;
             if let Some(enc_ss) = &enc_ss {
                 if &ss != enc_ss {
                     return Err(Error::Kem(
@@ -878,49 +889,48 @@ pub fn master_decaps(
 /// secret for rights that are not given. Updates hybridization of the remaining
 /// secrets when required.
 pub fn update_msk(
-    rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    rights: BTreeMap<Right, (EncryptionHint, EncryptionStatus)>,
+    rights: BTreeMap<Right, (HybridizationStatus, EncryptionStatus)>,
 ) -> Result<(), Error> {
+    msk.rev += 1;
     let mut secrets = take(&mut msk.secrets);
     secrets.retain(|r| rights.contains_key(r));
 
-    for (r, (mode, status)) in rights {
+    for (r, (h_status, e_status)) in rights {
         if let Some(revisions) = secrets.get_mut(&r) {
-            if let Some((_, secret)) = revisions.pop_front() {
-                revisions
-                    .push_front((status, secret.set_security_mode(mode, rng)?))
+            if let Some((_, _, rev)) = revisions.pop_front() {
+                revisions.push_front((e_status, h_status, rev))
             } else {
                 return Err(Error::OperationNotPermitted(
                     "empty revision list is illegal".to_string(),
                 ));
             }
         } else {
-            if EncryptionStatus::DecryptOnly == status {
+            if EncryptionStatus::DecryptOnly == e_status {
                 return Err(Error::OperationNotPermitted(
                     "cannot add decrypt only secret".to_string(),
                 ));
             }
-            let secret = RightSecretKey::random(rng, mode)?;
-            secrets.insert(r, (status, secret));
+            secrets.insert(r, (e_status, h_status, msk.rev));
         }
     }
     msk.secrets = secrets;
     Ok(())
 }
 
-/// Generates a new secret for each right in the given set that belongs to the MSK.
+/// Increment the revision counter and adds a new secret for each right in the
+/// given set under the new revision number.
 pub fn rekey(
-    rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     rights: BTreeSet<Right>,
 ) -> Result<(), Error> {
+    msk.rev += 1;
     for r in rights {
         if msk.secrets.contains_key(&r) {
             let security_mode = msk
                 .secrets
                 .get_latest(&r)
-                .map(|(_, k)| k.security_mode())
+                .map(|(_, h_status, _)| h_status)
                 .ok_or_else(|| {
                     Error::OperationNotPermitted(format!(
                         "no current key for coordinate {r:#?}"
@@ -929,10 +939,7 @@ pub fn rekey(
 
             msk.secrets.insert(
                 r,
-                (
-                    EncryptionStatus::default(),
-                    RightSecretKey::random(rng, security_mode)?,
-                ),
+                (EncryptionStatus::default(), *security_mode, msk.rev),
             );
         } else {
             return Err(Error::OperationNotPermitted(
@@ -974,7 +981,7 @@ pub fn refresh(
 
     let usk_rights = take(&mut usk.secrets);
     let new_rights = if keep_old_rights {
-        refresh_coordinate_keys(msk, usk_rights)
+        refresh_coordinate_keys(msk, usk_rights)?
     } else {
         msk.get_latest_right_sk(usk_rights.into_keys())
             .collect::<Result<RevisionVec<Right, RightSecretKey>, Error>>()?
@@ -997,24 +1004,29 @@ pub fn refresh(
 ///
 /// Preserves the following invariant:
 /// > 1. most recent coordinate secrets are listed first
-/// > 2) USK secrets are a strict sub-sequence of the MSK ones
+/// > 2. USK secrets are a strict sub-sequence of the MSK ones
 fn refresh_coordinate_keys(
     msk: &MasterSecretKey,
     coordinate_keys: RevisionVec<Right, RightSecretKey>,
-) -> RevisionVec<Right, RightSecretKey> {
+) -> Result<RevisionVec<Right, RightSecretKey>, Error> {
     coordinate_keys
         .into_iter()
-        .filter_map(|(coordinate, user_chain)| {
-            msk.secrets.get(&coordinate).and_then(|msk_chain| {
+        .map(|(r, user_chain)| {
+            if let Some(msk_chain) = msk.secrets.get(&r) {
                 let mut updated_chain = LinkedList::new();
                 let mut msk_secrets = msk_chain.iter();
                 let mut usk_secrets = user_chain.into_iter();
-                let first_secret = usk_secrets.next()?;
+                let first_secret = usk_secrets.next().ok_or_else(|| {
+                    Error::KeyError("missing right secret in USK".to_owned())
+                })?;
 
                 // Add the most recent secrets from the MSK that do not belong
                 // to the USK at the front of the updated chain (cf Invariant.1)
-                for (_, msk_secret) in msk_secrets.by_ref() {
-                    if msk_secret == &first_secret {
+                for (_, h_status, rev) in msk_secrets.by_ref() {
+                    let msk_secret = RightSecretKey::from_seed(
+                        &msk.seed, &r, h_status, rev,
+                    )?;
+                    if msk_secret == first_secret {
                         break;
                     }
                     updated_chain.push_back(msk_secret.clone());
@@ -1027,17 +1039,23 @@ fn refresh_coordinate_keys(
                 // Push the secrets already stored in the USK that also belong
                 // to the MSK keypairs.
                 for coordinate_sk in usk_secrets {
-                    if let Some((_, msk_secret)) = msk_secrets.next() {
-                        if msk_secret == &coordinate_sk {
-                            updated_chain.push_back(msk_secret.clone());
+                    if let Some((_, h_status, rev)) = msk_secrets.next() {
+                        let msk_secret = RightSecretKey::from_seed(
+                            &msk.seed, &r, h_status, rev,
+                        )?;
+                        if msk_secret == coordinate_sk {
+                            updated_chain.push_back(msk_secret);
                             continue;
                         }
                     }
                     // No more shared secret after the first divergence (cf Invariant.2).
                     break;
                 }
-                Some((coordinate, updated_chain))
-            })
+                Ok(Some((r, updated_chain)))
+            } else {
+                Ok(None)
+            }
         })
-        .collect::<RevisionVec<_, _>>()
+        .filter_map(|v| v.transpose())
+        .collect::<Result<RevisionVec<_, _>, Error>>()
 }

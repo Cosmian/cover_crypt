@@ -2,7 +2,7 @@ use crate::{
     Error,
     abe::policy::{
         AccessPolicy, Attribute, Dimension, EncryptionStatus,
-        QualifiedAttribute, Right, Version, attribute::EncryptionHint,
+        QualifiedAttribute, Right, Version, attribute::HybridizationStatus,
     },
     data_struct::Dict,
 };
@@ -111,7 +111,7 @@ impl AccessStructure {
     pub fn add_attribute(
         &mut self,
         attribute: QualifiedAttribute,
-        security_mode: EncryptionHint,
+        security_mode: HybridizationStatus,
         after: Option<&str>,
     ) -> Result<(), Error> {
         let cnt = self
@@ -146,9 +146,7 @@ impl AccessStructure {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
         }
     }
-}
 
-impl AccessStructure {
     /// Changes the name of an attribute.
     pub fn rename_attribute(
         &mut self,
@@ -194,7 +192,7 @@ impl AccessStructure {
     /// hybridization and activation status.
     pub(crate) fn omega(
         &self,
-    ) -> Result<BTreeMap<Right, (EncryptionHint, EncryptionStatus)>, Error>
+    ) -> Result<BTreeMap<Right, (HybridizationStatus, EncryptionStatus)>, Error>
     {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.as_slice())
@@ -204,9 +202,7 @@ impl AccessStructure {
             })
             .collect()
     }
-}
 
-impl AccessStructure {
     /// Returns the given attribute from the access structure.
     /// Fails if there is no such attribute.
     fn get_attribute(
@@ -361,11 +357,11 @@ impl AccessStructure {
 /// - D2::B2
 fn combine(
     dimensions: &[(&String, &Dimension)],
-) -> Vec<(Vec<usize>, EncryptionHint, EncryptionStatus)> {
+) -> Vec<(Vec<usize>, HybridizationStatus, EncryptionStatus)> {
     if dimensions.is_empty() {
         vec![(
             vec![],
-            EncryptionHint::Classic,
+            HybridizationStatus::Classic,
             EncryptionStatus::EncryptDecrypt,
         )]
     } else {
@@ -385,6 +381,11 @@ fn combine(
         }
         [partial_combinations, res].concat()
     }
+}
+
+#[cfg(feature = "test-utils")]
+pub fn omega_size(access_structure: &AccessStructure) -> Result<usize, Error> {
+    access_structure.omega().map(|o| o.len())
 }
 
 impl Default for AccessStructure {
@@ -460,9 +461,9 @@ mod tests {
 
         structure.add_anarchy("Country".to_string()).unwrap();
         [
-            ("France", EncryptionHint::Classic),
-            ("Germany", EncryptionHint::Classic),
-            ("Spain", EncryptionHint::Classic),
+            ("France", HybridizationStatus::Classic),
+            ("Germany", HybridizationStatus::Classic),
+            ("Spain", HybridizationStatus::Classic),
         ]
         .into_iter()
         .try_for_each(|(attribute, mode)| {
