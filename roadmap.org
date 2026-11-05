@@ -1,6 +1,6 @@
 #+title: Covercrypt Road-Map
 
-* Planned [3/6]
+* Planned [4/6]
 
 ** DONE Make hierarchical broadcasts bottom (⊥) attributes         :breaking:
 <2026-10-27 Tue>
@@ -79,8 +79,9 @@ Covercrypt does not use a crypto-provider yet
 - [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
 
 
-** TODO Space-efficient MSK representation                         :breaking:
+** DONE Space-efficient MSK representation                         :breaking:
 DEADLINE: <2026-11-06 Fri>
+DONE: <2026-11-03 Tue>
 
 Complex access structures can lead to huge universes. For example, an access
 structure holding 10 dimensions of 3 attributes requires a universe holding
@@ -116,18 +117,9 @@ current ~KEM~ abstraction does not allow this. We therefore propose the new
   }
 #+end_src
 
-In order to allow for a real trade-off between time and space, we propose to
-memoize the expansion of the KEM keypairs using a bounded cache which size can
-be dynamically set. To that aim, we propose to introduce the new API procedure
-~set_capacity : msk -> int -> unit~. We do not propose to be able to modify the
-caching strategy but to hard-code the use of a LRU cache. This decision should
-easily be modified in the future if required.
-
-
 * Unplanned
 
 ** Lazy Covercrypt MSK [0/1]                                       :breaking:
-DEADLINE: <2026-11-06 Fri>
 
 - [ ] *BREAKING*: only generate right secret keys for MPK or USK requiring them.
   This is a breaking change since it implies making right secrets in the MSK
