@@ -1,6 +1,6 @@
 #+title: Covercrypt Road-Map
 
-* Planned [4/6]
+* Planned [4/7]
 
 ** DONE Make hierarchical broadcasts bottom (⊥) attributes         :breaking:
 <2026-10-27 Tue>
@@ -61,24 +61,6 @@ The behavior of ~gen_mpk msk None~ is identical to the old ~msk.mpk()~ while
 ~gen_mpk msk Some(ap)~ returns an MPK that limits the encapsulation power to a
 subset of the ~ap~ policy.
 
-** TODO Decryption hints [0/3]                                     :breaking:
-DEADLINE: <2026-10-30 Fri>
-
-Allow users to pass hints upon decapsulation to guide space exploration upon
-decapsulation:
-- [ ] Define and specify the hint semantics
-- [ ] *BREAKING*: Use hint upon decapsulation
-
-** TODO Crypto-provider [0/2]                          :breaking:refactoring:
-DEADLINE: <2026-11-13 Fri>
-
-Covercrypt does not use a crypto-provider yet
-- [ ] define a crypto-provider trait for Covercrypt and provide base
-  instantiations selected with features to remain compatible with the existing
-  version.
-- [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
-
-
 ** DONE Space-efficient MSK representation                         :breaking:
 DEADLINE: <2026-11-06 Fri>
 DONE: <2026-11-03 Tue>
@@ -116,6 +98,41 @@ current ~KEM~ abstraction does not allow this. We therefore propose the new
       ) -> Result<(Self::DecapsulationKey, Self::EncapsulationKey), Self::Error>;
   }
 #+end_src
+
+** TODO Decryption hints [0/2]                                     :breaking:
+DEADLINE: <2026-10-30 Fri>
+
+Allow users to pass hints upon decapsulation to guide space exploration upon
+decapsulation:
+- [ ] Define and specify the hint semantics
+- [ ] *BREAKING*: Use hint upon decapsulation
+
+** TODO Crypto-provider [0/2]                          :breaking:refactoring:
+DEADLINE: <2026-11-13 Fri>
+
+Covercrypt does not use a crypto-provider yet
+- [ ] define a crypto-provider trait for Covercrypt and provide base
+  instantiations selected with features to remain compatible with the existing
+  version.
+- [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
+
+** TODO Per-dimension broadcast attribute in user policies         :breaking:
+
+User policies are extended with all attributes from dimensions that are left
+unmentioned. This is an issue when a user should be granted no special right on
+a given axis. For example, the user access policy ~security::top~ gives a user
+access to all combinations with attributes from orthogonal dimensions which
+allows to efficiently express powerful user access policies. On the other hand,
+restricted user policies (here a user policy only granting access to broadcasts
+encapsulations for the ~security::top~ attribute) cannot be expressed without
+adding an attribute ~none~ in each dimension and rewriting the user access
+policy as ~security::top && other_dim_1::none && ...~.
+
+We propose to reverse the current paradigm, so that leaving a dimension
+unmentioned in a user access policy does not grant this user any additional
+right and to add a new syntax ~dim::*~ to grant this user all right on the
+dimension ~dim~.
+
 
 * Unplanned
 
