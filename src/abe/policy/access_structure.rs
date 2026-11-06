@@ -77,7 +77,7 @@ impl AccessStructure {
         }
     }
 
-    /// Removes the given dim from the access structure.
+    /// Removes the dimension with the given name from the access structure.
     ///
     /// Requires USK refresh
     /// ====================
@@ -134,6 +134,7 @@ impl AccessStructure {
     ///
     /// Requires USK refresh
     /// ====================
+    ///
     /// Only refreshed keys loose the ability to decrypt for an access policy belonging to the
     /// semantic space of this attribute.
     pub fn del_attribute(
@@ -161,10 +162,21 @@ impl AccessStructure {
         }
     }
 
+    /// Lists name of the dimensions hold by this access structure.
     pub fn dimensions(&self) -> impl Iterator<Item = &str> {
         self.dimensions.keys().map(|d| d.as_str())
     }
 
+    /// Returns the dimension with the given name from this access structure.
+    ///
+    /// Fails if there is no such dimension.
+    pub fn get_dimension(&self, name: &str) -> Result<&Dimension, Error> {
+        self.dimensions
+            .get(name)
+            .ok_or_else(|| Error::DimensionNotFound(name.to_string()))
+    }
+
+    /// Lists the qualified attributes hold by this access structure.
     pub fn attributes(
         &'_ self,
     ) -> impl '_ + Iterator<Item = QualifiedAttribute> {
@@ -175,9 +187,22 @@ impl AccessStructure {
         })
     }
 
+    /// Returns the attribute with the given name from this access structure.
+    ///
+    /// Fails if there is no such attribute.
+    pub fn get_attribute(
+        &self,
+        attr: &QualifiedAttribute,
+    ) -> Result<Option<&Attribute>, Error> {
+        let dimension = self.get_dimension(&attr.dimension)?;
+        dimension.get_attribute(&attr.attribute)
+    }
+
     /// Marks an attribute as read only.
-    /// The corresponding attribute key will be removed from the public key.
-    /// But the decryption key will be kept to allow reading old ciphertext.
+    ///
+    /// Public keys generated for this access structure won't hold any key for
+    /// this right, but user secret keys will to allow opening encapsulations
+    /// previously generated for a policy mentioning this attribute.
     pub fn disable_attribute(
         &mut self,
         attr: &QualifiedAttribute,
@@ -188,7 +213,7 @@ impl AccessStructure {
         }
     }
 
-    /// Generates all rights defined by this access structure and return their
+    /// Returns all rights defined by this access structure along with their
     /// hybridization and activation status.
     pub(crate) fn omega(
         &self,
@@ -201,19 +226,6 @@ impl AccessStructure {
                 Right::from_point(ids).map(|r| (r, (mode, status)))
             })
             .collect()
-    }
-
-    /// Returns the given attribute from the access structure.
-    /// Fails if there is no such attribute.
-    fn get_attribute(
-        &self,
-        attr: &QualifiedAttribute,
-    ) -> Result<Option<&Attribute>, Error> {
-        if let Some(dim) = self.dimensions.get(&attr.dimension) {
-            dim.get_attribute(&attr.attribute)
-        } else {
-            Err(Error::DimensionNotFound(attr.dimension.to_string()))
-        }
     }
 
     /// Retrieves the ID of an attribute.
@@ -229,26 +241,6 @@ impl AccessStructure {
         )
     }
 
-    /// Extend each attribute of the given clause with the lower attributes of
-    /// its dimension or with the entire dimension in case of the broadcast
-    /// attribute.
-    fn extend_clause(
-        &self,
-        clause: &[QualifiedAttribute],
-    ) -> Result<Vec<Dimension>, Error> {
-        clause
-            .iter()
-            .map(|qa| {
-                self.dimensions
-                    .get(&qa.dimension)
-                    .ok_or_else(|| {
-                        Error::DimensionNotFound(qa.dimension.clone())
-                    })
-                    .and_then(|d| d.restrict(qa.attribute.to_string()))
-            })
-            .collect()
-    }
-
     /// Returns the rights associated to the given access policy when extended
     /// each attribute of each clause to its lower attributes or the entire
     /// dimension in the case of the broadcast attribute.
@@ -256,10 +248,21 @@ impl AccessStructure {
         &self,
         ap: &AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
+        let extend_clause =
+            |clause: &[QualifiedAttribute]| -> Result<Vec<Dimension>, Error> {
+                clause
+                    .iter()
+                    .map(|qa| {
+                        let dimension = self.get_dimension(&qa.dimension)?;
+                        dimension.restrict(qa.attribute.to_string())
+                    })
+                    .collect()
+            };
+
         ap.to_dnf()
             .iter()
             .map(|clause| {
-                self.extend_clause(clause).map(|extended_attribute| {
+                extend_clause(clause).map(|extended_attribute| {
                     combine(extended_attribute.iter())
                 })
             })
