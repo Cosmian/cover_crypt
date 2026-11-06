@@ -14,37 +14,23 @@ use crate::{
     },
 };
 use cosmian_crypto_core::{
-    CsRng, Secret,
-    reexport::rand_core::{RngCore, SeedableRng},
+    Secret,
+    reexport::rand_core::CryptoRngCore,
     traits::{AE, KDF},
 };
-use std::sync::{Arc, Mutex, MutexGuard};
 
-#[derive(Debug, Clone)]
-pub struct Covercrypt(Arc<Mutex<CsRng>>);
-
-impl Default for Covercrypt {
-    fn default() -> Self {
-        Self(Arc::new(Mutex::new(CsRng::from_entropy())))
-    }
-}
+#[derive(Default, Debug, Clone)]
+pub struct Covercrypt;
 
 impl Covercrypt {
-    pub fn new(rng: CsRng) -> Self {
-        Self(Arc::new(Mutex::new(rng)))
-    }
-
-    pub fn rng(&self) -> MutexGuard<'_, CsRng> {
-        self.0.lock().expect("poisoned mutex")
-    }
-
     /// Sets up the Covercrypt scheme.
     ///
     /// Generates a MSK and a MPK only holing broadcasting keys, and with a
     /// tracing level of [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
-    pub fn setup(&self) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-        let mut rng = self.rng();
-        let mut msk = setup(MIN_TRACING_LEVEL, &mut *rng)?;
+    pub fn setup(
+        rng: &mut impl CryptoRngCore,
+    ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+        let mut msk = setup(MIN_TRACING_LEVEL, rng)?;
         let rights = msk.access_structure.omega()?;
         update_msk(&mut msk, rights)?;
         let mpk = msk.mpk(None)?;
@@ -67,7 +53,6 @@ impl Covercrypt {
     // TODO: this function should be internalized and replaced by specialized
     // functions.
     pub fn update_msk(
-        &self,
         msk: &mut MasterSecretKey,
     ) -> Result<MasterPublicKey, Error> {
         update_msk(msk, msk.access_structure.omega()?)?;
@@ -80,7 +65,6 @@ impl Covercrypt {
     /// User keys need to be refreshed.
     // TODO document error cases.
     pub fn rekey(
-        &self,
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
@@ -95,7 +79,6 @@ impl Covercrypt {
     /// This action is *irreversible*, and all user keys need to be refreshed.
     // TODO document error cases.
     pub fn prune_master_secret_key(
-        &self,
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
     ) -> Result<MasterPublicKey, Error> {
@@ -108,7 +91,6 @@ impl Covercrypt {
     /// If an access policy was given, restrains the MPK to the keys required to
     /// generate encapsulations under this (or any stricter) access policy.
     pub fn gen_mpk(
-        &self,
         msk: &MasterSecretKey,
         ap: Option<&AccessPolicy>,
     ) -> Result<MasterPublicKey, Error> {
@@ -125,15 +107,11 @@ impl Covercrypt {
     /// complementary space of its access policy.
     // TODO document error cases.
     pub fn generate_user_secret_key(
-        &self,
+        rng: &mut impl CryptoRngCore,
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
     ) -> Result<UserSecretKey, Error> {
-        usk_keygen(
-            &mut *self.rng(),
-            msk,
-            msk.access_structure.ap_to_usk_rights(ap)?,
-        )
+        usk_keygen(rng, msk, msk.access_structure.ap_to_usk_rights(ap)?)
     }
 
     /// Refreshes the USK with respect to the given MSK.
@@ -149,24 +127,24 @@ impl Covercrypt {
     /// Updates the tracing level to match the one of the MSK if needed.
     // TODO document error cases.
     pub fn refresh_usk(
-        &self,
+        rng: &mut impl CryptoRngCore,
         msk: &mut MasterSecretKey,
         usk: &mut UserSecretKey,
         keep_old_secrets: bool,
     ) -> Result<(), Error> {
-        refresh(&mut *self.rng(), msk, usk, keep_old_secrets)
+        refresh(rng, msk, usk, keep_old_secrets)
     }
 
     /// Returns a new encapsulation with the same rights as the one given, along
     /// with a freshly generated shared secret.
     pub fn recaps(
-        &self,
+        rng: &mut impl CryptoRngCore,
         msk: &MasterSecretKey,
         mpk: &MasterPublicKey,
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
         let (_ss, rights) = master_decaps(msk, encapsulation, true)?;
-        primitives::encaps(&mut *self.rng(), mpk, &rights)
+        primitives::encaps(rng, mpk, &rights)
     }
 }
 
@@ -177,24 +155,20 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
     type Error = Error;
 
     fn encaps(
-        &self,
+        rng: &mut impl CryptoRngCore,
         ek: &Self::EncapsulationKey,
         ap: &AccessPolicy,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
     {
-        primitives::encaps(
-            &mut *self.rng(),
-            ek,
-            &ek.access_structure.ap_to_enc_rights(ap)?,
-        )
+        primitives::encaps(rng, ek, &ek.access_structure.ap_to_enc_rights(ap)?)
     }
 
     fn decaps(
-        &self,
+        rng: &mut impl CryptoRngCore,
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<SHARED_SECRET_LENGTH>>, Error> {
-        primitives::decaps(&mut *self.rng(), dk, enc)
+        primitives::decaps(rng, dk, enc)
     }
 }
 
@@ -212,15 +186,12 @@ impl<
     type Error = Error;
 
     fn encrypt(
-        &self,
+        rng: &mut impl CryptoRngCore,
         mpk: &Self::EncryptionKey,
         ap: &AccessPolicy,
         ptx: &[u8],
     ) -> Result<Self::Ciphertext, Self::Error> {
-        let (seed, enc) = self.encaps(mpk, ap)?;
-        // Locking Covercrypt RNG must be performed after encapsulation since
-        // this encapsulation also requires locking the RNG.
-        let mut rng = self.rng();
+        let (seed, enc) = Self::encaps(rng, mpk, ap)?;
         let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])
             .map_err(|e| Self::Error::Kdf(e.to_string()))?;
         let mut nonce = [0; NONCE_LENGTH];
@@ -231,11 +202,11 @@ impl<
     }
 
     fn decrypt(
-        &self,
+        rng: &mut impl CryptoRngCore,
         usk: &Self::DecryptionKey,
         ctx: &Self::Ciphertext,
     ) -> Result<Option<E::Plaintext>, Self::Error> {
-        self.decaps(usk, &ctx.0)?
+        Self::decaps(rng, usk, &ctx.0)?
             .map(|seed| {
                 let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])
                     .map_err(|e| Self::Error::Kdf(e.to_string()))?;
@@ -266,66 +237,55 @@ mod tests {
     #[test]
     fn test_regressions() {
         {
-            // Ensure the (MSK, MPK) couple can be deterministically generated.
-            let rng = CsRng::from_seed([0; 32]);
-            let cc = Covercrypt::new(rng);
-            let (msk_1, mpk_1) = cc.setup().unwrap();
-            let rng = CsRng::from_seed([0; 32]);
-            let cc = Covercrypt::new(rng);
-            let (msk_2, mpk_2) = cc.setup().unwrap();
-
-            assert_eq!(msk_1, msk_2);
-            assert_eq!(mpk_1, mpk_2);
-        }
-
-        {
             // Ensure the (MSK, MPK) couple can be deterministically populated.
-            let rng = CsRng::from_seed([0; 32]);
-            let cc = Covercrypt::new(rng);
-            let (msk_1, mpk_1) = cc_keygen(&cc, true).unwrap();
-
-            let rng = CsRng::from_seed([0; 32]);
-            let cc = Covercrypt::new(rng);
-            let (msk_2, mpk_2) = cc_keygen(&cc, true).unwrap();
+            let mut rng = CsRng::from_seed([0; 32]);
+            let (msk_1, mpk_1) = cc_keygen(&mut rng, true).unwrap();
+            let mut rng = CsRng::from_seed([0; 32]);
+            let (msk_2, mpk_2) = cc_keygen(&mut rng, true).unwrap();
 
             assert_eq!(msk_1, msk_2);
             assert_eq!(mpk_1, mpk_2);
         }
 
-        let rng = CsRng::from_seed([0; 32]);
-        let cc = Covercrypt::new(rng);
-        let (mut msk, mpk) = cc_keygen(&cc, true).unwrap();
+        let mut rng = CsRng::from_seed([0; 32]);
+        let (mut msk, mpk) = cc_keygen(&mut rng, true).unwrap();
 
-        let usk_1 = cc
-            .generate_user_secret_key(
-                &mut msk,
-                &AccessPolicy::parse(
-                    "SEC::LOW || (SEC::TOP && ((CTR::FR || CTR::EN) || DPT::FIN))",
-                )
-                .unwrap(),
+        let usk_1 = Covercrypt::generate_user_secret_key(
+            &mut rng,
+            &mut msk,
+            &AccessPolicy::parse(
+                "SEC::LOW || (SEC::TOP && ((CTR::FR || CTR::EN) || DPT::FIN))",
             )
-            .unwrap();
+            .unwrap(),
+        )
+        .unwrap();
 
-        let usk_2 = cc
-            .generate_user_secret_key(
-                &mut msk,
-                &AccessPolicy::parse("(SEC::LOW && DPT::FIN) || (SEC::MED && CTR::FR && DPT::DEV)")
-                    .unwrap(),
+        let usk_2 = Covercrypt::generate_user_secret_key(
+            &mut rng,
+            &mut msk,
+            &AccessPolicy::parse(
+                "(SEC::LOW && DPT::FIN) || (SEC::MED && CTR::FR && DPT::DEV)",
             )
-            .unwrap();
+            .unwrap(),
+        )
+        .unwrap();
 
-        let enc_1 = cc
-            .encaps(
-                &mpk,
-                &AccessPolicy::parse(
-                    "SEC::TOP && (((CTR::FR || CTR::EN) && DPT::DEV) || DPT::FIN)",
-                )
-                .unwrap(),
+        let enc_1 = Covercrypt::encaps(
+            &mut rng,
+            &mpk,
+            &AccessPolicy::parse(
+                "SEC::TOP && (((CTR::FR || CTR::EN) && DPT::DEV) || DPT::FIN)",
             )
-            .unwrap();
+            .unwrap(),
+        )
+        .unwrap();
 
-        let enc_2 =
-            cc.encaps(&mpk, &AccessPolicy::parse("*").unwrap()).unwrap();
+        let enc_2 = Covercrypt::encaps(
+            &mut rng,
+            &mpk,
+            &AccessPolicy::parse("*").unwrap(),
+        )
+        .unwrap();
 
         RegTest::new("./test-data/msk")
             .unwrap()

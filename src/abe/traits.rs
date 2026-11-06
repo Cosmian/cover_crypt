@@ -1,6 +1,7 @@
 use crate::AccessPolicy;
 use cosmian_crypto_core::{
     Secret,
+    reexport::rand_core::CryptoRngCore,
     traits::{AE, KDF},
 };
 
@@ -16,7 +17,7 @@ pub trait KemAc<const LENGTH: usize> {
     ///
     /// Returns an error if the access policy is not valid.
     fn encaps(
-        &self,
+        rng: &mut impl CryptoRngCore,
         ek: &Self::EncapsulationKey,
         ap: &AccessPolicy,
     ) -> Result<(Secret<LENGTH>, Self::Encapsulation), Self::Error>;
@@ -26,7 +27,7 @@ pub trait KemAc<const LENGTH: usize> {
     /// Returns the encapsulated secret upon success or `None` if this key was
     /// not authorized to open this encapsulation.
     fn decaps(
-        &self,
+        rng: &mut impl CryptoRngCore,
         dk: &Self::DecapsulationKey,
         enc: &Self::Encapsulation,
     ) -> Result<Option<Secret<LENGTH>>, Self::Error>;
@@ -52,7 +53,7 @@ pub trait PkeAc<
     ///
     /// Returns an error if the access policy is not valid.
     fn encrypt(
-        &self,
+        rng: &mut impl CryptoRngCore,
         ek: &Self::EncryptionKey,
         ap: &AccessPolicy,
         ptx: &[u8],
@@ -63,7 +64,7 @@ pub trait PkeAc<
     /// Returns the plaintext upon success, or `None` if this key was not
     /// authorized to decrypt this ciphertext.
     fn decrypt(
-        &self,
+        rng: &mut impl CryptoRngCore,
         dk: &Self::DecryptionKey,
         ctx: &Self::Ciphertext,
     ) -> Result<Option<E::Plaintext>, Self::Error>;
