@@ -8,38 +8,40 @@ use cosmian_cover_crypt::{
     api::Covercrypt, test_utils::cc_keygen, traits::PkeAc,
 };
 use cosmian_crypto_core::{
-    Aes256Gcm,
+    Aes256Gcm, CsRng,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
+    reexport::rand_core::{CryptoRngCore, SeedableRng},
 };
 use cosmian_openssl_provider::hash::Sha256;
 
 /// Generates a new USK and encrypted header and prints them.
 #[allow(dead_code)]
 fn generate_new(
-    cc: &Covercrypt,
+    rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     mpk: &MasterPublicKey,
 ) {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
 
-    let usk = cc.generate_user_secret_key(msk, &ap).unwrap();
-    let ctx = PkeAc::<
+    let usk = Covercrypt::generate_user_secret_key(rng, msk, &ap).unwrap();
+
+    let ctx = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::MAC_LENGTH },
         Sha256,
         Aes256Gcm,
-    >::encrypt(cc, mpk, &ap, b"gotcha")
+    >>::encrypt(rng, mpk, &ap, b"gotcha")
     .expect("cannot encrypt!");
 
     // Ensure decryption is OK
-    PkeAc::<
+    <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::MAC_LENGTH },
         Sha256,
         Aes256Gcm,
-    >::decrypt(cc, &usk, &ctx)
+    >>::decrypt(rng, &usk, &ctx)
     .unwrap();
 
     {
@@ -59,13 +61,13 @@ fn generate_new(
         .unwrap();
 
         // Ensure decryption is OK
-        PkeAc::<
+        <Covercrypt as PkeAc<
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
             Sha256,
             Aes256Gcm,
-        >::decrypt(cc, &usk, &ctx)
+        >>::decrypt(rng, &usk, &ctx)
         .unwrap();
 
         File::create("./ctx.txt")
@@ -89,21 +91,21 @@ fn generate_new(
         };
 
         // Ensure decryption is OK
-        PkeAc::<
+        <Covercrypt as PkeAc<
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
             Sha256,
             Aes256Gcm,
-        >::decrypt(cc, &usk, &ctx)
+        >>::decrypt(rng, &usk, &ctx)
         .unwrap();
     }
 }
 
 fn main() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
-    let cc = Covercrypt::default();
-    let (mut _msk, mpk) = cc_keygen(&cc, false).unwrap();
+    let mut rng = CsRng::from_entropy();
+    let (mut _msk, mpk) = cc_keygen(&mut rng, false).unwrap();
 
     // Un-comment this line to generate new usk.txt and ctx.txt files.
     //
@@ -112,13 +114,13 @@ fn main() {
     let ptx = "testing encryption/decryption".as_bytes();
 
     for _ in 0..100 {
-        PkeAc::<
+        <Covercrypt as PkeAc<
             { Aes256Gcm::KEY_LENGTH },
             { Aes256Gcm::NONCE_LENGTH },
             { Aes256Gcm::MAC_LENGTH },
             Sha256,
             Aes256Gcm,
-        >::encrypt(&cc, &mpk, &ap, ptx)
+        >>::encrypt(&mut rng, &mpk, &ap, ptx)
         .expect("cannot encrypt!");
     }
 }

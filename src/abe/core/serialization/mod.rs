@@ -380,17 +380,22 @@ mod tests {
         }
 
         {
-            let cc = Covercrypt::default();
-            let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
-            let usk = cc
-                .generate_user_secret_key(
-                    &mut msk,
-                    &AccessPolicy::parse("SEC::TOP").unwrap(),
-                )
-                .unwrap();
-            let (_, enc) = cc
-                .encaps(&mpk, &AccessPolicy::parse("DPT::MKG").unwrap())
-                .unwrap();
+            let mut rng = CsRng::from_entropy();
+            let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
+
+            let usk = Covercrypt::generate_user_secret_key(
+                &mut rng,
+                &mut msk,
+                &AccessPolicy::parse("SEC::TOP").unwrap(),
+            )
+            .unwrap();
+
+            let (_, enc) = Covercrypt::encaps(
+                &mut rng,
+                &mpk,
+                &AccessPolicy::parse("DPT::MKG").unwrap(),
+            )
+            .unwrap();
 
             test_serialization(&msk).unwrap();
             test_serialization(&mpk).unwrap();

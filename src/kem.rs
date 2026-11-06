@@ -8,7 +8,7 @@ use crate::{
 use cosmian_crypto_core::{
     CryptoBaseError, CsRng,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
-    reexport::rand_core::SeedableRng,
+    reexport::rand_core::{CryptoRngCore, SeedableRng},
     traits::{KEM, cyclic_group_to_kem::GenericKem},
 };
 use cosmian_openssl_provider::{hash::Sha256, kem::MonadicKEM, p256::P256};
@@ -440,6 +440,7 @@ where
 }
 
 fn generic_enc<const KEY_LENGTH: usize, Kem: KEM<KEY_LENGTH>>(
+    rng: &mut impl CryptoRngCore,
     ek: &ConfigurableKemEk,
 ) -> Result<(Zeroizing<Vec<u8>>, ConfigurableKemEnc), Error> {
     let tag = ek.get_tag();
@@ -450,8 +451,7 @@ fn generic_enc<const KEY_LENGTH: usize, Kem: KEM<KEY_LENGTH>>(
             ))
         })?;
 
-    let mut rng = CsRng::from_entropy();
-    let (key, enc) = Kem::enc(&ek, &mut rng).map_err(|e| {
+    let (key, enc) = Kem::enc(&ek, rng).map_err(|e| {
         Error::Kem(format!("configurable-KEM encapsulation error: {e}"))
     })?;
 
@@ -586,10 +586,10 @@ impl ConfigurableKEM {
                             .to_owned(),
                     )
                 })?;
-                let cc = Covercrypt::default();
-                let (mut msk, _) = cc.setup()?;
+                let mut rng = CsRng::from_entropy();
+                let (mut msk, _) = Covercrypt::setup(&mut rng)?;
                 msk.access_structure = access_structure;
-                let mpk = cc.update_msk(&mut msk)?;
+                let mpk = Covercrypt::update_msk(&mut msk)?;
                 Ok((
                     ConfigurableKemDk(tag, msk.serialize()?),
                     ConfigurableKemEk(tag, mpk.serialize()?),
@@ -599,21 +599,22 @@ impl ConfigurableKEM {
     }
 
     pub fn enc(
+        rng: &mut impl CryptoRngCore,
         ek: &ConfigurableKemEk,
         access_policy: Option<&AccessPolicy>,
     ) -> Result<(Zeroizing<Vec<u8>>, ConfigurableKemEnc), Error> {
         match ek.get_tag() {
             KemTag::PreQuantum(PreQuantumKemTag::P256) => {
-                generic_enc::<{ P256Kem::KEY_LENGTH }, P256Kem>(ek)
+                generic_enc::<{ P256Kem::KEY_LENGTH }, P256Kem>(rng, ek)
             }
             KemTag::PreQuantum(PreQuantumKemTag::R25519) => {
-                generic_enc::<{ R25519Kem::KEY_LENGTH }, R25519Kem>(ek)
+                generic_enc::<{ R25519Kem::KEY_LENGTH }, R25519Kem>(rng, ek)
             }
             KemTag::PostQuantum(PostQuantumKemTag::MlKem512) => {
-                generic_enc::<{ MlKem512::KEY_LENGTH }, MlKem512>(ek)
+                generic_enc::<{ MlKem512::KEY_LENGTH }, MlKem512>(rng, ek)
             }
             KemTag::PostQuantum(PostQuantumKemTag::MlKem768) => {
-                generic_enc::<{ MlKem768::KEY_LENGTH }, MlKem768>(ek)
+                generic_enc::<{ MlKem768::KEY_LENGTH }, MlKem768>(rng, ek)
             }
             KemTag::Hybridized(
                 PreQuantumKemTag::P256,
@@ -621,28 +622,28 @@ impl ConfigurableKEM {
             ) => generic_enc::<
                 { P256Kem::KEY_LENGTH },
                 KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem512>,
-            >(ek),
+            >(rng, ek),
             KemTag::Hybridized(
                 PreQuantumKemTag::P256,
                 PostQuantumKemTag::MlKem768,
             ) => generic_enc::<
                 { P256Kem::KEY_LENGTH },
                 KemCombiner<{ P256Kem::KEY_LENGTH }, P256Kem, MlKem768>,
-            >(ek),
+            >(rng, ek),
             KemTag::Hybridized(
                 PreQuantumKemTag::R25519,
                 PostQuantumKemTag::MlKem512,
             ) => generic_enc::<
                 { R25519Kem::KEY_LENGTH },
                 KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem512>,
-            >(ek),
+            >(rng, ek),
             KemTag::Hybridized(
                 PreQuantumKemTag::R25519,
                 PostQuantumKemTag::MlKem768,
             ) => generic_enc::<
                 { R25519Kem::KEY_LENGTH },
                 KemCombiner<{ R25519Kem::KEY_LENGTH }, R25519Kem, MlKem768>,
-            >(ek),
+            >(rng, ek),
             KemTag::Abe => {
                 let ap = access_policy.ok_or_else(|| {
                     Error::OperationNotPermitted(
@@ -652,7 +653,7 @@ impl ConfigurableKEM {
                 })?;
                 let tag = ek.get_tag();
                 let mpk = MasterPublicKey::deserialize(ek.get_bytes())?;
-                let (key, enc) = Covercrypt::default().encaps(&mpk, ap)?;
+                let (key, enc) = Covercrypt::encaps(rng, &mpk, ap)?;
                 Ok((
                     key.serialize()?,
                     ConfigurableKemEnc(tag, enc.serialize()?),
@@ -662,6 +663,7 @@ impl ConfigurableKEM {
     }
 
     pub fn dec(
+        rng: &mut impl CryptoRngCore,
         dk: &ConfigurableKemDk,
         enc: &ConfigurableKemEnc,
     ) -> Result<Zeroizing<Vec<u8>>, Error> {
@@ -727,7 +729,7 @@ impl ConfigurableKEM {
                     ))
                 })?;
 
-                let key = Covercrypt::default().decaps(&usk, &enc)?.ok_or_else(|| {
+                let key = Covercrypt::decaps(rng, &usk, &enc)?.ok_or_else(|| {
                     Error::OperationNotPermitted(
                         "cannot open Covercrypt encapsulation: incompatible access rights"
                             .to_owned(),
@@ -771,42 +773,57 @@ mod tests {
 
     #[test]
     fn test_configurable_kem() {
-        fn run_test(tag: KemTag) {
+        let mut rng = CsRng::from_entropy();
+
+        fn run_test(rng: &mut impl CryptoRngCore, tag: KemTag) {
             let (dk, ek) = ConfigurableKEM::keygen(tag, None).unwrap();
             test_serialization(&dk).unwrap();
             test_serialization(&ek).unwrap();
-            let (key, enc) = ConfigurableKEM::enc(&ek, None).unwrap();
+            let (key, enc) = ConfigurableKEM::enc(rng, &ek, None).unwrap();
             test_serialization(&enc).unwrap();
-            let key_ = ConfigurableKEM::dec(&dk, &enc).unwrap();
+            let key_ = ConfigurableKEM::dec(rng, &dk, &enc).unwrap();
             assert_eq!(key, key_);
         }
 
-        run_test(KemTag::PreQuantum(PreQuantumKemTag::P256));
+        run_test(&mut rng, KemTag::PreQuantum(PreQuantumKemTag::P256));
 
-        run_test(KemTag::PreQuantum(PreQuantumKemTag::R25519));
+        run_test(&mut rng, KemTag::PreQuantum(PreQuantumKemTag::R25519));
 
-        run_test(KemTag::PostQuantum(PostQuantumKemTag::MlKem512));
+        run_test(&mut rng, KemTag::PostQuantum(PostQuantumKemTag::MlKem512));
 
-        run_test(KemTag::PostQuantum(PostQuantumKemTag::MlKem768));
+        run_test(&mut rng, KemTag::PostQuantum(PostQuantumKemTag::MlKem768));
 
-        run_test(KemTag::Hybridized(
-            PreQuantumKemTag::P256,
-            PostQuantumKemTag::MlKem512,
-        ));
+        run_test(
+            &mut rng,
+            KemTag::Hybridized(
+                PreQuantumKemTag::P256,
+                PostQuantumKemTag::MlKem512,
+            ),
+        );
 
-        run_test(KemTag::Hybridized(
-            PreQuantumKemTag::P256,
-            PostQuantumKemTag::MlKem768,
-        ));
+        run_test(
+            &mut rng,
+            KemTag::Hybridized(
+                PreQuantumKemTag::P256,
+                PostQuantumKemTag::MlKem768,
+            ),
+        );
 
-        run_test(KemTag::Hybridized(
-            PreQuantumKemTag::R25519,
-            PostQuantumKemTag::MlKem512,
-        ));
-        run_test(KemTag::Hybridized(
-            PreQuantumKemTag::R25519,
-            PostQuantumKemTag::MlKem768,
-        ));
+        run_test(
+            &mut rng,
+            KemTag::Hybridized(
+                PreQuantumKemTag::R25519,
+                PostQuantumKemTag::MlKem512,
+            ),
+        );
+
+        run_test(
+            &mut rng,
+            KemTag::Hybridized(
+                PreQuantumKemTag::R25519,
+                PostQuantumKemTag::MlKem768,
+            ),
+        );
 
         println!("testing CoverCrypt ABE...");
         let mut access_structure = AccessStructure::new();
@@ -819,14 +836,18 @@ mod tests {
                 .unwrap();
         let tag = msk.get_tag();
         let mut msk = MasterSecretKey::deserialize(msk.get_bytes()).unwrap();
-        let usk = Covercrypt::default()
-            .generate_user_secret_key(&mut msk, &usk_access_policy)
-            .unwrap();
+        let usk = Covercrypt::generate_user_secret_key(
+            &mut rng,
+            &mut msk,
+            &usk_access_policy,
+        )
+        .unwrap();
         let usk =
             ConfigurableKemDk::new(tag, usk.serialize().unwrap()).unwrap();
         let (key, enc) =
-            ConfigurableKEM::enc(&mpk, Some(&enc_access_policy)).unwrap();
-        let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
+            ConfigurableKEM::enc(&mut rng, &mpk, Some(&enc_access_policy))
+                .unwrap();
+        let key_ = ConfigurableKEM::dec(&mut rng, &usk, &enc).unwrap();
         assert_eq!(key, key_);
     }
 }
