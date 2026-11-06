@@ -295,26 +295,25 @@ fn test_integrity_check() {
 #[test]
 fn test_reencrypt_with_msk() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
-    let cc = Covercrypt::default();
 
     let mut rng = CsRng::from_entropy();
 
-    let (mut msk, _) = cc_keygen(&cc, false).unwrap();
-    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
-    let mut usk = cc
-        .generate_user_secret_key(&mut msk, &ap)
-        .expect("cannot generate usk");
+    let (mut msk, _) = cc_keygen(&mut rng, false).unwrap();
+    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
+    let mut usk =
+        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
 
-    let (old_key, old_enc) = cc.encaps(&mpk, &ap).unwrap();
+    let (old_key, old_enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
     assert_eq!(
         Some(&old_key),
         decaps(&mut rng, &usk, &old_enc).unwrap().as_ref()
     );
 
-    cc.rekey(&mut msk, &ap).unwrap();
+    Covercrypt::rekey(&mut msk, &ap).unwrap();
     let new_mpk = msk.mpk(None).unwrap();
-    let (new_key, new_enc) = cc.recaps(&msk, &new_mpk, &old_enc).unwrap();
-    cc.refresh_usk(&mut msk, &mut usk, true).unwrap();
+    let (new_key, new_enc) =
+        Covercrypt::recaps(&mut rng, &msk, &new_mpk, &old_enc).unwrap();
+    Covercrypt::refresh_usk(&mut rng, &mut msk, &mut usk, true).unwrap();
     assert_eq!(Some(new_key), decaps(&mut rng, &usk, &new_enc).unwrap());
     assert_ne!(Some(old_key), decaps(&mut rng, &usk, &new_enc).unwrap());
 }
@@ -323,70 +322,66 @@ fn test_reencrypt_with_msk() {
 fn test_covercrypt_kem() {
     // Classic encapsulations.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::LOW").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
-    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
-    let usk = cc
-        .generate_user_secret_key(&mut msk, &ap)
-        .expect("cannot generate usk");
-    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    let mut rng = CsRng::from_entropy();
+    let (mut msk, _mpk) = cc_keygen(&mut rng, false).unwrap();
+    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
+    let usk =
+        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
+    let (secret, enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::Classic);
-    let res = cc.decaps(&usk, &enc).unwrap();
+    let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
     // Post-quantum encapsulations.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::MED").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
-    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
-    let usk = cc
-        .generate_user_secret_key(&mut msk, &ap)
-        .expect("cannot generate usk");
-    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    let (mut msk, _mpk) = cc_keygen(&mut rng, false).unwrap();
+    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
+    let usk =
+        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
+    let (secret, enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::PostQuantum);
-    let res = cc.decaps(&usk, &enc).unwrap();
+    let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
     // Hybridized encapsulation.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, _mpk) = cc_keygen(&cc, false).unwrap();
-    let mpk = cc.update_msk(&mut msk).expect("cannot update master keys");
-    let usk = cc
-        .generate_user_secret_key(&mut msk, &ap)
-        .expect("cannot generate usk");
-    let (secret, enc) = cc.encaps(&mpk, &ap).unwrap();
+    let (mut msk, _mpk) = cc_keygen(&mut rng, false).unwrap();
+    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
+    let usk =
+        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
+    let (secret, enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::Hybridized);
-    let res = cc.decaps(&usk, &enc).unwrap();
+    let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 }
 
 #[test]
 fn test_covercrypt_pke() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
-    let cc = Covercrypt::default();
-    let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
+    let mut rng = CsRng::from_entropy();
+    let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
 
     let ptx = "testing encryption/decryption".as_bytes();
 
-    let ctx = PkeAc::<
+    let ctx = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
         Sha256,
         Aes256Gcm,
-    >::encrypt(&cc, &mpk, &ap, ptx)
+    >>::encrypt(&mut rng, &mpk, &ap, ptx)
     .expect("cannot encrypt!");
-    let usk = cc
-        .generate_user_secret_key(&mut msk, &ap)
-        .expect("cannot generate usk");
-    let ptx1 = PkeAc::<
+
+    let usk =
+        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
+
+    let ptx1 = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },
         { Aes256Gcm::NONCE_LENGTH },
         { Aes256Gcm::TAG_LENGTH },
         Sha256,
         Aes256Gcm,
-    >::decrypt(&cc, &usk, &ctx)
+    >>::decrypt(&mut rng, &usk, &ctx)
     .expect("cannot decrypt the ciphertext");
     assert_eq!(ptx, &*ptx1.unwrap());
 }

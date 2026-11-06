@@ -1,6 +1,7 @@
 use cosmian_crypto_core::{
     Aes256Gcm, CryptoCoreError, Dem, FixedSizeCBytes, Instantiable, Nonce,
     RandomFixedSizeCBytes, Secret, SymmetricKey, kdf256,
+    reexport::rand_core::CryptoRngCore,
 };
 
 use crate::{
@@ -30,19 +31,19 @@ impl EncryptedHeader {
     /// - `header_metadata`     : additional data symmetrically encrypted in the header
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
-        cc: &Covercrypt,
+        rng: &mut impl CryptoRngCore,
         mpk: &MasterPublicKey,
         ap: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self), Error> {
-        let (seed, encapsulation) = cc.encaps(mpk, ap)?;
+        let (seed, encapsulation) = Covercrypt::encaps(rng, mpk, ap)?;
 
         let encrypted_metadata = metadata
             .map(|bytes| {
                 let mut key = SymmetricKey::default();
                 kdf256!(&mut *key, &*seed, &[0]);
-                let nonce = Nonce::new(&mut *cc.rng());
+                let nonce = Nonce::new(rng);
                 let ctx = Aes256Gcm::new(&key).encrypt(
                     &nonce,
                     bytes,
@@ -65,17 +66,13 @@ impl EncryptedHeader {
     }
 
     /// Decrypts the header with the given user secret key.
-    ///
-    /// - `cc`                  : `Covercrypt` object
-    /// - `usk`                 : `Covercrypt` user secret key
-    /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn decrypt(
         &self,
-        cc: &Covercrypt,
+        rng: &mut impl CryptoRngCore,
         usk: &UserSecretKey,
         authentication_data: Option<&[u8]>,
     ) -> Result<Option<CleartextHeader>, Error> {
-        cc.decaps(usk, &self.encapsulation)?
+        Covercrypt::decaps(rng, usk, &self.encapsulation)?
             .map(|seed| {
                 let metadata = self
                     .encrypted_metadata
@@ -207,22 +204,29 @@ mod serialization {
     #[test]
     fn test_ser() {
         use crate::test_utils::cc_keygen;
-        use cosmian_crypto_core::bytes_ser_de::test_serialization;
+        use cosmian_crypto_core::{
+            CsRng, bytes_ser_de::test_serialization,
+            reexport::rand_core::SeedableRng,
+        };
 
-        let cc = Covercrypt::default();
-        let (mut msk, mpk) = cc_keygen(&cc, false).unwrap();
+        let mut rng = CsRng::from_entropy();
+        let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
 
-        let ap =
-            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
-        let usk = cc.generate_user_secret_key(&mut msk, &ap).unwrap();
+        let usk = Covercrypt::generate_user_secret_key(
+            &mut rng,
+            &mut msk,
+            &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
+        )
+        .unwrap();
 
         //
         // Simple ciphertext.
         //
 
         let test_encrypted_header = |ap, metadata, authentication_data| {
+            let mut rng = CsRng::from_entropy();
             let (secret, encrypted_header) = EncryptedHeader::generate(
-                &cc,
+                &mut rng,
                 &mpk,
                 &ap,
                 metadata,
@@ -232,7 +236,7 @@ mod serialization {
             test_serialization(&encrypted_header)
                 .expect("failed serialization test for the encrypted header");
             let decrypted_header = encrypted_header
-                .decrypt(&cc, &usk, authentication_data)
+                .decrypt(&mut rng, &usk, authentication_data)
                 .unwrap();
             let decrypted_header = decrypted_header.unwrap();
             test_serialization(&decrypted_header)
