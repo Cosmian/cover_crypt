@@ -6,7 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::{EncryptionStatus, HybridizationStatus};
-use crate::{Error, data_struct::Dict};
+use crate::{Error, abe::policy::attribute::BROADCAST, data_struct::Dict};
 
 type Name = String;
 
@@ -78,52 +78,73 @@ impl Dimension {
         }
     }
 
-    pub fn get_attribute(&self, attr_name: &Name) -> Option<&Attribute> {
-        match self {
-            Self::Anarchy(attributes) => attributes.get(attr_name),
-            Self::Hierarchy(attributes) => attributes.get(attr_name),
-        }
-    }
-
-    /// Restricts the dimension to the attribute that are lower than the given one.
-    pub fn restrict(&self, attr_name: Name) -> Result<Self, Error> {
-        let params = self
-            .get_attribute(&attr_name)
-            .ok_or_else(|| Error::AttributeNotFound(attr_name.to_string()))?
-            .clone();
-
-        match self {
-            Self::Hierarchy(attributes) => {
-                let mut attributes = attributes
-                    .iter()
-                    .take_while(|(name, _)| *name != &attr_name)
-                    .map(|(ref_name, ref_params)| {
-                        (ref_name.clone(), ref_params.clone())
-                    })
-                    .collect::<Dict<Name, Attribute>>();
-                attributes.insert(attr_name, params);
-                Ok(Self::Hierarchy(attributes))
-            }
-            Self::Anarchy(_) => {
-                Ok(Self::Anarchy(BTreeMap::from_iter([(attr_name, params)])))
-            }
-        }
-    }
-
-    /// Adds a new attribute to this dimension with the provided properties.
+    /// Returns the attribute with the given name or `None` in case this is the
+    /// broadcast attribute.
     ///
     /// # Errors
+    ///
+    /// Returns an error in case no attribute with the given name is found.
+    pub fn get_attribute(
+        &self,
+        attr_name: &Name,
+    ) -> Result<Option<&Attribute>, Error> {
+        if attr_name == BROADCAST {
+            Ok(None)
+        } else {
+            let attribute = match self {
+                Self::Anarchy(attributes) => attributes.get(attr_name),
+                Self::Hierarchy(attributes) => attributes.get(attr_name),
+            }
+            .ok_or(Error::AttributeNotFound(attr_name.to_string()))?;
+            Ok(Some(attribute))
+        }
+    }
+
+    /// Restricts the dimension to the attribute that are lower than the given
+    /// one or to the entire dimension in case this is the broadcast attribute.
+    pub fn restrict(&self, attr_name: Name) -> Result<Self, Error> {
+        if let Some(attribute) = self.get_attribute(&attr_name)?.cloned() {
+            match self {
+                Self::Hierarchy(attributes) => {
+                    let mut attributes = attributes
+                        .iter()
+                        .take_while(|(name, _)| *name != &attr_name)
+                        .map(|(ref_name, ref_params)| {
+                            (ref_name.clone(), ref_params.clone())
+                        })
+                        .collect::<Dict<Name, Attribute>>();
+                    attributes.insert(attr_name, attribute);
+                    Ok(Self::Hierarchy(attributes))
+                }
+                Self::Anarchy(_) => Ok(Self::Anarchy(BTreeMap::from_iter([(
+                    attr_name, attribute,
+                )]))),
+            }
+        } else {
+            Ok(self.clone())
+        }
+    }
+
+    /// Adds a new attribute to this dimension with the provided name and properties.
+    ///
+    /// # Errors
+    ///
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,
-        attribute: Name,
+        name: Name,
         security_mode: HybridizationStatus,
         after: Option<&str>,
         id: usize,
     ) -> Result<(), Error> {
+        if name == BROADCAST {
+            return Err(Error::InvalidAttribute(
+                "cannot add an attribute named '*'".to_owned(),
+            ));
+        }
         match self {
             Self::Anarchy(attributes) => {
-                if let Entry::Vacant(entry) = attributes.entry(attribute) {
+                if let Entry::Vacant(entry) = attributes.entry(name) {
                     entry.insert(Attribute::new(security_mode, id));
                     Ok(())
                 } else {
@@ -133,7 +154,7 @@ impl Dimension {
                 }
             }
             Self::Hierarchy(attributes) => {
-                if attributes.contains_key(&attribute) {
+                if attributes.contains_key(&name) {
                     return Err(Error::OperationNotPermitted(
                         "Attribute already in dimension".to_string(),
                     ));
@@ -161,8 +182,7 @@ impl Dimension {
                     .take_while(|a| Some(a) != higher_attributes.last())
                     .collect::<Dict<_, _>>();
 
-                new_attributes
-                    .insert(attribute, Attribute::new(security_mode, id));
+                new_attributes.insert(name, Attribute::new(security_mode, id));
                 higher_attributes.into_iter().rev().for_each(|(name, dim)| {
                     new_attributes.insert(name, dim);
                 });
@@ -177,6 +197,11 @@ impl Dimension {
     /// # Errors
     /// Returns an error if no attribute with this name is found.
     pub fn remove_attribute(&mut self, name: &Name) -> Result<(), Error> {
+        if name == BROADCAST {
+            return Err(Error::InvalidAttribute(
+                "cannot remove the broadcast attribute '*'".to_owned(),
+            ));
+        }
         match self {
             Self::Anarchy(attributes) => attributes
                 .remove(name)
