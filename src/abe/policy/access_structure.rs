@@ -28,7 +28,7 @@ impl AccessStructure {
         &self,
         ap: &AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
-        self.generate_complementary_rights(ap)
+        self.generate_extended_rights(ap)
     }
 
     /// Generate the set of ciphertext rights described by the given access policy.
@@ -36,7 +36,7 @@ impl AccessStructure {
         &self,
         ap: &AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
-        self.generate_associated_rights(ap)
+        self.generate_restricted_rights(ap)
     }
 
     /// Add an anarchic dimension with the given name to the access structure.
@@ -77,7 +77,7 @@ impl AccessStructure {
         }
     }
 
-    /// Removes the given dim from the access structure.
+    /// Removes the dimension with the given name from the access structure.
     ///
     /// Requires USK refresh
     /// ====================
@@ -134,6 +134,7 @@ impl AccessStructure {
     ///
     /// Requires USK refresh
     /// ====================
+    ///
     /// Only refreshed keys loose the ability to decrypt for an access policy belonging to the
     /// semantic space of this attribute.
     pub fn del_attribute(
@@ -161,10 +162,21 @@ impl AccessStructure {
         }
     }
 
+    /// Lists name of the dimensions hold by this access structure.
     pub fn dimensions(&self) -> impl Iterator<Item = &str> {
         self.dimensions.keys().map(|d| d.as_str())
     }
 
+    /// Returns the dimension with the given name from this access structure.
+    ///
+    /// Fails if there is no such dimension.
+    pub fn get_dimension(&self, name: &str) -> Result<&Dimension, Error> {
+        self.dimensions
+            .get(name)
+            .ok_or_else(|| Error::DimensionNotFound(name.to_string()))
+    }
+
+    /// Lists the qualified attributes hold by this access structure.
     pub fn attributes(
         &'_ self,
     ) -> impl '_ + Iterator<Item = QualifiedAttribute> {
@@ -175,9 +187,22 @@ impl AccessStructure {
         })
     }
 
+    /// Returns the attribute with the given name from this access structure.
+    ///
+    /// Fails if there is no such attribute.
+    pub fn get_attribute(
+        &self,
+        attr: &QualifiedAttribute,
+    ) -> Result<Option<&Attribute>, Error> {
+        let dimension = self.get_dimension(&attr.dimension)?;
+        dimension.get_attribute(&attr.attribute)
+    }
+
     /// Marks an attribute as read only.
-    /// The corresponding attribute key will be removed from the public key.
-    /// But the decryption key will be kept to allow reading old ciphertext.
+    ///
+    /// Public keys generated for this access structure won't hold any key for
+    /// this right, but user secret keys will to allow opening encapsulations
+    /// previously generated for a policy mentioning this attribute.
     pub fn disable_attribute(
         &mut self,
         attr: &QualifiedAttribute,
@@ -188,33 +213,19 @@ impl AccessStructure {
         }
     }
 
-    /// Generates all rights defined by this access structure and return their
+    /// Returns all rights defined by this access structure along with their
     /// hybridization and activation status.
     pub(crate) fn omega(
         &self,
     ) -> Result<BTreeMap<Right, (HybridizationStatus, EncryptionStatus)>, Error>
     {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
-        combine(universe.as_slice())
+        combine(universe.into_iter().map(|(_, dimension)| dimension))
             .into_iter()
             .map(|(ids, mode, status)| {
                 Right::from_point(ids).map(|r| (r, (mode, status)))
             })
             .collect()
-    }
-
-    /// Returns the given attribute from the access structure.
-    /// Fails if there is no such attribute.
-    fn get_attribute(
-        &self,
-        attr: &QualifiedAttribute,
-    ) -> Result<&Attribute, Error> {
-        if let Some(dim) = self.dimensions.get(&attr.dimension) {
-            dim.get_attribute(&attr.attribute)
-                .ok_or(Error::AttributeNotFound(attr.to_string()))
-        } else {
-            Err(Error::DimensionNotFound(attr.dimension.to_string()))
-        }
     }
 
     /// Retrieves the ID of an attribute.
@@ -223,121 +234,71 @@ impl AccessStructure {
         &self,
         attribute: &QualifiedAttribute,
     ) -> Result<usize, Error> {
-        self.get_attribute(attribute).map(Attribute::get_id)
+        self.get_attribute(attribute)?.map(Attribute::get_id).ok_or(
+            Error::InvalidAttribute(
+                "broadcast attribute hash no ID".to_owned(),
+            ),
+        )
     }
 
-    /// Generates the restriction of the semantic space of the given clause to
-    /// the rights of lower rank than its associated right.
-    ///
-    /// The semantic space is define as the smallest subspace of the universe in
-    /// which the given clause can be expressed.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the clause is invalid.
-    fn generate_semantic_space(
-        &self,
-        clause: &[QualifiedAttribute],
-    ) -> Result<BTreeMap<String, Dimension>, Error> {
-        clause
-            .iter()
-            .map(|qa| {
-                self.dimensions
-                    .get(&qa.dimension)
-                    .ok_or_else(|| {
-                        Error::DimensionNotFound(qa.dimension.clone())
-                    })
-                    .and_then(|d| d.restrict(qa.attribute.to_string()))
-                    .map(|d| (qa.dimension.clone(), d))
-            })
-            .collect()
-    }
-
-    /// Returns the points in the complementary space of the given clause.
-    ///
-    /// The complementary space of a clause is generated by extending each of
-    /// its semantic projections and hierarchical extensions with the
-    /// complementary in Omega of its semantic space.
-    fn generate_complementary_points(
-        &self,
-        clause: &[QualifiedAttribute],
-    ) -> Result<Vec<Vec<usize>>, Error> {
-        // The goal is to compute Ω_r = Ω - sem_Ω(r) + {P: P <= P_r}.
-
-        // Compute sem_Ω(r), the semantic space of the right in Omega.
-        let semantic_space = self.generate_semantic_space(clause)?;
-
-        let semantic_points =
-            combine(semantic_space.iter().collect::<Vec<_>>().as_slice())
-                .into_iter()
-                .map(|(ids, _, _)| ids)
-                .collect::<Vec<_>>();
-
-        // The restricted space is Ω\π_c(Ω).
-        let restricted_space = self
-            .dimensions
-            .iter()
-            .filter(|(name, _)| !semantic_space.contains_key(*name))
-            // Only anarchical dimensions are part of the restricted space.
-            .filter(|(_, dim)| !dim.is_hierarchical())
-            .collect::<Vec<_>>();
-
-        let complementary_points = combine(&restricted_space)
-            .into_iter()
-            .flat_map(|(prefix, _, _)| {
-                semantic_points.iter().map(move |suffix| {
-                    [prefix.clone(), suffix.clone()].concat()
-                })
-            })
-            .collect::<Vec<_>>();
-
-        Ok(complementary_points)
-    }
-
-    /// Returns the rights in the complementary space of the given access policy.
-    fn generate_complementary_rights(
+    /// Returns the rights associated to the given access policy when extended
+    /// each attribute of each clause to its lower attributes or the entire
+    /// dimension in the case of the broadcast attribute.
+    fn generate_extended_rights(
         &self,
         ap: &AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
-        // The complementary space of an access policy is the union of the
-        // complementary spaces generated by each clause of the DNF of this
-        // access policy.
-        let points = ap
-            .to_dnf()
-            .iter()
-            .map(|qas| self.generate_complementary_points(qas))
-            .try_fold(BTreeSet::new(), |mut acc, ids| {
-                ids?.into_iter().for_each(|ids| {
-                    acc.insert(ids);
-                });
-                Ok::<BTreeSet<Vec<usize>>, Error>(acc)
-            })?;
+        let extend_clause =
+            |clause: &[QualifiedAttribute]| -> Result<Vec<Dimension>, Error> {
+                clause
+                    .iter()
+                    .map(|qa| {
+                        let dimension = self.get_dimension(&qa.dimension)?;
+                        dimension.restrict(qa.attribute.to_string())
+                    })
+                    .collect()
+            };
 
-        points.into_iter().map(Right::from_point).collect()
+        ap.to_dnf()
+            .iter()
+            .map(|clause| {
+                extend_clause(clause).map(|extended_attribute| {
+                    combine(extended_attribute.iter())
+                })
+            })
+            .try_fold(BTreeSet::new(), |s, points| {
+                points?.into_iter().try_fold(s, |mut s, (point, _, _)| {
+                    s.insert(Right::from_point(point)?);
+                    Ok(s)
+                })
+            })
     }
 
     /// Returns the rights of the points defined by the given access policy.
     ///
     /// Each conjunction of the associated DNF defines a unique right.
+    /// Mentioning the broadcast attribute is equivalent to leaving it
+    /// unmentioned.
     ///
     /// # Error
+    ///
     /// Returns an error if the access policy is invalid.
-    fn generate_associated_rights(
+    fn generate_restricted_rights(
         &self,
         ap: &AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
         ap.to_dnf().into_iter().try_fold(
             BTreeSet::new(),
-            |mut rights, conjunction| {
-                let r = Right::from_point(
-                    conjunction
-                        .into_iter()
-                        .map(|attr| {
-                            self.get_attribute(&attr).map(|params| params.id)
-                        })
-                        .collect::<Result<_, _>>()?,
-                )?;
-                rights.insert(r);
+            |mut rights, clause| {
+                let point = clause
+                    .into_iter()
+                    .filter_map(|attr| {
+                        self.get_attribute(&attr)
+                            .map(|attribute| attribute.map(Attribute::get_id))
+                            .transpose()
+                    })
+                    .collect::<Result<_, _>>()?;
+                rights.insert(Right::from_point(point)?);
                 Ok(rights)
             },
         )
@@ -355,18 +316,11 @@ impl AccessStructure {
 /// - D1::A1 && D2::B2
 /// - D2::A2
 /// - D2::B2
-fn combine(
-    dimensions: &[(&String, &Dimension)],
+fn combine<'a>(
+    mut dimensions: impl Iterator<Item = &'a Dimension>,
 ) -> Vec<(Vec<usize>, HybridizationStatus, EncryptionStatus)> {
-    if dimensions.is_empty() {
-        vec![(
-            vec![],
-            HybridizationStatus::Classic,
-            EncryptionStatus::EncryptDecrypt,
-        )]
-    } else {
-        let (_, current_dimension) = &dimensions[0];
-        let partial_combinations = combine(&dimensions[1..]);
+    if let Some(current_dimension) = dimensions.next() {
+        let partial_combinations = combine(dimensions);
         let mut res = vec![];
         for component in current_dimension.attributes() {
             for (ids, security_mode, encryption_status) in
@@ -380,6 +334,12 @@ fn combine(
             }
         }
         [partial_combinations, res].concat()
+    } else {
+        vec![(
+            vec![],
+            HybridizationStatus::Classic,
+            EncryptionStatus::EncryptDecrypt,
+        )]
     }
 }
 
@@ -451,7 +411,7 @@ mod tests {
 
         // There should be `Prod_dim(|dim| + 1)` rights.
         assert_eq!(
-            combine(&structure.dimensions.iter().collect::<Vec<_>>()).len(),
+            combine(structure.dimensions.values()).len(),
             structure
                 .dimensions
                 .values()
@@ -477,7 +437,7 @@ mod tests {
 
         // There should be `Prod_dim(|dim| + 1)` rights.
         assert_eq!(
-            combine(&structure.dimensions.iter().collect::<Vec<_>>()).len(),
+            combine(structure.dimensions.values()).len(),
             structure
                 .dimensions
                 .values()
@@ -487,14 +447,102 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_complementary_rights() -> Result<(), Error> {
+    fn test_extended_rights() -> Result<(), Error> {
         let mut structure = AccessStructure::new();
         gen_structure(&mut structure, false).unwrap();
 
         {
+            let ap = "SEC::LOW";
+            let comp_points = structure
+                .generate_extended_rights(&AccessPolicy::parse(ap)?)?;
+
+            // Check the rights are the same as the ones manually generated, i.e.:
+            // - rights(*)
+            // - rights(LOW)
+            let mut rights = BTreeSet::new();
+
+            // The broadcast.
+            rights.insert(Right::from_point(vec![])?);
+
+            rights
+                .insert(Right::from_point(vec![structure.get_attribute_id(
+                    &QualifiedAttribute::new("SEC", "LOW"),
+                )?])?);
+
+            assert_eq!(comp_points, rights);
+        }
+
+        {
+            let ap = "DPT::HR && SEC::*";
+            let comp_points = structure
+                .generate_extended_rights(&AccessPolicy::parse(ap)?)?;
+
+            // Check the rights are the same as the ones manually generated, i.e.:
+            // - rights(*)
+            // - rights(DPT::*, SEC::LOW)
+            // - rights(DPT::*, SEC::MID)
+            // - rights(DPT::*, SEC::TOP)
+            // - rights(DPT::HR, SEC::⊥)
+            // - rights(DPT::HR, SEC::LOW)
+            // - rights(DPT::HR, SEC::MID)
+            // - rights(DPT::HR, SEC::TOP)
+            let mut rights = BTreeSet::new();
+
+            // The broadcast (`*`).
+            rights.insert(Right::from_point(vec![])?);
+
+            // rights(DPT::HR, SEC::⊥)
+            rights
+                .insert(Right::from_point(vec![structure.get_attribute_id(
+                    &QualifiedAttribute::new("DPT", "HR"),
+                )?])?);
+
+            rights.insert(Right::from_point(vec![
+                structure
+                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
+                structure
+                    .get_attribute_id(&QualifiedAttribute::new("SEC", "LOW"))?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure
+                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
+                structure
+                    .get_attribute_id(&QualifiedAttribute::new("SEC", "MED"))?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure
+                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
+                structure
+                    .get_attribute_id(&QualifiedAttribute::new("SEC", "TOP"))?,
+            ])?);
+
+            // rights(DPT::*, SEC::LOW)
+            rights
+                .insert(Right::from_point(vec![structure.get_attribute_id(
+                    &QualifiedAttribute::new("SEC", "LOW"),
+                )?])?);
+
+            // rights(DPT::*, SEC::MID)
+            rights
+                .insert(Right::from_point(vec![structure.get_attribute_id(
+                    &QualifiedAttribute::new("SEC", "MED"),
+                )?])?);
+
+            // rights(DPT::*, SEC::TOP)
+            rights
+                .insert(Right::from_point(vec![structure.get_attribute_id(
+                    &QualifiedAttribute::new("SEC", "TOP"),
+                )?])?);
+
+            assert_eq!(comp_points, rights);
+        }
+
+        {
             let ap = "(DPT::HR || DPT::FIN) && SEC::TOP";
             let comp_points = structure
-                .generate_complementary_rights(&AccessPolicy::parse(ap)?)?;
+                .generate_extended_rights(&AccessPolicy::parse(ap)?)?;
 
             // Check the rights are the same as the ones manually generated, i.e.:
             // - rights()
@@ -576,25 +624,34 @@ mod tests {
             let ap = "DPT::HR";
             assert_eq!(
                 structure
-                    .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
+                    .generate_extended_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // Since the security dimension is hierarchical, the restricted
-                // space is the empty space. There is only one projection of
-                // DPT::HR, which is the universal broadcast. The complementary
-                // space is generated by extending these two points with the
-                // restricted space.
-                2
+                // The extension of `DPT::HR` is itself and the dimensional
+                // broadcast. No other extensions are required since nothing
+                // else is mentioned.
+                (1 + 1)
+            );
+
+            let ap = "DPT::* && SEC::LOW";
+            assert_eq!(
+                structure
+                    .generate_extended_rights(&AccessPolicy::parse(ap)?)?
+                    .len(),
+                // The extension of `DPT::*` is the entire department dimension
+                // (including the dimensional broadcast), while the extension of
+                // `SEC::LOW` is itself and the bottom attribute of the `SEC`
+                // dimension.
+                (1 + 1) * (5 + 1)
             );
 
             let ap = "SEC::LOW";
             assert_eq!(
                 structure
-                    .generate_complementary_rights(&AccessPolicy::parse(ap)?)?
+                    .generate_extended_rights(&AccessPolicy::parse(ap)?)?
                     .len(),
-                // The restricted space is the department dimension, and the
-                // lower points are the associated point, the point associated
-                // to "SEC::LOW" and the universal broadcast.
-                2 * (1 + 5)
+                // The extension of `SEC::LOW` is itself and the bottom
+                // attribute of the `SEC` dimension.
+                (1 + 1)
             );
         }
         Ok(())
