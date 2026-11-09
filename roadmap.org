@@ -1,6 +1,6 @@
 #+title: Covercrypt Road-Map
 
-* Planned [4/7]
+* Planned [5/7]
 
 ** DONE Make hierarchical broadcasts bottom (⊥) attributes         :breaking:
 <2026-10-27 Tue>
@@ -116,7 +116,8 @@ Covercrypt does not use a crypto-provider yet
   version.
 - [ ] *BREAKING*: make Covercrypt generic over the crypto-provider.
 
-** TODO Per-dimension broadcast attribute in user policies         :breaking:
+** DONE Per-dimension broadcast attribute in user policies         :breaking:
+DONE: <2026-11-06 Fri>
 
 User policies are extended with all attributes from dimensions that are left
 unmentioned. This is an issue when a user should be granted no special right on
