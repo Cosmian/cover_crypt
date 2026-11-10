@@ -69,8 +69,8 @@ impl Dimension {
 
     /// Returns an iterator over the attributes name.
     ///
-    /// If the dimension is ordered, the names are returned in this order, otherwise they are
-    /// returned in arbitrary order.
+    /// If the dimension is ordered, the names are returned in this order,
+    /// otherwise they are returned in arbitrary order.
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &Name>> {
         match self {
             Self::Anarchy(attributes) => Box::new(attributes.keys()),
@@ -83,10 +83,8 @@ impl Dimension {
     /// # Errors
     ///
     /// Returns an error in case no attribute with the given name is found.
-    pub fn get_attribute<'a>(
-        &self,
-        name: NameRef<'a>,
-    ) -> Result<&Attribute, Error> {
+    pub fn get_attribute(&self, name: &str) -> Result<&Attribute, Error> {
+        let name = NameRef::try_from(name)?;
         match self {
             Self::Anarchy(attributes) => attributes.get(&*name),
             Self::Hierarchy(attributes) => attributes.get(&*name),
@@ -100,8 +98,8 @@ impl Dimension {
         if name == BROADCAST {
             Ok(self.clone())
         } else {
+            let attribute = self.get_attribute(&name)?.clone();
             let name = Name::try_from(name)?;
-            let attribute = self.get_attribute((&name).into())?.clone();
             match self {
                 Self::Hierarchy(attributes) => {
                     let mut attributes = attributes
@@ -206,13 +204,14 @@ impl Dimension {
     ///
     /// Returns an error if no attribute with this name is found.
     pub fn remove_attribute(&mut self, name: &str) -> Result<(), Error> {
+        let name = NameRef::try_from(name)?;
         match self {
             Self::Anarchy(attributes) => attributes
-                .remove(name)
+                .remove(&*name)
                 .map(|_| ())
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
-                .remove(name)
+                .remove(&*name)
                 .map(|_| ())
                 .ok_or(Error::AttributeNotFound(name.to_string())),
         }
@@ -222,10 +221,8 @@ impl Dimension {
     ///
     /// # Errors
     /// Returns an error if no attribute with this name is found.
-    pub fn disable_attribute<'a>(
-        &mut self,
-        name: NameRef<'a>,
-    ) -> Result<(), Error> {
+    pub fn disable_attribute(&mut self, name: &str) -> Result<(), Error> {
+        let name = NameRef::try_from(name)?;
         match self {
             Self::Anarchy(attributes) => attributes
                 .get_mut(&*name)
@@ -250,9 +247,11 @@ impl Dimension {
     /// or if no attribute with the given old name is found.
     pub fn rename_attribute(
         &mut self,
-        old_name: NameRef,
-        new_name: Name,
+        old_name: &str,
+        new_name: String,
     ) -> Result<(), Error> {
+        let old_name = NameRef::try_from(old_name)?;
+        let new_name = Name::try_from(new_name)?;
         match self {
             Self::Anarchy(attributes) => {
                 if attributes.contains_key(&*new_name) {
