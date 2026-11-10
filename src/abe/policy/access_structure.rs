@@ -20,6 +20,7 @@ pub struct AccessStructure {
 }
 
 impl AccessStructure {
+    /// Return a new empty access structure.
     pub fn new() -> Self {
         Self {
             version: Version::V1,
@@ -51,7 +52,8 @@ impl AccessStructure {
     /// Only refreshed keys can decrypt for an access policy belonging to the
     /// semantic space of the new dimension.
     pub fn add_anarchy(&mut self, dimension: String) -> Result<(), Error> {
-        match self.dimensions.entry(Name::try_from(dimension)?) {
+        let name = Name::try_from(dimension)?;
+        match self.dimensions.entry(name) {
             Entry::Occupied(e) => {
                 Err(Error::ExistingDimension(e.key().to_string()))
             }
@@ -70,7 +72,8 @@ impl AccessStructure {
     /// Only refreshed keys can decrypt for an access policy belonging to the
     /// semantic space of the new dimension.
     pub fn add_hierarchy(&mut self, dimension: String) -> Result<(), Error> {
-        match self.dimensions.entry(Name::try_from(dimension)?) {
+        let name = Name::try_from(dimension)?;
+        match self.dimensions.entry(name) {
             Entry::Occupied(e) => {
                 Err(Error::ExistingDimension(e.key().to_string()))
             }
@@ -88,11 +91,12 @@ impl AccessStructure {
     ///
     /// Refreshed keys loose the ability to decrypt for an access policy
     /// belonging to the semantic space of the removed dimension.
-    pub fn del_dimension(&mut self, dimension: &str) -> Result<(), Error> {
+    pub fn del_dimension(&mut self, name: &str) -> Result<(), Error> {
+        let name = NameRef::try_from(name)?;
         self.dimensions
-            .remove(&*NameRef::try_from(dimension)?)
+            .remove(&*name)
             .map(|_| ())
-            .ok_or(Error::DimensionNotFound(dimension.to_string()))
+            .ok_or(Error::DimensionNotFound(name.to_string()))
     }
 
     /// Add the given qualified attribute to the access structure.
@@ -144,7 +148,8 @@ impl AccessStructure {
         &mut self,
         attr: &QualifiedAttribute,
     ) -> Result<(), Error> {
-        if let Some(dim) = self.dimensions.get_mut(&*attr.dimension) {
+        let dimension = NameRef::try_from(&*attr.dimension)?;
+        if let Some(dim) = self.dimensions.get_mut(&*dimension) {
             dim.remove_attribute(&attr.attribute)
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
@@ -157,14 +162,10 @@ impl AccessStructure {
         attribute: &QualifiedAttribute,
         new_name: String,
     ) -> Result<(), Error> {
-        match self.dimensions.get_mut(&*attribute.dimension) {
-            Some(d) => d.rename_attribute(
-                NameRef::try_from(&*attribute.attribute)?,
-                Name::try_from(new_name)?,
-            ),
-            None => {
-                Err(Error::DimensionNotFound(attribute.dimension.to_string()))
-            }
+        let dimension = NameRef::try_from(&*attribute.dimension)?;
+        match self.dimensions.get_mut(&*dimension) {
+            Some(d) => d.rename_attribute(&attribute.attribute, new_name),
+            None => Err(Error::DimensionNotFound(dimension.to_string())),
         }
     }
 
@@ -177,8 +178,9 @@ impl AccessStructure {
     ///
     /// Fails if there is no such dimension.
     pub fn get_dimension(&self, name: &str) -> Result<&Dimension, Error> {
+        let name = NameRef::try_from(name)?;
         self.dimensions
-            .get(name)
+            .get(&*name)
             .ok_or_else(|| Error::DimensionNotFound(name.to_string()))
     }
 
@@ -203,8 +205,9 @@ impl AccessStructure {
         &self,
         attr: &QualifiedAttribute,
     ) -> Result<&Attribute, Error> {
-        let dimension = self.get_dimension(&attr.dimension)?;
-        dimension.get_attribute(NameRef::try_from(&*attr.attribute)?)
+        let name = NameRef::try_from(&*attr.dimension)?;
+        let dimension = self.get_dimension(&name)?;
+        dimension.get_attribute(&attr.attribute)
     }
 
     /// Marks an attribute as read only.
@@ -216,10 +219,9 @@ impl AccessStructure {
         &mut self,
         attr: &QualifiedAttribute,
     ) -> Result<(), Error> {
-        match self.dimensions.get_mut(&*attr.dimension) {
-            Some(d) => {
-                d.disable_attribute(NameRef::try_from(&*attr.attribute)?)
-            }
+        let name = NameRef::try_from(&*attr.dimension)?;
+        match self.dimensions.get_mut(&*name) {
+            Some(d) => d.disable_attribute(&attr.attribute),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
     }
