@@ -1,8 +1,10 @@
 use crate::{
     Error,
     abe::policy::{
-        AccessPolicy, Attribute, Dimension, EncryptionStatus, Name, NameRef,
-        QualifiedAttribute, Right, Version, attribute::HybridizationStatus,
+        AccessPolicy, Attribute, Dimension, EncryptionStatus,
+        QualifiedAttribute, Right, Version,
+        attribute::HybridizationStatus,
+        name::{Name, NameRef},
     },
     data_struct::Dict,
 };

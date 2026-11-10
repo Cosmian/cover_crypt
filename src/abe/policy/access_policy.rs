@@ -17,7 +17,7 @@ use std::{
 #[allow(dead_code)]
 #[derive(Parser)]
 #[grammar = "abe/policy/access_policy.pest"]
-pub struct AccessPolicyParser;
+pub(crate) struct AccessPolicyParser;
 
 /// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,11 +333,9 @@ impl Serializable for AccessPolicy {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::bytes_ser_de::test_serialization;
-
-    use crate::{QualifiedAttribute, abe::policy::attribute::Version};
-
     use super::AccessPolicy;
+    use crate::{QualifiedAttribute, abe::policy::attribute::Version};
+    use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
     #[test]
     fn test_access_policy_parsing() {
