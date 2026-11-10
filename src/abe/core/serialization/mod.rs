@@ -1,15 +1,14 @@
 //! Implements the serialization methods for the `Covercrypt` objects.
 
-use cosmian_crypto_core::bytes_ser_de::{
-    Deserializer, Serializable, Serializer,
-};
-
 use crate::{
     Error,
     abe::core::{
         MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
         TracingPublicKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
     },
+};
+use cosmian_crypto_core::bytes_ser_de::{
+    Deserializer, Serializable, Serializer,
 };
 
 impl Serializable for TracingPublicKey {
@@ -20,12 +19,10 @@ impl Serializable for TracingPublicKey {
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        #[allow(clippy::needless_question_mark)]
         Ok(self.0.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
-        #[allow(clippy::needless_question_mark)]
         Ok(Self(de.read()?))
     }
 }

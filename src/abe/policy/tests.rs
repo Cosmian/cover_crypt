@@ -10,17 +10,17 @@ pub fn gen_structure(
     policy.add_hierarchy("SEC".to_string())?;
 
     policy.add_attribute(
-        QualifiedAttribute::new("SEC", "LOW"),
+        QualifiedAttribute::new("SEC".to_owned(), "LOW".to_owned()),
         HybridizationStatus::Classic,
         None,
     )?;
     policy.add_attribute(
-        QualifiedAttribute::new("SEC", "MED"),
+        QualifiedAttribute::new("SEC".to_owned(), "MED".to_owned()),
         HybridizationStatus::PostQuantum,
         Some("LOW"),
     )?;
     policy.add_attribute(
-        QualifiedAttribute::new("SEC", "TOP"),
+        QualifiedAttribute::new("SEC".to_owned(), "TOP".to_owned()),
         HybridizationStatus::Hybridized,
         Some("MED"),
     )?;
@@ -36,7 +36,7 @@ pub fn gen_structure(
     .into_iter()
     .try_for_each(|(attribute, mode)| {
         policy.add_attribute(
-            QualifiedAttribute::new("DPT", attribute),
+            QualifiedAttribute::new("DPT".to_owned(), attribute.to_owned()),
             mode,
             None,
         )
@@ -54,7 +54,7 @@ pub fn gen_structure(
         .into_iter()
         .try_for_each(|(attribute, mode)| {
             policy.add_attribute(
-                QualifiedAttribute::new("CTR", attribute),
+                QualifiedAttribute::new("CTR".to_owned(), attribute.to_owned()),
                 mode,
                 None,
             )
@@ -75,7 +75,7 @@ fn test_edit_anarchic_attributes() {
     assert!(
         structure
             .rename_attribute(
-                &QualifiedAttribute::new("DPT", "RD"),
+                &QualifiedAttribute::new("DPT".to_owned(), "RD".to_owned()),
                 "MKG".to_string(),
             )
             .is_err()
@@ -85,7 +85,7 @@ fn test_edit_anarchic_attributes() {
     assert!(
         structure
             .rename_attribute(
-                &QualifiedAttribute::new("DPT", "RD"),
+                &QualifiedAttribute::new("DPT".to_owned(), "RD".to_owned()),
                 "Research".to_string(),
             )
             .is_ok()
@@ -100,7 +100,8 @@ fn test_edit_anarchic_attributes() {
     assert!(order.len() == 3);
 
     // Add new attribute Sales
-    let new_attr = QualifiedAttribute::new("DPT", "Sales");
+    let new_attr =
+        QualifiedAttribute::new("DPT".to_owned(), "Sales".to_owned());
     assert!(
         structure
             .add_attribute(new_attr.clone(), HybridizationStatus::Classic, None)
@@ -109,7 +110,8 @@ fn test_edit_anarchic_attributes() {
     assert_eq!(structure.attributes().count(), 9);
 
     // Try adding already existing attribute HR
-    let duplicate_attr = QualifiedAttribute::new("DPT", "HR");
+    let duplicate_attr =
+        QualifiedAttribute::new("DPT".to_owned(), "HR".to_owned());
     assert!(
         structure
             .add_attribute(duplicate_attr, HybridizationStatus::Classic, None)
@@ -117,7 +119,8 @@ fn test_edit_anarchic_attributes() {
     );
 
     // Try adding attribute to non existing dimension
-    let missing_dimension = QualifiedAttribute::new("Missing", "dimension");
+    let missing_dimension =
+        QualifiedAttribute::new("Missing".to_owned(), "dimension".to_owned());
     assert!(
         structure
             .add_attribute(
@@ -129,7 +132,8 @@ fn test_edit_anarchic_attributes() {
     );
 
     // Remove research attribute
-    let delete_attr = QualifiedAttribute::new("DPT", "Research");
+    let delete_attr =
+        QualifiedAttribute::new("DPT".to_owned(), "Research".to_owned());
     structure.del_attribute(&delete_attr).unwrap();
     assert_eq!(structure.attributes().count(), 8);
 
@@ -142,10 +146,16 @@ fn test_edit_anarchic_attributes() {
     // Remove all attributes from a dimension
     structure.del_attribute(&new_attr).unwrap();
     structure
-        .del_attribute(&QualifiedAttribute::new("DPT", "HR"))
+        .del_attribute(&QualifiedAttribute::new(
+            "DPT".to_owned(),
+            "HR".to_owned(),
+        ))
         .unwrap();
     structure
-        .del_attribute(&QualifiedAttribute::new("DPT", "MKG"))
+        .del_attribute(&QualifiedAttribute::new(
+            "DPT".to_owned(),
+            "MKG".to_owned(),
+        ))
         .unwrap();
 
     structure.del_dimension("DPT").unwrap();
@@ -156,14 +166,20 @@ fn test_edit_anarchic_attributes() {
     structure.add_anarchy("DimensionTest".to_string()).unwrap();
     structure
         .add_attribute(
-            QualifiedAttribute::new("DimensionTest", "Attr1"),
+            QualifiedAttribute::new(
+                "DimensionTest".to_owned(),
+                "Attr1".to_owned(),
+            ),
             HybridizationStatus::Classic,
             None,
         )
         .unwrap();
     structure
         .add_attribute(
-            QualifiedAttribute::new("DimensionTest", "Attr2"),
+            QualifiedAttribute::new(
+                "DimensionTest".to_owned(),
+                "Attr2".to_owned(),
+            ),
             HybridizationStatus::Classic,
             None,
         )
@@ -191,9 +207,9 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute::new("SEC", "LOW",),
-            QualifiedAttribute::new("SEC", "MED",),
-            QualifiedAttribute::new("SEC", "TOP",),
+            QualifiedAttribute::new("SEC".to_owned(), "LOW".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "MED".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "TOP".to_owned(),),
         ]
     );
 
@@ -201,7 +217,7 @@ fn test_edit_hierarchic_attributes() {
     assert!(
         structure
             .rename_attribute(
-                &QualifiedAttribute::new("SEC", "LOW"),
+                &QualifiedAttribute::new("SEC".to_owned(), "LOW".to_owned()),
                 "WOL".to_string(),
             )
             .is_ok()
@@ -216,12 +232,15 @@ fn test_edit_hierarchic_attributes() {
 
     //// Try modifying hierarchical dimension
     structure
-        .del_attribute(&QualifiedAttribute::new("SEC", "WOL"))
+        .del_attribute(&QualifiedAttribute::new(
+            "SEC".to_owned(),
+            "WOL".to_owned(),
+        ))
         .unwrap();
 
     structure
         .add_attribute(
-            QualifiedAttribute::new("SEC", "OTHER"),
+            QualifiedAttribute::new("SEC".to_owned(), "OTHER".to_owned()),
             HybridizationStatus::Classic,
             None,
         )
@@ -233,15 +252,15 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute::new("SEC", "OTHER",),
-            QualifiedAttribute::new("SEC", "MED",),
-            QualifiedAttribute::new("SEC", "TOP",),
+            QualifiedAttribute::new("SEC".to_owned(), "OTHER".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "MED".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "TOP".to_owned(),),
         ]
     );
 
     structure
         .add_attribute(
-            QualifiedAttribute::new("SEC", "LOW"),
+            QualifiedAttribute::new("SEC".to_owned(), "LOW".to_owned()),
             HybridizationStatus::Classic,
             None,
         )
@@ -253,20 +272,23 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute::new("SEC", "LOW",),
-            QualifiedAttribute::new("SEC", "OTHER",),
-            QualifiedAttribute::new("SEC", "MED",),
-            QualifiedAttribute::new("SEC", "TOP",),
+            QualifiedAttribute::new("SEC".to_owned(), "LOW".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "OTHER".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "MED".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "TOP".to_owned(),),
         ]
     );
 
     structure
-        .del_attribute(&QualifiedAttribute::new("SEC", "OTHER"))
+        .del_attribute(&QualifiedAttribute::new(
+            "SEC".to_owned(),
+            "OTHER".to_owned(),
+        ))
         .unwrap();
 
     structure
         .add_attribute(
-            QualifiedAttribute::new("SEC", "MID"),
+            QualifiedAttribute::new("SEC".to_owned(), "MID".to_owned()),
             HybridizationStatus::Classic,
             Some("LOW"),
         )
@@ -278,10 +300,10 @@ fn test_edit_hierarchic_attributes() {
             .filter(|a| a.dimension == "SEC")
             .collect::<Vec<_>>(),
         vec![
-            QualifiedAttribute::new("SEC", "LOW",),
-            QualifiedAttribute::new("SEC", "MID",),
-            QualifiedAttribute::new("SEC", "MED",),
-            QualifiedAttribute::new("SEC", "TOP",),
+            QualifiedAttribute::new("SEC".to_owned(), "LOW".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "MID".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "MED".to_owned(),),
+            QualifiedAttribute::new("SEC".to_owned(), "TOP".to_owned(),),
         ]
     );
 

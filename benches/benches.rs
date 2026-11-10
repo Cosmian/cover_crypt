@@ -18,7 +18,10 @@ fn cc_keygen(
     // Remove the `SEC::MED` attribute to keep using the same access policy as
     // before.
     msk.access_structure
-        .del_attribute(&QualifiedAttribute::new("SEC", "MED"))?;
+        .del_attribute(&QualifiedAttribute::new(
+            "SEC".to_owned(),
+            "MED".to_owned(),
+        ))?;
     let mpk = Covercrypt::update_msk(&mut msk)?;
     Ok((msk, mpk))
 }

@@ -3,7 +3,7 @@ WHITESPACE   =  _{ " " | "\t" | "\n" }
 alpha = { 'a'..'z' | 'A'..'Z' }
 digit = { '0'..'9' }
 separator = { "-" }
-ident = _{ alpha ~ (alpha | digit | separator)* }
+ident = { alpha ~ (alpha | digit)* ~ (separator ~ (alpha | digit)+)* }
 
 and = { "&&" }
 or  = { "||" }

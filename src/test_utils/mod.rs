@@ -38,7 +38,7 @@ mod tests {
         )?;
 
         let _ = &mut msk.access_structure.add_attribute(
-            QualifiedAttribute::new("DPT", "Sales"),
+            QualifiedAttribute::new("DPT".to_owned(), "Sales".to_owned()),
             HybridizationStatus::Classic,
             None,
         )?;
@@ -100,7 +100,10 @@ mod tests {
 
         // remove the FIN department
         msk.access_structure
-            .del_attribute(&QualifiedAttribute::new("DPT", "FIN"))?;
+            .del_attribute(&QualifiedAttribute::new(
+                "DPT".to_owned(),
+                "FIN".to_owned(),
+            ))?;
 
         // update the master keys
         let _ = Covercrypt::update_msk(&mut msk)?;
@@ -158,7 +161,10 @@ mod tests {
 
         // remove the FIN department
         msk.access_structure
-            .disable_attribute(&QualifiedAttribute::new("DPT", "FIN"))?;
+            .disable_attribute(&QualifiedAttribute::new(
+                "DPT".to_owned(),
+                "FIN".to_owned(),
+            ))?;
 
         // update the master keys
         let mpk = Covercrypt::update_msk(&mut msk)?;
@@ -238,7 +244,7 @@ mod tests {
 
         // remove the FIN department
         msk.access_structure.rename_attribute(
-            &QualifiedAttribute::new("DPT", "FIN"),
+            &QualifiedAttribute::new("DPT".to_owned(), "FIN".to_owned()),
             "Finance".to_string(),
         )?;
 

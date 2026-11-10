@@ -2,20 +2,25 @@ use crate::{
     Error,
     abe::policy::{
         AccessPolicy, Attribute, Dimension, EncryptionStatus,
-        QualifiedAttribute, Right, Version, attribute::HybridizationStatus,
+        QualifiedAttribute, Right, Version,
+        access_policy::{Name, NameRef},
+        attribute::HybridizationStatus,
     },
     data_struct::Dict,
 };
-use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AccessStructure {
     version: Version,
-    // Use a map to efficiently find dimensions by name.
-    dimensions: BTreeMap<String, Dimension>,
+    dimensions: BTreeMap<Name, Dimension>,
 }
 
 impl AccessStructure {
+    /// Return a new empty access structure.
     pub fn new() -> Self {
         Self {
             version: Version::V1,
@@ -47,7 +52,8 @@ impl AccessStructure {
     /// Only refreshed keys can decrypt for an access policy belonging to the
     /// semantic space of the new dimension.
     pub fn add_anarchy(&mut self, dimension: String) -> Result<(), Error> {
-        match self.dimensions.entry(dimension) {
+        let name = Name::try_from(dimension)?;
+        match self.dimensions.entry(name) {
             Entry::Occupied(e) => {
                 Err(Error::ExistingDimension(e.key().to_string()))
             }
@@ -66,7 +72,8 @@ impl AccessStructure {
     /// Only refreshed keys can decrypt for an access policy belonging to the
     /// semantic space of the new dimension.
     pub fn add_hierarchy(&mut self, dimension: String) -> Result<(), Error> {
-        match self.dimensions.entry(dimension) {
+        let name = Name::try_from(dimension)?;
+        match self.dimensions.entry(name) {
             Entry::Occupied(e) => {
                 Err(Error::ExistingDimension(e.key().to_string()))
             }
@@ -84,20 +91,20 @@ impl AccessStructure {
     ///
     /// Refreshed keys loose the ability to decrypt for an access policy
     /// belonging to the semantic space of the removed dimension.
-    pub fn del_dimension(&mut self, dimension: &str) -> Result<(), Error> {
+    pub fn del_dimension(&mut self, name: &str) -> Result<(), Error> {
+        let name = NameRef::try_from(name)?;
         self.dimensions
-            .remove(dimension)
+            .remove(&*name)
             .map(|_| ())
-            .ok_or(Error::DimensionNotFound(dimension.to_string()))
+            .ok_or(Error::DimensionNotFound(name.to_string()))
     }
 
     /// Add the given qualified attribute to the access structure.
     ///
-    /// If the dimension if hierarchical, specifying `after` will set the rank
-    /// of the new attribute to be in-between the existing attribute which name
-    /// is given as `after`, and before the attribute directly higher that
-    /// `after`. Gives the new attribute the lowest rank in case no `after`
-    /// attribute is specified.
+    /// If the dimension if hierarchical, specifying `after` sets the new
+    /// attribute as the smallest attribute greater than the attribute of this
+    /// name. If it is left unspecified, the new attribute becomes the lowest
+    /// attribute of the dimension.
     ///
     /// If `after` does not match any valid attribute, an error is
     /// returned. Specifying `after` when adding a new attribute to an anarchy
@@ -121,9 +128,9 @@ impl AccessStructure {
             .sum::<usize>();
 
         self.dimensions
-            .get_mut(&attribute.dimension)
+            .get_mut(&*attribute.dimension)
             .ok_or_else(|| {
-                Error::DimensionNotFound(attribute.dimension.clone())
+                Error::DimensionNotFound(attribute.dimension.to_string())
             })?
             .add_attribute(attribute.attribute, security_mode, after, cnt)?;
 
@@ -141,7 +148,8 @@ impl AccessStructure {
         &mut self,
         attr: &QualifiedAttribute,
     ) -> Result<(), Error> {
-        if let Some(dim) = self.dimensions.get_mut(&attr.dimension) {
+        let dimension = NameRef::try_from(&*attr.dimension)?;
+        if let Some(dim) = self.dimensions.get_mut(&*dimension) {
             dim.remove_attribute(&attr.attribute)
         } else {
             Err(Error::DimensionNotFound(attr.dimension.to_string()))
@@ -154,25 +162,25 @@ impl AccessStructure {
         attribute: &QualifiedAttribute,
         new_name: String,
     ) -> Result<(), Error> {
-        match self.dimensions.get_mut(&attribute.dimension) {
+        let dimension = NameRef::try_from(&*attribute.dimension)?;
+        match self.dimensions.get_mut(&*dimension) {
             Some(d) => d.rename_attribute(&attribute.attribute, new_name),
-            None => {
-                Err(Error::DimensionNotFound(attribute.dimension.to_string()))
-            }
+            None => Err(Error::DimensionNotFound(dimension.to_string())),
         }
     }
 
     /// Lists name of the dimensions hold by this access structure.
     pub fn dimensions(&self) -> impl Iterator<Item = &str> {
-        self.dimensions.keys().map(|d| d.as_str())
+        self.dimensions.keys().map(Borrow::borrow)
     }
 
     /// Returns the dimension with the given name from this access structure.
     ///
     /// Fails if there is no such dimension.
     pub fn get_dimension(&self, name: &str) -> Result<&Dimension, Error> {
+        let name = NameRef::try_from(name)?;
         self.dimensions
-            .get(name)
+            .get(&*name)
             .ok_or_else(|| Error::DimensionNotFound(name.to_string()))
     }
 
@@ -181,8 +189,11 @@ impl AccessStructure {
         &'_ self,
     ) -> impl '_ + Iterator<Item = QualifiedAttribute> {
         self.dimensions.iter().flat_map(|(dimension, d)| {
-            d.get_attributes_name().map(move |name| {
-                QualifiedAttribute::new(dimension, name.as_str())
+            d.get_attributes_name().map(move |attribute| {
+                QualifiedAttribute::new(
+                    dimension.to_string(),
+                    attribute.to_string(),
+                )
             })
         })
     }
@@ -193,8 +204,9 @@ impl AccessStructure {
     pub fn get_attribute(
         &self,
         attr: &QualifiedAttribute,
-    ) -> Result<Option<&Attribute>, Error> {
-        let dimension = self.get_dimension(&attr.dimension)?;
+    ) -> Result<&Attribute, Error> {
+        let name = NameRef::try_from(&*attr.dimension)?;
+        let dimension = self.get_dimension(&name)?;
         dimension.get_attribute(&attr.attribute)
     }
 
@@ -207,7 +219,8 @@ impl AccessStructure {
         &mut self,
         attr: &QualifiedAttribute,
     ) -> Result<(), Error> {
-        match self.dimensions.get_mut(&attr.dimension) {
+        let name = NameRef::try_from(&*attr.dimension)?;
+        match self.dimensions.get_mut(&*name) {
             Some(d) => d.disable_attribute(&attr.attribute),
             None => Err(Error::DimensionNotFound(attr.dimension.to_string())),
         }
@@ -234,11 +247,7 @@ impl AccessStructure {
         &self,
         attribute: &QualifiedAttribute,
     ) -> Result<usize, Error> {
-        self.get_attribute(attribute)?.map(Attribute::get_id).ok_or(
-            Error::InvalidAttribute(
-                "broadcast attribute hash no ID".to_owned(),
-            ),
-        )
+        self.get_attribute(attribute).map(Attribute::get_id)
     }
 
     /// Returns the rights associated to the given access policy when extended
@@ -292,12 +301,8 @@ impl AccessStructure {
             |mut rights, clause| {
                 let point = clause
                     .into_iter()
-                    .filter_map(|attr| {
-                        self.get_attribute(&attr)
-                            .map(|attribute| attribute.map(Attribute::get_id))
-                            .transpose()
-                    })
-                    .collect::<Result<_, _>>()?;
+                    .map(|attr| Ok(self.get_attribute(&attr)?.get_id()))
+                    .collect::<Result<_, Error>>()?;
                 rights.insert(Right::from_point(point)?);
                 Ok(rights)
             },
@@ -428,7 +433,10 @@ mod tests {
         .into_iter()
         .try_for_each(|(attribute, mode)| {
             structure.add_attribute(
-                QualifiedAttribute::new("Country", attribute),
+                QualifiedAttribute::new(
+                    "Country".to_owned(),
+                    attribute.to_owned(),
+                ),
                 mode,
                 None,
             )
@@ -464,10 +472,12 @@ mod tests {
             // The broadcast.
             rights.insert(Right::from_point(vec![])?);
 
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "LOW"),
-                )?])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
+            ])?);
 
             assert_eq!(comp_points, rights);
         }
@@ -492,49 +502,69 @@ mod tests {
             rights.insert(Right::from_point(vec![])?);
 
             // rights(DPT::HR, SEC::⊥)
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("DPT", "HR"),
-                )?])?);
-
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "LOW"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
             ])?);
 
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "MED"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
             ])?);
 
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "TOP"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "MED".to_owned(),
+                ))?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "TOP".to_owned(),
+                ))?,
             ])?);
 
             // rights(DPT::*, SEC::LOW)
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "LOW"),
-                )?])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
+            ])?);
 
             // rights(DPT::*, SEC::MID)
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "MED"),
-                )?])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "MED".to_owned(),
+                ))?,
+            ])?);
 
             // rights(DPT::*, SEC::TOP)
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "TOP"),
-                )?])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "TOP".to_owned(),
+                ))?,
+            ])?);
 
             assert_eq!(comp_points, rights);
         }
@@ -554,66 +584,100 @@ mod tests {
 
             rights.insert(Right::from_point(vec![])?);
 
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("DPT", "FIN"),
-                )?])?);
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("DPT", "HR"),
-                )?])?);
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "LOW"),
-                )?])?);
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "MED"),
-                )?])?);
-            rights
-                .insert(Right::from_point(vec![structure.get_attribute_id(
-                    &QualifiedAttribute::new("SEC", "TOP"),
-                )?])?);
-
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "FIN"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "LOW"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "FIN".to_owned(),
+                ))?,
             ])?);
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "LOW"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+            ])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
+            ])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "MED".to_owned(),
+                ))?,
+            ])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "TOP".to_owned(),
+                ))?,
             ])?);
 
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "MED"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "FIN".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
+            ])?);
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
             ])?);
 
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "FIN"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "MED"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "MED".to_owned(),
+                ))?,
             ])?);
 
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "HR"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "TOP"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "FIN".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "MED".to_owned(),
+                ))?,
             ])?);
 
             rights.insert(Right::from_point(vec![
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("DPT", "FIN"))?,
-                structure
-                    .get_attribute_id(&QualifiedAttribute::new("SEC", "TOP"))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "TOP".to_owned(),
+                ))?,
+            ])?);
+
+            rights.insert(Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "FIN".to_owned(),
+                ))?,
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "TOP".to_owned(),
+                ))?,
             ])?);
 
             assert_eq!(comp_points, rights);
