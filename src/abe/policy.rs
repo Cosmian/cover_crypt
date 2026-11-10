@@ -2,7 +2,6 @@ mod access_policy;
 mod access_structure;
 mod attribute;
 mod dimension;
-mod name;
 mod rights;
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -11,7 +10,7 @@ mod tests;
 #[cfg(feature = "test-utils")]
 pub use access_structure::omega_size;
 
-pub use access_policy::AccessPolicy;
+pub use access_policy::{AccessPolicy, BROADCAST, Name, NameRef};
 pub use access_structure::AccessStructure;
 pub use attribute::{
     EncryptionStatus, HybridizationStatus, QualifiedAttribute,

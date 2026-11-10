@@ -3,8 +3,8 @@ use crate::{
     abe::policy::{
         AccessPolicy, Attribute, Dimension, EncryptionStatus,
         QualifiedAttribute, Right, Version,
+        access_policy::{Name, NameRef},
         attribute::HybridizationStatus,
-        name::{Name, NameRef},
     },
     data_struct::Dict,
 };

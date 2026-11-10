@@ -1,7 +1,7 @@
 use super::{EncryptionStatus, HybridizationStatus};
 use crate::{
     Error,
-    abe::policy::name::{BROADCAST, Name, NameRef},
+    abe::policy::{BROADCAST, Name, NameRef},
     data_struct::Dict,
 };
 use serde::{Deserialize, Serialize};
