@@ -350,20 +350,34 @@ mod tests {
         assert_eq!(ap, AccessPolicy::Broadcast);
 
         let ap = AccessPolicy::parse("(D1::A)").unwrap();
-        assert_eq!(ap, AccessPolicy::Term(QualifiedAttribute::new("D1", "A")));
+        assert_eq!(
+            ap,
+            AccessPolicy::Term(QualifiedAttribute::new(
+                "D1".to_owned(),
+                "A".to_owned()
+            ))
+        );
 
         let ap = AccessPolicy::parse("(D1::*)").unwrap();
-        assert_eq!(ap, AccessPolicy::Term(QualifiedAttribute::new("D1", "*")));
+        assert_eq!(
+            ap,
+            AccessPolicy::Term(QualifiedAttribute::new(
+                "D1".to_owned(),
+                "*".to_owned()
+            ))
+        );
 
         let ap = AccessPolicy::parse("D1::A && (D2::B)").unwrap();
         assert_eq!(
             ap,
             AccessPolicy::Conjunction(
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D1", "A"
+                    "D1".to_owned(),
+                    "A".to_owned()
                 ),)),
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D2", "B"
+                    "D2".to_owned(),
+                    "B".to_owned()
                 ),))
             ),
         );
@@ -374,14 +388,17 @@ mod tests {
             AccessPolicy::Conjunction(
                 Box::new(AccessPolicy::Conjunction(
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D1", "A"
+                        "D1".to_owned(),
+                        "A".to_owned()
                     ),)),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "B"
+                        "D2".to_owned(),
+                        "B".to_owned()
                     ),))
                 )),
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D3", "C"
+                    "D3".to_owned(),
+                    "C".to_owned()
                 ),))
             ),
         );
@@ -393,14 +410,17 @@ mod tests {
             ap,
             AccessPolicy::Conjunction(
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D1", "A"
+                    "D1".to_owned(),
+                    "A".to_owned()
                 ),)),
                 Box::new(AccessPolicy::Conjunction(
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "A"
+                        "D2".to_owned(),
+                        "A".to_owned()
                     ),)),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "B"
+                        "D2".to_owned(),
+                        "B".to_owned()
                     ),)),
                 )),
             )
@@ -414,14 +434,17 @@ mod tests {
             AccessPolicy::Disjunction(
                 Box::new(AccessPolicy::Conjunction(
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D1", "A"
+                        "D1".to_owned(),
+                        "A".to_owned()
                     ),)),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "A"
+                        "D2".to_owned(),
+                        "A".to_owned()
                     ),)),
                 )),
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D2", "B"
+                    "D2".to_owned(),
+                    "B".to_owned()
                 ),)),
             )
         );
@@ -433,14 +456,17 @@ mod tests {
             ap,
             AccessPolicy::Disjunction(
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D1", "A"
+                    "D1".to_owned(),
+                    "A".to_owned()
                 ),)),
                 Box::new(AccessPolicy::Conjunction(
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "A"
+                        "D2".to_owned(),
+                        "A".to_owned()
                     ),)),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "B"
+                        "D2".to_owned(),
+                        "B".to_owned()
                     ),)),
                 ))
             )
@@ -453,14 +479,17 @@ mod tests {
             ap,
             AccessPolicy::Conjunction(
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D1", "A"
+                    "D1".to_owned(),
+                    "A".to_owned()
                 ),)),
                 Box::new(AccessPolicy::Disjunction(
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "A"
+                        "D2".to_owned(),
+                        "A".to_owned()
                     ),)),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "B"
+                        "D2".to_owned(),
+                        "B".to_owned()
                     )))
                 ),)
             )
@@ -473,14 +502,17 @@ mod tests {
             AccessPolicy::Disjunction(
                 Box::new(AccessPolicy::Conjunction(
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D1", "A"
+                        "D1".to_owned(),
+                        "A".to_owned()
                     ),)),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D2", "A"
+                        "D2".to_owned(),
+                        "A".to_owned()
                     ),))
                 )),
                 Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                    "D2", "B"
+                    "D2".to_owned(),
+                    "B".to_owned()
                 ),)),
             )
         );
@@ -504,7 +536,8 @@ mod tests {
                         version: Some(Version::Tag("version-1".to_string()))
                     })),
                     Box::new(AccessPolicy::Term(QualifiedAttribute::new(
-                        "D-2", "B"
+                        "D-2".to_owned(),
+                        "B".to_owned()
                     )))
                 ),)
             )

@@ -17,6 +17,7 @@ pub enum Error {
     OperationNotPermitted(String),
     InvalidBooleanExpression(String),
     InvalidAttribute(String),
+    InvalidName(String),
     InvalidAccessPolicy(String),
     DimensionNotFound(String),
     ConversionFailed(String),
@@ -43,6 +44,9 @@ impl Display for Error {
             }
             Self::InvalidAttribute(attr) => {
                 write!(f, "invalid attribute: {attr}")
+            }
+            Self::InvalidName(name) => {
+                write!(f, "invalid name: {name}")
             }
             Self::InvalidAccessPolicy(ap) => {
                 write!(f, "invalid attribute: {ap}")

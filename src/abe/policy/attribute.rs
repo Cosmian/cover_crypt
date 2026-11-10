@@ -5,8 +5,6 @@ use cosmian_crypto_core::bytes_ser_de::{
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
-pub const BROADCAST: &str = "*";
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
@@ -124,12 +122,12 @@ pub struct QualifiedAttribute {
 }
 
 impl QualifiedAttribute {
-    /// Creates a qualified attribute with the given dimension and attribute names.
-    #[must_use]
-    pub fn new(dimension: &str, name: &str) -> Self {
+    /// Creates a qualified attribute with the given dimension and attribute
+    /// names.
+    pub fn new(dimension: String, attribute: String) -> Self {
         Self {
-            dimension: dimension.to_owned(),
-            attribute: name.to_owned(),
+            dimension,
+            attribute,
             version: None,
         }
     }
@@ -140,15 +138,15 @@ impl Debug for QualifiedAttribute {
         match &self.version {
             Some(Version::Tag(tag)) => f.write_fmt(format_args!(
                 "{}::{}@{}",
-                self.dimension, self.attribute, tag
+                &*self.dimension, &*self.attribute, tag
             )),
             Some(Version::Num(num)) => f.write_fmt(format_args!(
                 "{}::{}@{}",
-                self.dimension, self.attribute, num
+                &*self.dimension, &*self.attribute, num
             )),
             None => f.write_fmt(format_args!(
                 "{}::{}",
-                self.dimension, self.attribute,
+                &*self.dimension, &*self.attribute,
             )),
         }
     }
@@ -166,23 +164,16 @@ impl From<QualifiedAttribute> for String {
     }
 }
 
-impl From<(&str, &str)> for QualifiedAttribute {
-    fn from(input: (&str, &str)) -> Self {
-        Self {
-            dimension: input.0.to_owned(),
-            attribute: input.1.to_owned(),
-            version: None,
-        }
+impl From<(String, String)> for QualifiedAttribute {
+    fn from(value: (String, String)) -> Self {
+        let (dimension, attribute) = value;
+        Self::new(dimension, attribute)
     }
 }
 
-impl From<(String, String)> for QualifiedAttribute {
-    fn from(input: (String, String)) -> Self {
-        Self {
-            dimension: input.0,
-            attribute: input.1,
-            version: None,
-        }
+impl From<(&str, &str)> for QualifiedAttribute {
+    fn from(value: (&str, &str)) -> Self {
+        Self::from((value.0.to_owned(), value.1.to_owned()))
     }
 }
 
@@ -208,7 +199,7 @@ impl TryFrom<&str> for QualifiedAttribute {
             )));
         }
 
-        Ok(Self::new(dimension.trim(), component.trim()))
+        Ok(Self::from((dimension.trim(), component.trim())))
     }
 }
 
