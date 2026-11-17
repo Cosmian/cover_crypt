@@ -352,6 +352,9 @@ mod tests {
         let ap = AccessPolicy::parse("(D1::A)").unwrap();
         assert_eq!(ap, AccessPolicy::Term(QualifiedAttribute::new("D1", "A")));
 
+        let ap = AccessPolicy::parse("(D1::*)").unwrap();
+        assert_eq!(ap, AccessPolicy::Term(QualifiedAttribute::new("D1", "*")));
+
         let ap = AccessPolicy::parse("D1::A && (D2::B)").unwrap();
         assert_eq!(
             ap,

@@ -1,11 +1,11 @@
-use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
-
+use crate::Error;
 use cosmian_crypto_core::bytes_ser_de::{
     Deserializer, Serializable, Serializer,
 };
 use serde::{Deserialize, Serialize};
+use std::{convert::TryFrom, fmt::Debug, ops::BitOr};
 
-use crate::Error;
+pub const BROADCAST: &str = "*";
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,

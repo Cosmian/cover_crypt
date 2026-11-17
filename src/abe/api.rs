@@ -103,6 +103,10 @@ impl Covercrypt {
         msk.mpk(None)
     }
 
+    /// Generates the MPK associated to this MSK.
+    ///
+    /// If an access policy was given, restrains the MPK to the keys required to
+    /// generate encapsulations under this (or any stricter) access policy.
     pub fn gen_mpk(
         &self,
         msk: &MasterSecretKey,
