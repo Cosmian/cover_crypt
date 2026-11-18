@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, btree_map::Entry},
     fmt::{self, Debug},
     marker::PhantomData,
-    mem::swap,
+    mem::replace,
 };
 
 use cosmian_crypto_core::bytes_ser_de::Serializable;
@@ -42,9 +42,10 @@ impl<K: Ord, V> Dict<K, V> {
     }
 
     /// Inserts a new entry with a given key.
+    ///
     /// If a given key already exists, the entry will be overwritten without
-    /// changing the order.
-    /// Otherwise, new entries are simply pushed at the end.
+    /// changing the order.  Otherwise, new entries are simply pushed at the
+    /// end.
     pub fn insert(&mut self, key: K, value: V) -> Option<V>
     where
         K: Clone,
@@ -64,10 +65,16 @@ impl<K: Ord, V> Dict<K, V> {
     }
 
     /// Removes the entry corresponding to the given key.
+    ///
     /// To maintain order, all inserted entries after the removed one will be
     /// shifted by one and the indices map will be updated accordingly.
+    ///
     /// Compared to a regular `HashMap`, this operation is O(n).
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         let entry_index = self.indices.remove(key)?;
 
         self.indices
@@ -79,13 +86,14 @@ impl<K: Ord, V> Dict<K, V> {
     }
 
     /// Updates the key for a given entry while retaining the current order.
-    pub fn update_key(
+    pub fn update_key<Q>(
         &mut self,
-        old_key: &K,
-        mut new_key: K,
+        old_key: &Q,
+        new_key: K,
     ) -> Result<(), Error>
     where
-        K: Clone + Debug,
+        K: Clone + Debug + Borrow<Q>,
+        Q: Debug + Ord + ?Sized,
     {
         // Get index from old_key
         let index_entry = *self
@@ -93,15 +101,13 @@ impl<K: Ord, V> Dict<K, V> {
             .get(old_key)
             .ok_or(Error::missing_entry(old_key))?;
 
-        match self.indices.entry(new_key.clone()) {
+        match self.indices.entry(new_key) {
             Entry::Occupied(e) => Err(Error::existing_entry(e.key())),
             Entry::Vacant(e) => {
-                // Insert new key inside indices
+                let new_key = e.key().clone();
                 e.insert(index_entry);
-                // Remove old key from indices
                 let _ = self.indices.remove(old_key);
-                // Replace old_key with new_key inside entries
-                swap(&mut self.entries[index_entry].0, &mut new_key);
+                let _ = replace(&mut self.entries[index_entry].0, new_key);
                 Ok(())
             }
         }

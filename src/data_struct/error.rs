@@ -32,7 +32,7 @@ impl Display for Error {
 impl Error {
     pub fn missing_entry<T>(key: &T) -> Self
     where
-        T: Debug,
+        T: Debug + ?Sized,
     {
         Self::EntryNotFound(format!("{key:?}"))
     }

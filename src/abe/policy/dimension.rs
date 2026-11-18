@@ -1,14 +1,14 @@
+use super::{EncryptionStatus, HybridizationStatus};
+use crate::{
+    Error,
+    abe::policy::{BROADCAST, Name, NameRef},
+    data_struct::Dict,
+};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, btree_map::Entry},
     fmt::Debug,
 };
-
-use serde::{Deserialize, Serialize};
-
-use super::{EncryptionStatus, HybridizationStatus};
-use crate::{Error, abe::policy::attribute::BROADCAST, data_struct::Dict};
-
-type Name = String;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct Attribute {
@@ -69,8 +69,8 @@ impl Dimension {
 
     /// Returns an iterator over the attributes name.
     ///
-    /// If the dimension is ordered, the names are returned in this order, otherwise they are
-    /// returned in arbitrary order.
+    /// If the dimension is ordered, the names are returned in this order,
+    /// otherwise they are returned in arbitrary order.
     pub fn get_attributes_name(&self) -> Box<dyn '_ + Iterator<Item = &Name>> {
         match self {
             Self::Anarchy(attributes) => Box::new(attributes.keys()),
@@ -78,73 +78,64 @@ impl Dimension {
         }
     }
 
-    /// Returns the attribute with the given name or `None` in case this is the
-    /// broadcast attribute.
+    /// Returns the attribute with the given name.
     ///
     /// # Errors
     ///
     /// Returns an error in case no attribute with the given name is found.
-    pub fn get_attribute(
-        &self,
-        attr_name: &Name,
-    ) -> Result<Option<&Attribute>, Error> {
-        if attr_name == BROADCAST {
-            Ok(None)
-        } else {
-            let attribute = match self {
-                Self::Anarchy(attributes) => attributes.get(attr_name),
-                Self::Hierarchy(attributes) => attributes.get(attr_name),
-            }
-            .ok_or(Error::AttributeNotFound(attr_name.to_string()))?;
-            Ok(Some(attribute))
+    pub fn get_attribute(&self, name: &str) -> Result<&Attribute, Error> {
+        let name = NameRef::try_from(name)?;
+        match self {
+            Self::Anarchy(attributes) => attributes.get(&*name),
+            Self::Hierarchy(attributes) => attributes.get(&*name),
         }
+        .ok_or(Error::AttributeNotFound(name.to_string()))
     }
 
     /// Restricts the dimension to the attribute that are lower than the given
     /// one or to the entire dimension in case this is the broadcast attribute.
-    pub fn restrict(&self, attr_name: Name) -> Result<Self, Error> {
-        if let Some(attribute) = self.get_attribute(&attr_name)?.cloned() {
+    pub(crate) fn restrict(&self, name: String) -> Result<Self, Error> {
+        if name == BROADCAST {
+            Ok(self.clone())
+        } else {
+            let attribute = self.get_attribute(&name)?.clone();
+            let name = Name::try_from(name)?;
             match self {
                 Self::Hierarchy(attributes) => {
                     let mut attributes = attributes
                         .iter()
-                        .take_while(|(name, _)| *name != &attr_name)
-                        .map(|(ref_name, ref_params)| {
-                            (ref_name.clone(), ref_params.clone())
-                        })
-                        .collect::<Dict<Name, Attribute>>();
-                    attributes.insert(attr_name, attribute);
+                        .take_while(|(n, _)| *n != &name)
+                        .map(|(name, params)| (name.clone(), params.clone()))
+                        .collect::<Dict<_, _>>();
+                    attributes.insert(name, attribute);
                     Ok(Self::Hierarchy(attributes))
                 }
                 Self::Anarchy(_) => Ok(Self::Anarchy(BTreeMap::from_iter([(
-                    attr_name, attribute,
+                    name,
+                    attribute.clone(),
                 )]))),
             }
-        } else {
-            Ok(self.clone())
         }
     }
 
-    /// Adds a new attribute to this dimension with the provided name and properties.
+    /// Adds a new attribute to this dimension with the provided name and
+    /// properties.
     ///
     /// # Errors
     ///
     /// Returns an error if the operation is not permitted.
     pub fn add_attribute(
         &mut self,
-        name: Name,
+        name: String,
         security_mode: HybridizationStatus,
         after: Option<&str>,
         id: usize,
     ) -> Result<(), Error> {
-        if name == BROADCAST {
-            return Err(Error::InvalidAttribute(
-                "cannot add an attribute named '*'".to_owned(),
-            ));
-        }
         match self {
             Self::Anarchy(attributes) => {
-                if let Entry::Vacant(entry) = attributes.entry(name) {
+                if let Entry::Vacant(entry) =
+                    attributes.entry(Name::try_from(name)?)
+                {
                     entry.insert(Attribute::new(security_mode, id));
                     Ok(())
                 } else {
@@ -154,39 +145,54 @@ impl Dimension {
                 }
             }
             Self::Hierarchy(attributes) => {
-                if attributes.contains_key(&name) {
+                if attributes.contains_key(&*name) {
                     return Err(Error::OperationNotPermitted(
                         "Attribute already in dimension".to_string(),
                     ));
                 }
-                let after = if let Some(after) = after {
-                    if !attributes.contains_key(after) {
-                        return Err(Error::AttributeNotFound(
-                            "the specified `after` attribute {after} does not exist".to_string(),
-                        ));
+
+                let new_attributes = {
+                    let mut new_attributes = Dict::new();
+                    if let Some(after) = after {
+                        for (n, a) in attributes.iter().take_while({
+                            let mut is_found = false;
+                            move |(n, _)| {
+                                if &***n == after {
+                                    is_found = true;
+                                    true
+                                } else {
+                                    !is_found
+                                }
+                            }
+                        }) {
+                            new_attributes.insert(n.clone(), a.clone());
+                        }
+
+                        new_attributes.insert(
+                            Name::try_from(name)?,
+                            Attribute::new(security_mode, id),
+                        );
+
+                        for (n, a) in attributes
+                            .iter()
+                            .skip_while(|(n, _)| &***n != after)
+                        {
+                            new_attributes.insert(n.clone(), a.clone());
+                        }
+                    } else {
+                        new_attributes.insert(
+                            Name::try_from(name)?,
+                            Attribute::new(security_mode, id),
+                        );
+                        for (name, attr) in attributes.iter() {
+                            new_attributes.insert(name.clone(), attr.clone());
+                        }
                     }
-                    after
-                } else {
-                    ""
+                    new_attributes
                 };
-                let higher_attributes = attributes
-                    .clone()
-                    .into_iter()
-                    .rev()
-                    .take_while(|(name, _)| name != after)
-                    .collect::<Vec<_>>();
 
-                let mut new_attributes = attributes
-                    .clone()
-                    .into_iter()
-                    .take_while(|a| Some(a) != higher_attributes.last())
-                    .collect::<Dict<_, _>>();
-
-                new_attributes.insert(name, Attribute::new(security_mode, id));
-                higher_attributes.into_iter().rev().for_each(|(name, dim)| {
-                    new_attributes.insert(name, dim);
-                });
                 *attributes = new_attributes;
+
                 Ok(())
             }
         }
@@ -195,20 +201,17 @@ impl Dimension {
     /// Removes the attribute with the given name from this dimension.
     ///
     /// # Errors
+    ///
     /// Returns an error if no attribute with this name is found.
-    pub fn remove_attribute(&mut self, name: &Name) -> Result<(), Error> {
-        if name == BROADCAST {
-            return Err(Error::InvalidAttribute(
-                "cannot remove the broadcast attribute '*'".to_owned(),
-            ));
-        }
+    pub fn remove_attribute(&mut self, name: &str) -> Result<(), Error> {
+        let name = NameRef::try_from(name)?;
         match self {
             Self::Anarchy(attributes) => attributes
-                .remove(name)
+                .remove(&*name)
                 .map(|_| ())
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
-                .remove(name)
+                .remove(&*name)
                 .map(|_| ())
                 .ok_or(Error::AttributeNotFound(name.to_string())),
         }
@@ -218,16 +221,17 @@ impl Dimension {
     ///
     /// # Errors
     /// Returns an error if no attribute with this name is found.
-    pub fn disable_attribute(&mut self, name: &Name) -> Result<(), Error> {
+    pub fn disable_attribute(&mut self, name: &str) -> Result<(), Error> {
+        let name = NameRef::try_from(name)?;
         match self {
             Self::Anarchy(attributes) => attributes
-                .get_mut(name)
+                .get_mut(&*name)
                 .map(|attr| {
                     attr.encryption_status = EncryptionStatus::DecryptOnly
                 })
                 .ok_or(Error::AttributeNotFound(name.to_string())),
             Self::Hierarchy(attributes) => attributes
-                .get_mut(name)
+                .get_mut(&*name)
                 .map(|attr| {
                     attr.encryption_status = EncryptionStatus::DecryptOnly
                 })
@@ -238,21 +242,24 @@ impl Dimension {
     /// Renames the attribute with the given name.
     ///
     /// # Errors
-    /// Returns an error if the new name is already used in the same dimension or if no attribute
-    /// with the given old name is found.
+    ///
+    /// Returns an error if the new name is already used in the same dimension
+    /// or if no attribute with the given old name is found.
     pub fn rename_attribute(
         &mut self,
-        old_name: &Name,
-        new_name: Name,
+        old_name: &str,
+        new_name: String,
     ) -> Result<(), Error> {
+        let old_name = NameRef::try_from(old_name)?;
+        let new_name = Name::try_from(new_name)?;
         match self {
             Self::Anarchy(attributes) => {
-                if attributes.contains_key(&new_name) {
+                if attributes.contains_key(&*new_name) {
                     return Err(Error::OperationNotPermitted(
                         "New attribute name is already used in the same dimension".to_string(),
                     ));
                 }
-                match attributes.remove(old_name) {
+                match attributes.remove(&*old_name) {
                     Some(attr_params) => {
                         attributes.insert(new_name, attr_params);
                         Ok(())
@@ -261,7 +268,7 @@ impl Dimension {
                 }
             }
             Self::Hierarchy(attributes) => attributes
-                .update_key(old_name, new_name)
+                .update_key(&*old_name, new_name)
                 .map_err(|e| Error::OperationNotPermitted(e.to_string())),
         }
     }
@@ -277,7 +284,9 @@ impl Dimension {
 }
 
 mod serialization {
-    use cosmian_crypto_core::bytes_ser_de::Serializable;
+    use cosmian_crypto_core::bytes_ser_de::{
+        Deserializer, Serializable, Serializer,
+    };
 
     use super::*;
 
@@ -290,18 +299,13 @@ mod serialization {
                 + self.encryption_status.length()
         }
 
-        fn write(
-            &self,
-            ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-        ) -> Result<usize, Self::Error> {
+        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
             Ok(self.id.write(ser)?
                 + self.security_mode.write(ser)?
                 + self.encryption_status.write(ser)?)
         }
 
-        fn read(
-            de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
-        ) -> Result<Self, Self::Error> {
+        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
             Ok(Self {
                 id: de.read()?,
                 security_mode: de.read()?,
@@ -332,10 +336,7 @@ mod serialization {
             }
         }
 
-        fn write(
-            &self,
-            ser: &mut cosmian_crypto_core::bytes_ser_de::Serializer,
-        ) -> Result<usize, Self::Error> {
+        fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
             match self {
                 Dimension::Anarchy(inner) => {
                     Ok(ser.write(&0usize)? + ser.write(inner)?)
@@ -347,9 +348,7 @@ mod serialization {
             }
         }
 
-        fn read(
-            de: &mut cosmian_crypto_core::bytes_ser_de::Deserializer,
-        ) -> Result<Self, Self::Error> {
+        fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
             let t = de.read::<usize>()?;
             match t {
                 0 => Ok(Self::Anarchy(de.read()?)),
@@ -370,41 +369,49 @@ mod serialization {
         use cosmian_crypto_core::bytes_ser_de::test_serialization;
 
         let mut d = Dimension::Hierarchy(Dict::new());
-        d.add_attribute("A".to_string(), HybridizationStatus::Classic, None, 0)
+
+        d.add_attribute("A".to_owned(), HybridizationStatus::Classic, None, 0)
             .unwrap();
+
         d.add_attribute(
-            "B".to_string(),
+            "B".to_owned(),
             HybridizationStatus::Hybridized,
             Some("A"),
             1,
         )
         .unwrap();
+
         d.add_attribute(
-            "C".to_string(),
+            "C".to_owned(),
             HybridizationStatus::Hybridized,
             Some("B"),
             2,
         )
         .unwrap();
+
         test_serialization(&d).unwrap();
 
         let mut d = Dimension::Anarchy(BTreeMap::new());
-        d.add_attribute("A".to_string(), HybridizationStatus::Classic, None, 0)
+
+        d.add_attribute("A".to_owned(), HybridizationStatus::Classic, None, 0)
             .unwrap();
+
         d.add_attribute(
-            "B".to_string(),
+            "B".to_owned(),
             HybridizationStatus::Hybridized,
             None,
             1,
         )
         .unwrap();
+
         d.add_attribute(
-            "C".to_string(),
+            "C".to_owned(),
             HybridizationStatus::Hybridized,
             None,
             2,
         )
         .unwrap();
+
         test_serialization(&d).unwrap();
     }
 }
