@@ -6,3 +6,6 @@
 **/.#*
 **/#*#
 **/*~
+**/_build
+doc/*.bbl
+doc/*.bbl-SAVE-ERROR
