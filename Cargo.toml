@@ -47,10 +47,10 @@ test-utils = ["cosmian_openssl_provider"]
 generic-kem = ["cosmian_openssl_provider"]
 
 [dependencies]
-cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/seedable-nike-and-kem", default-features = false, features = ["aes", "ser", "sha3"]}
-cosmian_openssl_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/seedable-nike-and-kem", optional = true }
-cosmian_rust_curve25519_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/seedable-nike-and-kem" , optional = true }
-cosmian_libcrux_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/seedable-nike-and-kem" }
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", branch = "develop", default-features = false, features = ["aes", "ser", "sha3"]}
+cosmian_openssl_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "develop", optional = true }
+cosmian_rust_curve25519_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "develop" , optional = true }
+cosmian_libcrux_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "develop" }
 ml-kem = { version = "0.2", features = ["zeroize", "deterministic"] }
 pest = "2.9.4"
 pest_derive = "2.9.4"
@@ -59,7 +59,7 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 zeroize = "1.8"
 
 [dev-dependencies]
-cosmian_openssl_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "tbz/seedable-nike-and-kem" }
+cosmian_openssl_provider = { git = "https://github.com/Cosmian/crypto_core", branch = "develop" }
 criterion = { version = "0.7", features = [
   "html_reports",
 ], default-features = false }

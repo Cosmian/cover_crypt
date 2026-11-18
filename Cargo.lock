@@ -262,7 +262,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_base"
 version = "3.1.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fseedable-nike-and-kem#4c86f08418173d09a44413f0d291b8714983e39f"
+source = "git+https://github.com/Cosmian/crypto_core?branch=develop#463684ac70ab99d7f6acf679505afeeef3d56890"
 dependencies = [
  "gensym",
  "getrandom 0.2.17",
@@ -275,7 +275,7 @@ dependencies = [
 [[package]]
 name = "cosmian_crypto_core"
 version = "12.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fseedable-nike-and-kem#4c86f08418173d09a44413f0d291b8714983e39f"
+source = "git+https://github.com/Cosmian/crypto_core?branch=develop#463684ac70ab99d7f6acf679505afeeef3d56890"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -291,7 +291,7 @@ dependencies = [
 [[package]]
 name = "cosmian_libcrux_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fseedable-nike-and-kem#4c86f08418173d09a44413f0d291b8714983e39f"
+source = "git+https://github.com/Cosmian/crypto_core?branch=develop#463684ac70ab99d7f6acf679505afeeef3d56890"
 dependencies = [
  "cosmian_crypto_base",
  "libcrux-ml-kem",
@@ -303,7 +303,7 @@ dependencies = [
 [[package]]
 name = "cosmian_openssl_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fseedable-nike-and-kem#4c86f08418173d09a44413f0d291b8714983e39f"
+source = "git+https://github.com/Cosmian/crypto_core?branch=develop#463684ac70ab99d7f6acf679505afeeef3d56890"
 dependencies = [
  "cosmian_crypto_base",
  "openssl",
@@ -312,7 +312,7 @@ dependencies = [
 [[package]]
 name = "cosmian_rust_curve25519_provider"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/crypto_core?branch=tbz%2Fseedable-nike-and-kem#4c86f08418173d09a44413f0d291b8714983e39f"
+source = "git+https://github.com/Cosmian/crypto_core?branch=develop#463684ac70ab99d7f6acf679505afeeef3d56890"
 dependencies = [
  "cosmian_crypto_base",
  "curve25519-dalek",
