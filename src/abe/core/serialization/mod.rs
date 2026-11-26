@@ -3,7 +3,7 @@
 use crate::{
     Error,
     abe::core::{
-        MasterPublicKey, MasterSecretKey, RightPublicKey, RightSecretKey,
+        MasterSecretKey, PublicKey, RightPublicKey, RightSecretKey,
         TracingPublicKey, TracingSecretKey, UserId, UserSecretKey, XEnc,
     },
 };
@@ -64,23 +64,26 @@ impl Serializable for RightPublicKey {
     }
 }
 
-impl Serializable for MasterPublicKey {
+impl Serializable for PublicKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.tpk.length()
+        self.rev.length()
+            + self.tpk.length()
             + self.encryption_keys.length()
             + self.access_structure.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(self.tpk.write(ser)?
+        Ok(self.rev.write(ser)?
+            + self.tpk.write(ser)?
             + self.encryption_keys.write(ser)?
             + self.access_structure.write(ser)?)
     }
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self {
+            rev: de.read()?,
             tpk: de.read()?,
             encryption_keys: de.read()?,
             access_structure: de.read()?,
@@ -202,14 +205,16 @@ impl Serializable for UserSecretKey {
     type Error = Error;
 
     fn length(&self) -> usize {
-        self.id.length()
+        self.rev.length()
+            + self.id.length()
             + self.ps.length()
             + self.secrets.length()
             + self.signature.length()
     }
 
     fn write(&self, ser: &mut Serializer) -> Result<usize, Self::Error> {
-        Ok(self.id.write(ser)?
+        Ok(self.rev.write(ser)?
+            + self.id.write(ser)?
             + self.ps.write(ser)?
             + self.secrets.write(ser)?
             + self.signature.write(ser)?)
@@ -217,6 +222,7 @@ impl Serializable for UserSecretKey {
 
     fn read(de: &mut Deserializer) -> Result<Self, Self::Error> {
         Ok(Self {
+            rev: de.read()?,
             id: de.read()?,
             ps: de.read()?,
             secrets: de.read()?,
@@ -309,7 +315,7 @@ mod tests {
     };
 
     use crate::{
-        MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
+        MasterSecretKey, PublicKey, UserSecretKey, XEnc,
         abe::{
             api::Covercrypt,
             core::{
@@ -363,12 +369,12 @@ mod tests {
 
             let mut msk = setup(MIN_TRACING_LEVEL + 2, &mut rng).unwrap();
             update_msk(&mut msk, universe.clone()).unwrap();
-            let mpk = msk.mpk(None).unwrap();
+            let pk = msk.gen_pk(None).unwrap();
             let usk = usk_keygen(&mut rng, &mut msk, user_set).unwrap();
-            let (_, enc) = encaps(&mut rng, &mpk, &target_set).unwrap();
+            let (_, enc) = encaps(&mut rng, &pk, &target_set).unwrap();
 
             test_serialization(&msk).unwrap();
-            test_serialization(&mpk).unwrap();
+            test_serialization(&pk).unwrap();
             test_serialization(&usk).unwrap();
             test_serialization(&enc).unwrap();
 
@@ -378,9 +384,9 @@ mod tests {
 
         {
             let mut rng = CsRng::from_entropy();
-            let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
+            let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
 
-            let usk = Covercrypt::generate_user_secret_key(
+            let usk = Covercrypt::gen_usk(
                 &mut rng,
                 &mut msk,
                 &AccessPolicy::parse("SEC::TOP").unwrap(),
@@ -389,13 +395,13 @@ mod tests {
 
             let (_, enc) = Covercrypt::encaps(
                 &mut rng,
-                &mpk,
+                &pk,
                 &AccessPolicy::parse("DPT::MKG").unwrap(),
             )
             .unwrap();
 
             test_serialization(&msk).unwrap();
-            test_serialization(&mpk).unwrap();
+            test_serialization(&pk).unwrap();
             test_serialization(&usk).unwrap();
             test_serialization(&enc).unwrap();
 
@@ -404,10 +410,10 @@ mod tests {
             let msk_bytes_2 = msk_2.serialize().unwrap().to_vec();
             assert_eq!(msk_bytes_1, msk_bytes_2);
 
-            let mpk_bytes_1 = mpk.serialize().unwrap().to_vec();
-            let mpk_2 = MasterPublicKey::deserialize(&mpk_bytes_1).unwrap();
-            let mpk_bytes_2 = mpk_2.serialize().unwrap().to_vec();
-            assert_eq!(mpk_bytes_1, mpk_bytes_2);
+            let pk_bytes_1 = pk.serialize().unwrap().to_vec();
+            let pk_2 = PublicKey::deserialize(&pk_bytes_1).unwrap();
+            let pk_bytes_2 = pk_2.serialize().unwrap().to_vec();
+            assert_eq!(pk_bytes_1, pk_bytes_2);
 
             let usk_bytes_1 = usk.serialize().unwrap().to_vec();
             let usk_2 = UserSecretKey::deserialize(&usk_bytes_1).unwrap();

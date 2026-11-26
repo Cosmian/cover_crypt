@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity)]
 use crate::{
-    AccessPolicy, AccessStructure, Covercrypt, Error, MasterPublicKey,
-    MasterSecretKey, UserSecretKey, XEnc,
+    AccessPolicy, AccessStructure, Covercrypt, Error, MasterSecretKey,
+    PublicKey, UserSecretKey, XEnc,
     providers::kem::mlkem::{MlKem512, MlKem768},
     traits::KemAc,
 };
@@ -280,7 +280,7 @@ impl ConfigurableKemEk {
                 >>::EncapsulationKey::deserialize(&bytes)
                 .map(|_| ())
             }
-            KemTag::Abe => MasterPublicKey::deserialize(&bytes)
+            KemTag::Abe => PublicKey::deserialize(&bytes)
                 .map(|_| ())
                 .map_err(|e| CryptoBaseError::GenericDeserializationError(e.to_string())),
         }
@@ -586,12 +586,20 @@ impl ConfigurableKEM {
                             .to_owned(),
                     )
                 })?;
-                let (mut msk, _) = Covercrypt::setup(rng)?;
-                msk.access_structure = access_structure;
-                let mpk = Covercrypt::update_msk(&mut msk)?;
+                let mut msk = Covercrypt::setup(rng)?;
+
+                Covercrypt::edit_msk(&mut msk, {
+                    |structure| {
+                        *structure = access_structure;
+                        Ok(())
+                    }
+                })?;
+
+                let pk = Covercrypt::gen_pk(&msk, None)?;
+
                 Ok((
                     ConfigurableKemDk(tag, msk.serialize()?),
-                    ConfigurableKemEk(tag, mpk.serialize()?),
+                    ConfigurableKemEk(tag, pk.serialize()?),
                 ))
             }
         }
@@ -651,8 +659,8 @@ impl ConfigurableKEM {
                     )
                 })?;
                 let tag = ek.get_tag();
-                let mpk = MasterPublicKey::deserialize(ek.get_bytes())?;
-                let (key, enc) = Covercrypt::encaps(rng, &mpk, ap)?;
+                let pk = PublicKey::deserialize(ek.get_bytes())?;
+                let (key, enc) = Covercrypt::encaps(rng, &pk, ap)?;
                 Ok((
                     key.serialize()?,
                     ConfigurableKemEnc(tag, enc.serialize()?),
@@ -832,7 +840,7 @@ mod tests {
         let usk_access_policy = AccessPolicy::parse("DPT::MKG").unwrap();
         let enc_access_policy = AccessPolicy::parse("*").unwrap();
 
-        let (msk, mpk) = ConfigurableKEM::keygen(
+        let (msk, pk) = ConfigurableKEM::keygen(
             &mut rng,
             KemTag::Abe,
             Some(access_structure),
@@ -840,16 +848,12 @@ mod tests {
         .unwrap();
         let tag = msk.get_tag();
         let mut msk = MasterSecretKey::deserialize(msk.get_bytes()).unwrap();
-        let usk = Covercrypt::generate_user_secret_key(
-            &mut rng,
-            &mut msk,
-            &usk_access_policy,
-        )
-        .unwrap();
+        let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &usk_access_policy)
+            .unwrap();
         let usk =
             ConfigurableKemDk::new(tag, usk.serialize().unwrap()).unwrap();
         let (key, enc) =
-            ConfigurableKEM::enc(&mut rng, &mpk, Some(&enc_access_policy))
+            ConfigurableKEM::enc(&mut rng, &pk, Some(&enc_access_policy))
                 .unwrap();
         let key_ = ConfigurableKEM::dec(&mut rng, &usk, &enc).unwrap();
         assert_eq!(key, key_);

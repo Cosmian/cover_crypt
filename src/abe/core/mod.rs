@@ -429,13 +429,23 @@ pub struct MasterSecretKey {
     secrets:
         RevisionMap<Right, (EncryptionStatus, HybridizationStatus, Revision)>,
     signing_key: Option<SymmetricKey<SIGNING_KEY_LENGTH>>,
-    pub access_structure: AccessStructure,
+    pub(crate) access_structure: AccessStructure,
 }
 
 // All secret keys are zeroized on drop.
 impl ZeroizeOnDrop for MasterSecretKey {}
 
 impl MasterSecretKey {
+    /// Returns the revision number of this MSK.
+    pub fn revision(&self) -> &Revision {
+        &self.rev
+    }
+
+    /// Returns the access structure associated to this MSK.
+    pub fn access_structure(&self) -> &AccessStructure {
+        &self.access_structure
+    }
+
     /// Returns the most recent secret key associated to each given right.
     ///
     /// # Error
@@ -466,24 +476,22 @@ impl MasterSecretKey {
         self.tsk.tracers.iter().map(|(_, P)| P)
     }
 
-    /// Generates a new MPK holding the latest public information of each right
+    /// Generates a new PK holding the latest public information of each right
     /// defined by the given access policy or each right defined in Omega if
     /// none is given.
-    pub(crate) fn mpk(
+    pub(crate) fn gen_pk(
         &self,
         rights: Option<&BTreeSet<Right>>,
-    ) -> Result<MasterPublicKey, Error> {
+    ) -> Result<PublicKey, Error> {
         let h = self.tsk.binding_point();
         let encryption_keys = {
             let mut ekeys = BTreeMap::new();
             for (r, secrets) in self.secrets.iter() {
                 if rights.map(|rights| rights.contains(r)).unwrap_or(true) {
-                    if let Some((e_status, h_status, revision)) =
-                        secrets.front()
-                    {
-                        if &EncryptionStatus::EncryptDecrypt == e_status {
+                    if let Some((e_stt, h_stt, rev)) = secrets.front() {
+                        if &EncryptionStatus::EncryptDecrypt == e_stt {
                             let sk = RightSecretKey::from_seed(
-                                &self.seed, r, h_status, revision,
+                                &self.seed, r, h_stt, rev,
                             )?;
                             ekeys.insert(r.clone(), sk.cpk(&h));
                         }
@@ -497,7 +505,8 @@ impl MasterSecretKey {
             ekeys
         };
 
-        Ok(MasterPublicKey {
+        Ok(PublicKey {
+            rev: self.rev,
             tpk: self.tsk.tpk(),
             encryption_keys,
             access_structure: self.access_structure.clone(),
@@ -506,20 +515,26 @@ impl MasterSecretKey {
 }
 
 /// Covercrypt Public Key (PK).
-///
-/// It is composed of:
-/// - the tracing public key;
-/// - the public keys for each right in Omega;
-/// - the access structure.
 #[derive(Debug, PartialEq, Clone)]
-pub struct MasterPublicKey {
+pub struct PublicKey {
+    rev: Revision,
     tpk: TracingPublicKey,
     encryption_keys: BTreeMap<Right, RightPublicKey>,
-    pub access_structure: AccessStructure,
+    access_structure: AccessStructure,
 }
 
-impl MasterPublicKey {
-    /// Returns the tracing level of this MPK.
+impl PublicKey {
+    /// Returns the revision of this PK.
+    pub fn revision(&self) -> &Revision {
+        &self.rev
+    }
+
+    /// Returns the access structure associated to this PK.
+    pub fn access_structure(&self) -> &AccessStructure {
+        &self.access_structure
+    }
+
+    /// Returns the tracing level of this PK.
     pub fn tracing_level(&self) -> usize {
         self.tpk.tracing_level()
     }
@@ -581,24 +596,25 @@ impl MasterPublicKey {
 }
 
 /// Covercrypt User Secret Key (USK).
-///
-/// It is composed of:
-/// - a user ID (pair of scalars);
-/// - the keys of the rights derived from the user decryption policy;
-/// - a signature from the MSK that guarantees its integrity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UserSecretKey {
+    rev: Revision,
     id: UserId,
     ps: Vec<<ElGamal as NIKE>::PublicKey>,
     secrets: RevisionVec<Right, RightSecretKey>,
     signature: Option<KmacSignature>,
 }
 
-// All secret keys are zeroized on drop.
+// All secrets used are zeroized on drop.
 impl ZeroizeOnDrop for UserSecretKey {}
 
 impl UserSecretKey {
-    /// Returns the tracing level of this user secret key.
+    /// Returns the revision of this USK.
+    pub fn revision(&self) -> &Revision {
+        &self.rev
+    }
+
+    /// Returns the tracing level of this USK.
     pub fn tracing_level(&self) -> usize {
         self.id.tracing_level()
     }

@@ -44,8 +44,8 @@ impl DKey {
     pub fn update_msk(&mut self) -> Result<EKey, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(cc, msk)) => {
-                let mpk = cc.update_msk(msk)?;
-                Ok(EKey::AbeScheme(cc.clone(), mpk, None))
+                let pk = cc.update_msk(msk)?;
+                Ok(EKey::AbeScheme(cc.clone(), pk, None))
             }
             _ => Err(Error::KeyError(
                 "cannot update non ABE master key".to_string(),
@@ -56,8 +56,8 @@ impl DKey {
     pub fn rekey(&mut self, ap: &AccessPolicy) -> Result<EKey, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(cc, msk)) => {
-                let mpk = cc.rekey(msk, ap)?;
-                Ok(EKey::AbeScheme(cc.clone(), mpk, None))
+                let pk = cc.rekey(msk, ap)?;
+                Ok(EKey::AbeScheme(cc.clone(), pk, None))
             }
             _ => Err(Error::KeyError(
                 "cannot re-key non ABE master key".to_string(),
@@ -68,8 +68,8 @@ impl DKey {
     pub fn prune_master_key(&mut self, ap: &AccessPolicy) -> Result<EKey, Error> {
         match self {
             DKey::AbeScheme(AbeDKey::Master(cc, msk)) => {
-                let mpk = cc.prune_master_secret_key(msk, ap)?;
-                Ok(EKey::AbeScheme(cc.clone(), mpk, None))
+                let pk = cc.prune_master_secret_key(msk, ap)?;
+                Ok(EKey::AbeScheme(cc.clone(), pk, None))
             }
             _ => Err(Error::KeyError(
                 "cannot prune non ABE master key".to_string(),
@@ -106,16 +106,16 @@ impl DKey {
 
     pub fn recaps(
         &mut self,
-        mpk: &EKey,
+        pk: &EKey,
         enc: &Enc,
     ) -> Result<(SymmetricKey<{ ConfigurableKEM::KEY_LENGTH }>, Enc), Error> {
-        match (self, mpk, enc) {
+        match (self, pk, enc) {
             (
                 DKey::AbeScheme(AbeDKey::Master(cc, msk)),
-                EKey::AbeScheme(_, mpk, _),
+                EKey::AbeScheme(_, pk, _),
                 Enc::AbeScheme(enc),
             ) => {
-                let (ss, enc) = cc.recaps(msk, mpk, enc)?;
+                let (ss, enc) = cc.recaps(msk, pk, enc)?;
                 Ok((SymmetricKey::from(ss), Enc::AbeScheme(enc)))
             }
             _ => Err(Error::KeyError(
@@ -175,10 +175,10 @@ impl Configuration {
         match self {
             Self::AbeScheme => {
                 let cc = Covercrypt::default();
-                let (msk, mpk) = cc.setup()?;
+                let (msk, pk) = cc.setup()?;
                 Ok((
                     DKey::AbeScheme(AbeDKey::Master(cc.clone(), msk)),
-                    EKey::AbeScheme(cc, mpk, None),
+                    EKey::AbeScheme(cc, pk, None),
                 ))
             }
             Self::PreQuantum => {
@@ -242,8 +242,8 @@ impl KEM<32> for ConfigurableKEM {
             EKey::AbeScheme(_, _, None) => Err(Error::Kem(
                 "access policy must be provided for encapsulation".to_string(),
             )),
-            EKey::AbeScheme(cc, mpk, Some(ap)) => cc
-                .encaps(mpk, ap)
+            EKey::AbeScheme(cc, pk, Some(ap)) => cc
+                .encaps(pk, ap)
                 .map(|(key, enc)| (SymmetricKey::from(key), Enc::AbeScheme(enc))),
             EKey::PreQuantum(ek) => {
                 let (key, enc) =
@@ -331,7 +331,7 @@ mod tests {
         let access_structure = msk.access_structure().unwrap();
         let (_msk, _) = cc_keygen(&Covercrypt::default(), true).unwrap();
         *access_structure = _msk.access_structure.clone();
-        let mut mpk = msk.update_msk().unwrap();
+        let mut pk = msk.update_msk().unwrap();
 
         let user_ap = AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap();
         let ok_ap = AccessPolicy::parse("DPT::MKG && SEC::TOP").unwrap();
@@ -340,14 +340,14 @@ mod tests {
         let usk = msk.generate_user_secret_key(&user_ap).unwrap();
 
         // Check user *can* decrypt the OK access policy.
-        mpk.set_access_policy(ok_ap).unwrap();
-        let (key, enc) = ConfigurableKEM::enc(&mpk, &mut rng).unwrap();
+        pk.set_access_policy(ok_ap).unwrap();
+        let (key, enc) = ConfigurableKEM::enc(&pk, &mut rng).unwrap();
         let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
         assert_eq!(key, key_);
 
         // Check user *cannot* decrypt the KO access policy.
-        mpk.set_access_policy(ko_ap).unwrap();
-        let (_key, enc) = ConfigurableKEM::enc(&mpk, &mut rng).unwrap();
+        pk.set_access_policy(ko_ap).unwrap();
+        let (_key, enc) = ConfigurableKEM::enc(&pk, &mut rng).unwrap();
         let key_ = ConfigurableKEM::dec(&usk, &enc).unwrap();
         assert!(key != key_);
     }

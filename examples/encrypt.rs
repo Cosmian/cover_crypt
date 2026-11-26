@@ -4,7 +4,7 @@ use std::{
 };
 
 use cosmian_cover_crypt::{
-    AccessPolicy, MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc,
+    AccessPolicy, MasterSecretKey, PublicKey, UserSecretKey, XEnc,
     api::Covercrypt, test_utils::cc_keygen, traits::PkeAc,
 };
 use cosmian_crypto_core::{
@@ -19,11 +19,11 @@ use cosmian_openssl_provider::hash::Sha256;
 fn generate_new(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
-    mpk: &MasterPublicKey,
+    pk: &PublicKey,
 ) {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
 
-    let usk = Covercrypt::generate_user_secret_key(rng, msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(rng, msk, &ap).unwrap();
 
     let ctx = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },
@@ -31,7 +31,7 @@ fn generate_new(
         { Aes256Gcm::MAC_LENGTH },
         Sha256,
         Aes256Gcm,
-    >>::encrypt(rng, mpk, &ap, b"gotcha")
+    >>::encrypt(rng, pk, &ap, b"gotcha")
     .expect("cannot encrypt!");
 
     // Ensure decryption is OK
@@ -105,11 +105,11 @@ fn generate_new(
 fn main() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let mut rng = CsRng::from_entropy();
-    let (mut _msk, mpk) = cc_keygen(&mut rng, false).unwrap();
+    let (mut _msk, pk) = cc_keygen(&mut rng, false).unwrap();
 
     // Un-comment this line to generate new usk.txt and ctx.txt files.
     //
-    // generate_new(&cc, &mut _msk, &mpk);
+    // generate_new(&cc, &mut _msk, &pk);
 
     let ptx = "testing encryption/decryption".as_bytes();
 
@@ -120,7 +120,7 @@ fn main() {
             { Aes256Gcm::MAC_LENGTH },
             Sha256,
             Aes256Gcm,
-        >>::encrypt(&mut rng, &mpk, &ap, ptx)
+        >>::encrypt(&mut rng, &pk, &ap, ptx)
         .expect("cannot encrypt!");
     }
 }

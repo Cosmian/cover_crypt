@@ -137,8 +137,24 @@ dimension ~dim~.
 
 * Unplanned
 
-** Lazy Covercrypt MSK [0/1]                                       :breaking:
+** Generate USK with history
 
-- [ ] *BREAKING*: only generate right secret keys for MPK or USK requiring them.
-  This is a breaking change since it implies making right secrets in the MSK
-  optional.
+** Separate user ID generation from USK generation
+
+This allows having a deterministic USK key-generation procedure.
+
+** Hard-code tracing level to one
+
+This allows having a deterministic USK refresh.
+
+** Make USK signature mandatory
+
+Optional signature introduces an attack vector.
+
+** Sign PKs and allow renewing them
+
+** Allow expressing broadcast when generating a PK
+
+** Remove the encryption status
+
+This feature does not seem useful (nor used) anymore.

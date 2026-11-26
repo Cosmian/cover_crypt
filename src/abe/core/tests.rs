@@ -7,7 +7,7 @@ use crate::{
         Covercrypt,
         core::{
             HybridizationStatus,
-            primitives::{decaps, encaps, refresh, rekey, update_msk},
+            primitives::{decaps, encaps, refresh_usk, rekey, update_msk},
         },
         policy::{AccessPolicy, EncryptionStatus, Right},
         traits::{KemAc, PkeAc},
@@ -56,11 +56,11 @@ fn test_encapsulation() {
         ]),
     )
     .unwrap();
-    let mpk = msk.mpk(None).unwrap();
+    let pk = msk.gen_pk(None).unwrap();
 
     let (key, enc) = encaps(
         &mut rng,
-        &mpk,
+        &pk,
         &BTreeSet::from_iter([target_coordinate.clone()]),
     )
     .unwrap();
@@ -89,7 +89,7 @@ fn test_encapsulation() {
 
 /// This test verifies that the correct number of keys is added/removed upon
 /// updating the MSK. It also check that the correct number of coordinate keys
-/// are given to the MPK, and removed upon deprecation.
+/// are given to the PK, and removed upon deprecation.
 #[test]
 fn test_update() {
     let mut rng = CsRng::from_entropy();
@@ -99,12 +99,12 @@ fn test_update() {
     assert_eq!(msk.tsk.tracing_level(), MIN_TRACING_LEVEL);
     assert_eq!(msk.secrets.len(), 0);
 
-    let mpk = msk.mpk(None).unwrap();
-    assert_eq!(mpk.tpk.tracing_level(), MIN_TRACING_LEVEL);
-    assert_eq!(mpk.encryption_keys.len(), 0);
+    let pk = msk.gen_pk(None).unwrap();
+    assert_eq!(pk.tpk.tracing_level(), MIN_TRACING_LEVEL);
+    assert_eq!(pk.encryption_keys.len(), 0);
 
     // Add 30 new random coordinates and verifies the correct number of
-    // coordinate keys is added to the MSK (and the MPK).
+    // coordinate keys is added to the MSK (and the PK).
     let mut coordinates = (0..30)
         .map(|_| {
             (
@@ -119,8 +119,8 @@ fn test_update() {
     update_msk(&mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
 
-    let mpk = msk.mpk(None).unwrap();
-    assert_eq!(mpk.encryption_keys.len(), 30);
+    let pk = msk.gen_pk(None).unwrap();
+    assert_eq!(pk.encryption_keys.len(), 30);
 
     // Deprecate half coordinates.
     //
@@ -136,16 +136,16 @@ fn test_update() {
         });
     update_msk(&mut msk, coordinates.clone()).unwrap();
     assert_eq!(msk.secrets.len(), 30);
-    let mpk = msk.mpk(None).unwrap();
-    assert_eq!(mpk.encryption_keys.len(), 15);
+    let pk = msk.gen_pk(None).unwrap();
+    assert_eq!(pk.encryption_keys.len(), 15);
 
     // Keep only 10 coordinates.
     let coordinates =
         coordinates.into_iter().take(10).collect::<BTreeMap<_, _>>();
     update_msk(&mut msk, coordinates).unwrap();
     assert_eq!(msk.secrets.len(), 10);
-    let mpk = msk.mpk(None).unwrap();
-    assert_eq!(mpk.encryption_keys.len(), 5);
+    let pk = msk.gen_pk(None).unwrap();
+    assert_eq!(pk.encryption_keys.len(), 5);
 }
 
 /// This test asserts that re-keyed coordinates allow creating encapsulations
@@ -182,12 +182,12 @@ fn test_rekey() {
         ]),
     )
     .unwrap();
-    let mpk = msk.mpk(None).unwrap();
+    let pk = msk.gen_pk(None).unwrap();
     let mut usk_1 = usk_keygen(&mut rng, &mut msk, subspace_1.clone()).unwrap();
     let mut usk_2 = usk_keygen(&mut rng, &mut msk, subspace_2.clone()).unwrap();
 
-    let (old_key_1, old_enc_1) = encaps(&mut rng, &mpk, &subspace_1).unwrap();
-    let (old_key_2, old_enc_2) = encaps(&mut rng, &mpk, &subspace_2).unwrap();
+    let (old_key_1, old_enc_1) = encaps(&mut rng, &pk, &subspace_1).unwrap();
+    let (old_key_2, old_enc_2) = encaps(&mut rng, &pk, &subspace_2).unwrap();
 
     // Old USK can open encapsulations associated with their coordinate.
     assert_eq!(
@@ -203,10 +203,10 @@ fn test_rekey() {
 
     // Re-key all space coordinates.
     rekey(&mut msk, universe).unwrap();
-    let mpk = msk.mpk(None).unwrap();
+    let pk = msk.gen_pk(None).unwrap();
 
-    let (new_key_1, new_enc_1) = encaps(&mut rng, &mpk, &subspace_1).unwrap();
-    let (new_key_2, new_enc_2) = encaps(&mut rng, &mpk, &subspace_2).unwrap();
+    let (new_key_1, new_enc_1) = encaps(&mut rng, &pk, &subspace_1).unwrap();
+    let (new_key_2, new_enc_2) = encaps(&mut rng, &pk, &subspace_2).unwrap();
 
     // Old USK cannot open new encapsulations.
     assert_eq!(None, decaps(&mut rng, &usk_1, &new_enc_1).unwrap());
@@ -216,8 +216,8 @@ fn test_rekey() {
 
     // Refresh USK.
     // Only the first one keeps its old rights.
-    refresh(&mut rng, &mut msk, &mut usk_1, true).unwrap();
-    refresh(&mut rng, &mut msk, &mut usk_2, false).unwrap();
+    refresh_usk(&mut rng, &mut msk, &mut usk_1, true).unwrap();
+    refresh_usk(&mut rng, &mut msk, &mut usk_2, false).unwrap();
 
     // Refreshed USK can open the new encapsulation.
     assert_eq!(
@@ -288,7 +288,9 @@ fn test_integrity_check() {
 
     // The forged key refresh is rejected: no modification is performed on it.
     let mut new_forged_usk = old_forged_usk.clone();
-    assert!(refresh(&mut rng, &mut msk, &mut new_forged_usk, true).is_err());
+    assert!(
+        refresh_usk(&mut rng, &mut msk, &mut new_forged_usk, true).is_err()
+    );
     assert_eq!(new_forged_usk, old_forged_usk);
 }
 
@@ -298,22 +300,20 @@ fn test_reencrypt_with_msk() {
 
     let mut rng = CsRng::from_entropy();
 
-    let (mut msk, _) = cc_keygen(&mut rng, false).unwrap();
-    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
-    let mut usk =
-        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
+    let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
+    let mut usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
 
-    let (old_key, old_enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
+    let (old_key, old_enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(
         Some(&old_key),
         decaps(&mut rng, &usk, &old_enc).unwrap().as_ref()
     );
 
     Covercrypt::rekey(&mut msk, &ap).unwrap();
-    let new_mpk = msk.mpk(None).unwrap();
+    let new_pk = msk.gen_pk(None).unwrap();
     let (new_key, new_enc) =
-        Covercrypt::recaps(&mut rng, &msk, &new_mpk, &old_enc).unwrap();
-    Covercrypt::refresh_usk(&mut rng, &mut msk, &mut usk, true).unwrap();
+        Covercrypt::recaps(&mut rng, &msk, &new_pk, &old_enc).unwrap();
+    Covercrypt::refresh(&mut rng, &mut msk, &mut usk, true).unwrap();
     assert_eq!(Some(new_key), decaps(&mut rng, &usk, &new_enc).unwrap());
     assert_ne!(Some(old_key), decaps(&mut rng, &usk, &new_enc).unwrap());
 }
@@ -323,33 +323,27 @@ fn test_covercrypt_kem() {
     // Classic encapsulations.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::LOW").unwrap();
     let mut rng = CsRng::from_entropy();
-    let (mut msk, _mpk) = cc_keygen(&mut rng, false).unwrap();
-    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
-    let usk =
-        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
-    let (secret, enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
+    let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let (secret, enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::Classic);
     let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
     // Post-quantum encapsulations.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::MED").unwrap();
-    let (mut msk, _mpk) = cc_keygen(&mut rng, false).unwrap();
-    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
-    let usk =
-        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
-    let (secret, enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
+    let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let (secret, enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::PostQuantum);
     let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
 
     // Hybridized encapsulation.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
-    let (mut msk, _mpk) = cc_keygen(&mut rng, false).unwrap();
-    let mpk = Covercrypt::update_msk(&mut msk).unwrap();
-    let usk =
-        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
-    let (secret, enc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
+    let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let (secret, enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::Hybridized);
     let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
     assert_eq!(secret, res.unwrap());
@@ -359,7 +353,7 @@ fn test_covercrypt_kem() {
 fn test_covercrypt_pke() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let mut rng = CsRng::from_entropy();
-    let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
+    let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
 
     let ptx = "testing encryption/decryption".as_bytes();
 
@@ -369,11 +363,10 @@ fn test_covercrypt_pke() {
         { Aes256Gcm::TAG_LENGTH },
         Sha256,
         Aes256Gcm,
-    >>::encrypt(&mut rng, &mpk, &ap, ptx)
+    >>::encrypt(&mut rng, &pk, &ap, ptx)
     .expect("cannot encrypt!");
 
-    let usk =
-        Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
 
     let ptx1 = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },

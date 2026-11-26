@@ -1,20 +1,21 @@
-use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
-
 use crate::{
     Error,
     abe::gen_structure,
-    abe::{Covercrypt, MasterPublicKey, MasterSecretKey},
+    abe::{Covercrypt, MasterSecretKey, PublicKey},
 };
+use cosmian_crypto_core::reexport::rand_core::CryptoRngCore;
 
 /// Creates the test access structure.
 pub fn cc_keygen(
     rng: &mut impl CryptoRngCore,
     complete: bool,
-) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
-    let (mut msk, _) = Covercrypt::setup(rng)?;
-    gen_structure(&mut msk.access_structure, complete)?;
-    let mpk = Covercrypt::update_msk(&mut msk)?;
-    Ok((msk, mpk))
+) -> Result<(MasterSecretKey, PublicKey), Error> {
+    let mut msk = Covercrypt::setup(rng)?;
+    Covercrypt::edit_msk(&mut msk, |access_structure| {
+        gen_structure(access_structure, complete)
+    })?;
+    let pk = Covercrypt::gen_pk(&msk, None)?;
+    Ok((msk, pk))
 }
 
 #[cfg(test)]
@@ -29,24 +30,27 @@ mod tests {
     #[test]
     fn test_add_attribute() -> Result<(), Error> {
         let mut rng = CsRng::from_entropy();
-        let (mut msk, _mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, _) = cc_keygen(&mut rng, false)?;
 
-        let mut low_secret_usk = Covercrypt::generate_user_secret_key(
+        let mut low_secret_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("SEC::LOW")?,
         )?;
 
-        let _ = &mut msk.access_structure.add_attribute(
-            QualifiedAttribute::new("DPT".to_owned(), "Sales".to_owned()),
-            HybridizationStatus::Classic,
-            None,
-        )?;
-        let mpk = Covercrypt::update_msk(&mut msk)?;
+        Covercrypt::edit_msk(&mut msk, |access_structure| {
+            access_structure.add_attribute(
+                QualifiedAttribute::new("DPT".to_owned(), "Sales".to_owned()),
+                HybridizationStatus::Classic,
+                None,
+            )
+        })?;
+
+        let pk = Covercrypt::gen_pk(&msk, None)?;
 
         let (_, encrypted_header) = EncryptedHeader::generate(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("SEC::LOW && DPT::Sales")?,
             None,
             None,
@@ -60,12 +64,7 @@ mod tests {
                 .is_none()
         );
 
-        Covercrypt::refresh_usk(
-            &mut rng,
-            &mut msk,
-            &mut low_secret_usk,
-            false,
-        )?;
+        Covercrypt::refresh(&mut rng, &mut msk, &mut low_secret_usk, false)?;
 
         assert!(
             encrypted_header
@@ -80,10 +79,10 @@ mod tests {
     #[test]
     fn test_delete_attribute() -> Result<(), Error> {
         let mut rng = CsRng::from_entropy();
-        let (mut msk, mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, pk) = cc_keygen(&mut rng, false)?;
 
         // New user secret key
-        let mut top_secret_fin_usk = Covercrypt::generate_user_secret_key(
+        let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?,
@@ -92,21 +91,19 @@ mod tests {
         // Encrypt
         let (_, encrypted_header) = EncryptedHeader::generate(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
             None,
             None,
         )?;
 
         // remove the FIN department
-        msk.access_structure
-            .del_attribute(&QualifiedAttribute::new(
+        Covercrypt::edit_msk(&mut msk, |access_structure| {
+            access_structure.del_attribute(&QualifiedAttribute::new(
                 "DPT".to_owned(),
                 "FIN".to_owned(),
-            ))?;
-
-        // update the master keys
-        let _ = Covercrypt::update_msk(&mut msk)?;
+            ))
+        })?;
 
         assert!(
             encrypted_header
@@ -115,18 +112,10 @@ mod tests {
                 .is_some()
         );
 
-        let _new_decryption_policy =
-            AccessPolicy::parse("SEC::TOP && DPT::HR")?;
-
         // Refreshing the USK removes the keys associated to rights that do not
         // exist anymore in the MSK, even if it is asked to preserve the old
         // secrets.
-        Covercrypt::refresh_usk(
-            &mut rng,
-            &mut msk,
-            &mut top_secret_fin_usk,
-            true,
-        )?;
+        Covercrypt::refresh(&mut rng, &mut msk, &mut top_secret_fin_usk, true)?;
 
         assert!(
             encrypted_header
@@ -141,10 +130,10 @@ mod tests {
     #[test]
     fn test_deactivate_attribute() -> Result<(), Error> {
         let mut rng = CsRng::from_entropy();
-        let (mut msk, mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, pk) = cc_keygen(&mut rng, false)?;
 
         // New user secret key
-        let mut top_secret_fin_usk = Covercrypt::generate_user_secret_key(
+        let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?,
@@ -153,21 +142,22 @@ mod tests {
         // Encrypt
         let (_, encrypted_header) = EncryptedHeader::generate(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
             None,
             None,
         )?;
 
         // remove the FIN department
-        msk.access_structure
-            .disable_attribute(&QualifiedAttribute::new(
+        Covercrypt::edit_msk(&mut msk, |access_structure| {
+            access_structure.disable_attribute(&QualifiedAttribute::new(
                 "DPT".to_owned(),
                 "FIN".to_owned(),
-            ))?;
+            ))
+        })?;
 
         // update the master keys
-        let mpk = Covercrypt::update_msk(&mut msk)?;
+        let pk = Covercrypt::gen_pk(&msk, None)?;
 
         assert!(
             encrypted_header
@@ -180,7 +170,7 @@ mod tests {
         assert!(
             EncryptedHeader::generate(
                 &mut rng,
-                &mpk,
+                &pk,
                 &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
                 None,
                 None
@@ -189,12 +179,7 @@ mod tests {
         );
 
         // refresh the user key and preserve old secrets
-        Covercrypt::refresh_usk(
-            &mut rng,
-            &mut msk,
-            &mut top_secret_fin_usk,
-            true,
-        )?;
+        Covercrypt::refresh(&mut rng, &mut msk, &mut top_secret_fin_usk, true)?;
 
         assert!(
             encrypted_header
@@ -204,7 +189,7 @@ mod tests {
         );
 
         // refresh the user key and remove old secrets
-        Covercrypt::refresh_usk(
+        Covercrypt::refresh(
             &mut rng,
             &mut msk,
             &mut top_secret_fin_usk,
@@ -224,10 +209,10 @@ mod tests {
     #[test]
     fn test_rename_attribute() -> Result<(), Error> {
         let mut rng = CsRng::from_entropy();
-        let (mut msk, mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, pk) = cc_keygen(&mut rng, false)?;
 
         // New user secret key
-        let mut top_secret_fin_usk = Covercrypt::generate_user_secret_key(
+        let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
@@ -236,20 +221,19 @@ mod tests {
         // Encrypt
         let (_, encrypted_header) = EncryptedHeader::generate(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
             None,
             None,
         )?;
 
         // remove the FIN department
-        msk.access_structure.rename_attribute(
-            &QualifiedAttribute::new("DPT".to_owned(), "FIN".to_owned()),
-            "Finance".to_string(),
-        )?;
-
-        // update the master keys
-        let _ = Covercrypt::update_msk(&mut msk)?;
+        Covercrypt::edit_msk(&mut msk, |access_structure| {
+            access_structure.rename_attribute(
+                &QualifiedAttribute::new("DPT".to_owned(), "FIN".to_owned()),
+                "Finance".to_string(),
+            )
+        })?;
 
         assert!(
             encrypted_header
@@ -259,7 +243,7 @@ mod tests {
         );
 
         // refresh the user key and preserve old secrets
-        Covercrypt::refresh_usk(
+        Covercrypt::refresh(
             &mut rng,
             &mut msk,
             &mut top_secret_fin_usk,
@@ -279,17 +263,17 @@ mod tests {
     #[test]
     fn encrypt_decrypt_sym_key() -> Result<(), Error> {
         let mut rng = CsRng::from_entropy();
-        let (mut msk, mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, pk) = cc_keygen(&mut rng, false)?;
 
         let (sym_key, encrypted_key) = Covercrypt::encaps(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("DPT::MKG && SEC::TOP").unwrap(),
         )?;
 
         // A user secret key with matching access policy is able to open an
         // encapsulation.
-        let usk = Covercrypt::generate_user_secret_key(
+        let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
@@ -300,7 +284,7 @@ mod tests {
         // When left implicit, the bottom element of a hierarchical dimension is
         // derived for user secret keys, which prevent them from opening
         // encapsulations for higher attributes.
-        let usk = Covercrypt::generate_user_secret_key(
+        let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("DPT::MKG || DPT::FIN").unwrap(),
@@ -313,11 +297,11 @@ mod tests {
         // secret keys to open it.
         let (sym_key, encrypted_key) = Covercrypt::encaps(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("DPT::MKG").unwrap(),
         )?;
 
-        let usk = Covercrypt::generate_user_secret_key(
+        let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
@@ -326,7 +310,7 @@ mod tests {
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
         assert_eq!(Some(&sym_key), recovered_key.as_ref());
 
-        let usk = Covercrypt::generate_user_secret_key(
+        let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::LOW").unwrap(),
@@ -334,7 +318,7 @@ mod tests {
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
         assert_eq!(Some(&sym_key), recovered_key.as_ref());
 
-        let usk = Covercrypt::generate_user_secret_key(
+        let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("(DPT::MKG || DPT::FIN)").unwrap(),
@@ -348,11 +332,11 @@ mod tests {
     #[test]
     fn test_single_attribute_in_access_policy() -> Result<(), Error> {
         let mut rng = CsRng::from_entropy();
-        let (mut msk, _mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, _pk) = cc_keygen(&mut rng, false)?;
 
         //
         // New user secret key
-        let _user_key = Covercrypt::generate_user_secret_key(
+        let _user_key = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("SEC::TOP")?,
@@ -366,11 +350,11 @@ mod tests {
         let top_secret_ap = &AccessPolicy::parse("SEC::TOP")?;
 
         let mut rng = CsRng::from_entropy();
-        let (mut msk, mpk) = cc_keygen(&mut rng, false)?;
+        let (mut msk, pk) = cc_keygen(&mut rng, false)?;
 
         //
         // New user secret key
-        let mut top_secret_fin_usk = Covercrypt::generate_user_secret_key(
+        let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
@@ -380,7 +364,7 @@ mod tests {
         // Encrypt
         let (_, encrypted_header) = EncryptedHeader::generate(
             &mut rng,
-            &mpk,
+            &pk,
             &top_secret_ap.clone(),
             None,
             None,
@@ -393,15 +377,18 @@ mod tests {
 
         //
         // Rotate argument (must update master keys)
-        let rekey_ap =
-            AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP")));
-        let mpk = Covercrypt::rekey(&mut msk, &rekey_ap)?;
+        Covercrypt::rekey(
+            &mut msk,
+            &AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP"))),
+        )?;
+
+        let pk = Covercrypt::gen_pk(&msk, None)?;
 
         //
         // Encrypt with new attribute
         let (_, encrypted_header) = EncryptedHeader::generate(
             &mut rng,
-            &mpk,
+            &pk,
             &top_secret_ap.clone(),
             None,
             None,
@@ -415,7 +402,7 @@ mod tests {
                 .is_none()
         );
 
-        Covercrypt::refresh_usk(
+        Covercrypt::refresh(
             &mut rng,
             &mut msk,
             &mut top_secret_fin_usk,
@@ -437,10 +424,10 @@ mod tests {
     fn test_broadcast() {
         let mut rng = CsRng::from_entropy();
         let ap = AccessPolicy::parse("*").unwrap();
-        let (mut msk, mpk) = Covercrypt::setup(&mut rng).unwrap();
-        let usk = Covercrypt::generate_user_secret_key(&mut rng, &mut msk, &ap)
-            .unwrap();
-        let (secret, bc) = Covercrypt::encaps(&mut rng, &mpk, &ap).unwrap();
+        let mut msk = Covercrypt::setup(&mut rng).unwrap();
+        let pk = Covercrypt::gen_pk(&msk, None).unwrap();
+        let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+        let (secret, bc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
         let res = Covercrypt::decaps(&mut rng, &usk, &bc).unwrap();
         assert_eq!(Some(secret), res);
     }

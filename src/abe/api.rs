@@ -1,12 +1,12 @@
 use crate::{
-    Error,
+    AccessStructure, Error,
     abe::{
         core::{
-            MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
+            MIN_TRACING_LEVEL, MasterSecretKey, PublicKey,
             SHARED_SECRET_LENGTH, UserSecretKey, XEnc,
             primitives::{
-                self, master_decaps, prune, refresh, rekey, setup, update_msk,
-                usk_keygen,
+                self, master_decaps, prune, refresh_usk, rekey, setup,
+                update_msk, usk_keygen,
             },
         },
         policy::AccessPolicy,
@@ -23,90 +23,69 @@ use cosmian_crypto_core::{
 pub struct Covercrypt;
 
 impl Covercrypt {
-    /// Sets up the Covercrypt scheme.
-    ///
-    /// Generates a MSK and a MPK only holing broadcasting keys, and with a
-    /// tracing level of [`MIN_TRACING_LEVEL`](core::MIN_TRACING_LEVEL).
+    /// Generates a fresh MSK only holding the broadcast right.
     pub fn setup(
         rng: &mut impl CryptoRngCore,
-    ) -> Result<(MasterSecretKey, MasterPublicKey), Error> {
+    ) -> Result<MasterSecretKey, Error> {
         let mut msk = setup(MIN_TRACING_LEVEL, rng)?;
         let rights = msk.access_structure.omega()?;
         update_msk(&mut msk, rights)?;
-        let mpk = msk.mpk(None)?;
-        Ok((msk, mpk))
+        Ok(msk)
     }
 
-    /// Updates the MSK according to its access structure. Returns the new
-    /// version of the MPK.
-    ///
-    /// Sets the MSK rights to the one defined by the access structure:
-    ///
-    /// - removes rights from the MSK that don't belong to the access structure
-    ///   along with their associated secrets;
-    ///
-    /// - adds the rights that don't belong yet to the MSK, generating new
-    ///   secrets.
-    ///
-    /// The new MPK holds the latest encryption key of each right of the access
-    /// structure.
-    // TODO: this function should be internalized and replaced by specialized
-    // functions.
-    pub fn update_msk(
+    /// Edits the access structure hold by the given MSK.
+    pub fn edit_msk(
         msk: &mut MasterSecretKey,
-    ) -> Result<MasterPublicKey, Error> {
-        update_msk(msk, msk.access_structure.omega()?)?;
-        msk.mpk(None)
+        edit: impl FnOnce(&mut AccessStructure) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        edit(&mut msk.access_structure)?;
+        update_msk(msk, msk.access_structure.omega()?)
     }
 
     /// Generates new secrets for each right a USK associated to the given
-    /// access policy would hold, updates the MSK and returns the new MPK.
+    /// access policy would hold and updates the MSK accordingly.
     ///
-    /// User keys need to be refreshed.
-    // TODO document error cases.
+    /// All user secret and public keys need to be refreshed.
     pub fn rekey(
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
-    ) -> Result<MasterPublicKey, Error> {
-        rekey(msk, msk.access_structure.ap_to_usk_rights(ap)?)?;
-        msk.mpk(None)
+    ) -> Result<(), Error> {
+        rekey(msk, msk.access_structure.ap_to_usk_rights(ap)?)
     }
 
-    /// Removes from the master secret key all but the latest secret of each
-    /// right a USK associated to the given access policy would hold. Returns
-    /// the new MPK.
+    /// Removes from this MSK all but the latest secret of each right a USK
+    /// associated to the given access policy would hold.
     ///
-    /// This action is *irreversible*, and all user keys need to be refreshed.
-    // TODO document error cases.
-    pub fn prune_master_secret_key(
+    /// This action is *irreversible*, and all user secret keys need to be
+    /// refreshed in order to be pruned accordingly.
+    pub fn prune(
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
-    ) -> Result<MasterPublicKey, Error> {
+    ) -> Result<(), Error> {
         prune(msk, &msk.access_structure.ap_to_usk_rights(ap)?);
-        msk.mpk(None)
+        Ok(())
     }
 
-    /// Generates the MPK associated to this MSK.
+    /// Generates the PK associated the given access policy.
     ///
-    /// If an access policy was given, restrains the MPK to the keys required to
-    /// generate encapsulations under this (or any stricter) access policy.
-    pub fn gen_mpk(
+    /// If none was given, generate the PK associated to the whole access
+    /// structure.
+    pub fn gen_pk(
         msk: &MasterSecretKey,
         ap: Option<&AccessPolicy>,
-    ) -> Result<MasterPublicKey, Error> {
-        msk.mpk(
+    ) -> Result<PublicKey, Error> {
+        msk.gen_pk(
             ap.map(|ap| msk.access_structure.ap_to_enc_rights(ap))
                 .transpose()?
                 .as_ref(),
         )
     }
 
-    /// Generates a USK associated to the given access policy.
+    /// Generates a fresh USK associated to the given access policy.
     ///
     /// The new key is given the latest secret of each right in the
     /// complementary space of its access policy.
-    // TODO document error cases.
-    pub fn generate_user_secret_key(
+    pub fn gen_usk(
         rng: &mut impl CryptoRngCore,
         msk: &mut MasterSecretKey,
         ap: &AccessPolicy,
@@ -114,25 +93,23 @@ impl Covercrypt {
         usk_keygen(rng, msk, msk.access_structure.ap_to_usk_rights(ap)?)
     }
 
-    /// Refreshes the USK with respect to the given MSK.
+    /// Refreshes the given USK.
     ///
     /// The USK is given all missing secrets since the first secret hold by the
-    /// USK, for each right in the complementary space of its access
-    /// policy. Secrets hold by the USK but have been removed from the MSK are
-    /// removed.
+    /// USK, for each right in the complementary space of its access policy.
+    /// Secrets hold by the USK but have been removed from the MSK are removed.
     ///
     /// If `keep_old_secrets` is set to false, only the latest secret of each
     /// right is kept instead.
     ///
     /// Updates the tracing level to match the one of the MSK if needed.
-    // TODO document error cases.
     pub fn refresh_usk(
         rng: &mut impl CryptoRngCore,
         msk: &mut MasterSecretKey,
         usk: &mut UserSecretKey,
         keep_old_secrets: bool,
     ) -> Result<(), Error> {
-        refresh(rng, msk, usk, keep_old_secrets)
+        refresh_usk(rng, msk, usk, keep_old_secrets)
     }
 
     /// Returns a new encapsulation with the same rights as the one given, along
@@ -140,16 +117,16 @@ impl Covercrypt {
     pub fn recaps(
         rng: &mut impl CryptoRngCore,
         msk: &MasterSecretKey,
-        mpk: &MasterPublicKey,
+        pk: &PublicKey,
         encapsulation: &XEnc,
     ) -> Result<(Secret<32>, XEnc), Error> {
         let (_ss, rights) = master_decaps(msk, encapsulation, true)?;
-        primitives::encaps(rng, mpk, &rights)
+        primitives::encaps(rng, pk, &rights)
     }
 }
 
 impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
-    type EncapsulationKey = MasterPublicKey;
+    type EncapsulationKey = PublicKey;
     type DecapsulationKey = UserSecretKey;
     type Encapsulation = XEnc;
     type Error = Error;
@@ -160,7 +137,11 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         ap: &AccessPolicy,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self::Encapsulation), Self::Error>
     {
-        primitives::encaps(rng, ek, &ek.access_structure.ap_to_enc_rights(ap)?)
+        primitives::encaps(
+            rng,
+            ek,
+            &ek.access_structure().ap_to_enc_rights(ap)?,
+        )
     }
 
     fn decaps(
@@ -180,18 +161,18 @@ impl<
     E: AE<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH>,
 > PkeAc<KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, Kdf, E> for Covercrypt
 {
-    type EncryptionKey = MasterPublicKey;
+    type EncryptionKey = PublicKey;
     type DecryptionKey = UserSecretKey;
     type Ciphertext = (XEnc, E::Ciphertext);
     type Error = Error;
 
     fn encrypt(
         rng: &mut impl CryptoRngCore,
-        mpk: &Self::EncryptionKey,
+        pk: &Self::EncryptionKey,
         ap: &AccessPolicy,
         ptx: &[u8],
     ) -> Result<Self::Ciphertext, Self::Error> {
-        let (seed, enc) = Self::encaps(rng, mpk, ap)?;
+        let (seed, enc) = Self::encaps(rng, pk, ap)?;
         let key = Kdf::derive(&*seed, vec![b"Covercrypt AE key"])
             .map_err(|e| Self::Error::Kdf(e.to_string()))?;
         let mut nonce = [0; NONCE_LENGTH];
@@ -237,20 +218,20 @@ mod tests {
     #[test]
     fn test_regressions() {
         {
-            // Ensure the (MSK, MPK) couple can be deterministically populated.
+            // Ensure the (MSK, PK) couple can be deterministically populated.
             let mut rng = CsRng::from_seed([0; 32]);
-            let (msk_1, mpk_1) = cc_keygen(&mut rng, true).unwrap();
+            let (msk_1, pk_1) = cc_keygen(&mut rng, true).unwrap();
             let mut rng = CsRng::from_seed([0; 32]);
-            let (msk_2, mpk_2) = cc_keygen(&mut rng, true).unwrap();
+            let (msk_2, pk_2) = cc_keygen(&mut rng, true).unwrap();
 
             assert_eq!(msk_1, msk_2);
-            assert_eq!(mpk_1, mpk_2);
+            assert_eq!(pk_1, pk_2);
         }
 
         let mut rng = CsRng::from_seed([0; 32]);
-        let (mut msk, mpk) = cc_keygen(&mut rng, true).unwrap();
+        let (mut msk, pk) = cc_keygen(&mut rng, true).unwrap();
 
-        let usk_1 = Covercrypt::generate_user_secret_key(
+        let usk_1 = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse(
@@ -260,7 +241,7 @@ mod tests {
         )
         .unwrap();
 
-        let usk_2 = Covercrypt::generate_user_secret_key(
+        let usk_2 = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse(
@@ -272,7 +253,7 @@ mod tests {
 
         let enc_1 = Covercrypt::encaps(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse(
                 "SEC::TOP && (((CTR::FR || CTR::EN) && DPT::DEV) || DPT::FIN)",
             )
@@ -282,7 +263,7 @@ mod tests {
 
         let enc_2 = Covercrypt::encaps(
             &mut rng,
-            &mpk,
+            &pk,
             &AccessPolicy::parse("*").unwrap(),
         )
         .unwrap();
@@ -291,9 +272,9 @@ mod tests {
             .unwrap()
             .regtest_dbg(msk.serialize().unwrap().to_vec());
 
-        RegTest::new("./test-data/mpk")
+        RegTest::new("./test-data/pk")
             .unwrap()
-            .regtest_dbg(mpk.serialize().unwrap().to_vec());
+            .regtest_dbg(pk.serialize().unwrap().to_vec());
 
         RegTest::new("./test-data/usk_1")
             .unwrap()

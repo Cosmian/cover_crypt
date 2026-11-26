@@ -73,7 +73,7 @@ impl EncryptionTestVector {
     }
 
     pub fn new(
-        mpk: &MasterPublicKey,
+        pk: &MasterPublicKey,
         encryption_policy: &str,
         plaintext: &str,
         header_metadata: Option<&[u8]>,
@@ -85,7 +85,7 @@ impl EncryptionTestVector {
         let cover_crypt = Covercrypt::default();
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &cover_crypt,
-            mpk,
+            pk,
             &AccessPolicy::parse(encryption_policy)?,
             header_metadata,
             authentication_data,
@@ -162,7 +162,7 @@ impl NonRegressionTestVector {
         //
         let cover_crypt = Covercrypt::default();
         let (mut msk, _) = cover_crypt.setup()?;
-        let mpk = cover_crypt.update_master_keys(&policy, &mut msk)?;
+        let pk = cover_crypt.update_master_keys(&policy, &mut msk)?;
 
         //
         // Encryption header metadata
@@ -170,7 +170,7 @@ impl NonRegressionTestVector {
         let authentication_data = 2u32.to_be_bytes().to_vec();
 
         let reg_vectors = Self {
-            public_key: transcoder.encode(mpk.serialize()?),
+            public_key: transcoder.encode(pk.serialize()?),
             master_secret_key: transcoder.encode(msk.serialize()?),
             //
             // Create user decryption keys
@@ -192,7 +192,7 @@ impl NonRegressionTestVector {
             //
             // Generate ciphertexts
             top_secret_mkg_test_vector: EncryptionTestVector::new(
-                &mpk,
+                &pk,
                 "DPT::MKG && SEC::TOP",
                 "top_secret_mkg_plaintext",
                 Some(&header_metadata),
@@ -200,7 +200,7 @@ impl NonRegressionTestVector {
             )?,
 
             low_secret_mkg_test_vector: EncryptionTestVector::new(
-                &mpk,
+                &pk,
                 "DPT::MKG && SEC::LOW",
                 "low_secret_mkg_plaintext",
                 Some(&header_metadata),
@@ -208,7 +208,7 @@ impl NonRegressionTestVector {
             )?,
 
             low_secret_fin_test_vector: EncryptionTestVector::new(
-                &mpk,
+                &pk,
                 "DPT::FIN && SEC::LOW",
                 "low_secret_fin_plaintext",
                 None,

@@ -7,7 +7,7 @@ use cosmian_crypto_core::{
 use crate::{
     Error,
     abe::{
-        AccessPolicy, Covercrypt, MasterPublicKey, UserSecretKey,
+        AccessPolicy, Covercrypt, PublicKey, UserSecretKey,
         core::{SHARED_SECRET_LENGTH, XEnc},
         traits::KemAc,
     },
@@ -26,18 +26,18 @@ impl EncryptedHeader {
     /// Returns the encrypted header along with the secret.
     ///
     /// - `cc`                  : `Covercrypt` object
-    /// - `mpk`                 : `Covercrypt` public key
+    /// - `pk`                 : `Covercrypt` public key
     /// - `ap`                  : access policy used for the encapsulation
     /// - `header_metadata`     : additional data symmetrically encrypted in the header
     /// - `authentication_data` : authentication data used in the DEM encryption
     pub fn generate(
         rng: &mut impl CryptoRngCore,
-        mpk: &MasterPublicKey,
+        pk: &PublicKey,
         ap: &AccessPolicy,
         metadata: Option<&[u8]>,
         authentication_data: Option<&[u8]>,
     ) -> Result<(Secret<SHARED_SECRET_LENGTH>, Self), Error> {
-        let (seed, encapsulation) = Covercrypt::encaps(rng, mpk, ap)?;
+        let (seed, encapsulation) = Covercrypt::encaps(rng, pk, ap)?;
 
         let encrypted_metadata = metadata
             .map(|bytes| {
@@ -210,9 +210,9 @@ mod serialization {
         };
 
         let mut rng = CsRng::from_entropy();
-        let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
+        let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
 
-        let usk = Covercrypt::generate_user_secret_key(
+        let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
             &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
@@ -227,7 +227,7 @@ mod serialization {
             let mut rng = CsRng::from_entropy();
             let (secret, encrypted_header) = EncryptedHeader::generate(
                 &mut rng,
-                &mpk,
+                &pk,
                 &ap,
                 metadata,
                 authentication_data,

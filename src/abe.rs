@@ -7,7 +7,7 @@ pub mod traits;
 pub mod encrypted_header;
 
 pub use api::Covercrypt;
-pub use core::{MasterPublicKey, MasterSecretKey, UserSecretKey, XEnc};
+pub use core::{MasterSecretKey, PublicKey, UserSecretKey, XEnc};
 pub use policy::{
     AccessPolicy, AccessStructure, Attribute, Dimension, EncryptionStatus,
     HybridizationStatus, QualifiedAttribute,

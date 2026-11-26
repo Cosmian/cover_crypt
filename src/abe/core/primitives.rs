@@ -2,7 +2,7 @@ use crate::{
     Error,
     abe::{
         core::{
-            KmacSignature, MIN_TRACING_LEVEL, MasterPublicKey, MasterSecretKey,
+            KmacSignature, MIN_TRACING_LEVEL, MasterSecretKey, PublicKey,
             Revision, RightPublicKey, RightSecretKey, SEED_LENGTH,
             SHARED_SECRET_LENGTH, SIGNATURE_LENGTH, SIGNING_KEY_LENGTH,
             TAG_LENGTH, TracingSecretKey, UserId, UserSecretKey, XEnc,
@@ -220,6 +220,7 @@ pub fn usk_keygen(
     let signature = sign(msk, &id, &coordinate_keys)?;
 
     Ok(UserSecretKey {
+        rev: msk.rev,
         id,
         ps: msk.tsk.tracers.iter().map(|(_, Pi)| Pi).cloned().collect(),
         secrets: coordinate_keys,
@@ -354,13 +355,13 @@ fn pre_quantum_encaps<'a>(
 /// Returns an error in case the public key is missing for some coordinate.
 pub fn encaps(
     rng: &mut impl CryptoRngCore,
-    mpk: &MasterPublicKey,
+    pk: &PublicKey,
     encryption_set: &BTreeSet<Right>,
 ) -> Result<(Secret<SHARED_SECRET_LENGTH>, XEnc), Error> {
     // A typed key container would avoid the need for casting in the match arms
     // but would also involve additional overhead.
     let (is_hybridized, mut coordinate_keys) =
-        mpk.select_subkeys(encryption_set)?;
+        pk.select_subkeys(encryption_set)?;
 
     // Shuffling must be performed *before* generating the final encapsulations
     // in order to have a deterministic digest.
@@ -371,7 +372,7 @@ pub fn encaps(
     match is_hybridized {
         HybridizationStatus::Classic => {
             let r = G_hash(&S)?;
-            let c = mpk.set_traps(&r);
+            let c = pk.set_traps(&r);
 
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::PreQuantum { H } = subkey {
@@ -394,7 +395,7 @@ pub fn encaps(
         }
         HybridizationStatus::Hybridized => {
             let r = G_hash(&S)?;
-            let c = mpk.set_traps(&r);
+            let c = pk.set_traps(&r);
 
             let subkeys = coordinate_keys.into_iter().map(|subkey| {
                 if let RightPublicKey::Hybridized { H, ek } = subkey {
@@ -968,7 +969,7 @@ pub fn prune(msk: &mut MasterSecretKey, coordinates: &BTreeSet<Right>) {
 ///   the USK, all secrets previously owned by the USK are removed;
 /// - otherwise, secrets from the USK that do not belong to the MSK are removed,
 ///   and secrets from the MSK that do not belong to the USK are added.
-pub fn refresh(
+pub fn refresh_usk(
     rng: &mut impl CryptoRngCore,
     msk: &mut MasterSecretKey,
     usk: &mut UserSecretKey,
@@ -989,6 +990,7 @@ pub fn refresh(
 
     let signature = sign(msk, &new_id, &new_rights)?;
 
+    usk.rev = msk.rev;
     usk.id = new_id;
     usk.secrets = new_rights;
     usk.signature = signature;

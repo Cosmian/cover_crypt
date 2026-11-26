@@ -8,7 +8,7 @@ use cosmian_crypto_core::{CsRng, reexport::rand_core::SeedableRng};
 
 fn main() {
     let mut rng = CsRng::from_entropy();
-    let (mut msk, mpk) = cc_keygen(&mut rng, false).unwrap();
+    let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
 
     // The user has a security clearance `Security Level::Top Secret`,
     // and belongs to the finance department (`Department::FIN`).
@@ -16,17 +16,13 @@ fn main() {
         AccessPolicy::parse("Security Level::Top Secret && Department::FIN")
             .unwrap();
 
-    let mut usk = Covercrypt::generate_user_secret_key(
-        &mut rng,
-        &mut msk,
-        &access_policy,
-    )
-    .unwrap();
+    let mut usk =
+        Covercrypt::gen_usk(&mut rng, &mut msk, &access_policy).unwrap();
 
     // Encrypt
     let (_, encrypted_header) = EncryptedHeader::generate(
         &mut rng,
-        &mpk,
+        &pk,
         &access_policy.clone(),
         None,
         None,
@@ -43,12 +39,13 @@ fn main() {
 
     //
     // Rekey the user access policy.
-    let mpk = Covercrypt::rekey(&mut msk, &access_policy).unwrap();
+    Covercrypt::rekey(&mut msk, &access_policy).unwrap();
+    let pk = Covercrypt::gen_pk(&msk, None).unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
     // Encrypt with rotated attribute
     let (_, new_encrypted_header) =
-        EncryptedHeader::generate(&mut rng, &mpk, &enc_policy, None, None)
+        EncryptedHeader::generate(&mut rng, &pk, &enc_policy, None, None)
             .unwrap();
 
     // user cannot decrypt the newly encrypted header
@@ -60,7 +57,7 @@ fn main() {
     );
 
     // refresh user secret key, do not grant old encryption access
-    Covercrypt::refresh_usk(&mut rng, &mut msk, &mut usk, false).unwrap();
+    Covercrypt::refresh(&mut rng, &mut msk, &mut usk, false).unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
     assert!(
