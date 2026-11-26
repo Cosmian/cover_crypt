@@ -301,7 +301,7 @@ fn test_reencrypt_with_msk() {
     let mut rng = CsRng::from_entropy();
 
     let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
-    let mut usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let mut usk = Covercrypt::gen_usk(&mut rng, &mut msk, ap.clone()).unwrap();
 
     let (old_key, old_enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(
@@ -309,11 +309,11 @@ fn test_reencrypt_with_msk() {
         decaps(&mut rng, &usk, &old_enc).unwrap().as_ref()
     );
 
-    Covercrypt::rekey(&mut msk, &ap).unwrap();
+    Covercrypt::rekey(&mut msk, ap.clone()).unwrap();
     let new_pk = msk.gen_pk(None).unwrap();
     let (new_key, new_enc) =
         Covercrypt::recaps(&mut rng, &msk, &new_pk, &old_enc).unwrap();
-    Covercrypt::refresh(&mut rng, &mut msk, &mut usk, true).unwrap();
+    Covercrypt::refresh_usk(&mut rng, &mut msk, &mut usk, true).unwrap();
     assert_eq!(Some(new_key), decaps(&mut rng, &usk, &new_enc).unwrap());
     assert_ne!(Some(old_key), decaps(&mut rng, &usk, &new_enc).unwrap());
 }
@@ -324,7 +324,7 @@ fn test_covercrypt_kem() {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::LOW").unwrap();
     let mut rng = CsRng::from_entropy();
     let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
-    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, ap.clone()).unwrap();
     let (secret, enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::Classic);
     let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
@@ -333,7 +333,7 @@ fn test_covercrypt_kem() {
     // Post-quantum encapsulations.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::MED").unwrap();
     let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
-    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, ap.clone()).unwrap();
     let (secret, enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::PostQuantum);
     let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
@@ -342,7 +342,7 @@ fn test_covercrypt_kem() {
     // Hybridized encapsulation.
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
     let (mut msk, pk) = cc_keygen(&mut rng, false).unwrap();
-    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, ap.clone()).unwrap();
     let (secret, enc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
     assert_eq!(enc.security_mode(), HybridizationStatus::Hybridized);
     let res = Covercrypt::decaps(&mut rng, &usk, &enc).unwrap();
@@ -366,7 +366,7 @@ fn test_covercrypt_pke() {
     >>::encrypt(&mut rng, &pk, &ap, ptx)
     .expect("cannot encrypt!");
 
-    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(&mut rng, &mut msk, ap.clone()).unwrap();
 
     let ptx1 = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },

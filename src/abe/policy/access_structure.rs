@@ -1,9 +1,9 @@
 use crate::{
     Error,
     abe::policy::{
-        AccessPolicy, Attribute, Dimension, EncryptionStatus,
+        AccessPolicy, Attribute, BROADCAST, Dimension, EncryptionStatus,
         QualifiedAttribute, Right, Version,
-        access_policy::{Name, NameRef},
+        access_policy::{Clause, Name, NameRef},
         attribute::HybridizationStatus,
     },
     data_struct::Dict,
@@ -31,7 +31,7 @@ impl AccessStructure {
     /// Generate the set of USK rights described by the given access policy.
     pub fn ap_to_usk_rights(
         &self,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
         self.generate_extended_rights(ap)
     }
@@ -39,7 +39,7 @@ impl AccessStructure {
     /// Generate the set of ciphertext rights described by the given access policy.
     pub fn ap_to_enc_rights(
         &self,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
         self.generate_restricted_rights(ap)
     }
@@ -226,19 +226,30 @@ impl AccessStructure {
         }
     }
 
-    /// Returns all rights defined by this access structure along with their
-    /// hybridization and activation status.
-    pub(crate) fn omega(
+    fn rights(
         &self,
-    ) -> Result<BTreeMap<Right, (HybridizationStatus, EncryptionStatus)>, Error>
-    {
+    ) -> impl Iterator<
+        Item = Result<(Right, (HybridizationStatus, EncryptionStatus)), Error>,
+    > {
         let universe = self.dimensions.iter().collect::<Vec<_>>();
         combine(universe.into_iter().map(|(_, dimension)| dimension))
             .into_iter()
             .map(|(ids, mode, status)| {
                 Right::from_point(ids).map(|r| (r, (mode, status)))
             })
-            .collect()
+    }
+
+    /// Returns all rights defined by this access structure along with their
+    /// hybridization and activation status.
+    pub(crate) fn omega(
+        &self,
+    ) -> Result<BTreeMap<Right, (HybridizationStatus, EncryptionStatus)>, Error>
+    {
+        self.rights().collect()
+    }
+
+    pub(crate) fn omega_rights(&self) -> Result<BTreeSet<Right>, Error> {
+        self.rights().map(|i| i.map(|(r, _)| r)).collect()
     }
 
     /// Retrieves the ID of an attribute.
@@ -255,32 +266,36 @@ impl AccessStructure {
     /// dimension in the case of the broadcast attribute.
     fn generate_extended_rights(
         &self,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
-        let extend_clause =
-            |clause: &[QualifiedAttribute]| -> Result<Vec<Dimension>, Error> {
-                clause
-                    .iter()
-                    .map(|qa| {
-                        let dimension = self.get_dimension(&qa.dimension)?;
-                        dimension.restrict(qa.attribute.to_string())
-                    })
-                    .collect()
-            };
+        let extend_clause = |clause: &Clause| -> Result<Vec<Dimension>, Error> {
+            clause
+                .attributes()
+                .iter()
+                .map(|qa| {
+                    let dimension = self.get_dimension(&qa.dimension)?;
+                    dimension.restrict(qa.attribute.to_string())
+                })
+                .collect()
+        };
 
-        ap.to_dnf()
-            .iter()
-            .map(|clause| {
-                extend_clause(clause).map(|extended_attribute| {
-                    combine(extended_attribute.iter())
+        if let Some(clauses) = ap.to_dnf().clauses() {
+            clauses
+                .iter()
+                .map(|clause| {
+                    extend_clause(clause).map(|extended_attribute| {
+                        combine(extended_attribute.iter())
+                    })
                 })
-            })
-            .try_fold(BTreeSet::new(), |s, points| {
-                points?.into_iter().try_fold(s, |mut s, (point, _, _)| {
-                    s.insert(Right::from_point(point)?);
-                    Ok(s)
+                .try_fold(BTreeSet::new(), |s, points| {
+                    points?.into_iter().try_fold(s, |mut s, (point, _, _)| {
+                        s.insert(Right::from_point(point)?);
+                        Ok(s)
+                    })
                 })
-            })
+        } else {
+            self.omega_rights()
+        }
     }
 
     /// Returns the rights of the points defined by the given access policy.
@@ -294,19 +309,26 @@ impl AccessStructure {
     /// Returns an error if the access policy is invalid.
     fn generate_restricted_rights(
         &self,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<BTreeSet<Right>, Error> {
-        ap.to_dnf().into_iter().try_fold(
-            BTreeSet::new(),
-            |mut rights, clause| {
-                let point = clause
-                    .into_iter()
-                    .map(|attr| Ok(self.get_attribute(&attr)?.get_id()))
-                    .collect::<Result<_, Error>>()?;
-                rights.insert(Right::from_point(point)?);
-                Ok(rights)
-            },
-        )
+        if let Some(clauses) = ap.to_dnf().clauses() {
+            clauses
+                .iter()
+                .try_fold(BTreeSet::new(), |mut rights, clause| {
+                    let point = clause
+                        .attributes()
+                        .iter()
+                        .filter(|qa| qa.attribute != BROADCAST)
+                        .map(|attr| Ok(self.get_attribute(attr)?.get_id()))
+                        .collect::<Result<_, Error>>()?;
+                    rights.insert(Right::from_point(point)?);
+                    Ok(rights)
+                })
+        } else {
+            let mut set = BTreeSet::new();
+            set.insert(Right::from_point(vec![])?);
+            Ok(set)
+        }
     }
 }
 
@@ -459,10 +481,13 @@ mod tests {
         let mut structure = AccessStructure::new();
         gen_structure(&mut structure, false).unwrap();
 
+        let sec_dim = ["LOW", "MED", "TOP"];
+        let dpt_dim = ["RD", "HR", "MKG", "FIN", "DEV"];
+
         {
             let ap = "SEC::LOW";
-            let comp_points = structure
-                .generate_extended_rights(&AccessPolicy::parse(ap)?)?;
+            let comp_points =
+                structure.generate_extended_rights(AccessPolicy::parse(ap)?)?;
 
             // Check the rights are the same as the ones manually generated, i.e.:
             // - rights(*)
@@ -484,201 +509,100 @@ mod tests {
 
         {
             let ap = "DPT::HR && SEC::*";
-            let comp_points = structure
-                .generate_extended_rights(&AccessPolicy::parse(ap)?)?;
+            let comp_points =
+                structure.generate_extended_rights(AccessPolicy::parse(ap)?)?;
 
-            // Check the rights are the same as the ones manually generated, i.e.:
-            // - rights(*)
-            // - rights(DPT::*, SEC::LOW)
-            // - rights(DPT::*, SEC::MID)
-            // - rights(DPT::*, SEC::TOP)
-            // - rights(DPT::HR, SEC::⊥)
-            // - rights(DPT::HR, SEC::LOW)
-            // - rights(DPT::HR, SEC::MID)
-            // - rights(DPT::HR, SEC::TOP)
             let mut rights = BTreeSet::new();
 
-            // The broadcast (`*`).
             rights.insert(Right::from_point(vec![])?);
 
-            // rights(DPT::HR, SEC::⊥)
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-            ])?);
+            for sec in &sec_dim {
+                rights.insert(Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "SEC".to_owned(),
+                        sec.to_string(),
+                    ))?,
+                ])?);
+            }
 
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "LOW".to_owned(),
-                ))?,
-            ])?);
+            #[allow(clippy::single_element_loop)]
+            for dpt in &["HR"] {
+                rights.insert(Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "DPT".to_owned(),
+                        dpt.to_string(),
+                    ))?,
+                ])?);
+            }
 
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "MED".to_owned(),
-                ))?,
-            ])?);
-
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "TOP".to_owned(),
-                ))?,
-            ])?);
-
-            // rights(DPT::*, SEC::LOW)
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "LOW".to_owned(),
-                ))?,
-            ])?);
-
-            // rights(DPT::*, SEC::MID)
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "MED".to_owned(),
-                ))?,
-            ])?);
-
-            // rights(DPT::*, SEC::TOP)
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "TOP".to_owned(),
-                ))?,
-            ])?);
+            #[allow(clippy::single_element_loop)]
+            for dpt in &["HR"] {
+                for sec in &sec_dim {
+                    rights.insert(Right::from_point(vec![
+                        structure.get_attribute_id(
+                            &QualifiedAttribute::new(
+                                "DPT".to_owned(),
+                                dpt.to_string(),
+                            ),
+                        )?,
+                        structure.get_attribute_id(
+                            &QualifiedAttribute::new(
+                                "SEC".to_owned(),
+                                sec.to_string(),
+                            ),
+                        )?,
+                    ])?);
+                }
+            }
 
             assert_eq!(comp_points, rights);
         }
 
         {
             let ap = "(DPT::HR || DPT::FIN) && SEC::TOP";
-            let comp_points = structure
-                .generate_extended_rights(&AccessPolicy::parse(ap)?)?;
+            let comp_points =
+                structure.generate_extended_rights(AccessPolicy::parse(ap)?)?;
 
-            // Check the rights are the same as the ones manually generated, i.e.:
-            // - rights()
-            // - rights(HR, TOP)
-            // - rights(HR, LOW)
-            // - rights(FIN, TOP)
-            // - rights(FIN, LOW)
             let mut rights = BTreeSet::new();
 
             rights.insert(Right::from_point(vec![])?);
 
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "FIN".to_owned(),
-                ))?,
-            ])?);
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-            ])?);
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "LOW".to_owned(),
-                ))?,
-            ])?);
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "MED".to_owned(),
-                ))?,
-            ])?);
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "TOP".to_owned(),
-                ))?,
-            ])?);
+            for sec in &sec_dim {
+                rights.insert(Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "SEC".to_owned(),
+                        sec.to_string(),
+                    ))?,
+                ])?);
+            }
 
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "FIN".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "LOW".to_owned(),
-                ))?,
-            ])?);
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "LOW".to_owned(),
-                ))?,
-            ])?);
+            for dpt in &["HR", "FIN"] {
+                rights.insert(Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "DPT".to_owned(),
+                        dpt.to_string(),
+                    ))?,
+                ])?);
+            }
 
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "MED".to_owned(),
-                ))?,
-            ])?);
-
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "FIN".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "MED".to_owned(),
-                ))?,
-            ])?);
-
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "HR".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "TOP".to_owned(),
-                ))?,
-            ])?);
-
-            rights.insert(Right::from_point(vec![
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "DPT".to_owned(),
-                    "FIN".to_owned(),
-                ))?,
-                structure.get_attribute_id(&QualifiedAttribute::new(
-                    "SEC".to_owned(),
-                    "TOP".to_owned(),
-                ))?,
-            ])?);
+            for dpt in &["HR", "FIN"] {
+                for sec in &sec_dim {
+                    rights.insert(Right::from_point(vec![
+                        structure.get_attribute_id(
+                            &QualifiedAttribute::new(
+                                "DPT".to_owned(),
+                                dpt.to_string(),
+                            ),
+                        )?,
+                        structure.get_attribute_id(
+                            &QualifiedAttribute::new(
+                                "SEC".to_owned(),
+                                sec.to_string(),
+                            ),
+                        )?,
+                    ])?);
+                }
+            }
 
             assert_eq!(comp_points, rights);
         }
@@ -688,7 +612,7 @@ mod tests {
             let ap = "DPT::HR";
             assert_eq!(
                 structure
-                    .generate_extended_rights(&AccessPolicy::parse(ap)?)?
+                    .generate_extended_rights(AccessPolicy::parse(ap)?)?
                     .len(),
                 // The extension of `DPT::HR` is itself and the dimensional
                 // broadcast. No other extensions are required since nothing
@@ -699,7 +623,7 @@ mod tests {
             let ap = "DPT::* && SEC::LOW";
             assert_eq!(
                 structure
-                    .generate_extended_rights(&AccessPolicy::parse(ap)?)?
+                    .generate_extended_rights(AccessPolicy::parse(ap)?)?
                     .len(),
                 // The extension of `DPT::*` is the entire department dimension
                 // (including the dimensional broadcast), while the extension of
@@ -711,13 +635,130 @@ mod tests {
             let ap = "SEC::LOW";
             assert_eq!(
                 structure
-                    .generate_extended_rights(&AccessPolicy::parse(ap)?)?
+                    .generate_extended_rights(AccessPolicy::parse(ap)?)?
                     .len(),
                 // The extension of `SEC::LOW` is itself and the bottom
                 // attribute of the `SEC` dimension.
                 (1 + 1)
             );
         }
+
+        {
+            let ap = "*";
+            let comp_points =
+                structure.generate_extended_rights(AccessPolicy::parse(ap)?)?;
+
+            let mut rights = BTreeSet::new();
+
+            rights.insert(Right::from_point(vec![])?);
+
+            for sec in &sec_dim {
+                rights.insert(Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "SEC".to_owned(),
+                        sec.to_string(),
+                    ))?,
+                ])?);
+            }
+
+            for dpt in &dpt_dim {
+                rights.insert(Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "DPT".to_owned(),
+                        dpt.to_string(),
+                    ))?,
+                ])?);
+            }
+
+            for dpt in &dpt_dim {
+                for sec in &sec_dim {
+                    rights.insert(Right::from_point(vec![
+                        structure.get_attribute_id(
+                            &QualifiedAttribute::new(
+                                "DPT".to_owned(),
+                                dpt.to_string(),
+                            ),
+                        )?,
+                        structure.get_attribute_id(
+                            &QualifiedAttribute::new(
+                                "SEC".to_owned(),
+                                sec.to_string(),
+                            ),
+                        )?,
+                    ])?);
+                }
+            }
+
+            assert_eq!(comp_points, rights);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_restricted_rights() -> Result<(), Error> {
+        let mut structure = AccessStructure::new();
+        gen_structure(&mut structure, false).unwrap();
+
+        {
+            let ap = AccessPolicy::parse("SEC::LOW")?;
+            let comp_points = structure.generate_restricted_rights(ap)?;
+            let rights = BTreeSet::from_iter([Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "SEC".to_owned(),
+                    "LOW".to_owned(),
+                ))?,
+            ])?]);
+            assert_eq!(comp_points, rights);
+        }
+
+        {
+            let ap = AccessPolicy::parse("DPT::HR && SEC::*").unwrap();
+            let comp_points = structure.generate_restricted_rights(ap).unwrap();
+            let rights = BTreeSet::from_iter([Right::from_point(vec![
+                structure.get_attribute_id(&QualifiedAttribute::new(
+                    "DPT".to_owned(),
+                    "HR".to_string(),
+                ))?,
+            ])?]);
+            assert_eq!(comp_points, rights);
+        }
+
+        {
+            let ap = AccessPolicy::parse("(DPT::HR || DPT::FIN) && SEC::TOP")?;
+            let comp_points = structure.generate_restricted_rights(ap)?;
+            let rights = BTreeSet::from_iter([
+                Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "DPT".to_owned(),
+                        "HR".to_string(),
+                    ))?,
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "SEC".to_owned(),
+                        "TOP".to_string(),
+                    ))?,
+                ])?,
+                Right::from_point(vec![
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "DPT".to_owned(),
+                        "FIN".to_string(),
+                    ))?,
+                    structure.get_attribute_id(&QualifiedAttribute::new(
+                        "SEC".to_owned(),
+                        "TOP".to_string(),
+                    ))?,
+                ])?,
+            ]);
+            assert_eq!(comp_points, rights);
+        }
+
+        {
+            let ap = AccessPolicy::parse("*").unwrap();
+            let comp_points = structure.generate_restricted_rights(ap).unwrap();
+            let rights = BTreeSet::from_iter([Right::from_point(vec![])?]);
+            assert_eq!(comp_points, rights);
+        }
+
         Ok(())
     }
 }

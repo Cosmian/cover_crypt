@@ -29,6 +29,114 @@ use std::{
 #[grammar = "abe/policy/access_policy.pest"]
 pub(crate) struct AccessPolicyParser;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Clause {
+    Broadcast,
+    Conjunction(Vec<QualifiedAttribute>),
+}
+
+impl Clause {
+    pub fn new(attribute: QualifiedAttribute) -> Self {
+        Self::Conjunction(vec![attribute])
+    }
+
+    pub fn broadcast() -> Self {
+        Self::Broadcast
+    }
+
+    pub fn is_broadcast(&self) -> bool {
+        matches!(self, Self::Broadcast)
+    }
+
+    pub fn attributes(&self) -> &[QualifiedAttribute] {
+        match self {
+            Self::Broadcast => &[],
+            Self::Conjunction(attributes) => attributes,
+        }
+    }
+}
+
+impl BitAnd for &Clause {
+    type Output = Clause;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Clause::Broadcast, Clause::Broadcast) => Clause::Broadcast,
+            (Clause::Broadcast, Clause::Conjunction(rhs)) => {
+                Clause::Conjunction(rhs.clone())
+            }
+            (Clause::Conjunction(lhs), Clause::Broadcast) => {
+                Clause::Conjunction(lhs.clone())
+            }
+            (Clause::Conjunction(lhs), Clause::Conjunction(rhs)) => {
+                Clause::Conjunction([lhs.as_slice(), rhs.as_slice()].concat())
+            }
+        }
+    }
+}
+
+pub enum Dnf {
+    Broadcast,
+    Disjunction(Vec<Clause>),
+}
+
+impl Dnf {
+    pub fn new(clause: Clause) -> Self {
+        Self::Disjunction(vec![clause])
+    }
+
+    pub fn broadcast() -> Self {
+        Self::Broadcast
+    }
+
+    pub fn clauses(&self) -> Option<&[Clause]> {
+        match self {
+            Self::Broadcast => None,
+            Self::Disjunction(clauses) => Some(clauses),
+        }
+    }
+}
+
+impl BitOr for Dnf {
+    type Output = Dnf;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Dnf::Broadcast, Dnf::Broadcast) => Dnf::Broadcast,
+            (Dnf::Broadcast, Dnf::Disjunction(_)) => Dnf::Broadcast,
+            (Dnf::Disjunction(_), Dnf::Broadcast) => Dnf::Broadcast,
+            (Dnf::Disjunction(lhs), Dnf::Disjunction(rhs)) => {
+                Dnf::Disjunction([lhs, rhs].concat())
+            }
+        }
+    }
+}
+
+impl BitAnd for Dnf {
+    type Output = Dnf;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Dnf::Broadcast, Dnf::Broadcast) => Dnf::Broadcast,
+            (Dnf::Broadcast, Dnf::Disjunction(clauses)) => {
+                Dnf::Disjunction(clauses)
+            }
+            (Dnf::Disjunction(clauses), Dnf::Broadcast) => {
+                Dnf::Disjunction(clauses)
+            }
+            (Dnf::Disjunction(lhs), Dnf::Disjunction(rhs)) => {
+                let mut res = Vec::with_capacity(lhs.len() * rhs.len());
+                for lhs_clause in &lhs {
+                    for rhs_clause in &rhs {
+                        res.push(lhs_clause & rhs_clause);
+                    }
+                }
+                Dnf::Disjunction(res)
+            }
+        }
+    }
+}
+
 /// An access policy is a boolean expression of qualified attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessPolicy {
@@ -46,8 +154,7 @@ impl AccessPolicy {
     ///
     /// # Precedence rule
     ///
-    /// Note that the usual precedence rules hold in expressing an access
-    /// policy:
+    /// The usual precedence rules hold when expressing an access policy:
     /// 1. grouping takes precedence over all operators;
     /// 2. the logical AND takes precedence over the logical OR.
     ///
@@ -55,18 +162,22 @@ impl AccessPolicy {
     ///
     /// The following expressions define valid access policies:
     ///
+    /// - "*"
     /// - "DPT::MKG && (CTR::FR || CTR::DE)"
-    /// - "SEC::Low Secret && CTR::FR"
+    /// - "SEC::LowSecret && CTR::FR"
+    /// - "Security::* && Country::France"
     ///
-    /// Notice that the arity of the operators is two. Therefore the following
-    /// access policy is *invalid*:
+    /// Notice that the arity of the `&&` and `||` operators is two. The
+    /// following access policy is therefore *invalid*:
     ///
     /// - "DPT::MKG (&& CTR::FR || CTR::DE)"
     ///
-    /// It is not possible to concatenate attributes. Therefore the following
-    /// access policy is *invalid*:
+    /// It is not possible to concatenate attributes. The following access
+    /// policy is therefore *invalid*:
     ///
     /// - "DPT::MKG DPT::FIN"
+    ///
+    /// Finally, the empty policy is an invalid policy.
     pub fn parse(ap: &str) -> Result<Self, Error> {
         enum Operator {
             Conj,
@@ -166,7 +277,6 @@ impl AccessPolicy {
 
             while !Pairs::is_empty(pairs) {
                 let op = pairs.next().expect("iterator is not empty");
-
                 match get_operator(op)? {
                     Operator::Conj => {
                         // Conjunction is eager since it takes precedence.
@@ -183,7 +293,6 @@ impl AccessPolicy {
                         )
                     }
                     Operator::Disj => {
-                        // Conjunction is eager since it takes precedence.
                         access_policy = AccessPolicy::Disjunction(
                             Box::new(access_policy),
                             Box::new(get_eq(pairs)?),
@@ -223,30 +332,12 @@ impl AccessPolicy {
     /// Converts the access policy into the Disjunctive Normal Form (DNF) of its
     /// attributes. Returns the DNF as the list of its conjunctions, themselves
     /// represented as the list of their attributes.
-    #[must_use]
-    pub fn to_dnf(&self) -> Vec<Vec<QualifiedAttribute>> {
+    pub fn to_dnf(self) -> Dnf {
         match self {
-            Self::Term(attr) => vec![vec![attr.clone()]],
-            Self::Conjunction(lhs, rhs) => {
-                let combinations_left = lhs.to_dnf();
-                let combinations_right = rhs.to_dnf();
-                let mut res = Vec::with_capacity(
-                    combinations_left.len() * combinations_right.len(),
-                );
-                for value_left in combinations_left {
-                    for value_right in &combinations_right {
-                        res.push(
-                            [value_left.as_slice(), value_right.as_slice()]
-                                .concat(),
-                        );
-                    }
-                }
-                res
-            }
-            Self::Disjunction(lhs, rhs) => {
-                [lhs.to_dnf(), rhs.to_dnf()].concat()
-            }
-            Self::Broadcast => vec![vec![]],
+            Self::Term(attr) => Dnf::new(Clause::new(attr)),
+            Self::Conjunction(lhs, rhs) => lhs.to_dnf() & rhs.to_dnf(),
+            Self::Disjunction(lhs, rhs) => lhs.to_dnf() | rhs.to_dnf(),
+            Self::Broadcast => Dnf::broadcast(),
         }
     }
 }

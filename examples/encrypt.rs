@@ -23,7 +23,7 @@ fn generate_new(
 ) {
     let ap = AccessPolicy::parse("DPT::FIN && SEC::TOP").unwrap();
 
-    let usk = Covercrypt::gen_usk(rng, msk, &ap).unwrap();
+    let usk = Covercrypt::gen_usk(rng, msk, ap.clone()).unwrap();
 
     let ctx = <Covercrypt as PkeAc<
         { Aes256Gcm::KEY_LENGTH },

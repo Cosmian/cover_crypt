@@ -848,8 +848,8 @@ mod tests {
         .unwrap();
         let tag = msk.get_tag();
         let mut msk = MasterSecretKey::deserialize(msk.get_bytes()).unwrap();
-        let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &usk_access_policy)
-            .unwrap();
+        let usk =
+            Covercrypt::gen_usk(&mut rng, &mut msk, usk_access_policy).unwrap();
         let usk =
             ConfigurableKemDk::new(tag, usk.serialize().unwrap()).unwrap();
         let (key, enc) =

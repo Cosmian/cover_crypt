@@ -17,7 +17,7 @@ fn main() {
             .unwrap();
 
     let mut usk =
-        Covercrypt::gen_usk(&mut rng, &mut msk, &access_policy).unwrap();
+        Covercrypt::gen_usk(&mut rng, &mut msk, access_policy.clone()).unwrap();
 
     // Encrypt
     let (_, encrypted_header) = EncryptedHeader::generate(
@@ -39,7 +39,7 @@ fn main() {
 
     //
     // Rekey the user access policy.
-    Covercrypt::rekey(&mut msk, &access_policy).unwrap();
+    Covercrypt::rekey(&mut msk, access_policy.clone()).unwrap();
     let pk = Covercrypt::gen_pk(&msk, None).unwrap();
 
     let enc_policy = AccessPolicy::parse("Security Level::Top Secret").unwrap();
@@ -57,7 +57,7 @@ fn main() {
     );
 
     // refresh user secret key, do not grant old encryption access
-    Covercrypt::refresh(&mut rng, &mut msk, &mut usk, false).unwrap();
+    Covercrypt::refresh_usk(&mut rng, &mut msk, &mut usk, false).unwrap();
 
     // The user with refreshed key is able to decrypt the newly encrypted header.
     assert!(

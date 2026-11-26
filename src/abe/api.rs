@@ -48,7 +48,7 @@ impl Covercrypt {
     /// All user secret and public keys need to be refreshed.
     pub fn rekey(
         msk: &mut MasterSecretKey,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<(), Error> {
         rekey(msk, msk.access_structure.ap_to_usk_rights(ap)?)
     }
@@ -60,7 +60,7 @@ impl Covercrypt {
     /// refreshed in order to be pruned accordingly.
     pub fn prune(
         msk: &mut MasterSecretKey,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<(), Error> {
         prune(msk, &msk.access_structure.ap_to_usk_rights(ap)?);
         Ok(())
@@ -72,7 +72,7 @@ impl Covercrypt {
     /// structure.
     pub fn gen_pk(
         msk: &MasterSecretKey,
-        ap: Option<&AccessPolicy>,
+        ap: Option<AccessPolicy>,
     ) -> Result<PublicKey, Error> {
         msk.gen_pk(
             ap.map(|ap| msk.access_structure.ap_to_enc_rights(ap))
@@ -88,7 +88,7 @@ impl Covercrypt {
     pub fn gen_usk(
         rng: &mut impl CryptoRngCore,
         msk: &mut MasterSecretKey,
-        ap: &AccessPolicy,
+        ap: AccessPolicy,
     ) -> Result<UserSecretKey, Error> {
         usk_keygen(rng, msk, msk.access_structure.ap_to_usk_rights(ap)?)
     }
@@ -140,7 +140,7 @@ impl KemAc<SHARED_SECRET_LENGTH> for Covercrypt {
         primitives::encaps(
             rng,
             ek,
-            &ek.access_structure().ap_to_enc_rights(ap)?,
+            &ek.access_structure().ap_to_enc_rights(ap.clone())?,
         )
     }
 
@@ -234,7 +234,7 @@ mod tests {
         let usk_1 = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse(
+            AccessPolicy::parse(
                 "SEC::LOW || (SEC::TOP && ((CTR::FR || CTR::EN) || DPT::FIN))",
             )
             .unwrap(),
@@ -244,7 +244,7 @@ mod tests {
         let usk_2 = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse(
+            AccessPolicy::parse(
                 "(SEC::LOW && DPT::FIN) || (SEC::MED && CTR::FR && DPT::DEV)",
             )
             .unwrap(),

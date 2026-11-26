@@ -389,7 +389,7 @@ mod tests {
             let usk = Covercrypt::gen_usk(
                 &mut rng,
                 &mut msk,
-                &AccessPolicy::parse("SEC::TOP").unwrap(),
+                AccessPolicy::parse("SEC::TOP").unwrap(),
             )
             .unwrap();
 

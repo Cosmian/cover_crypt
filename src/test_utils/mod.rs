@@ -35,7 +35,7 @@ mod tests {
         let mut low_secret_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("SEC::LOW")?,
+            AccessPolicy::parse("SEC::LOW")?,
         )?;
 
         Covercrypt::edit_msk(&mut msk, |access_structure| {
@@ -64,7 +64,12 @@ mod tests {
                 .is_none()
         );
 
-        Covercrypt::refresh(&mut rng, &mut msk, &mut low_secret_usk, false)?;
+        Covercrypt::refresh_usk(
+            &mut rng,
+            &mut msk,
+            &mut low_secret_usk,
+            false,
+        )?;
 
         assert!(
             encrypted_header
@@ -85,7 +90,7 @@ mod tests {
         let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?,
+            AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?,
         )?;
 
         // Encrypt
@@ -115,7 +120,12 @@ mod tests {
         // Refreshing the USK removes the keys associated to rights that do not
         // exist anymore in the MSK, even if it is asked to preserve the old
         // secrets.
-        Covercrypt::refresh(&mut rng, &mut msk, &mut top_secret_fin_usk, true)?;
+        Covercrypt::refresh_usk(
+            &mut rng,
+            &mut msk,
+            &mut top_secret_fin_usk,
+            true,
+        )?;
 
         assert!(
             encrypted_header
@@ -136,7 +146,7 @@ mod tests {
         let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?,
+            AccessPolicy::parse("SEC::TOP && (DPT::FIN || DPT::HR)")?,
         )?;
 
         // Encrypt
@@ -179,7 +189,12 @@ mod tests {
         );
 
         // refresh the user key and preserve old secrets
-        Covercrypt::refresh(&mut rng, &mut msk, &mut top_secret_fin_usk, true)?;
+        Covercrypt::refresh_usk(
+            &mut rng,
+            &mut msk,
+            &mut top_secret_fin_usk,
+            true,
+        )?;
 
         assert!(
             encrypted_header
@@ -189,7 +204,7 @@ mod tests {
         );
 
         // refresh the user key and remove old secrets
-        Covercrypt::refresh(
+        Covercrypt::refresh_usk(
             &mut rng,
             &mut msk,
             &mut top_secret_fin_usk,
@@ -215,7 +230,7 @@ mod tests {
         let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
+            AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
         )?;
 
         // Encrypt
@@ -243,7 +258,7 @@ mod tests {
         );
 
         // refresh the user key and preserve old secrets
-        Covercrypt::refresh(
+        Covercrypt::refresh_usk(
             &mut rng,
             &mut msk,
             &mut top_secret_fin_usk,
@@ -276,7 +291,7 @@ mod tests {
         let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
         )?;
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
         assert_eq!(Some(&sym_key), recovered_key.as_ref());
@@ -287,7 +302,7 @@ mod tests {
         let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("DPT::MKG || DPT::FIN").unwrap(),
+            AccessPolicy::parse("DPT::MKG || DPT::FIN").unwrap(),
         )?;
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
         assert!(recovered_key.is_none());
@@ -304,7 +319,7 @@ mod tests {
         let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
         )?;
 
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
@@ -313,7 +328,7 @@ mod tests {
         let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::LOW").unwrap(),
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::LOW").unwrap(),
         )?;
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
         assert_eq!(Some(&sym_key), recovered_key.as_ref());
@@ -321,7 +336,7 @@ mod tests {
         let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("(DPT::MKG || DPT::FIN)").unwrap(),
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN)").unwrap(),
         )?;
         let recovered_key = Covercrypt::decaps(&mut rng, &usk, &encrypted_key)?;
         assert_eq!(Some(&sym_key), recovered_key.as_ref());
@@ -339,7 +354,7 @@ mod tests {
         let _user_key = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("SEC::TOP")?,
+            AccessPolicy::parse("SEC::TOP")?,
         )?;
 
         Ok(())
@@ -357,7 +372,7 @@ mod tests {
         let mut top_secret_fin_usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
+            AccessPolicy::parse("SEC::TOP && DPT::FIN")?,
         )?;
 
         //
@@ -379,7 +394,7 @@ mod tests {
         // Rotate argument (must update master keys)
         Covercrypt::rekey(
             &mut msk,
-            &AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP"))),
+            AccessPolicy::Term(QualifiedAttribute::from(("SEC", "TOP"))),
         )?;
 
         let pk = Covercrypt::gen_pk(&msk, None)?;
@@ -402,7 +417,7 @@ mod tests {
                 .is_none()
         );
 
-        Covercrypt::refresh(
+        Covercrypt::refresh_usk(
             &mut rng,
             &mut msk,
             &mut top_secret_fin_usk,
@@ -426,7 +441,7 @@ mod tests {
         let ap = AccessPolicy::parse("*").unwrap();
         let mut msk = Covercrypt::setup(&mut rng).unwrap();
         let pk = Covercrypt::gen_pk(&msk, None).unwrap();
-        let usk = Covercrypt::gen_usk(&mut rng, &mut msk, &ap).unwrap();
+        let usk = Covercrypt::gen_usk(&mut rng, &mut msk, ap.clone()).unwrap();
         let (secret, bc) = Covercrypt::encaps(&mut rng, &pk, &ap).unwrap();
         let res = Covercrypt::decaps(&mut rng, &usk, &bc).unwrap();
         assert_eq!(Some(secret), res);

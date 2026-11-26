@@ -113,7 +113,7 @@ macro_rules! gen_usk {
         let usk = Covercrypt::gen_usk(
             &mut $rng,
             &mut $msk,
-            &AccessPolicy::parse($ap).unwrap(),
+            AccessPolicy::parse($ap).unwrap(),
         )
         .unwrap();
         assert_eq!(usk.count(), $cnt);
@@ -214,7 +214,8 @@ fn bench_usk_keygen(c: &mut Criterion) {
                             .unwrap()
                     },
                     |mut msk| {
-                        Covercrypt::gen_usk(&mut rng, &mut msk, &uap).unwrap()
+                        Covercrypt::gen_usk(&mut rng, &mut msk, uap.clone())
+                            .unwrap()
                     },
                     BatchSize::SmallInput,
                 )
@@ -266,7 +267,9 @@ fn bench_pre_quantum_decapsulation(c: &mut Criterion) {
 
                                 (
                                     Covercrypt::gen_usk(
-                                        &mut rng, &mut msk, &uap,
+                                        &mut rng,
+                                        &mut msk,
+                                        uap.clone(),
                                     )
                                     .unwrap(),
                                     Covercrypt::encaps(&mut rng, &pk, &eap)
@@ -331,7 +334,9 @@ fn bench_hybridized_decapsulation(c: &mut Criterion) {
                                 let mut rng = CsRng::from_entropy();
                                 (
                                     Covercrypt::gen_usk(
-                                        &mut rng, &mut msk, &uap,
+                                        &mut rng,
+                                        &mut msk,
+                                        uap.clone(),
                                     )
                                     .unwrap(),
                                     Covercrypt::encaps(&mut rng, &pk, &eap)

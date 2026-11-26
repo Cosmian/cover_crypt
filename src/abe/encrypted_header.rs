@@ -215,7 +215,7 @@ mod serialization {
         let usk = Covercrypt::gen_usk(
             &mut rng,
             &mut msk,
-            &AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
+            AccessPolicy::parse("(DPT::MKG || DPT::FIN) && SEC::TOP").unwrap(),
         )
         .unwrap();
 
